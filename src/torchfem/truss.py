@@ -202,6 +202,9 @@ class Truss:
         # Nodes
         pos = self.nodes + u
 
+        # Bounding box
+        size = torch.linalg.norm(pos.max() - pos.min()).item()
+
         # Elements
         tubes = pyvista.MultiBlock()
         for j, element in enumerate(self.elements):
@@ -212,6 +215,26 @@ class Truss:
             tube = line.tube(radius=radius)
             tube.cell_data["Stress"] = sigma[j]
             tubes.append(tube)
-
         pl.add_mesh(tubes, scalars="Stress", show_scalar_bar=False)
+
+        # Forces
+        force_centers = []
+        force_directions = []
+        for i, force in enumerate(self.forces):
+            if torch.norm(force) > 0.0:
+                force_centers.append(pos[i])
+                force_directions.append(force / torch.linalg.norm(force))
+        pl.add_arrows(
+            torch.stack(force_centers).numpy(),
+            torch.stack(force_directions).numpy(),
+            mag=0.5 * size,
+            color="gray",
+        )
+
+        # Constraints
+        for i, constraint in enumerate(self.constraints):
+            if constraint.any():
+                sphere = pyvista.Sphere(radius=0.1 * size, center=pos[i].numpy())
+                pl.add_mesh(sphere, color="gray")
+
         pl.show()
