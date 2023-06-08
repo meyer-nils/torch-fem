@@ -3,6 +3,7 @@
 
 # Python 
 *.pyc 
+*.egg-info
 
 # VTK 
 *.vtk
