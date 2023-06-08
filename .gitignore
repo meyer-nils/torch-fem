@@ -1,0 +1,8 @@
+# Mac OS
+.DS_Store
+
+# Python 
+*.pyc 
+
+# VTK 
+*.vtk

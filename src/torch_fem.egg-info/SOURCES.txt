@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+setup.cfg
+src/torch_fem.egg-info/PKG-INFO
+src/torch_fem.egg-info/SOURCES.txt
+src/torch_fem.egg-info/dependency_links.txt
+src/torch_fem.egg-info/requires.txt
+src/torch_fem.egg-info/top_level.txt
+src/torchfem/__init__.py
+src/torchfem/io.py
+src/torchfem/truss.py

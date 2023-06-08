@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: torch-fem
+Version: 0.0.1
+Summary: Simple finite element assemblers with torch
+Author: Nils Meyer
+Author-email: nils.meyer@uni-a.de
+License: MIT
+Keywords: finite elements,automatic differentiation
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+# torch-fem
+
+Simple finite elements with torch. 
