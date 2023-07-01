@@ -1,18 +1,18 @@
 import torch
 from meshio import Mesh
 
-from torchfem import Truss
+from torchfem import Truss, Tria, Quad
 
 
 @torch.no_grad()
 def export_mesh(mesh, filename, nodal_data={}, elem_data={}):
     if type(mesh) == Truss:
         etype = "line"
-    # else:
-    #     if type(mesh.etype) == Quad:
-    #         etype = "quad"
-    #     elif type(mesh.etype) == Tria:
-    #         etype = "triangle"
+    else:
+        if type(mesh.etype) == Quad:
+            etype = "quad"
+        elif type(mesh.etype) == Tria:
+            etype = "triangle"
 
     mesh = Mesh(
         points=mesh.nodes,
