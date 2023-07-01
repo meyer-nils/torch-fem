@@ -104,7 +104,6 @@ class Planar:
     def k(self, j):
         # Perform integrations
         nodes = self.nodes[self.elements[j], :]
-        B = torch.zeros((3, 2 * self.etype.nodes))
         k = torch.zeros((2 * self.etype.nodes, 2 * self.etype.nodes))
         R = self.R(self.phi[j])
         C = torch.einsum("ij,jk,lk->il", R, self.C, R)
