@@ -215,7 +215,7 @@ class Truss:
             tube = line.tube(radius=radius)
             tube.cell_data["Stress"] = sigma[j]
             tubes.append(tube)
-        pl.add_mesh(tubes, scalars="Stress", cmap="RdBu_r")
+        pl.add_mesh(tubes, scalars="Stress", cmap="viridis")
 
         # Forces
         force_centers = []
