@@ -160,6 +160,7 @@ class Planar:
         node_labels=False,
         orientation=False,
         color="black",
+        cmap="viridis",
         linewidth=1.0,
     ):
         # Compute deformed positions
@@ -177,13 +178,13 @@ class Planar:
                     triangles.append([e[2], e[3], e[0]])
             else:
                 triangles = self.elements
-            plt.tricontourf(pos[:, 0], pos[:, 1], triangles, node_property)
+            plt.tricontourf(pos[:, 0], pos[:, 1], triangles, node_property, cmap=cmap)
 
         # Color surface with element properties (if provided)
         if element_property is not None:
             ax = plt.gca()
             verts = pos[self.elements]
-            pc = PolyCollection(verts, cmap="gray_r")
+            pc = PolyCollection(verts, cmap=cmap)
             pc.set_array(element_property)
             ax.add_collection(pc)
 
