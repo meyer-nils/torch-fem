@@ -12,10 +12,10 @@ class Tria1:
         self.nodes = 3
 
     def N(self, xi):
-        N_1 = 1.0 - xi[..., 0] - xi[..., 1]
-        N_2 = xi[..., 0]
-        N_3 = xi[..., 1]
-        return torch.stack([N_1, N_2, N_3], dim=2)
+        N_1 = 1.0 - xi[0] - xi[1]
+        N_2 = xi[0]
+        N_3 = xi[1]
+        return torch.tensor([N_1, N_2, N_3])
 
     def B(self, _):
         return torch.tensor([[-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
@@ -32,11 +32,11 @@ class Quad1:
         self.nodes = 4
 
     def N(self, xi):
-        N_1 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1])
-        N_2 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1])
-        N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1])
-        N_4 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1])
-        return 0.25 * torch.stack([N_1, N_2, N_3, N_4], dim=2)
+        N_1 = (1.0 - xi[0]) * (1.0 - xi[1])
+        N_2 = (1.0 + xi[0]) * (1.0 - xi[1])
+        N_3 = (1.0 + xi[0]) * (1.0 + xi[1])
+        N_4 = (1.0 - xi[0]) * (1.0 + xi[1])
+        return 0.25 * torch.tensor([N_1, N_2, N_3, N_4])
 
     def B(self, xi):
         return 0.25 * torch.tensor(
@@ -111,6 +111,8 @@ class Planar:
             # Jacobian
             J = self.etype.B(q) @ nodes
             detJ = torch.linalg.det(J)
+            if detJ <= 0.0:
+                raise Exception("Negative Jacobian. Check element numbering.")
             # Element stiffness
             B = torch.linalg.inv(J) @ self.etype.B(q)
             zeros = torch.zeros(self.etype.nodes)
