@@ -184,3 +184,43 @@ class Solid:
         u = u.reshape((-1, 3))
         f = f.reshape((-1, 3))
         return u, f
+
+    @torch.no_grad()
+    def plot(self, u=0.0, node_property=None, element_property=None):
+        try:
+            import pyvista
+        except ImportError:
+            raise Exception("Plotting 3D requires pyvista.")
+
+        pyvista.set_plot_theme("document")
+        pl = pyvista.Plotter()
+        pl.enable_anti_aliasing("ssaa")
+
+        # VTK cell types
+        if type(self.etype) == Tetra1:
+            cell_types = self.n_elem * [pyvista.CellType.TETRA]
+        elif type(self.etype) == Hexa1:
+            cell_types = self.n_elem * [pyvista.CellType.HEXAHEDRON]
+
+        # VTK element list
+        elements = []
+        for element in self.elements:
+            elements += [len(element), *element]
+
+        # Deformed node positions
+        pos = self.nodes + u
+
+        # Create unstructured mesh
+        mesh = pyvista.UnstructuredGrid(elements, cell_types, pos.tolist())
+
+        # Plot node properties
+        if node_property:
+            for key, val in node_property.items():
+                mesh.point_data[key] = val
+
+        # Plot cell properties
+        if element_property:
+            for key, val in element_property.items():
+                mesh.cell_data[key] = val
+
+        mesh.plot(show_edges=True)
