@@ -45,7 +45,6 @@ def import_mesh(filename, C):
     else:
         nodes = torch.from_numpy(mesh.points[:, 0:2].astype(np.float64))
         thickness = torch.ones((len(elements)))
-        orientation = torch.zeros((len(elements)))
         forces = torch.zeros_like(nodes)
         constraints = torch.zeros_like(nodes, dtype=bool)
-        return Planar(nodes, elements, forces, constraints, thickness, orientation, C)
+        return Planar(nodes, elements, forces, constraints, thickness, C)
