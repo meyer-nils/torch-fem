@@ -27,33 +27,25 @@ def export_mesh(mesh, filename, nodal_data={}, elem_data={}):
     mesh.write(filename)
 
 
-def import_planar_mesh(filename, C):
+def import_mesh(filename, C):
     import meshio
     import numpy as np
 
     mesh = meshio.read(filename)
-    nodes = torch.from_numpy(mesh.points[:, 0:2].astype(np.float64))
     elements = []
     for cell_block in mesh.cells:
-        elements += cell_block.data.tolist()
-    forces = torch.zeros_like(nodes)
-    constraints = torch.zeros_like(nodes, dtype=bool)
-    thickness = torch.ones((len(elements)))
-    orientation = torch.zeros((len(elements)))
+        if cell_block.type in ["triangle", "quad", "hexa"]:
+            elements += cell_block.data.tolist()
 
-    return Planar(nodes, elements, forces, constraints, thickness, orientation, C)
-
-
-def import_solid_mesh(filename, C):
-    import meshio
-    import numpy as np
-
-    mesh = meshio.read(filename)
-    nodes = torch.from_numpy(mesh.points.astype(np.float64))
-    elements = []
-    for cell_block in mesh.cells:
-        elements += cell_block.data.tolist()
-    forces = torch.zeros_like(nodes)
-    constraints = torch.zeros_like(nodes, dtype=bool)
-
-    return Solid(nodes, elements, forces, constraints, C)
+    if mesh.points[:, 2].any():
+        nodes = torch.from_numpy(mesh.points.astype(np.float64))
+        forces = torch.zeros_like(nodes)
+        constraints = torch.zeros_like(nodes, dtype=bool)
+        return Solid(nodes, elements, forces, constraints, C)
+    else:
+        nodes = torch.from_numpy(mesh.points[:, 0:2].astype(np.float64))
+        thickness = torch.ones((len(elements)))
+        orientation = torch.zeros((len(elements)))
+        forces = torch.zeros_like(nodes)
+        constraints = torch.zeros_like(nodes, dtype=bool)
+        return Planar(nodes, elements, forces, constraints, thickness, orientation, C)
