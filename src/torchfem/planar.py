@@ -67,7 +67,6 @@ class Planar:
         thickness,
         orientation,
         C,
-        etype=Quad1(),
     ):
         self.nodes = nodes
         self.n_dofs = torch.numel(self.nodes)
@@ -75,10 +74,14 @@ class Planar:
         self.n_elem = len(self.elements)
         self.forces = forces
         self.constraints = constraints
-        self.etype = etype
         self.C = C
         self.d = thickness
         self.phi = orientation
+        # Element type
+        if len(elements[0]) == 4:
+            self.etype = Quad1()
+        else:
+            self.etype = Tria1()
 
         # Compute efficient mapping from local to global indices
         self.global_indices = []
