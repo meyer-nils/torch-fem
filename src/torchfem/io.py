@@ -34,7 +34,7 @@ def import_mesh(filename, C):
     mesh = meshio.read(filename)
     elements = []
     for cell_block in mesh.cells:
-        if cell_block.type in ["triangle", "quad", "hexa"]:
+        if cell_block.type in ["triangle", "quad", "tetra" "hexahedron"]:
             elements += cell_block.data.tolist()
 
     if mesh.points[:, 2].any():
