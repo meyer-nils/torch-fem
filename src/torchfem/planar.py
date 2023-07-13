@@ -65,7 +65,6 @@ class Planar:
         forces,
         constraints,
         thickness,
-        orientation,
         C,
     ):
         self.nodes = nodes
@@ -74,9 +73,14 @@ class Planar:
         self.n_elem = len(self.elements)
         self.forces = forces
         self.constraints = constraints
-        self.C = C
         self.d = thickness
-        self.phi = orientation
+
+        # Stack stiffness tensor (for general anisotropy and multi-material assignement)
+        if C.shape == torch.Size([3, 3]):
+            self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
+        else:
+            self.C = C
+
         # Element type
         if len(elements[0]) == 4:
             self.etype = Quad1()
@@ -89,27 +93,10 @@ class Planar:
             indices = torch.tensor([2 * n + i for n in element for i in range(2)])
             self.global_indices.append(torch.meshgrid(indices, indices, indexing="xy"))
 
-    def R(self, phi):
-        # Rotation tensor
-        cos = torch.cos(phi)
-        cos2 = cos**2
-        sin = torch.sin(phi)
-        sin2 = sin**2
-        sincos = sin * cos
-        return torch.stack(
-            [
-                torch.stack([cos2, sin2, 2 * sincos]),
-                torch.stack([sin2, cos2, -2 * sincos]),
-                torch.stack([-sincos, sincos, cos2 - sin2]),
-            ]
-        )
-
     def k(self, j):
         # Perform integrations
         nodes = self.nodes[self.elements[j], :]
         k = torch.zeros((2 * self.etype.nodes, 2 * self.etype.nodes))
-        R = self.R(self.phi[j])
-        C = torch.einsum("ij,jk,lk->il", R, self.C, R)
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             # Jacobian
             J = self.etype.B(q) @ nodes
@@ -123,7 +110,7 @@ class Planar:
             D1 = torch.stack([zeros, B[1, :]], dim=-1).ravel()
             D2 = torch.stack([B[1, :], B[0, :]], dim=-1).ravel()
             D = torch.stack([D0, D1, D2])
-            k[:, :] += self.d[j] * w * D.T @ C @ D * detJ
+            k[:, :] += self.d[j] * w * D.T @ self.C[j] @ D * detJ
         return k
 
     def stiffness(self):
