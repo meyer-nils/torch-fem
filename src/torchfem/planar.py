@@ -4,8 +4,6 @@ import matplotlib.pyplot as plt
 import torch
 from matplotlib.collections import PolyCollection
 
-torch.set_default_dtype(torch.double)
-
 
 class Tria1:
     def __init__(self):

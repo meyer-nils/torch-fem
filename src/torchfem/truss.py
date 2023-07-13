@@ -1,7 +1,5 @@
 import torch
 
-torch.set_default_dtype(torch.double)
-
 
 class Truss:
     def __init__(self, nodes, elements, forces, constraints, areas, moduli):

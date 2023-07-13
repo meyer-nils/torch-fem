@@ -2,8 +2,6 @@ from math import sqrt
 
 import torch
 
-torch.set_default_dtype(torch.double)
-
 
 class Tetra1:
     def __init__(self):
