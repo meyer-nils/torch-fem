@@ -86,36 +86,41 @@ class Planar:
             self.etype = Tria1()
 
         # Compute efficient mapping from local to global indices
-        self.global_indices = []
+        gidx_1 = []
+        gidx_2 = []
         for element in self.elements:
             indices = torch.tensor([2 * n + i for n in element for i in range(2)])
-            self.global_indices.append(torch.meshgrid(indices, indices, indexing="xy"))
+            idx_1, idx_2 = torch.meshgrid(indices, indices, indexing="xy")
+            gidx_1.append(idx_1)
+            gidx_2.append(idx_2)
+        self.gidx_1 = torch.stack(gidx_1)
+        self.gidx_2 = torch.stack(gidx_2)
 
-    def k(self, j):
+    def k(self):
         # Perform integrations
-        nodes = self.nodes[self.elements[j], :]
-        k = torch.zeros((2 * self.etype.nodes, 2 * self.etype.nodes))
+        nodes = self.nodes[self.elements, :]
+        k = torch.zeros((self.n_elem, 2 * self.etype.nodes, 2 * self.etype.nodes))
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             # Jacobian
             J = self.etype.B(q) @ nodes
             detJ = torch.linalg.det(J)
-            if detJ <= 0.0:
+            if torch.any(detJ <= 0.0):
                 raise Exception("Negative Jacobian. Check element numbering.")
             # Element stiffness
             B = torch.linalg.inv(J) @ self.etype.B(q)
-            zeros = torch.zeros(self.etype.nodes)
-            D0 = torch.stack([B[0, :], zeros], dim=-1).ravel()
-            D1 = torch.stack([zeros, B[1, :]], dim=-1).ravel()
-            D2 = torch.stack([B[1, :], B[0, :]], dim=-1).ravel()
-            D = torch.stack([D0, D1, D2])
-            k[:, :] += self.d[j] * w * D.T @ self.C[j] @ D * detJ
+            zeros = torch.zeros(self.n_elem, self.etype.nodes)
+            D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(self.n_elem, -1)
+            D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(self.n_elem, -1)
+            D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
+            D = torch.stack([D0, D1, D2], dim=1)
+            DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
+            k[:, :, :] += torch.einsum("i,ijk->ijk", w * self.d * detJ, DCD)
         return k
 
     def stiffness(self):
         # Assemble global stiffness matrix
         K = torch.zeros((self.n_dofs, self.n_dofs))
-        for j in range(len(self.elements)):
-            K[self.global_indices[j]] += self.k(j)
+        K.index_put_((self.gidx_1, self.gidx_2), self.k(), accumulate=True)
         return K
 
     def solve(self):
