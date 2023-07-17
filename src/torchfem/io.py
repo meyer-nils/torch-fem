@@ -37,7 +37,7 @@ def import_mesh(filename, C):
         if cell_block.type in ["triangle", "quad", "tetra" "hexahedron"]:
             elements += cell_block.data.tolist()
 
-    if mesh.points[:, 2].any():
+    if not np.allclose(mesh.points[:, 2], np.zeros_like(mesh.points[:, 2])):
         nodes = torch.from_numpy(mesh.points.astype(np.float32))
         forces = torch.zeros_like(nodes)
         constraints = torch.zeros_like(nodes, dtype=bool)
