@@ -71,7 +71,7 @@ class Planar:
         self.n_elem = len(self.elements)
         self.forces = forces
         self.constraints = constraints
-        self.d = thickness
+        self.thickness = thickness
 
         # Stack stiffness tensor (for general anisotropy and multi-material assignement)
         if C.shape == torch.Size([3, 3]):
@@ -114,7 +114,7 @@ class Planar:
             D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
             D = torch.stack([D0, D1, D2], dim=1)
             DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
-            k[:, :, :] += torch.einsum("i,ijk->ijk", w * self.d * detJ, DCD)
+            k[:, :, :] += torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DCD)
         return k
 
     def stiffness(self):
