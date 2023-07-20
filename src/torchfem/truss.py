@@ -65,6 +65,9 @@ class Truss:
         u = u.reshape((-1, self.dim))
         f = f.reshape((-1, self.dim))
 
+        return u, f
+
+    def compute_stress(self, u):
         # Evaluate stress
         sigma = torch.zeros((self.n_elem))
         for j, element in enumerate(self.elements):
@@ -76,8 +79,7 @@ class Truss:
             m = torch.tensor([c[0], c[1], -c[0], -c[1]])
             u_j = torch.tensor([u[n1, 0], u[n1, 1], u[n2, 0], u[n2, 1]])
             sigma[j] = self.moduli[j] / l0 * torch.inner(m, u_j)
-
-        return [u, f, sigma]
+        return sigma
 
     @torch.no_grad()
     def plot2d(

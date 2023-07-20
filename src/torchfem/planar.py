@@ -145,6 +145,30 @@ class Planar:
         f = f.reshape((-1, 2))
         return u, f
 
+    def compute_stress(self, u, xi=[0.0, 0.0]):
+        # Extract node positions of element
+        nodes = self.nodes[self.elements, :]
+
+        # Extract displacement degrees of freedom
+        disp = u[self.elements, :].reshape(self.n_elem, -1)
+
+        # Jacobian
+        J = self.etype.B(xi) @ nodes
+
+        # Compute B
+        B = torch.linalg.inv(J) @ self.etype.B(xi)
+
+        # Compute D
+        zeros = torch.zeros(self.n_elem, self.etype.nodes)
+        D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(self.n_elem, -1)
+        D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(self.n_elem, -1)
+        D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
+        D = torch.stack([D0, D1, D2], dim=1)
+
+        # Compute stress
+        sigma = torch.einsum("...ij,...jk,...k->...i", self.C, D, disp)
+        return sigma
+
     @torch.no_grad()
     def plot(
         self,
