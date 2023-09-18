@@ -50,8 +50,7 @@ class Truss:
         K = self.stiffness()
         # Get reduced stiffness matrix
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
-        K_red = torch.index_select(K, 0, uncon)
-        K_red = torch.index_select(K_red, 1, uncon)
+        K_red = K[uncon][:, uncon]
         f_red = self.forces.ravel()[uncon]
         # Solve for displacement
         u_red = torch.linalg.solve(K_red, f_red)
