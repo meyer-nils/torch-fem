@@ -188,7 +188,7 @@ class Planar:
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
-            if type(self.etype) == Quad1:
+            if isinstance(self.etype, Quad1):
                 triangles = []
                 for e in self.elements:
                     triangles.append([e[0], e[1], e[2]])

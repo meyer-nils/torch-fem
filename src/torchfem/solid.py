@@ -194,9 +194,9 @@ class Solid:
         pl.enable_anti_aliasing("ssaa")
 
         # VTK cell types
-        if type(self.etype) == Tetra1:
+        if isinstance(self.etype, Tetra1):
             cell_types = self.n_elem * [pyvista.CellType.TETRA]
-        elif type(self.etype) == Hexa1:
+        elif isinstance(self.etype, Hexa1):
             cell_types = self.n_elem * [pyvista.CellType.HEXAHEDRON]
 
         # VTK element list
