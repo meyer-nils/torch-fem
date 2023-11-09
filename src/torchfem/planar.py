@@ -176,15 +176,21 @@ class Planar:
         element_property=None,
         node_labels=False,
         orientation=False,
+        axes=False,
+        bcs=True,
         color="black",
         cmap="viridis",
         linewidth=1.0,
+        figsize=(8.0, 6.0),
     ):
         # Compute deformed positions
         pos = self.nodes + u
 
         # Bounding box
         size = torch.linalg.norm(pos.max() - pos.min())
+
+        # Set figure size
+        plt.figure(figsize=figsize)
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
@@ -219,29 +225,31 @@ class Planar:
             plt.plot(x1, x2, color=color, linewidth=linewidth)
 
         # Forces
-        for i, force in enumerate(self.forces):
-            if torch.norm(force) > 0.0:
-                x = pos[i][0]
-                y = pos[i][1]
-                plt.arrow(
-                    x,
-                    y,
-                    size * 0.05 * force[0] / torch.norm(force),
-                    size * 0.05 * force[1] / torch.norm(force),
-                    width=0.01 * size,
-                    facecolor="gray",
-                    linewidth=0.0,
-                    zorder=10,
-                )
+        if bcs:
+            for i, force in enumerate(self.forces):
+                if torch.norm(force) > 0.0:
+                    x = pos[i][0]
+                    y = pos[i][1]
+                    plt.arrow(
+                        x,
+                        y,
+                        size * 0.05 * force[0] / torch.norm(force),
+                        size * 0.05 * force[1] / torch.norm(force),
+                        width=0.01 * size,
+                        facecolor="gray",
+                        linewidth=0.0,
+                        zorder=10,
+                    )
 
         # Contraints
-        for i, constraint in enumerate(self.constraints):
-            x = pos[i][0]
-            y = pos[i][1]
-            if constraint[0]:
-                plt.plot(x - 0.01 * size, y, ">", color="gray")
-            if constraint[1]:
-                plt.plot(x, y - 0.01 * size, "^", color="gray")
+        if bcs:
+            for i, constraint in enumerate(self.constraints):
+                x = pos[i][0]
+                y = pos[i][1]
+                if constraint[0]:
+                    plt.plot(x - 0.01 * size, y, ">", color="gray")
+                if constraint[1]:
+                    plt.plot(x, y - 0.01 * size, "^", color="gray")
 
         # Material orientations
         if orientation:
@@ -262,4 +270,5 @@ class Planar:
             )
 
         plt.gca().set_aspect("equal", adjustable="box")
-        plt.axis("off")
+        if not axes:
+            plt.axis("off")
