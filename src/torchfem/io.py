@@ -1,7 +1,7 @@
 import torch
 from meshio import Mesh
 
-from torchfem import Truss, Planar, Solid, Tria1, Quad1, Tetra1, Hexa1
+from torchfem import Hexa1, Planar, Quad1, Solid, Tetra1, Tria1, Truss
 
 
 @torch.no_grad()
@@ -46,5 +46,6 @@ def import_mesh(filename, C):
         nodes = torch.from_numpy(mesh.points[:, 0:2].astype(np.float32))
         thickness = torch.ones((len(elements)))
         forces = torch.zeros_like(nodes)
+        displacements = torch.zeros_like(nodes)
         constraints = torch.zeros_like(nodes, dtype=bool)
-        return Planar(nodes, elements, forces, constraints, thickness, C)
+        return Planar(nodes, elements, forces, displacements, constraints, thickness, C)

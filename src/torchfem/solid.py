@@ -95,6 +95,7 @@ class Solid:
         nodes,
         elements,
         forces,
+        displacements,
         constraints,
         C,
     ):
@@ -103,6 +104,7 @@ class Solid:
         self.elements = elements
         self.n_elem = len(self.elements)
         self.forces = forces
+        self.displacements = displacements
         self.constraints = constraints
         if len(elements[0]) == 8:
             self.etype = Hexa1()
@@ -166,13 +168,15 @@ class Solid:
         K = self.stiffness()
 
         # Get reduced stiffness matrix
+        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
+        f_d = K[:, con] @ self.displacements.ravel()[con]
         K_red = K[uncon][:, uncon]
-        f_red = self.forces.ravel()[uncon]
+        f_red = (self.forces.ravel() - f_d)[uncon]
 
         # Solve for displacement
         u_red = torch.linalg.solve(K_red, f_red)
-        u = torch.zeros_like(self.nodes).ravel()
+        u = self.displacements.ravel()
         u[uncon] = u_red
 
         # Evaluate force

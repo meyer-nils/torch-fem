@@ -2,13 +2,16 @@ import torch
 
 
 class Truss:
-    def __init__(self, nodes, elements, forces, constraints, areas, moduli):
+    def __init__(
+        self, nodes, elements, forces, displacements, constraints, areas, moduli
+    ):
         self.nodes = nodes
         self.dim = nodes.shape[1]
         self.n_dofs = torch.numel(self.nodes)
         self.elements = elements
         self.n_elem = len(self.elements)
         self.forces = forces
+        self.displacements = displacements
         self.constraints = constraints
         self.areas = areas
         self.moduli = moduli
@@ -48,13 +51,17 @@ class Truss:
     def solve(self):
         # Compute global stiffness matrix
         K = self.stiffness()
+
         # Get reduced stiffness matrix
+        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
+        f_d = K[:, con] @ self.displacements.ravel()[con]
         K_red = K[uncon][:, uncon]
-        f_red = self.forces.ravel()[uncon]
+        f_red = (self.forces.ravel() - f_d)[uncon]
+
         # Solve for displacement
         u_red = torch.linalg.solve(K_red, f_red)
-        u = torch.zeros_like(self.nodes).ravel()
+        u = self.displacements.ravel()
         u[uncon] = u_red
 
         # Evaluate force
