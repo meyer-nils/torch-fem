@@ -17,35 +17,47 @@ class Truss:
         self.moduli = moduli
 
         # Precompute mapping from local to global indices
-        self.global_indices = []
+        gidx_1 = []
+        gidx_2 = []
         for element in self.elements:
-            indices = torch.tensor(
-                [self.dim * n + i for n in element for i in range(self.dim)]
-            )
-            self.global_indices.append(torch.meshgrid(indices, indices, indexing="xy"))
+            indices = [self.dim * n + i for n in element for i in range(self.dim)]
+            indices = torch.tensor(indices)
+            idx_1, idx_2 = torch.meshgrid(indices, indices, indexing="xy")
+            gidx_1.append(idx_1)
+            gidx_2.append(idx_2)
+        self.gidx_1 = torch.stack(gidx_1)
+        self.gidx_2 = torch.stack(gidx_2)
 
-    def k(self, j):
-        element = self.elements[j]
-        n1 = element[0]
-        n2 = element[1]
-        dx = self.nodes[n1] - self.nodes[n2]
-        l0 = torch.linalg.norm(dx)
-        c = dx / l0
+    def k(self):
+        nodes = self.nodes[self.elements, :]
+        dx = nodes[:, 0, :] - nodes[:, 1, :]
+        l0 = torch.linalg.norm(dx, dim=-1)
+        c = dx / l0[:, None]
         dims = range(self.dim)
         s1 = [1, -1]
         s2 = [-1, 1]
         m = torch.stack(
-            [torch.stack([s * c[i] * c[j] for s in s1 for j in dims]) for i in dims]
-            + [torch.stack([s * c[i] * c[j] for s in s2 for j in dims]) for i in dims]
+            [
+                torch.stack([s * c[:, i] * c[:, j] for s in s1 for j in dims], dim=-1)
+                for i in dims
+            ]
+            + [
+                torch.stack([s * c[:, i] * c[:, j] for s in s2 for j in dims], dim=-1)
+                for i in dims
+            ],
+            dim=-1,
+        )
+        return (
+            self.areas[:, None, None]
+            * self.moduli[:, None, None]
+            / l0[:, None, None]
+            * m
         )
 
-        return self.areas[j] * self.moduli[j] / l0 * m
-
     def stiffness(self):
-        n_dofs = torch.numel(self.nodes)
-        K = torch.zeros((n_dofs, n_dofs))
-        for j in range(len(self.elements)):
-            K[self.global_indices[j]] += self.k(j)
+        K = torch.zeros((self.n_dofs, self.n_dofs))
+        print(self.k().shape)
+        K.index_put_((self.gidx_1, self.gidx_2), self.k(), accumulate=True)
         return K
 
     def solve(self):
