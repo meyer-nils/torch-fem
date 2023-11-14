@@ -73,7 +73,7 @@ class Truss:
 
         # Solve for displacement
         u_red = torch.linalg.solve(K_red, f_red)
-        u = self.displacements.ravel()
+        u = self.displacements.clone().ravel()
         u[uncon] = u_red
 
         # Evaluate force
