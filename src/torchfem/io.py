@@ -6,16 +6,16 @@ from torchfem import Hexa1, Planar, Quad1, Solid, Tetra1, Tria1, Truss
 
 @torch.no_grad()
 def export_mesh(mesh, filename, nodal_data={}, elem_data={}):
-    if mesh.isinstance(Truss):
+    if isinstance(mesh, Truss):
         etype = "line"
     else:
-        if mesh.etype.isinstance(Quad1):
+        if isinstance(mesh.etype, Quad1):
             etype = "quad"
-        elif mesh.etype.isinstance(Tria1):
+        elif isinstance(mesh.etype, Tria1):
             etype = "triangle"
-        elif mesh.etype.isinstance(Tetra1):
+        elif isinstance(mesh.etype, Tetra1):
             etype = "tetra"
-        elif mesh.etype.isisnstance(Hexa1):
+        elif isinstance(mesh.etype, Hexa1):
             etype = "hexahedron"
 
     mesh = Mesh(
