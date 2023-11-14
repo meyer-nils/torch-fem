@@ -1,7 +1,8 @@
 import torch
 from meshio import Mesh
 
-from torchfem import Hexa1, Planar, Quad1, Solid, Tetra1, Tria1, Truss
+from torchfem import Planar, Solid, Truss
+from torchfem.elements import Hexa1, Quad1, Tetra1, Tria1
 
 
 @torch.no_grad()

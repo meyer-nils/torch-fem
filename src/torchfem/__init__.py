@@ -1,3 +1,4 @@
+from .planar import Planar  # noqa
+from .shell import Shell  # noqa
+from .solid import Solid  # noqa
 from .truss import Truss  # noqa
-from .planar import Planar, Tria1, Quad1  # noqa
-from .solid import Solid, Tetra1, Hexa1  # noqa
