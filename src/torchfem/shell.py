@@ -15,7 +15,8 @@ class Shell:
         C,
     ):
         self.nodes = nodes
-        self.n_dofs = 3 * len(self.nodes)
+        self.dofs = 3
+        self.n_dofs = self.dofs * len(self.nodes)
         self.elements = elements
         self.n_elem = len(self.elements)
         self.forces = forces
@@ -47,14 +48,10 @@ class Shell:
                 local_coords.append(torch.vstack([dir1, dir2, normal]))
             # tranformation matrix x = t X with element coords x and global coords X
             self.t = torch.stack(local_coords)
-            t = self.t[:, 0:2, :]
             nodes = self.nodes[self.elements, :]
             rel_pos = (nodes - nodes[:, 0, None]).transpose(2, 1)
-            self.loc_nodes = (t @ rel_pos).transpose(2, 1)
-            self.T = torch.zeros((self.n_elem, 6, 9))
-            self.T[:, 0:2, 0:3] = t
-            self.T[:, 2:4, 3:6] = t
-            self.T[:, 4:6, 6:9] = t
+            self.loc_nodes = (self.t @ rel_pos).transpose(2, 1)[:, :, 0:2]
+            self.T = torch.func.vmap(torch.block_diag)(*(self.dofs * [self.t]))
 
         # Compute efficient mapping from local to global indices
         gidx_1 = []
@@ -78,10 +75,12 @@ class Shell:
                 raise Exception("Negative Jacobian. Check element numbering.")
             # Element membrane stiffness
             B = torch.linalg.inv(J) @ self.etype.B(q)
-            zeros = torch.zeros(self.n_elem, self.etype.nodes)
-            D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(self.n_elem, -1)
-            D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(self.n_elem, -1)
-            D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
+            z = torch.zeros(self.n_elem, self.etype.nodes)
+            D0 = torch.stack([B[:, 0, :], z, z], dim=-1).reshape(self.n_elem, -1)
+            D1 = torch.stack([z, B[:, 1, :], z], dim=-1).reshape(self.n_elem, -1)
+            D2 = torch.stack([B[:, 1, :], B[:, 0, :], z], dim=-1).reshape(
+                self.n_elem, -1
+            )
             D = torch.stack([D0, D1, D2], dim=1)
             DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
             k_mem = torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DCD)
@@ -129,10 +128,10 @@ class Shell:
         B = torch.linalg.inv(J) @ self.etype.B(xi)
 
         # Compute D
-        zeros = torch.zeros(self.n_elem, self.etype.nodes)
-        D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(self.n_elem, -1)
-        D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(self.n_elem, -1)
-        D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
+        z = torch.zeros(self.n_elem, self.etype.nodes)
+        D0 = torch.stack([B[:, 0, :], z, z], dim=-1).reshape(self.n_elem, -1)
+        D1 = torch.stack([z, B[:, 1, :], z], dim=-1).reshape(self.n_elem, -1)
+        D2 = torch.stack([B[:, 1, :], B[:, 0, :], z], dim=-1).reshape(self.n_elem, -1)
         D = torch.stack([D0, D1, D2], dim=1)
 
         # Compute stress in local coordinate system
