@@ -44,12 +44,17 @@ class Shell:
                 dir1 = edge1 / torch.linalg.norm(edge1)
                 dir2 = -torch.linalg.cross(edge1, normal)
                 dir2 /= torch.linalg.norm(dir2)
-                local_coords.append(torch.vstack([dir1, dir2, normal]).T)
-            self.transform = torch.linalg.inv(torch.stack(local_coords))
-            self.T = torch.zeros((self.n_elem, 9, 6))
-            self.T[:, 0:3, 0:2] = self.transform[:, :, 0:2]
-            self.T[:, 3:6, 2:4] = self.transform[:, :, 0:2]
-            self.T[:, 6:9, 4:6] = self.transform[:, :, 0:2]
+                local_coords.append(torch.vstack([dir1, dir2, normal]))
+            # tranformation matrix x = t X with element coords x and global coords X
+            self.t = torch.stack(local_coords)
+            t = self.t[:, 0:2, :]
+            nodes = self.nodes[self.elements, :]
+            rel_pos = (nodes - nodes[:, 0, None]).transpose(2, 1)
+            self.loc_nodes = (t @ rel_pos).transpose(2, 1)
+            self.T = torch.zeros((self.n_elem, 6, 9))
+            self.T[:, 0:2, 0:3] = t
+            self.T[:, 2:4, 3:6] = t
+            self.T[:, 4:6, 6:9] = t
 
         # Compute efficient mapping from local to global indices
         gidx_1 = []
@@ -64,13 +69,10 @@ class Shell:
 
     def k(self):
         # Perform integrations
-        nodes = self.nodes[self.elements, :]
-        temp = (nodes - nodes[:, 0, None]).transpose(2, 1)
-        loc_nodes = (self.transform @ temp).transpose(2, 1)
         k = torch.zeros((self.n_elem, 3 * self.etype.nodes, 3 * self.etype.nodes))
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             # Jacobian
-            J = self.etype.B(q) @ loc_nodes[:, :, 0:2]
+            J = self.etype.B(q) @ self.loc_nodes
             detJ = torch.linalg.det(J)
             if torch.any(detJ <= 0.0):
                 raise Exception("Negative Jacobian. Check element numbering.")
@@ -84,7 +86,7 @@ class Shell:
             DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
             k_mem = torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DCD)
             # Complete stiffness
-            k[:, :, :] += self.T @ k_mem @ self.T.transpose(1, 2)
+            k[:, :, :] += self.T.transpose(1, 2) @ k_mem @ self.T
         return k
 
     def stiffness(self):
@@ -117,14 +119,11 @@ class Shell:
         return u, f
 
     def compute_stress(self, u, xi=[0.0, 0.0]):
-        # Extract node positions of element
-        nodes = self.nodes[self.elements, :]
-
         # Extract displacement degrees of freedom
         disp = u[self.elements, :].reshape(self.n_elem, -1)
 
         # Jacobian
-        J = self.etype.B(xi) @ nodes
+        J = self.etype.B(xi) @ self.loc_nodes
 
         # Compute B
         B = torch.linalg.inv(J) @ self.etype.B(xi)
@@ -136,9 +135,17 @@ class Shell:
         D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
         D = torch.stack([D0, D1, D2], dim=1)
 
-        # Compute stress
-        sigma = torch.einsum("...ij,...jk,...k->...i", self.C, D, disp)
-        return sigma
+        # Compute stress in local coordinate system
+        loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
+        sigma = torch.einsum("...ij,...jk,...k->...i", self.C, D, loc_disp)
+
+        # Compute stress in global coordinate system
+        stress_tensor = torch.zeros((self.n_elem, 3, 3))
+        stress_tensor[:, 0, 0] = sigma[:, 0]
+        stress_tensor[:, 1, 1] = sigma[:, 1]
+        stress_tensor[:, 0, 1] = sigma[:, 2]
+        stress_tensor[:, 1, 0] = sigma[:, 2]
+        return self.t.transpose(1, 2) @ stress_tensor @ self.t
 
     @torch.no_grad()
     def plot(self, u=0.0, node_property=None, element_property=None):
@@ -148,6 +155,7 @@ class Shell:
             raise Exception("Plotting 3D requires pyvista.")
 
         pyvista.set_plot_theme("document")
+        pyvista.set_jupyter_backend("client")
         pl = pyvista.Plotter()
         pl.enable_anti_aliasing("ssaa")
 
