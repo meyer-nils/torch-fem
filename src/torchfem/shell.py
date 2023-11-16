@@ -2,6 +2,8 @@ import torch
 
 from .elements import Tria1
 
+NDOF = 6
+
 
 class Shell:
     def __init__(
@@ -15,8 +17,7 @@ class Shell:
         C,
     ):
         self.nodes = nodes
-        self.dofs = 3
-        self.n_dofs = self.dofs * len(self.nodes)
+        self.n_dofs = NDOF * len(self.nodes)
         self.elements = elements
         self.n_elem = len(self.elements)
         self.forces = forces
@@ -51,41 +52,81 @@ class Shell:
             nodes = self.nodes[self.elements, :]
             rel_pos = (nodes - nodes[:, 0, None]).transpose(2, 1)
             self.loc_nodes = (self.t @ rel_pos).transpose(2, 1)[:, :, 0:2]
-            self.T = torch.func.vmap(torch.block_diag)(*(self.dofs * [self.t]))
+            self.T = torch.func.vmap(torch.block_diag)(*(NDOF * [self.t]))
 
         # Compute efficient mapping from local to global indices
         gidx_1 = []
         gidx_2 = []
         for element in self.elements:
-            indices = torch.tensor([3 * n + i for n in element for i in range(3)])
+            indices = torch.tensor([NDOF * n + i for n in element for i in range(NDOF)])
             idx_1, idx_2 = torch.meshgrid(indices, indices, indexing="xy")
             gidx_1.append(idx_1)
             gidx_2.append(idx_2)
         self.gidx_1 = torch.stack(gidx_1)
         self.gidx_2 = torch.stack(gidx_2)
 
+    def _Dm(self, B):
+        """Aggregate strain-displacement matrices
+
+        Args:
+            B (torch tensor): Derivative of element shape functions (shape: [N x 2 x 3])
+
+        Returns:
+            torch tensor: Strain-displacement matrices shaped [N x 3 x 18]
+        """
+        N = self.n_elem
+        z = torch.zeros(N, self.etype.nodes)
+        D0 = torch.stack([B[:, 0, :], z, z, z, z, z], dim=-1).reshape(N, -1)
+        D1 = torch.stack([z, B[:, 1, :], z, z, z, z], dim=-1).reshape(N, -1)
+        D2 = torch.stack([B[:, 1, :], B[:, 0, :], z, z, z, z], dim=-1).reshape(N, -1)
+        return torch.stack([D0, D1, D2], dim=1)
+
+    def _Db(self, B):
+        """Aggregate curvature-displacement matrices
+
+        Args:
+            B (torch tensor): Derivative of element shape functions (shape: [N x 2 x 3])
+
+        Returns:
+            torch tensor: Curvature-displacement matrices shaped [N x 3 x 18]
+        """
+        N = self.n_elem
+        z = torch.zeros(N, self.etype.nodes)
+        D0 = torch.stack([z, z, z, z, B[:, 0, :], z], dim=-1).reshape(N, -1)
+        D1 = torch.stack([z, z, z, -B[:, 1, :], z, z], dim=-1).reshape(N, -1)
+        D2 = torch.stack([z, z, z, -B[:, 0, :], B[:, 1, :], z], dim=-1).reshape(N, -1)
+        return torch.stack([D0, D1, D2], dim=1)
+
     def k(self):
         # Perform integrations
-        k = torch.zeros((self.n_elem, 3 * self.etype.nodes, 3 * self.etype.nodes))
+        k = torch.zeros((self.n_elem, NDOF * self.etype.nodes, NDOF * self.etype.nodes))
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             # Jacobian
             J = self.etype.B(q) @ self.loc_nodes
             detJ = torch.linalg.det(J)
             if torch.any(detJ <= 0.0):
                 raise Exception("Negative Jacobian. Check element numbering.")
-            # Element membrane stiffness
+
+            # Derivative of shape functions
             B = torch.linalg.inv(J) @ self.etype.B(q)
-            z = torch.zeros(self.n_elem, self.etype.nodes)
-            D0 = torch.stack([B[:, 0, :], z, z], dim=-1).reshape(self.n_elem, -1)
-            D1 = torch.stack([z, B[:, 1, :], z], dim=-1).reshape(self.n_elem, -1)
-            D2 = torch.stack([B[:, 1, :], B[:, 0, :], z], dim=-1).reshape(
-                self.n_elem, -1
+
+            # Element membrane stiffness
+            Dm = self._Dm(B)
+            DmCDm = torch.einsum("...ji,...jk,...kl->...il", Dm, self.C, Dm)
+            km = torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DmCDm)
+
+            # Element bending stiffness
+            Db = self._Db(B)
+            DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, self.C, Db)
+            kb = torch.einsum(
+                "i,ijk->ijk", w * self.thickness**3 * detJ / 12.0, DbCDb
             )
-            D = torch.stack([D0, D1, D2], dim=1)
-            DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
-            k_mem = torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DCD)
-            # Complete stiffness
-            k[:, :, :] += self.T.transpose(1, 2) @ k_mem @ self.T
+
+            # Total elemnt stiffness in local coordinates
+            kt = km + kb
+
+            # Total element stiffness in global coordinates
+            k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T
         return k
 
     def stiffness(self):
@@ -113,11 +154,11 @@ class Shell:
         # Evaluate force
         f = K @ u
 
-        u = u.reshape((-1, 3))
-        f = f.reshape((-1, 3))
+        u = u.reshape((-1, NDOF))
+        f = f.reshape((-1, NDOF))
         return u, f
 
-    def compute_stress(self, u, xi=[0.0, 0.0]):
+    def compute_stress(self, u, xi=[0.0, 0.0], z=0):
         # Extract displacement degrees of freedom
         disp = u[self.elements, :].reshape(self.n_elem, -1)
 
@@ -127,16 +168,12 @@ class Shell:
         # Compute B
         B = torch.linalg.inv(J) @ self.etype.B(xi)
 
-        # Compute D
-        z = torch.zeros(self.n_elem, self.etype.nodes)
-        D0 = torch.stack([B[:, 0, :], z, z], dim=-1).reshape(self.n_elem, -1)
-        D1 = torch.stack([z, B[:, 1, :], z], dim=-1).reshape(self.n_elem, -1)
-        D2 = torch.stack([B[:, 1, :], B[:, 0, :], z], dim=-1).reshape(self.n_elem, -1)
-        D = torch.stack([D0, D1, D2], dim=1)
-
         # Compute stress in local coordinate system
         loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
-        sigma = torch.einsum("...ij,...jk,...k->...i", self.C, D, loc_disp)
+        sigma_m = torch.einsum("...ij,...jk,...k->...i", self.C, self._Dm(B), loc_disp)
+        sigma_b = torch.einsum("...ij,...jk,...k->...i", self.C, self._Db(B), loc_disp)
+
+        sigma = sigma_m + z * sigma_b
 
         # Compute stress in global coordinate system
         stress_tensor = torch.zeros((self.n_elem, 3, 3))
