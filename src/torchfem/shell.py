@@ -1,3 +1,5 @@
+from math import sqrt
+
 import torch
 
 from .elements import Tria1
@@ -14,7 +16,8 @@ class Shell:
         displacements,
         constraints,
         thickness,
-        C,
+        E,
+        nu,
     ):
         self.nodes = nodes
         self.n_dofs = NDOF * len(self.nodes)
@@ -25,11 +28,18 @@ class Shell:
         self.constraints = constraints
         self.thickness = thickness
 
-        # Stack stiffness tensor (for general anisotropy and multi-material assignement)
-        if C.shape == torch.Size([3, 3]):
-            self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
-        else:
-            self.C = C
+        # Build isotropic stiffness tensor
+        self.C = (E / (1.0 - nu**2)) * torch.tensor(
+            [[1.0, nu, 0.0], [nu, 1.0, 0.0], [0.0, 0.0, 0.5 * (1.0 - nu)]]
+        )
+
+        # Shear stiffness properties
+        self.kappa = 5.0 / 6.0
+        self.alpha = self.kappa / (2 * (1 + nu))
+        self.G = E / (2 * (1 + nu))
+
+        # Drill stiffness properties
+        self.drill_penalty = 1.0
 
         # Element type and local coordinates
         local_coords = []
@@ -97,6 +107,31 @@ class Shell:
         D2 = torch.stack([z, z, z, -B[:, 0, :], B[:, 1, :], z], dim=-1).reshape(N, -1)
         return torch.stack([D0, D1, D2], dim=1)
 
+    def _Ds(self, A):
+        """Aggregate shear-displacement matrices
+
+        Args:
+            A (torch tensor): Element surface areas (shape: [N])
+
+        Returns:
+            torch tensor: Shear-displacement matrices shaped [N x 3 x 18]
+        """
+        N = self.n_elem
+        z = torch.zeros(N)
+        a = self.loc_nodes[:, 1, 0] - self.loc_nodes[:, 0, 0]
+        b = self.loc_nodes[:, 1, 1] - self.loc_nodes[:, 0, 1]
+        c = self.loc_nodes[:, 2, 0] - self.loc_nodes[:, 0, 0]
+        d = self.loc_nodes[:, 2, 1] - self.loc_nodes[:, 0, 1]
+        D00 = torch.stack([z, z, b - d, z, A, z], dim=-1)
+        D01 = torch.stack([z, z, d, -b * d / 2.0, a * d / 2.0, z], dim=-1)
+        D02 = torch.stack([z, z, -b, b * d / 2.0, -b * c / 2.0, z], dim=-1)
+        D0 = torch.cat([D00, D01, D02], dim=1)
+        D10 = torch.stack([z, z, c - a, -A, z, z], dim=-1)
+        D11 = torch.stack([z, z, -c, b * c / 2.0, -a * c / 2.0, z], dim=-1)
+        D12 = torch.stack([z, z, a, -a * d / 2.0, a * c / 2.0, z], dim=-1)
+        D1 = torch.cat([D10, D11, D12], dim=1)
+        return torch.stack([D0, D1], dim=1) / (2.0 * A[:, None, None])
+
     def k(self):
         # Perform integrations
         k = torch.zeros((self.n_elem, NDOF * self.etype.nodes, NDOF * self.etype.nodes))
@@ -122,8 +157,25 @@ class Shell:
                 "i,ijk->ijk", w * self.thickness**3 * detJ / 12.0, DbCDb
             )
 
+            # Element transverse stiffness
+            Ds = self._Ds(detJ / 2.0)
+            h = sqrt(2) * detJ
+            psi = (
+                self.kappa
+                * self.thickness**2
+                / (self.thickness**2 + self.alpha * h**2)
+            )
+            Cs = self.G * torch.eye(2)
+            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, Cs, Ds)
+            ks = torch.einsum("i,ijk->ijk", w * psi * self.thickness * detJ, DsCsDs)
+
+            # Element drilling stiffness
+            kd = torch.zeros_like(km)
+            for i in range(self.etype.nodes):
+                kd[:, i * NDOF - 1, i * NDOF - 1] = self.drill_penalty
+
             # Total elemnt stiffness in local coordinates
-            kt = km + kb
+            kt = km + kb + ks + kd
 
             # Total element stiffness in global coordinates
             k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T
