@@ -139,6 +139,7 @@ class Shell:
             # Jacobian
             J = self.etype.B(q) @ self.loc_nodes
             detJ = torch.linalg.det(J)
+            A = detJ / 2.0
             if torch.any(detJ <= 0.0):
                 raise Exception("Negative Jacobian. Check element numbering.")
 
@@ -158,8 +159,8 @@ class Shell:
             )
 
             # Element transverse stiffness
-            Ds = self._Ds(detJ / 2.0)
-            h = sqrt(2) * detJ
+            Ds = self._Ds(A)
+            h = sqrt(2) * A
             psi = (
                 self.kappa
                 * self.thickness**2
@@ -167,7 +168,7 @@ class Shell:
             )
             Cs = self.G * torch.eye(2)
             DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, Cs, Ds)
-            ks = torch.einsum("i,ijk->ijk", w * psi * self.thickness * detJ, DsCsDs)
+            ks = torch.einsum("i,ijk->ijk", w * A * psi * self.thickness * detJ, DsCsDs)
 
             # Element drilling stiffness
             kd = torch.zeros_like(km)
