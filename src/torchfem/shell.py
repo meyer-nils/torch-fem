@@ -211,30 +211,56 @@ class Shell:
         f = f.reshape((-1, NDOF))
         return u, f
 
-    def compute_stress(self, u, xi=[0.0, 0.0], z=0):
+    def compute_stress(self, u, xi=[0.0, 0.0], z=0, mises=False):
         # Extract displacement degrees of freedom
         disp = u[self.elements, :].reshape(self.n_elem, -1)
 
         # Jacobian
         J = self.etype.B(xi) @ self.loc_nodes
+        A = torch.linalg.det(J) / 2.0
 
         # Compute B
         B = torch.linalg.inv(J) @ self.etype.B(xi)
 
-        # Compute stress in local coordinate system
+        # Compute in-plane stresses in local coordinate system
         loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
         sigma_m = torch.einsum("...ij,...jk,...k->...i", self.C, self._Dm(B), loc_disp)
         sigma_b = torch.einsum("...ij,...jk,...k->...i", self.C, self._Db(B), loc_disp)
-
         sigma = sigma_m + z * sigma_b
 
-        # Compute stress in global coordinate system
+        # Compute transverse shear stresses in local coordinate system
+        psi = (
+            self.kappa
+            * self.thickness**2
+            / (self.thickness**2 + self.alpha * (sqrt(2) * A) ** 2)
+        )
+        Cs = torch.einsum("i,jk->ijk", psi, self.G * torch.eye(2))
+        sigma_s = torch.einsum("...ij,...jk,...k->...i", Cs, self._Ds(A), loc_disp)
+
+        # Assemble stress tensor
         stress_tensor = torch.zeros((self.n_elem, 3, 3))
         stress_tensor[:, 0, 0] = sigma[:, 0]
         stress_tensor[:, 1, 1] = sigma[:, 1]
         stress_tensor[:, 0, 1] = sigma[:, 2]
         stress_tensor[:, 1, 0] = sigma[:, 2]
-        return self.t.transpose(1, 2) @ stress_tensor @ self.t
+        stress_tensor[:, 0, 2] = sigma_s[:, 0]
+        stress_tensor[:, 1, 2] = sigma_s[:, 1]
+
+        # Compute stress in global coordinate system
+        S = self.t.transpose(1, 2) @ stress_tensor @ self.t
+
+        if mises:
+            return torch.sqrt(
+                0.5
+                * (
+                    (S[:, 0, 0] - S[:, 1, 1]) ** 2
+                    + (S[:, 0, 0] - S[:, 2, 2]) ** 2
+                    + (S[:, 1, 1] - S[:, 2, 2]) ** 2
+                )
+                + 3.0 * (S[:, 0, 1] ** 2 + S[:, 1, 2] ** 2 + S[:, 0, 2] ** 2)
+            )
+        else:
+            return S
 
     @torch.no_grad()
     def plot(self, u=0.0, node_property=None, element_property=None, thickness=False):
