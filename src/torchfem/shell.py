@@ -237,8 +237,9 @@ class Shell:
         return self.t.transpose(1, 2) @ stress_tensor @ self.t
 
     @torch.no_grad()
-    def plot(self, u=0.0, node_property=None, element_property=None):
+    def plot(self, u=0.0, node_property=None, element_property=None, thickness=False):
         try:
+            import numpy as np
             import pyvista
         except ImportError:
             raise Exception("Plotting 3D requires pyvista.")
@@ -247,9 +248,6 @@ class Shell:
         pyvista.set_jupyter_backend("client")
         pl = pyvista.Plotter()
         pl.enable_anti_aliasing("ssaa")
-
-        # VTK cell types
-        cell_types = self.n_elem * [pyvista.CellType.TRIANGLE]
 
         # VTK element list
         elements = []
@@ -260,7 +258,7 @@ class Shell:
         pos = self.nodes + u
 
         # Create unstructured mesh
-        mesh = pyvista.UnstructuredGrid(elements, cell_types, pos.tolist())
+        mesh = pyvista.PolyData(pos.tolist(), elements)
 
         # Plot node properties
         if node_property:
@@ -272,4 +270,23 @@ class Shell:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val
 
-        mesh.plot(show_edges=True)
+        # Plot as seperate top and bottom surface
+        if thickness:
+            nodal_thickness = np.zeros((len(self.nodes)))
+            count = np.zeros((len(self.nodes)))
+            for i, face in enumerate(mesh.faces.reshape(-1, 4)):
+                idx = face[1::]
+                nodal_thickness[idx] += self.thickness[i].item()
+                count[idx] += 1
+            nodal_thickness /= count
+
+            top = mesh.copy()
+            top.points += 0.5 * nodal_thickness[:, None] * mesh.point_normals
+            bottom = mesh.copy()
+            bottom.points -= 0.5 * nodal_thickness[:, None] * mesh.point_normals
+
+            pl.add_mesh(top, show_edges=True)
+            pl.add_mesh(bottom, show_edges=True)
+            pl.show()
+        else:
+            mesh.plot(show_edges=True)
