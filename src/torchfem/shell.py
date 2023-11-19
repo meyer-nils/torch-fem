@@ -28,6 +28,9 @@ class Shell:
         self.constraints = constraints
         self.thickness = thickness
 
+        # Set nodes
+        self.update_local_nodes()
+
         # Build isotropic stiffness tensor
         self.C = (E / (1.0 - nu**2)) * torch.tensor(
             [[1.0, nu, 0.0], [nu, 1.0, 0.0], [0.0, 0.0, 0.5 * (1.0 - nu)]]
@@ -41,28 +44,8 @@ class Shell:
         # Drill stiffness properties
         self.drill_penalty = 1.0
 
-        # Element type and local coordinates
-        local_coords = []
-        if len(elements[0]) == 4:
-            pass
-            # self.etype = Quad1()
-        else:
-            self.etype = Tria1()
-            for element in self.elements:
-                edge1 = self.nodes[element[1]] - self.nodes[element[0]]
-                edge2 = self.nodes[element[2]] - self.nodes[element[1]]
-                normal = torch.cross(edge1, edge2)
-                normal /= torch.linalg.norm(normal)
-                dir1 = edge1 / torch.linalg.norm(edge1)
-                dir2 = -torch.linalg.cross(edge1, normal)
-                dir2 /= torch.linalg.norm(dir2)
-                local_coords.append(torch.vstack([dir1, dir2, normal]))
-            # tranformation matrix x = t X with element coords x and global coords X
-            self.t = torch.stack(local_coords)
-            nodes = self.nodes[self.elements, :]
-            rel_pos = (nodes - nodes[:, 0, None]).transpose(2, 1)
-            self.loc_nodes = (self.t @ rel_pos).transpose(2, 1)[:, :, 0:2]
-            self.T = torch.func.vmap(torch.block_diag)(*(NDOF * [self.t]))
+        # Element type
+        self.etype = Tria1()
 
         # Compute efficient mapping from local to global indices
         gidx_1 = []
@@ -131,6 +114,28 @@ class Shell:
         D12 = torch.stack([z, z, a, -a * d / 2.0, a * c / 2.0, z], dim=-1)
         D1 = torch.cat([D10, D11, D12], dim=1)
         return torch.stack([D0, D1], dim=1) / (2.0 * A[:, None, None])
+
+    def update_local_nodes(self):
+        # Element type and local coordinates
+        local_coords = []
+        for element in self.elements:
+            edge1 = self.nodes[element[1]] - self.nodes[element[0]]
+            edge2 = self.nodes[element[2]] - self.nodes[element[1]]
+            normal = torch.cross(edge1, edge2)
+            normal /= torch.linalg.norm(normal)
+            dir1 = edge1 / torch.linalg.norm(edge1)
+            dir2 = -torch.linalg.cross(edge1, normal)
+            dir2 /= torch.linalg.norm(dir2)
+            local_coords.append(torch.vstack([dir1, dir2, normal]))
+
+        # Tranformation matrix x = t X with element coords x and global coords X
+        self.t = torch.stack(local_coords)
+        self.T = torch.func.vmap(torch.block_diag)(*(NDOF * [self.t]))
+
+        # Compute local node coordinates
+        nodes = self.nodes[self.elements, :]
+        rel_pos = (nodes - nodes[:, 0, None]).transpose(2, 1)
+        self.loc_nodes = (self.t @ rel_pos).transpose(2, 1)[:, :, 0:2]
 
     def k(self):
         # Perform integrations
