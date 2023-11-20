@@ -88,7 +88,7 @@ class Planar:
 
         # Solve for displacement
         u_red = torch.linalg.solve(K_red, f_red)
-        u = self.displacements.clone().ravel()
+        u = self.displacements.detach().ravel()
         u[uncon] = u_red
 
         # Evaluate force
@@ -98,7 +98,7 @@ class Planar:
         f = f.reshape((-1, 2))
         return u, f
 
-    def compute_stress(self, u, xi=[0.0, 0.0]):
+    def compute_stress(self, u, xi=[0.0, 0.0], mises=False):
         # Extract node positions of element
         nodes = self.nodes[self.elements, :]
 
@@ -120,7 +120,17 @@ class Planar:
 
         # Compute stress
         sigma = torch.einsum("...ij,...jk,...k->...i", self.C, D, disp)
-        return sigma
+
+        # Return stress
+        if mises:
+            return torch.sqrt(
+                sigma[:, 0] ** 2
+                - sigma[:, 0] * sigma[:, 1]
+                + sigma[:, 1] ** 2
+                + 3 * sigma[:, 2] ** 2
+            )
+        else:
+            return sigma
 
     @torch.no_grad()
     def plot(
