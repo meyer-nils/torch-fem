@@ -1,3 +1,10 @@
+"""Shell formulation
+
+The Shell element formulation is based on:
+Krysl, Petr, Robust flat-facet triangular shell finite element, International Journal
+for Numerical Methods in Engineering, vol. 123, issue 10, pp. 2399-2423, 2022
+https://doi.org/10.1002/nme.6944
+"""
 from math import sqrt
 
 import torch
@@ -91,7 +98,7 @@ class Shell:
         return torch.stack([D0, D1, D2], dim=1)
 
     def _Ds(self, A):
-        """Aggregate shear-displacement matrices
+        """Aggregate shear-displacement matrices.
 
         Args:
             A (torch tensor): Element surface areas (shape: [N])
@@ -101,19 +108,42 @@ class Shell:
         """
         N = self.n_elem
         z = torch.zeros(N)
-        a = self.loc_nodes[:, 1, 0] - self.loc_nodes[:, 0, 0]
-        b = self.loc_nodes[:, 1, 1] - self.loc_nodes[:, 0, 1]
-        c = self.loc_nodes[:, 2, 0] - self.loc_nodes[:, 0, 0]
-        d = self.loc_nodes[:, 2, 1] - self.loc_nodes[:, 0, 1]
-        D00 = torch.stack([z, z, b - d, z, A, z], dim=-1)
-        D01 = torch.stack([z, z, d, -b * d / 2.0, a * d / 2.0, z], dim=-1)
-        D02 = torch.stack([z, z, -b, b * d / 2.0, -b * c / 2.0, z], dim=-1)
-        D0 = torch.cat([D00, D01, D02], dim=1)
-        D10 = torch.stack([z, z, c - a, -A, z, z], dim=-1)
-        D11 = torch.stack([z, z, -c, b * c / 2.0, -a * c / 2.0, z], dim=-1)
-        D12 = torch.stack([z, z, a, -a * d / 2.0, a * c / 2.0, z], dim=-1)
-        D1 = torch.cat([D10, D11, D12], dim=1)
-        return torch.stack([D0, D1], dim=1) / (2.0 * A[:, None, None])
+
+        def compute(nodes):
+            a = nodes[:, 1, 0] - nodes[:, 0, 0]
+            b = nodes[:, 1, 1] - nodes[:, 0, 1]
+            c = nodes[:, 2, 0] - nodes[:, 0, 0]
+            d = nodes[:, 2, 1] - nodes[:, 0, 1]
+            D0 = torch.stack(
+                [
+                    torch.stack([z, z, b - d, z, A, z], dim=-1),
+                    torch.stack([z, z, c - a, -A, z, z], dim=-1),
+                ],
+                dim=1,
+            ) / (2.0 * A[:, None, None])
+            D1 = torch.stack(
+                [
+                    torch.stack([z, z, d, -b * d / 2.0, a * d / 2.0, z], dim=-1),
+                    torch.stack([z, z, -c, b * c / 2.0, -a * c / 2.0, z], dim=-1),
+                ],
+                dim=1,
+            ) / (2.0 * A[:, None, None])
+            D2 = torch.stack(
+                [
+                    torch.stack([z, z, -b, b * d / 2.0, -b * c / 2.0, z], dim=-1),
+                    torch.stack([z, z, a, -a * d / 2.0, a * c / 2.0, z], dim=-1),
+                ],
+                dim=1,
+            ) / (2.0 * A[:, None, None])
+            return D0, D1, D2
+
+        D0_012, D1_012, D2_012 = compute(self.loc_nodes[:, [0, 1, 2], :])
+        D1_120, D2_120, D0_120 = compute(self.loc_nodes[:, [1, 2, 0], :])
+        D2_201, D0_201, D1_201 = compute(self.loc_nodes[:, [2, 0, 1], :])
+        D0 = (D0_012 + D0_120 + D0_201) / 3.0
+        D1 = (D1_012 + D1_120 + D1_201) / 3.0
+        D2 = (D2_012 + D2_120 + D2_201) / 3.0
+        return torch.cat([D0, D1, D2], dim=-1)
 
     def update_local_nodes(self):
         # Element type and local coordinates
@@ -122,10 +152,10 @@ class Shell:
             edge1 = self.nodes[element[1]] - self.nodes[element[0]]
             edge2 = self.nodes[element[2]] - self.nodes[element[1]]
             normal = torch.cross(edge1, edge2)
-            normal /= torch.linalg.norm(normal)
+            normal = normal / torch.linalg.norm(normal)
             dir1 = edge1 / torch.linalg.norm(edge1)
             dir2 = -torch.linalg.cross(edge1, normal)
-            dir2 /= torch.linalg.norm(dir2)
+            dir2 = dir2 / torch.linalg.norm(dir2)
             local_coords.append(torch.vstack([dir1, dir2, normal]))
 
         # Tranformation matrix x = t X with element coords x and global coords X
@@ -206,7 +236,7 @@ class Shell:
 
         # Solve for displacement
         u_red = torch.linalg.solve(K_red, f_red)
-        u = self.displacements.clone().ravel()
+        u = self.displacements.detach().ravel()
         u[uncon] = u_red
 
         # Evaluate force
