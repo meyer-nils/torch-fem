@@ -284,7 +284,14 @@ class Shell:
             return S
 
     @torch.no_grad()
-    def plot(self, u=0.0, node_property=None, element_property=None, thickness=False):
+    def plot(
+        self,
+        u=0.0,
+        node_property=None,
+        element_property=None,
+        thickness=False,
+        mirror=[False, False, False],
+    ):
         try:
             import numpy as np
             import pyvista
@@ -334,6 +341,18 @@ class Shell:
 
             pl.add_mesh(top, show_edges=True)
             pl.add_mesh(bottom, show_edges=True)
-            pl.show()
         else:
-            mesh.plot(show_edges=True)
+            pl.add_mesh(mesh, show_edges=True)
+
+        if mirror[0]:
+            for msh in pl.meshes:
+                pl.add_mesh(msh.reflect((1, 0, 0)), show_edges=True, opacity=0.5)
+
+        if mirror[1]:
+            for msh in pl.meshes:
+                pl.add_mesh(msh.reflect((0, 1, 0)), show_edges=True, opacity=0.5)
+
+        if mirror[2]:
+            for msh in pl.meshes:
+                pl.add_mesh(msh.reflect((0, 0, 1)), show_edges=True, opacity=0.5)
+        pl.show()
