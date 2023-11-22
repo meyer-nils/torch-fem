@@ -12,6 +12,9 @@ import torch
 from .elements import Tria1
 
 NDOF = 6
+NU = 0.5
+DRILL_PENALTY = 1.0
+KAPPA = 5.0 / 6.0
 
 
 class Shell:
@@ -23,8 +26,8 @@ class Shell:
         displacements,
         constraints,
         thickness,
-        E,
-        nu,
+        C,
+        Cs,
     ):
         self.nodes = nodes
         self.n_dofs = NDOF * len(self.nodes)
@@ -34,22 +37,11 @@ class Shell:
         self.displacements = displacements
         self.constraints = constraints
         self.thickness = thickness
+        self.C = C
+        self.Cs = Cs
 
         # Set nodes
         self.update_local_nodes()
-
-        # Build isotropic stiffness tensor
-        self.C = (E / (1.0 - nu**2)) * torch.tensor(
-            [[1.0, nu, 0.0], [nu, 1.0, 0.0], [0.0, 0.0, 0.5 * (1.0 - nu)]]
-        )
-
-        # Shear stiffness properties
-        self.kappa = 5.0 / 6.0
-        self.alpha = self.kappa / (2 * (1 + nu))
-        self.G = E / (2 * (1 + nu))
-
-        # Drill stiffness properties
-        self.drill_penalty = 1.0
 
         # Element type
         self.etype = Tria1()
@@ -196,19 +188,15 @@ class Shell:
             # Element transverse stiffness
             Ds = self._Ds(A)
             h = sqrt(2) * A
-            psi = (
-                self.kappa
-                * self.thickness**2
-                / (self.thickness**2 + self.alpha * h**2)
-            )
-            Cs = self.G * torch.eye(2)
-            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, Cs, Ds)
+            alpha = KAPPA / (2 * (1 + NU))
+            psi = KAPPA * self.thickness**2 / (self.thickness**2 + alpha * h**2)
+            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, self.Cs, Ds)
             ks = torch.einsum("i,ijk->ijk", w * A * psi * self.thickness * detJ, DsCsDs)
 
             # Element drilling stiffness
             kd = torch.zeros_like(km)
             for i in range(self.etype.nodes):
-                kd[:, i * NDOF - 1, i * NDOF - 1] = self.drill_penalty
+                kd[:, i * NDOF - 1, i * NDOF - 1] = DRILL_PENALTY
 
             # Total elemnt stiffness in local coordinates
             kt = km + kb + ks + kd
@@ -264,12 +252,10 @@ class Shell:
         sigma = sigma_m + z * sigma_b
 
         # Compute transverse shear stresses in local coordinate system
-        psi = (
-            self.kappa
-            * self.thickness**2
-            / (self.thickness**2 + self.alpha * (sqrt(2) * A) ** 2)
-        )
-        Cs = torch.einsum("i,jk->ijk", psi, self.G * torch.eye(2))
+        h = sqrt(2) * A
+        alpha = KAPPA / (2 * (1 + NU))
+        psi = KAPPA * self.thickness**2 / (self.thickness**2 + alpha * h**2)
+        Cs = torch.einsum("i,jk->ijk", psi, self.Cs)
         sigma_s = torch.einsum("...ij,...jk,...k->...i", Cs, self._Ds(A), loc_disp)
 
         # Assemble stress tensor
