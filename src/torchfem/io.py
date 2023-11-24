@@ -28,7 +28,7 @@ def export_mesh(mesh, filename, nodal_data={}, elem_data={}):
     mesh.write(filename)
 
 
-def import_mesh(filename, C):
+def import_mesh(filename, C, Cs=None):
     import meshio
     import numpy as np
 
@@ -45,12 +45,16 @@ def import_mesh(filename, C):
 
     if not np.allclose(mesh.points[:, 2], np.zeros_like(mesh.points[:, 2])):
         nodes = torch.from_numpy(mesh.points.astype(np.float32))
-        forces = torch.zeros_like(nodes)
-        displacements = torch.zeros_like(nodes)
-        constraints = torch.zeros_like(nodes, dtype=bool)
-        if etype in ["triangle", "quad"]:
-            return Shell(nodes, elements, forces, displacements, constraints, C)
+        if etype in ["triangle"]:
+            t = torch.ones((len(elements)))
+            forces = torch.zeros((len(nodes), 6))
+            displacements = torch.zeros((len(nodes), 6))
+            constraints = torch.zeros((len(nodes), 6), dtype=bool)
+            return Shell(nodes, elements, forces, displacements, constraints, t, C, Cs)
         elif etype in ["tetra" "hexahedron"]:
+            forces = torch.zeros_like(nodes)
+            displacements = torch.zeros_like(nodes)
+            constraints = torch.zeros_like(nodes, dtype=bool)
             return Solid(nodes, elements, forces, displacements, constraints, C)
     else:
         nodes = torch.from_numpy(mesh.points[:, 0:2].astype(np.float32))
