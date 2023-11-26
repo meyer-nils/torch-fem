@@ -56,7 +56,6 @@ class Truss:
 
     def stiffness(self):
         K = torch.zeros((self.n_dofs, self.n_dofs))
-        print(self.k().shape)
         K.index_put_((self.gidx_1, self.gidx_2), self.k(), accumulate=True)
         return K
 
@@ -115,6 +114,8 @@ class Truss:
         except ImportError:
             raise Exception("Plotting 2D requires matplotlib.")
 
+        _, ax = plt.subplots()
+
         # Line widths from areas
         if show_thickness:
             a_max = torch.max(self.areas)
@@ -132,7 +133,7 @@ class Truss:
             sm = plt.cm.ScalarMappable(
                 cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax)
             )
-            plt.colorbar(sm, label="Stress", shrink=0.5)
+            plt.colorbar(sm, ax=ax, label="Stress", shrink=0.5)
         else:
             color = self.n_elem * [default_color]
 
@@ -181,20 +182,14 @@ class Truss:
         plt.axis("off")
 
     @torch.no_grad()
-    def plot3d(
-        self,
-        u=0.0,
-        sigma=None,
-        show_thickness=False,
-        thickness_threshold=0.0,
-        default_color="black",
-    ):
+    def plot3d(self, u=0.0, sigma=None):
         try:
             import pyvista
         except ImportError:
             raise Exception("Plotting 3D requires pyvista.")
 
         pyvista.set_plot_theme("document")
+        pyvista.set_jupyter_backend("client")
         pl = pyvista.Plotter()
         pl.enable_anti_aliasing("ssaa")
 
