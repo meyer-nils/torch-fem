@@ -43,8 +43,10 @@ def import_mesh(filename, C, Cs=None):
         raise Exception("Currently, only single element types are supported.")
     etype = etypes[0]
 
+    dtype = torch.get_default_dtype()
+
     if not np.allclose(mesh.points[:, 2], np.zeros_like(mesh.points[:, 2])):
-        nodes = torch.from_numpy(mesh.points.astype(np.float32))
+        nodes = torch.from_numpy(mesh.points).type(dtype)
         if etype in ["triangle"]:
             t = torch.ones((len(elements)))
             forces = torch.zeros((len(nodes), 6))
@@ -57,7 +59,7 @@ def import_mesh(filename, C, Cs=None):
             constraints = torch.zeros_like(nodes, dtype=bool)
             return Solid(nodes, elements, forces, displacements, constraints, C)
     else:
-        nodes = torch.from_numpy(mesh.points[:, 0:2].astype(np.float32))
+        nodes = torch.from_numpy(mesh.points[:, 0:2]).type(dtype)
         thickness = torch.ones((len(elements)))
         forces = torch.zeros_like(nodes)
         displacements = torch.zeros_like(nodes)
