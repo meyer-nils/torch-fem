@@ -1,4 +1,4 @@
-# torch-fem
+# torch-fem: Differentiable linear elastic finite elements
 
 Simple finite element assemblers for linear elasticity with PyTorch. The advantage of using PyTorch is the ability to efficiently compute sensitivities and use them in structural optimization. 
 
