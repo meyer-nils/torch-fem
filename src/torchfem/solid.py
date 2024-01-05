@@ -5,13 +5,7 @@ from .elements import Hexa1, Tetra1
 
 class Solid:
     def __init__(
-        self,
-        nodes,
-        elements,
-        forces,
-        displacements,
-        constraints,
-        C,
+        self, nodes, elements, forces, displacements, constraints, C, strains=None
     ):
         self.nodes = nodes
         self.n_dofs = torch.numel(self.nodes)
@@ -25,6 +19,7 @@ class Solid:
         elif len(elements[0]) == 4:
             self.etype = Tetra1()
         self.C = C
+        self.strains = strains
 
         # Compute efficient mapping from local to global indices
         self.global_indices = []
@@ -47,28 +42,46 @@ class Solid:
             volumes[j] = volume
         return volumes
 
+    def J(self, q, nodes):
+        # Jacobian and Jacobian determinant
+        J = self.etype.B(q) @ nodes
+        detJ = torch.linalg.det(J)
+        if detJ <= 0.0:
+            raise Exception("Negative Jacobian. Check element numbering.")
+        return J, detJ
+
+    def D(self, B):
+        # Element strain matrix
+        zeros = torch.zeros(self.etype.nodes)
+        D0 = torch.stack([B[0, :], zeros, zeros], dim=-1).ravel()
+        D1 = torch.stack([zeros, B[1, :], zeros], dim=-1).ravel()
+        D2 = torch.stack([zeros, zeros, B[2, :]], dim=-1).ravel()
+        D3 = torch.stack([zeros, B[2, :], B[1, :]], dim=-1).ravel()
+        D4 = torch.stack([B[2, :], zeros, B[0, :]], dim=-1).ravel()
+        D5 = torch.stack([B[1, :], B[0, :], zeros], dim=-1).ravel()
+        return torch.stack([D0, D1, D2, D3, D4, D5])
+
     def k(self, j):
-        # Perform integrations
+        # Perform numerical integrations for element stiffness matrix
         nodes = self.nodes[self.elements[j], :]
         k = torch.zeros((3 * self.etype.nodes, 3 * self.etype.nodes))
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
-            # Jacobian
-            J = self.etype.B(q) @ nodes
-            detJ = torch.linalg.det(J)
-            if detJ <= 0.0:
-                raise Exception("Negative Jacobian. Check element numbering.")
-            # Element stiffness
+            J, detJ = self.J(q, nodes)
             B = torch.linalg.inv(J) @ self.etype.B(q)
-            zeros = torch.zeros(self.etype.nodes)
-            D0 = torch.stack([B[0, :], zeros, zeros], dim=-1).ravel()
-            D1 = torch.stack([zeros, B[1, :], zeros], dim=-1).ravel()
-            D2 = torch.stack([zeros, zeros, B[2, :]], dim=-1).ravel()
-            D3 = torch.stack([zeros, B[2, :], B[1, :]], dim=-1).ravel()
-            D4 = torch.stack([B[2, :], zeros, B[0, :]], dim=-1).ravel()
-            D5 = torch.stack([B[1, :], B[0, :], zeros], dim=-1).ravel()
-            D = torch.stack([D0, D1, D2, D3, D4, D5])
+            D = self.D(B)
             k[:, :] += w * D.T @ self.C @ D * detJ
         return k
+
+    def f(self, j, epsilon):
+        # Compute inelastic forces (e.g. from thermal strain fields)
+        nodes = self.nodes[self.elements[j], :]
+        f = torch.zeros(3 * self.etype.nodes)
+        for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
+            J, detJ = self.J(q, nodes)
+            B = torch.linalg.inv(J) @ self.etype.B(q)
+            D = self.D(B)
+            f[:] += w * D.T @ self.C @ epsilon * detJ
+        return f
 
     def stiffness(self):
         # Assemble global stiffness matrix
@@ -81,12 +94,18 @@ class Solid:
         # Compute global stiffness matrix
         K = self.stiffness()
 
+        # Compute inelastic strains (if provided)
+        F = torch.zeros(self.n_dofs)
+        if self.strains is not None:
+            for j, eps in enumerate(self.strains):
+                F[self.global_indices[j][0]] += self.f(j, eps)
+
         # Get reduced stiffness matrix
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
         f_d = K[:, con] @ self.displacements.ravel()[con]
         K_red = K[uncon][:, uncon]
-        f_red = (self.forces.ravel() - f_d)[uncon]
+        f_red = (self.forces.ravel() - f_d + F)[uncon]
 
         # Solve for displacement
         u_red = torch.linalg.solve(K_red, f_red)
