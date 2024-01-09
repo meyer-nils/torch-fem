@@ -143,6 +143,7 @@ class Planar:
         axes=False,
         bcs=True,
         color="black",
+        alpha=1.0,
         cmap="viridis",
         linewidth=1.0,
         figsize=(8.0, 6.0),
@@ -165,7 +166,9 @@ class Planar:
                     triangles.append([e[2], e[3], e[0]])
             else:
                 triangles = self.elements
-            plt.tricontourf(pos[:, 0], pos[:, 1], triangles, node_property, cmap=cmap)
+            plt.tricontourf(
+                pos[:, 0], pos[:, 1], triangles, node_property, cmap=cmap, alpha=alpha
+            )
 
         # Color surface with element properties (if provided)
         if element_property is not None:
