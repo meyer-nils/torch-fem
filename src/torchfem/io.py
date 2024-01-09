@@ -59,7 +59,7 @@ def import_mesh(filename, C, Cs=None):
             constraints = torch.zeros_like(nodes, dtype=bool)
             return Solid(nodes, elements, forces, displacements, constraints, C)
     else:
-        nodes = torch.from_numpy(mesh.points[:, 0:2]).type(dtype)
+        nodes = torch.from_numpy(mesh.points.astype(np.float32)[:, 0:2]).type(dtype)
         thickness = torch.ones((len(elements)))
         forces = torch.zeros_like(nodes)
         displacements = torch.zeros_like(nodes)
