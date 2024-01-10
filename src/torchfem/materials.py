@@ -98,6 +98,79 @@ class IsotropicPlaneStrain(Isotropic):
         )
 
 
+class Orthotropic:
+    """Orthotropic material."""
+
+    def __init__(self, E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23):
+        self.E_1 = E_1
+        self.E_2 = E_2
+        self.E_3 = E_3
+        self.nu_12 = nu_12
+        self.nu_21 = E_2 / E_1 * nu_12
+        self.nu_13 = nu_13
+        self.nu_31 = E_3 / E_1 * nu_13
+        self.nu_23 = nu_23
+        self.nu_32 = E_3 / E_2 * nu_23
+        self.G_12 = G_12
+        self.G_13 = G_13
+        self.G_23 = G_23
+
+        self.C = torch.zeros(3, 3, 3, 3)
+        Gamma = 1 / (
+            1
+            - self.nu_12 * self.nu_21
+            - self.nu_13 * self.nu_31
+            - self.nu_23 * self.nu_32
+            - 2 * self.nu_21 * self.nu_32 * self.nu_13
+        )
+        self.C[0, 0, 0, 0] = self.E_1 * (1 - self.nu_23 * self.nu_32) * Gamma
+        self.C[1, 1, 1, 1] = self.E_2 * (1 - self.nu_13 * self.nu_31) * Gamma
+        self.C[2, 2, 2, 2] = self.E_3 * (1 - self.nu_12 * self.nu_21) * Gamma
+        self.C[0, 0, 1, 1] = self.E_1 * (self.nu_21 + self.nu_31 * self.nu_23) * Gamma
+        self.C[1, 1, 0, 0] = self.C[0, 0, 1, 1]
+        self.C[0, 0, 2, 2] = self.E_1 * (self.nu_31 + self.nu_21 * self.nu_32) * Gamma
+        self.C[2, 2, 0, 0] = self.C[0, 0, 2, 2]
+        self.C[1, 1, 2, 2] = self.E_2 * (self.nu_32 + self.nu_12 * self.nu_31) * Gamma
+        self.C[2, 2, 1, 1] = self.C[1, 1, 2, 2]
+        self.C[0, 1, 0, 1] = self.G_12
+        self.C[1, 0, 1, 0] = self.G_12
+        self.C[0, 1, 1, 0] = self.G_12
+        self.C[1, 0, 0, 1] = self.G_12
+        self.C[0, 2, 0, 2] = self.G_13
+        self.C[2, 0, 2, 0] = self.G_13
+        self.C[0, 2, 2, 0] = self.G_13
+        self.C[2, 0, 0, 2] = self.G_13
+        self.C[1, 2, 1, 2] = self.G_23
+        self.C[2, 1, 2, 1] = self.G_23
+        self.C[1, 2, 2, 1] = self.G_23
+        self.C[2, 1, 1, 2] = self.G_23
+
+    def C(self):
+        """Returns a stiffness tensor of an orthotropic material in the notation
+
+        C_xxxx C_xxyy C_xxzz C_xxyz C_xxxz C_xxxy
+               C_yyyy C_yyzz C_yyyz C_yyxz C_yyxy
+                      C_zzzz C_zzyz C_zzxz C_zzxy
+                             C_yzyz C_yzxz C_yzxy
+                                    C_xzxz C_xzxy
+        symm.                              C_xyxy
+
+        If the shape is (3,3,3,3), it returns it as 3x3x3x3 tensor.
+        """
+
+        # Return stiffness tensor
+        return torch.tensor(
+            [
+                [self.C[0, 0, 0, 0], self.C[0, 0, 1, 1], self.C[0, 0, 2, 2], 0, 0, 0],
+                [self.C[1, 1, 0, 0], self.C[1, 1, 1, 1], self.C[1, 1, 2, 2], 0, 0, 0],
+                [self.C[2, 2, 0, 0], self.C[2, 2, 1, 1], self.C[2, 2, 2, 2], 0, 0, 0],
+                [0, 0, 0, self.C[0, 1, 0, 1], 0, 0],
+                [0, 0, 0, 0, self.C[0, 2, 0, 2], 0],
+                [0, 0, 0, 0, 0, self.C[1, 2, 1, 2]],
+            ]
+        )
+
+
 class OrthotropicPlaneStress:
     """Orthotropic 2D plane stress material."""
 
