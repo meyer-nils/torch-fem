@@ -18,8 +18,13 @@ class Solid:
             self.etype = Hexa1()
         elif len(elements[0]) == 4:
             self.etype = Tetra1()
-        self.C = C
         self.strains = strains
+
+        # Stack stiffness tensor (for general anisotropy and multi-material assignement)
+        if C.shape == torch.Size([6, 6]):
+            self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
+        else:
+            self.C = C
 
         # Compute efficient mapping from local to global indices
         self.global_indices = []
@@ -69,7 +74,7 @@ class Solid:
             J, detJ = self.J(q, nodes)
             B = torch.linalg.inv(J) @ self.etype.B(q)
             D = self.D(B)
-            k[:, :] += w * D.T @ self.C @ D * detJ
+            k[:, :] += w * D.T @ self.C[j] @ D * detJ
         return k
 
     def f(self, j, epsilon):
@@ -80,7 +85,7 @@ class Solid:
             J, detJ = self.J(q, nodes)
             B = torch.linalg.inv(J) @ self.etype.B(q)
             D = self.D(B)
-            f[:] += w * D.T @ self.C @ epsilon * detJ
+            f[:] += w * D.T @ self.C[j] @ epsilon * detJ
         return f
 
     def stiffness(self):
