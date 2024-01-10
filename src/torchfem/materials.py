@@ -3,28 +3,28 @@ import torch
 
 class Isotropic:
     def __init__(self, E, nu):
-        self.E = E
-        self.nu = nu
+        self._E = E
+        self._nu = nu
 
     def E(self):
         """Young's modulus"""
-        return self.E
+        return self._E
 
     def nu(self):
         """Poisson's ration"""
-        return self.nu
+        return self._nu
 
     def lbd(self):
         """Lamè parameter."""
-        return (self.E * self.nu) / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
+        return (self._E * self._nu) / ((1.0 + self._nu) * (1.0 - 2.0 * self._nu))
 
     def G(self):
         """Shear modulus"""
-        return self.E / (2.0 * (1.0 + self.nu))
+        return self._E / (2.0 * (1.0 + self._nu))
 
     def K(self):
         """Bulk modulus."""
-        return self.E / (3.0 * (1.0 - 2.0 * self.nu))
+        return self._E / (3.0 * (1.0 - 2.0 * self._nu))
 
     def C(self):
         """Stiffness tensor in notation
@@ -67,12 +67,12 @@ class IsotropicPlaneStress(Isotropic):
                C_yyyy C_yyxy
         symm.         C_xyxy
         """
-        fac = self.E / (1.0 - self.nu**2)
+        fac = self._E / (1.0 - self._nu**2)
         return fac * torch.tensor(
             [
-                [1.0, self.nu, 0.0],
-                [self.nu, 1.0, 0.0],
-                [0.0, 0.0, 0.5 * (1.0 - self.nu)],
+                [1.0, self._nu, 0.0],
+                [self._nu, 1.0, 0.0],
+                [0.0, 0.0, 0.5 * (1.0 - self._nu)],
             ]
         )
 
@@ -102,48 +102,48 @@ class Orthotropic:
     """Orthotropic material."""
 
     def __init__(self, E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23):
-        self.E_1 = E_1
-        self.E_2 = E_2
-        self.E_3 = E_3
-        self.nu_12 = nu_12
-        self.nu_21 = E_2 / E_1 * nu_12
-        self.nu_13 = nu_13
-        self.nu_31 = E_3 / E_1 * nu_13
-        self.nu_23 = nu_23
-        self.nu_32 = E_3 / E_2 * nu_23
-        self.G_12 = G_12
-        self.G_13 = G_13
-        self.G_23 = G_23
+        self._E_1 = E_1
+        self._E_2 = E_2
+        self._E_3 = E_3
+        self._nu_12 = nu_12
+        self._nu_21 = E_2 / E_1 * nu_12
+        self._nu_13 = nu_13
+        self._nu_31 = E_3 / E_1 * nu_13
+        self._nu_23 = nu_23
+        self._nu_32 = E_3 / E_2 * nu_23
+        self._G_12 = G_12
+        self._G_13 = G_13
+        self._G_23 = G_23
 
-        self.C = torch.zeros(3, 3, 3, 3)
-        Gamma = 1 / (
+        self._C = torch.zeros(3, 3, 3, 3)
+        F = 1 / (
             1
-            - self.nu_12 * self.nu_21
-            - self.nu_13 * self.nu_31
-            - self.nu_23 * self.nu_32
-            - 2 * self.nu_21 * self.nu_32 * self.nu_13
+            - self._nu_12 * self._nu_21
+            - self._nu_13 * self._nu_31
+            - self._nu_23 * self._nu_32
+            - 2 * self._nu_21 * self._nu_32 * self._nu_13
         )
-        self.C[0, 0, 0, 0] = self.E_1 * (1 - self.nu_23 * self.nu_32) * Gamma
-        self.C[1, 1, 1, 1] = self.E_2 * (1 - self.nu_13 * self.nu_31) * Gamma
-        self.C[2, 2, 2, 2] = self.E_3 * (1 - self.nu_12 * self.nu_21) * Gamma
-        self.C[0, 0, 1, 1] = self.E_1 * (self.nu_21 + self.nu_31 * self.nu_23) * Gamma
-        self.C[1, 1, 0, 0] = self.C[0, 0, 1, 1]
-        self.C[0, 0, 2, 2] = self.E_1 * (self.nu_31 + self.nu_21 * self.nu_32) * Gamma
-        self.C[2, 2, 0, 0] = self.C[0, 0, 2, 2]
-        self.C[1, 1, 2, 2] = self.E_2 * (self.nu_32 + self.nu_12 * self.nu_31) * Gamma
-        self.C[2, 2, 1, 1] = self.C[1, 1, 2, 2]
-        self.C[0, 1, 0, 1] = self.G_12
-        self.C[1, 0, 1, 0] = self.G_12
-        self.C[0, 1, 1, 0] = self.G_12
-        self.C[1, 0, 0, 1] = self.G_12
-        self.C[0, 2, 0, 2] = self.G_13
-        self.C[2, 0, 2, 0] = self.G_13
-        self.C[0, 2, 2, 0] = self.G_13
-        self.C[2, 0, 0, 2] = self.G_13
-        self.C[1, 2, 1, 2] = self.G_23
-        self.C[2, 1, 2, 1] = self.G_23
-        self.C[1, 2, 2, 1] = self.G_23
-        self.C[2, 1, 1, 2] = self.G_23
+        self._C[0, 0, 0, 0] = self._E_1 * (1 - self._nu_23 * self._nu_32) * F
+        self._C[1, 1, 1, 1] = self._E_2 * (1 - self._nu_13 * self._nu_31) * F
+        self._C[2, 2, 2, 2] = self._E_3 * (1 - self._nu_12 * self._nu_21) * F
+        self._C[0, 0, 1, 1] = self._E_1 * (self._nu_21 + self._nu_31 * self._nu_23) * F
+        self._C[1, 1, 0, 0] = self._C[0, 0, 1, 1]
+        self._C[0, 0, 2, 2] = self._E_1 * (self._nu_31 + self._nu_21 * self._nu_32) * F
+        self._C[2, 2, 0, 0] = self._C[0, 0, 2, 2]
+        self._C[1, 1, 2, 2] = self._E_2 * (self._nu_32 + self._nu_12 * self._nu_31) * F
+        self._C[2, 2, 1, 1] = self._C[1, 1, 2, 2]
+        self._C[0, 1, 0, 1] = self._G_12
+        self._C[1, 0, 1, 0] = self._G_12
+        self._C[0, 1, 1, 0] = self._G_12
+        self._C[1, 0, 0, 1] = self._G_12
+        self._C[0, 2, 0, 2] = self._G_13
+        self._C[2, 0, 2, 0] = self._G_13
+        self._C[0, 2, 2, 0] = self._G_13
+        self._C[2, 0, 0, 2] = self._G_13
+        self._C[1, 2, 1, 2] = self._G_23
+        self._C[2, 1, 2, 1] = self._G_23
+        self._C[1, 2, 2, 1] = self._G_23
+        self._C[2, 1, 1, 2] = self._G_23
 
     def C(self):
         """Returns a stiffness tensor of an orthotropic material in the notation
@@ -159,29 +159,28 @@ class Orthotropic:
         """
 
         # Return stiffness tensor
-        return torch.tensor(
-            [
-                [self.C[0, 0, 0, 0], self.C[0, 0, 1, 1], self.C[0, 0, 2, 2], 0, 0, 0],
-                [self.C[1, 1, 0, 0], self.C[1, 1, 1, 1], self.C[1, 1, 2, 2], 0, 0, 0],
-                [self.C[2, 2, 0, 0], self.C[2, 2, 1, 1], self.C[2, 2, 2, 2], 0, 0, 0],
-                [0, 0, 0, self.C[0, 1, 0, 1], 0, 0],
-                [0, 0, 0, 0, self.C[0, 2, 0, 2], 0],
-                [0, 0, 0, 0, 0, self.C[1, 2, 1, 2]],
-            ]
-        )
+        c = [
+            [self._C[0, 0, 0, 0], self._C[0, 0, 1, 1], self._C[0, 0, 2, 2], 0, 0, 0],
+            [self._C[1, 1, 0, 0], self._C[1, 1, 1, 1], self._C[1, 1, 2, 2], 0, 0, 0],
+            [self._C[2, 2, 0, 0], self._C[2, 2, 1, 1], self._C[2, 2, 2, 2], 0, 0, 0],
+            [0, 0, 0, self._C[0, 1, 0, 1], 0, 0],
+            [0, 0, 0, 0, self._C[0, 2, 0, 2], 0],
+            [0, 0, 0, 0, 0, self._C[1, 2, 1, 2]],
+        ]
+        return torch.tensor(c)
 
 
 class OrthotropicPlaneStress:
     """Orthotropic 2D plane stress material."""
 
     def __init__(self, E_1, E_2, nu_12, G_12, G_13=0.0, G_23=0.0):
-        self.E_1 = E_1
-        self.E_2 = E_2
-        self.nu_12 = nu_12
-        self.nu_21 = E_2 / E_1 * nu_12
-        self.G_12 = G_12
-        self.G_13 = G_13
-        self.G_23 = G_23
+        self._E_1 = E_1
+        self._E_2 = E_2
+        self._nu_12 = nu_12
+        self._nu_21 = E_2 / E_1 * nu_12
+        self._G_12 = G_12
+        self._G_13 = G_13
+        self._G_23 = G_23
 
     def C(self):
         """Returns a plane stress stiffness tensor in notation
@@ -190,15 +189,15 @@ class OrthotropicPlaneStress:
                C_yyyy C_yyxy
         symm.         C_xyxy
         """
-        nu2 = self.nu_12 * self.nu_21
+        nu2 = self._nu_12 * self._nu_21
         return torch.tensor(
             [
-                [self.E_1 / (1 - nu2), self.nu_12 * self.E_2 / (1 - nu2), 0],
-                [self.nu_21 * self.E_1 / (1 - nu2), self.E_2 / (1 - nu2), 0],
-                [0, 0, self.G_12],
+                [self._E_1 / (1 - nu2), self._nu_12 * self._E_2 / (1 - nu2), 0],
+                [self._nu_21 * self._E_1 / (1 - nu2), self._E_2 / (1 - nu2), 0],
+                [0, 0, self._G_12],
             ]
         )
 
     def Cs(self):
         """Shear stiffness matrix for shells."""
-        return torch.tensor([[self.G_13, 0], [0.0, self.G_23]])
+        return torch.tensor([[self._G_13, 0], [0.0, self._G_23]])
