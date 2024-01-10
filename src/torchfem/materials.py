@@ -26,16 +26,8 @@ class Isotropic:
         """Bulk modulus."""
         return self.E / (3.0 * (1.0 - 2.0 * self.nu))
 
-    def Cs(self):
-        """Shear stiffness matrix for shells."""
-        return torch.tensor([[self.G(), 0], [0.0, self.G()]])
-
-
-class Isotropic3D(Isotropic):
-    """Isotropic 3D material."""
-
     def C(self):
-        """Returns a stiffness tensor in notation
+        """Stiffness tensor in notation
 
         C_xxxx C_xxyy C_xxzz C_xxyz C_xxxz C_xxxy
                C_yyyy C_yyzz C_yyyz C_yyxz C_yyxy
@@ -44,7 +36,7 @@ class Isotropic3D(Isotropic):
                                     C_xzxz C_xzxy
         symm.                              C_xyxy
         """
-        # Compute Lamé parameters
+
         lbd = self.lbd()
         G = self.G()
 
@@ -59,6 +51,10 @@ class Isotropic3D(Isotropic):
                 [0.0, 0.0, 0.0, 0.0, 0.0, G],
             ]
         )
+
+    def Cs(self):
+        """Shear stiffness matrix for shells."""
+        return torch.tensor([[self.G(), 0], [0.0, self.G()]])
 
 
 class IsotropicPlaneStress(Isotropic):
