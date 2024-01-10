@@ -6,6 +6,14 @@ class Isotropic:
         self.E = E
         self.nu = nu
 
+    def E(self):
+        """Young's modulus"""
+        return self.E
+
+    def nu(self):
+        """Poisson's ration"""
+        return self.nu
+
     def lbd(self):
         """Lamè parameter."""
         return (self.E * self.nu) / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
