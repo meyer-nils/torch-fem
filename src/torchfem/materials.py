@@ -7,11 +7,11 @@ class Isotropic:
         self._nu = nu
 
     def E(self):
-        """Young's modulus"""
+        """Young's modulus."""
         return self._E
 
     def nu(self):
-        """Poisson's ration"""
+        """Poisson's ration."""
         return self._nu
 
     def lbd(self):
@@ -19,7 +19,7 @@ class Isotropic:
         return (self._E * self._nu) / ((1.0 + self._nu) * (1.0 - 2.0 * self._nu))
 
     def G(self):
-        """Shear modulus"""
+        """Shear modulus."""
         return self._E / (2.0 * (1.0 + self._nu))
 
     def K(self):
@@ -27,15 +27,7 @@ class Isotropic:
         return self._E / (3.0 * (1.0 - 2.0 * self._nu))
 
     def C(self):
-        """Stiffness tensor in notation
-
-        C_xxxx C_xxyy C_xxzz C_xxyz C_xxxz C_xxxy
-               C_yyyy C_yyzz C_yyyz C_yyxz C_yyxy
-                      C_zzzz C_zzyz C_zzxz C_zzxy
-                             C_yzyz C_yzxz C_yzxy
-                                    C_xzxz C_xzxy
-        symm.                              C_xyxy
-        """
+        """Stiffness tensor in Voigt notation."""
 
         lbd = self.lbd()
         G = self.G()
@@ -61,12 +53,7 @@ class IsotropicPlaneStress(Isotropic):
     """Isotropic 2D plane stress material."""
 
     def C(self):
-        """Returns a plane stress stiffness tensor in notation
-
-        C_xxxx C_xxyy C_xxxy
-               C_yyyy C_yyxy
-        symm.         C_xyxy
-        """
+        """Returns a plane stress stiffness tensor in Voigt notation."""
         fac = self._E / (1.0 - self._nu**2)
         return fac * torch.tensor(
             [
@@ -81,12 +68,7 @@ class IsotropicPlaneStrain(Isotropic):
     """Isotropic 2D plane strain material."""
 
     def C(self):
-        """Returns a plane strain stiffness tensor in notation
-
-        C_xxxx C_xxyy C_xxxy
-               C_yyyy C_yyxy
-        symm.         C_xyxy
-        """
+        """Returns a plane strain stiffness tensor in Voigt notation."""
         lbd = self.lbd()
         G = self.G()
         return torch.tensor(
@@ -146,19 +128,7 @@ class Orthotropic:
         self._C[2, 1, 1, 2] = self._G_23
 
     def C(self):
-        """Returns a stiffness tensor of an orthotropic material in the notation
-
-        C_xxxx C_xxyy C_xxzz C_xxyz C_xxxz C_xxxy
-               C_yyyy C_yyzz C_yyyz C_yyxz C_yyxy
-                      C_zzzz C_zzyz C_zzxz C_zzxy
-                             C_yzyz C_yzxz C_yzxy
-                                    C_xzxz C_xzxy
-        symm.                              C_xyxy
-
-        If the shape is (3,3,3,3), it returns it as 3x3x3x3 tensor.
-        """
-
-        # Return stiffness tensor
+        """Returns a stiffness tensor of an orthotropic material in Voigt notation."""
         c = [
             [self._C[0, 0, 0, 0], self._C[0, 0, 1, 1], self._C[0, 0, 2, 2], 0, 0, 0],
             [self._C[1, 1, 0, 0], self._C[1, 1, 1, 1], self._C[1, 1, 2, 2], 0, 0, 0],
@@ -183,12 +153,7 @@ class OrthotropicPlaneStress:
         self._G_23 = G_23
 
     def C(self):
-        """Returns a plane stress stiffness tensor in notation
-
-        C_xxxx C_xxyy C_xxxy
-               C_yyyy C_yyxy
-        symm.         C_xyxy
-        """
+        """Returns a plane stress stiffness tensor in Voigt notation."""
         nu2 = self._nu_12 * self._nu_21
         return torch.tensor(
             [
