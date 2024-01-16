@@ -89,15 +89,17 @@ class Solid:
             k[:, :, :] += torch.einsum("i,ijk->ijk", w * detJ, DCD)
         return k
 
-    def f(self, j, epsilon):
+    def f(self, epsilon):
         # Compute inelastic forces (e.g. from thermal strain fields)
         nodes = self.nodes[self.elements, :]
-        f = torch.zeros(3 * self.etype.nodes)
+        f = torch.zeros(self.n_elem, 3 * self.etype.nodes)
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             J, detJ = self.J(q, nodes)
             B = torch.linalg.inv(J) @ self.etype.B(q)
             D = self.D(B)
-            f[:] += w * D[j].T @ self.C[j] @ epsilon * detJ[j]
+            DC = torch.einsum("...ji,...jk->...ik", D, self.C)
+            DCE = torch.einsum("...ij,...j->...i", DC, epsilon)
+            f[:, :] += torch.einsum("i,ij->ij", w * detJ, DCE)
         return f
 
     def stiffness(self):
@@ -113,8 +115,9 @@ class Solid:
         # Compute inelastic strains (if provided)
         F = torch.zeros(self.n_dofs)
         if self.strains is not None:
-            for j, eps in enumerate(self.strains):
-                F[self.gidx_1[j]] += self.f(j, eps)
+            f = self.f(self.strains)
+            for j in range(len(self.strains)):
+                F[self.gidx_1[j]] += f[j]
 
         # Get reduced stiffness matrix
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
