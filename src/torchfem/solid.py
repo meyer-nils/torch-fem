@@ -27,10 +27,15 @@ class Solid:
             self.C = C
 
         # Compute efficient mapping from local to global indices
-        self.global_indices = []
+        gidx_1 = []
+        gidx_2 = []
         for element in self.elements:
             indices = torch.tensor([3 * n + i for n in element for i in range(3)])
-            self.global_indices.append(torch.meshgrid(indices, indices, indexing="xy"))
+            idx_1, idx_2 = torch.meshgrid(indices, indices, indexing="xy")
+            gidx_1.append(idx_1)
+            gidx_2.append(idx_2)
+        self.gidx_1 = torch.stack(gidx_1)
+        self.gidx_2 = torch.stack(gidx_2)
 
     def volumes(self):
         volumes = torch.zeros((self.n_elem))
@@ -51,48 +56,54 @@ class Solid:
         # Jacobian and Jacobian determinant
         J = self.etype.B(q) @ nodes
         detJ = torch.linalg.det(J)
-        if detJ <= 0.0:
+        if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
         return J, detJ
 
     def D(self, B):
         # Element strain matrix
-        zeros = torch.zeros(self.etype.nodes)
-        D0 = torch.stack([B[0, :], zeros, zeros], dim=-1).ravel()
-        D1 = torch.stack([zeros, B[1, :], zeros], dim=-1).ravel()
-        D2 = torch.stack([zeros, zeros, B[2, :]], dim=-1).ravel()
-        D3 = torch.stack([zeros, B[2, :], B[1, :]], dim=-1).ravel()
-        D4 = torch.stack([B[2, :], zeros, B[0, :]], dim=-1).ravel()
-        D5 = torch.stack([B[1, :], B[0, :], zeros], dim=-1).ravel()
-        return torch.stack([D0, D1, D2, D3, D4, D5])
+        zeros = torch.zeros(self.n_elem, self.etype.nodes)
+        D0 = torch.stack([B[:, 0, :], zeros, zeros], dim=-1).reshape(self.n_elem, -1)
+        D1 = torch.stack([zeros, B[:, 1, :], zeros], dim=-1).reshape(self.n_elem, -1)
+        D2 = torch.stack([zeros, zeros, B[:, 2, :]], dim=-1).reshape(self.n_elem, -1)
+        D3 = torch.stack([zeros, B[:, 2, :], B[:, 1, :]], dim=-1).reshape(
+            self.n_elem, -1
+        )
+        D4 = torch.stack([B[:, 2, :], zeros, B[:, 0, :]], dim=-1).reshape(
+            self.n_elem, -1
+        )
+        D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(
+            self.n_elem, -1
+        )
+        return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
 
-    def k(self, j):
+    def k(self):
         # Perform numerical integrations for element stiffness matrix
-        nodes = self.nodes[self.elements[j], :]
-        k = torch.zeros((3 * self.etype.nodes, 3 * self.etype.nodes))
+        nodes = self.nodes[self.elements, :]
+        k = torch.zeros((self.n_elem, 3 * self.etype.nodes, 3 * self.etype.nodes))
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             J, detJ = self.J(q, nodes)
             B = torch.linalg.inv(J) @ self.etype.B(q)
             D = self.D(B)
-            k[:, :] += w * D.T @ self.C[j] @ D * detJ
+            DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
+            k[:, :, :] += torch.einsum("i,ijk->ijk", w * detJ, DCD)
         return k
 
     def f(self, j, epsilon):
         # Compute inelastic forces (e.g. from thermal strain fields)
-        nodes = self.nodes[self.elements[j], :]
+        nodes = self.nodes[self.elements, :]
         f = torch.zeros(3 * self.etype.nodes)
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             J, detJ = self.J(q, nodes)
             B = torch.linalg.inv(J) @ self.etype.B(q)
             D = self.D(B)
-            f[:] += w * D.T @ self.C[j] @ epsilon * detJ
+            f[:] += w * D[j].T @ self.C[j] @ epsilon * detJ[j]
         return f
 
     def stiffness(self):
         # Assemble global stiffness matrix
         K = torch.zeros((self.n_dofs, self.n_dofs))
-        for j in range(len(self.elements)):
-            K[self.global_indices[j]] += self.k(j)
+        K.index_put_((self.gidx_1, self.gidx_2), self.k(), accumulate=True)
         return K
 
     def solve(self):
@@ -103,7 +114,7 @@ class Solid:
         F = torch.zeros(self.n_dofs)
         if self.strains is not None:
             for j, eps in enumerate(self.strains):
-                F[self.global_indices[j][0]] += self.f(j, eps)
+                F[self.gidx_1[j]] += self.f(j, eps)
 
         # Get reduced stiffness matrix
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
