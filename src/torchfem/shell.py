@@ -9,6 +9,7 @@ from math import sqrt
 
 import torch
 
+from .base import sparse_solve
 from .elements import Tria1
 
 NDOF = 6
@@ -47,15 +48,11 @@ class Shell:
         self.etype = Tria1()
 
         # Compute efficient mapping from local to global indices
-        gidx_1 = []
-        gidx_2 = []
+        global_indices = []
         for element in self.elements:
-            indices = torch.tensor([NDOF * n + i for n in element for i in range(NDOF)])
-            idx_1, idx_2 = torch.meshgrid(indices, indices, indexing="xy")
-            gidx_1.append(idx_1)
-            gidx_2.append(idx_2)
-        self.gidx_1 = torch.stack(gidx_1)
-        self.gidx_2 = torch.stack(gidx_2)
+            idx = torch.tensor([NDOF * n + i for n in element for i in range(NDOF)])
+            global_indices.append(torch.stack(torch.meshgrid(idx, idx, indexing="xy")))
+        self.indices = torch.stack(global_indices, dim=1)
 
     def _Dm(self, B):
         """Aggregate strain-displacement matrices
@@ -207,9 +204,10 @@ class Shell:
 
     def stiffness(self):
         # Assemble global stiffness matrix
-        K = torch.zeros((self.n_dofs, self.n_dofs))
-        K.index_put_((self.gidx_1, self.gidx_2), self.k(), accumulate=True)
-        return K
+        indices = self.indices.reshape((2, -1))
+        values = self.k().ravel()
+        size = (self.n_dofs, self.n_dofs)
+        return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
     def solve(self):
         # Compute global stiffness matrix
@@ -218,12 +216,14 @@ class Shell:
         # Get reduced stiffness matrix
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
-        f_d = K[:, con] @ self.displacements.ravel()[con]
-        K_red = K[uncon][:, uncon]
+        f_d = torch.index_select(K, dim=1, index=con) @ self.displacements.ravel()[con]
+        K_red = torch.index_select(
+            torch.index_select(K, dim=0, index=uncon), dim=1, index=uncon
+        )
         f_red = (self.forces.ravel() - f_d)[uncon]
 
         # Solve for displacement
-        u_red = torch.linalg.solve(K_red, f_red)
+        u_red = sparse_solve(K_red, f_red)
         u = self.displacements.detach().ravel()
         u[uncon] = u_red
 

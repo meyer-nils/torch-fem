@@ -1,5 +1,6 @@
 import torch
 
+from .base import sparse_solve
 from .elements import Hexa1, Tetra1
 
 
@@ -27,15 +28,11 @@ class Solid:
             self.C = C
 
         # Compute efficient mapping from local to global indices
-        gidx_1 = []
-        gidx_2 = []
+        global_indices = []
         for element in self.elements:
-            indices = torch.tensor([3 * n + i for n in element for i in range(3)])
-            idx_1, idx_2 = torch.meshgrid(indices, indices, indexing="xy")
-            gidx_1.append(idx_1)
-            gidx_2.append(idx_2)
-        self.gidx_1 = torch.stack(gidx_1)
-        self.gidx_2 = torch.stack(gidx_2)
+            idx = torch.tensor([3 * n + i for n in element for i in range(3)])
+            global_indices.append(torch.stack(torch.meshgrid(idx, idx, indexing="xy")))
+        self.indices = torch.stack(global_indices, dim=1)
 
     def volumes(self):
         volumes = torch.zeros((self.n_elem))
@@ -104,9 +101,10 @@ class Solid:
 
     def stiffness(self):
         # Assemble global stiffness matrix
-        K = torch.zeros((self.n_dofs, self.n_dofs))
-        K.index_put_((self.gidx_1, self.gidx_2), self.k(), accumulate=True)
-        return K
+        indices = self.indices.reshape((2, -1))
+        values = self.k().ravel()
+        size = (self.n_dofs, self.n_dofs)
+        return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
     def solve(self):
         # Compute global stiffness matrix
@@ -117,17 +115,19 @@ class Solid:
         if self.strains is not None:
             f = self.f(self.strains)
             for j in range(len(self.strains)):
-                F[self.gidx_1[j]] += f[j]
+                F[self.indices[0, j]] += f[j]
 
         # Get reduced stiffness matrix
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
-        f_d = K[:, con] @ self.displacements.ravel()[con]
-        K_red = K[uncon][:, uncon]
+        f_d = torch.index_select(K, dim=1, index=con) @ self.displacements.ravel()[con]
+        K_red = torch.index_select(
+            torch.index_select(K, dim=0, index=uncon), dim=1, index=uncon
+        )
         f_red = (self.forces.ravel() - f_d + F)[uncon]
 
         # Solve for displacement
-        u_red = torch.linalg.solve(K_red, f_red)
+        u_red = sparse_solve(K_red, f_red)
         u = self.displacements.clone().ravel()
         u[uncon] = u_red
 
