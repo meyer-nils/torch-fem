@@ -1,3 +1,4 @@
+from itertools import permutations
 from math import acosh
 
 import torch
@@ -268,41 +269,8 @@ def symm(A4: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Symmetrized outout tensor
     """
-
-    B4 = torch.zeros_like(A4)
-
-    # Einsteins summation
-    for i in range(3):
-        for j in range(3):
-            for m in range(3):
-                for n in range(3):
-                    B4[..., i, j, m, n] = (
-                        A4[..., i, j, m, n]
-                        + A4[..., j, i, m, n]
-                        + A4[..., i, j, n, m]
-                        + A4[..., j, i, n, m]
-                        + A4[..., m, n, i, j]
-                        + A4[..., n, m, i, j]
-                        + A4[..., m, n, j, i]
-                        + A4[..., n, m, j, i]
-                        + A4[..., i, m, j, n]
-                        + A4[..., m, i, j, n]
-                        + A4[..., i, m, n, j]
-                        + A4[..., m, i, n, j]
-                        + A4[..., j, n, i, m]
-                        + A4[..., n, j, i, m]
-                        + A4[..., j, n, m, i]
-                        + A4[..., n, j, m, i]
-                        + A4[..., i, n, j, m]
-                        + A4[..., n, i, j, m]
-                        + A4[..., i, n, m, j]
-                        + A4[..., n, i, m, j]
-                        + A4[..., j, m, i, n]
-                        + A4[..., m, j, i, n]
-                        + A4[..., j, m, n, i]
-                        + A4[..., m, j, n, i]
-                    )
-    return B4 / 24
+    B4 = torch.stack([torch.permute(A4, (0, *p)) for p in permutations([1, 2, 3, 4])])
+    return B4.sum(dim=0) / 24
 
 
 def compute_orientation_average(
