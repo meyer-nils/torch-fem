@@ -10,7 +10,7 @@ description = "Simple finite element assemblers with torch."
 readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["finite elements", "automatic differentiation"]
-requires-python = "3.10,3.11"
+requires-python = ">=3.10,<3.12"
 dependencies = [
     "ipywidgets",
     "ipykernel",
