@@ -3,6 +3,6 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = torchfem
+name = torch-fem
 version = 0.0.1
 requires-python = ">= 3.10"
