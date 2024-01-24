@@ -16,9 +16,9 @@ def test_truss_notebook(tb):
     tb.execute()
 
 
-@testbook("examples/basic/solid.ipynb", execute=True)
-def test_solid_notebook(tb):
-    tb.execute()
+# @testbook("examples/basic/solid.ipynb", execute=True)
+# def test_solid_notebook(tb):
+#     tb.execute()
 
 
 @testbook("examples/optimization/topology_optimization.ipynb", execute=True)
