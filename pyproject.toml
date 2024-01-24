@@ -1,11 +1,3 @@
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
-
-[project]
-name = "torch-fem"
-version = "0.0.1"
-description = "Simple finite element assemblers with torch."
-readme = "README.md"
-license = {file = "LICENSE"}
-requires-python = ">= 3.10"
