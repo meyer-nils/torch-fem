@@ -138,8 +138,30 @@ class Solid:
         f = f.reshape((-1, 3))
         return u, f
 
+    def compute_stress(self, u, xi=[0.0, 0.0]):
+        # Extract node positions of element
+        nodes = self.nodes[self.elements, :]
+
+        # Extract displacement degrees of freedom
+        disp = u[self.elements, :].reshape(self.n_elem, -1)
+
+        # Jacobian
+        J = self.etype.B(xi) @ nodes
+
+        # Compute B
+        B = torch.linalg.inv(J) @ self.etype.B(xi)
+
+        # Compute D
+        D = self.D(B)
+
+        # Compute stress
+        sigma = torch.einsum("...ij,...jk,...k->...i", self.C, D, disp)
+
+        # Return stress
+        return sigma
+
     @torch.no_grad()
-    def plot(self, u=0.0, node_property=None, element_property=None):
+    def plot(self, u=0.0, node_property=None, element_property=None, show_edges=True):
         try:
             import pyvista
         except ImportError:
@@ -176,4 +198,4 @@ class Solid:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val
 
-        mesh.plot(show_edges=True)
+        mesh.plot(show_edges=show_edges)
