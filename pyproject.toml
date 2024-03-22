@@ -7,6 +7,7 @@ name = "torch-fem"
 version = "0.1.0"
 authors = [{ name = "Nils Meyer", email = "nils.meyer@uni-a.de" }]
 description = "Simple finite element assemblers with torch."
+url = "https://github.com/meyer-nils/torch-fem"
 readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["finite elements", "automatic differentiation"]
