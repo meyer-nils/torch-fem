@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torch-fem"
-version = "0.1.0"
+version = "0.1.2"
 authors = [{ name = "Nils Meyer", email = "nils.meyer@uni-a.de" }]
 description = "Simple finite element assemblers with torch."
 url = "https://github.com/meyer-nils/torch-fem"
