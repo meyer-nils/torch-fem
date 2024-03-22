@@ -161,7 +161,14 @@ class Solid:
         return sigma
 
     @torch.no_grad()
-    def plot(self, u=0.0, node_property=None, element_property=None, show_edges=True):
+    def plot(
+        self,
+        u=0.0,
+        node_property=None,
+        element_property=None,
+        show_edges=True,
+        show_undeformed=False,
+    ):
         try:
             import pyvista
         except ImportError:
@@ -198,4 +205,10 @@ class Solid:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val
 
-        mesh.plot(show_edges=show_edges)
+        pl.add_mesh(mesh, show_edges=show_edges)
+
+        if show_undeformed:
+            undefo = pyvista.UnstructuredGrid(elements, cell_types, self.nodes.tolist())
+            pl.add_mesh(undefo, color="grey", style="wireframe")
+
+        pl.show(jupyter_backend="client")

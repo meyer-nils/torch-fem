@@ -5,6 +5,7 @@ Krysl, Petr, Robust flat-facet triangular shell finite element, International Jo
 for Numerical Methods in Engineering, vol. 123, issue 10, pp. 2399-2423, 2022
 https://doi.org/10.1002/nme.6944
 """
+
 from math import sqrt
 
 import torch
@@ -178,9 +179,7 @@ class Shell:
             # Element bending stiffness
             Db = self._Db(B)
             DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, self.C, Db)
-            kb = torch.einsum(
-                "i,ijk->ijk", w * self.thickness**3 * detJ / 12.0, DbCDb
-            )
+            kb = torch.einsum("i,ijk->ijk", w * self.thickness**3 * detJ / 12.0, DbCDb)
 
             # Element transverse stiffness
             Ds = self._Ds(A)
@@ -355,4 +354,4 @@ class Shell:
         if mirror[2]:
             for msh in pl.meshes:
                 pl.add_mesh(msh.reflect((0, 0, 1)), show_edges=True, opacity=0.5)
-        pl.show()
+        pl.show(jupyter_backend="client")

@@ -233,4 +233,4 @@ class Truss:
                 sphere = pyvista.Sphere(radius=0.1 * size, center=pos[i].numpy())
                 pl.add_mesh(sphere, color="gray")
 
-        pl.show()
+        pl.show(jupyter_backend="client")
