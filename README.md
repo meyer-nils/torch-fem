@@ -1,5 +1,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fmeyer-nils%2Ftorch-fem%2Fmain%2Fpyproject.toml)
+![PyPI - Version](https://img.shields.io/pypi/v/torch-fem)
+[![Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/meyer-nils/torch-fem/HEAD)
+
 
 
 # torch-fem: Differentiable linear elastic finite elements
