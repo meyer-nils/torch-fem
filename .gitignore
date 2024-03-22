@@ -4,3 +4,10 @@
 # Python 
 *.pyc 
 *.egg-info
+
+# Builds 
+build
+dist
+
+# VS Code 
+.vscode
