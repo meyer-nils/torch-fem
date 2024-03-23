@@ -5,7 +5,14 @@ from .base import sparse_solve
 
 class Truss:
     def __init__(
-        self, nodes, elements, forces, displacements, constraints, areas, moduli
+        self,
+        nodes: torch.Tensor,
+        elements: torch.Tensor,
+        forces: torch.Tensor,
+        displacements: torch.Tensor,
+        constraints: torch.Tensor,
+        areas: torch.Tensor,
+        moduli: torch.Tensor,
     ):
         self.nodes = nodes
         self.dim = nodes.shape[1]
@@ -27,8 +34,7 @@ class Truss:
         self.indices = torch.stack(global_indices, dim=1)
 
     def k(self):
-        nodes = self.nodes[self.elements, :]
-        dx = nodes[:, 0, :] - nodes[:, 1, :]
+        dx = self.nodes[self.elements[:, 0]] - self.nodes[self.elements[:, 1]]
         l0 = torch.linalg.norm(dx, dim=-1)
         c = dx / l0[:, None]
         dims = range(self.dim)
@@ -86,19 +92,18 @@ class Truss:
 
         return u, f
 
-    def compute_stress(self, u):
-        # Evaluate stress
-        sigma = torch.zeros((self.n_elem))
-        for j, element in enumerate(self.elements):
-            n1 = element[0]
-            n2 = element[1]
-            dx = self.nodes[n1] - self.nodes[n2]
-            l0 = torch.linalg.norm(dx)
-            c = dx / l0
-            m = torch.tensor([c[0], c[1], -c[0], -c[1]])
-            u_j = torch.tensor([u[n1, 0], u[n1, 1], u[n2, 0], u[n2, 1]])
-            sigma[j] = self.moduli[j] / l0 * torch.inner(m, u_j)
-        return sigma
+    def compute_stress(self, u: torch.Tensor):
+        # Compute displacement degrees of freedom
+        disp = u[self.elements].reshape(-1, 2 * self.dim)
+
+        # Compute orientations
+        dx = self.nodes[self.elements[:, 1]] - self.nodes[self.elements[:, 0]]
+        l0 = torch.linalg.norm(dx, dim=-1)
+        c = dx / l0[:, None]
+        m = torch.stack([s * c[:, j] for s in [-1, 1] for j in range(self.dim)], dim=-1)
+
+        # Compute stress
+        return self.moduli / l0 * torch.einsum("ij,ij->i", m, disp)
 
     def plot(self, **kwargs):
         if self.dim == 2:
