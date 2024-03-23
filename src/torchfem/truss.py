@@ -100,6 +100,12 @@ class Truss:
             sigma[j] = self.moduli[j] / l0 * torch.inner(m, u_j)
         return sigma
 
+    def plot(self, **kwargs):
+        if self.dim == 2:
+            self.plot2d(**kwargs)
+        elif self.dim == 3:
+            self.plot3d(**kwargs)
+
     @torch.no_grad()
     def plot2d(
         self,
