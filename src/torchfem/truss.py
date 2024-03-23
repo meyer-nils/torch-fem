@@ -127,8 +127,6 @@ class Truss:
         except ImportError:
             raise Exception("Plotting 2D requires matplotlib.")
 
-        _, ax = plt.subplots()
-
         # Line widths from areas
         if show_thickness:
             a_max = torch.max(self.areas)
@@ -146,7 +144,7 @@ class Truss:
             sm = plt.cm.ScalarMappable(
                 cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax)
             )
-            plt.colorbar(sm, ax=ax, label="Stress", shrink=0.5)
+            plt.colorbar(sm, ax=plt.gca(), label="Stress", shrink=0.5)
         else:
             color = self.n_elem * [default_color]
 
