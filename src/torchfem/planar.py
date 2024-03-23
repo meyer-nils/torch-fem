@@ -9,13 +9,13 @@ from .elements import Quad1, Tria1
 class Planar:
     def __init__(
         self,
-        nodes,
-        elements,
-        forces,
-        displacements,
-        constraints,
-        thickness,
-        C,
+        nodes: torch.Tensor,
+        elements: torch.Tensor,
+        forces: torch.Tensor,
+        displacements: torch.Tensor,
+        constraints: torch.Tensor,
+        thickness: torch.Tensor,
+        C: torch.Tensor,
     ):
         self.nodes = nodes
         self.n_dofs = torch.numel(self.nodes)

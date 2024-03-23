@@ -22,14 +22,14 @@ KAPPA = 5.0 / 6.0
 class Shell:
     def __init__(
         self,
-        nodes,
-        elements,
-        forces,
-        displacements,
-        constraints,
-        thickness,
-        C,
-        Cs,
+        nodes: torch.Tensor,
+        elements: torch.Tensor,
+        forces: torch.Tensor,
+        displacements: torch.Tensor,
+        constraints: torch.Tensor,
+        thickness: torch.Tensor,
+        C: torch.Tensor,
+        Cs: torch.Tensor,
     ):
         self.nodes = nodes
         self.n_dofs = NDOF * len(self.nodes)

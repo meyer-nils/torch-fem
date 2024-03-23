@@ -43,6 +43,7 @@ def import_mesh(filename, C, Cs=None):
         raise Exception("Currently, only single element types are supported.")
     etype = etypes[0]
 
+    elements = torch.tensor(elements)
     dtype = torch.get_default_dtype()
 
     if not np.allclose(mesh.points[:, 2], np.zeros_like(mesh.points[:, 2])):

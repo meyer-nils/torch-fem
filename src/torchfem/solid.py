@@ -6,7 +6,14 @@ from .elements import Hexa1, Tetra1
 
 class Solid:
     def __init__(
-        self, nodes, elements, forces, displacements, constraints, C, strains=None
+        self,
+        nodes: torch.Tensor,
+        elements: torch.Tensor,
+        forces: torch.Tensor,
+        displacements: torch.Tensor,
+        constraints: torch.Tensor,
+        C: torch.Tensor,
+        strains=None,
     ):
         self.nodes = nodes
         self.n_dofs = torch.numel(self.nodes)
@@ -33,21 +40,6 @@ class Solid:
             idx = torch.tensor([3 * n + i for n in element for i in range(3)])
             global_indices.append(torch.stack(torch.meshgrid(idx, idx, indexing="xy")))
         self.indices = torch.stack(global_indices, dim=1)
-
-    def volumes(self):
-        volumes = torch.zeros((self.n_elem))
-        for j, element in enumerate(self.elements):
-            # Perform integrations
-            nodes = self.nodes[element, :]
-            volume = 0.0
-            for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
-                # Jacobian
-                J = self.etype.B(q) @ nodes
-                detJ = torch.linalg.det(J)
-                # Volume integration
-                volume += w * detJ
-            volumes[j] = volume
-        return volumes
 
     def J(self, q, nodes):
         # Jacobian and Jacobian determinant
