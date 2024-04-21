@@ -147,6 +147,9 @@ class Planar:
         cmap="viridis",
         linewidth=1.0,
         figsize=(8.0, 6.0),
+        colorbar=False,
+        vmin=None,
+        vmax=None,
     ):
         # Compute deformed positions
         pos = self.nodes + u
@@ -167,8 +170,18 @@ class Planar:
             else:
                 triangles = self.elements
             plt.tricontourf(
-                pos[:, 0], pos[:, 1], triangles, node_property, cmap=cmap, alpha=alpha
+                pos[:, 0],
+                pos[:, 1],
+                triangles,
+                node_property,
+                cmap=cmap,
+                levels=100,
+                alpha=alpha,
+                vmin=vmin,
+                vmax=vmax,
             )
+            if colorbar:
+                plt.colorbar()
 
         # Color surface with element properties (if provided)
         if element_property is not None:
@@ -177,6 +190,9 @@ class Planar:
             pc = PolyCollection(verts, cmap=cmap)
             pc.set_array(element_property)
             ax.add_collection(pc)
+            if colorbar:
+                plt.colorbar(pc)
+                pc.set_clim(vmin=vmin, vmax=vmax)
 
         # Nodes
         if len(pos) < 200:
