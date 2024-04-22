@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 from matplotlib.collections import PolyCollection
 
-from .base import sparse_solve
+from .base import sparse_index_select, sparse_solve
 from .elements import Quad1, Tria1
 
 
@@ -26,7 +26,7 @@ class Planar:
         self.constraints = constraints
         self.thickness = thickness
 
-        # Stack stiffness tensor (for general anisotropy and multi-material assignement)
+        # Stack stiffness tensor (for general anisotropy and multi-material assignment)
         if C.shape == torch.Size([3, 3]):
             self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
         else:
@@ -81,9 +81,7 @@ class Planar:
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
         f_d = torch.index_select(K, dim=1, index=con) @ self.displacements.ravel()[con]
-        K_red = torch.index_select(
-            torch.index_select(K, dim=0, index=uncon), dim=1, index=uncon
-        )
+        K_red = sparse_index_select(K, [uncon, uncon])
         f_red = (self.forces.ravel() - f_d)[uncon]
 
         # Solve for displacement
@@ -224,7 +222,7 @@ class Planar:
                         zorder=10,
                     )
 
-        # Contraints
+        # Constraints
         if bcs:
             for i, constraint in enumerate(self.constraints):
                 x = pos[i][0]

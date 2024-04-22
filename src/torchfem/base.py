@@ -28,3 +28,17 @@ class Solve(Function):
 
 
 sparse_solve = Solve.apply
+
+
+def sparse_index_select(t, slices):
+    indices = t.indices()
+    values = t.values()
+    shape = t.shape
+    for dim, slice in enumerate(slices):
+        mask = torch.isin(indices[dim], slice)
+        cumsum = torch.cumsum(torch.isin(torch.arange(0, shape[dim]), slice), 0)
+        indices = indices[:, mask]
+        values = values[mask]
+        indices[dim] = cumsum[indices[dim]] - 1
+
+    return torch.sparse_coo_tensor(indices, values, [len(s) for s in slices])

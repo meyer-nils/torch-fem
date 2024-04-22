@@ -10,7 +10,7 @@ from math import sqrt
 
 import torch
 
-from .base import sparse_solve
+from .base import sparse_index_select, sparse_solve
 from .elements import Tria1
 
 NDOF = 6
@@ -216,9 +216,7 @@ class Shell:
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
         f_d = torch.index_select(K, dim=1, index=con) @ self.displacements.ravel()[con]
-        K_red = torch.index_select(
-            torch.index_select(K, dim=0, index=uncon), dim=1, index=uncon
-        )
+        K_red = sparse_index_select(K, [uncon, uncon])
         f_red = (self.forces.ravel() - f_d)[uncon]
 
         # Solve for displacement

@@ -1,6 +1,6 @@
 import torch
 
-from .base import sparse_solve
+from .base import sparse_index_select, sparse_solve
 from .elements import Hexa1, Tetra1
 
 
@@ -28,7 +28,7 @@ class Solid:
             self.etype = Tetra1()
         self.strains = strains
 
-        # Stack stiffness tensor (for general anisotropy and multi-material assignement)
+        # Stack stiffness tensor (for general anisotropy and multi-material assignment)
         if C.shape == torch.Size([6, 6]):
             self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
         else:
@@ -113,9 +113,7 @@ class Solid:
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
         f_d = torch.index_select(K, dim=1, index=con) @ self.displacements.ravel()[con]
-        K_red = torch.index_select(
-            torch.index_select(K, dim=0, index=uncon), dim=1, index=uncon
-        )
+        K_red = sparse_index_select(K, [uncon, uncon])
         f_red = (self.forces.ravel() - f_d + F)[uncon]
 
         # Solve for displacement
