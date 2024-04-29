@@ -8,6 +8,7 @@ class Solve(Function):
     """
     Inspired by
     - https://blog.flaport.net/solving-sparse-linear-systems-in-pytorch.html
+    - https://github.com/pytorch/pytorch/issues/69538
     - https://github.com/cai4cai/torchsparsegradutils
     """
 

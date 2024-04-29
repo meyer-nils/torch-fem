@@ -10,8 +10,8 @@ from math import sqrt
 
 import torch
 
-from .base import sparse_index_select, sparse_solve
 from .elements import Tria1
+from .sparse import sparse_index_select, sparse_solve
 
 NDOF = 6
 NU = 0.5

@@ -1,7 +1,7 @@
 import torch
 
-from .base import sparse_index_select, sparse_solve
 from .elements import Hexa1, Tetra1
+from .sparse import sparse_index_select, sparse_solve
 
 
 class Solid:

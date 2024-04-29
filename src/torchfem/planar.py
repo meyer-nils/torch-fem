@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 import torch
 from matplotlib.collections import PolyCollection
 
-from .base import sparse_index_select, sparse_solve
 from .elements import Quad1, Tria1
+from .sparse import sparse_index_select, sparse_solve
 
 
 class Planar:

@@ -1,6 +1,6 @@
 import torch
 
-from .base import sparse_index_select, sparse_solve
+from .sparse import sparse_index_select, sparse_solve
 
 
 class Truss:
