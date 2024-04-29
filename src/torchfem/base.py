@@ -47,7 +47,7 @@ class Solve(Function):
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A.indices()[0, :]
         col = A.indices()[1, :]
-        val = -gradb.index_select(0, row) * x.index_select(0, col)
+        val = -gradb[row] * x[col]
         gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
 
         return gradA, gradb
@@ -59,12 +59,17 @@ sparse_solve = Solve.apply
 def sparse_index_select(t, slices):
     indices = t.indices()
     values = t.values()
-    shape = t.shape
+    in_shape = t.shape
+    out_shape = []
     for dim, slice in enumerate(slices):
-        mask = torch.isin(indices[dim], slice)
-        cumsum = torch.cumsum(torch.isin(torch.arange(0, shape[dim]), slice), 0)
-        indices = indices[:, mask]
-        values = values[mask]
-        indices[dim] = cumsum[indices[dim]] - 1
+        if slice is None:
+            out_shape.append(in_shape[dim])
+        else:
+            out_shape.append(len(slice))
+            mask = torch.isin(indices[dim], slice)
+            cumsum = torch.cumsum(torch.isin(torch.arange(0, in_shape[dim]), slice), 0)
+            indices = indices[:, mask]
+            values = values[mask]
+            indices[dim] = cumsum[indices[dim]] - 1
 
-    return torch.sparse_coo_tensor(indices, values, [len(s) for s in slices])
+    return torch.sparse_coo_tensor(indices, values, out_shape)

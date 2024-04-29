@@ -112,7 +112,7 @@ class Solid:
         # Get reduced stiffness matrix
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
-        f_d = torch.index_select(K, dim=1, index=con) @ self.displacements.ravel()[con]
+        f_d = sparse_index_select(K, [None, con]) @ self.displacements.ravel()[con]
         K_red = sparse_index_select(K, [uncon, uncon])
         f_red = (self.forces.ravel() - f_d + F)[uncon]
 
