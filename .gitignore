@@ -11,3 +11,7 @@ dist
 
 # VS Code 
 .vscode
+
+# Numpy files
+*.npy
+*.npz
