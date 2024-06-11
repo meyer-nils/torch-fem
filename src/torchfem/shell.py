@@ -141,7 +141,7 @@ class Shell:
         for element in self.elements:
             edge1 = self.nodes[element[1]] - self.nodes[element[0]]
             edge2 = self.nodes[element[2]] - self.nodes[element[1]]
-            normal = torch.cross(edge1, edge2)
+            normal = torch.linalg.cross(edge1, edge2)
             normal = normal / torch.linalg.norm(normal)
             dir1 = edge1 / torch.linalg.norm(edge1)
             dir2 = -torch.linalg.cross(edge1, normal)
@@ -194,7 +194,7 @@ class Shell:
             for i in range(self.etype.nodes):
                 kd[:, i * NDOF - 1, i * NDOF - 1] = DRILL_PENALTY
 
-            # Total elemnt stiffness in local coordinates
+            # Total element stiffness in local coordinates
             kt = km + kb + ks + kd
 
             # Total element stiffness in global coordinates
