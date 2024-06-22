@@ -2,7 +2,7 @@ import torch
 from meshio import Mesh
 
 from torchfem import Planar, Shell, Solid, Truss
-from torchfem.elements import Hexa1, Quad1, Tetra1, Tria1
+from torchfem.elements import Hexa1, Hexa2, Quad1, Quad2, Tetra1, Tetra2, Tria1, Tria2
 
 
 @torch.no_grad()
@@ -12,12 +12,20 @@ def export_mesh(mesh, filename, nodal_data={}, elem_data={}):
     else:
         if isinstance(mesh.etype, Quad1):
             etype = "quad"
+        elif isinstance(mesh.etype, Quad2):
+            etype = "quad8"
         elif isinstance(mesh.etype, Tria1):
             etype = "triangle"
+        elif isinstance(mesh.etype, Tria2):
+            etype = "triangle6"
         elif isinstance(mesh.etype, Tetra1):
             etype = "tetra"
+        elif isinstance(mesh.etype, Tetra2):
+            etype = "tetra10"
         elif isinstance(mesh.etype, Hexa1):
             etype = "hexahedron"
+        elif isinstance(mesh.etype, Hexa2):
+            etype = "hexahedron20"
 
     mesh = Mesh(
         points=mesh.nodes,
@@ -36,7 +44,16 @@ def import_mesh(filename, C, Cs=None):
     elements = []
     etypes = []
     for cell_block in mesh.cells:
-        if cell_block.type in ["triangle", "quad", "tetra" "hexahedron"]:
+        if cell_block.type in [
+            "triangle",
+            "triangle6",
+            "quad",
+            "quad8",
+            "tetra",
+            "tetra10",
+            "hexahedron",
+            "hexahedron20",
+        ]:
             etypes.append(cell_block.type)
             elements += cell_block.data.tolist()
     if len(etypes) > 1:
@@ -54,7 +71,7 @@ def import_mesh(filename, C, Cs=None):
             displacements = torch.zeros((len(nodes), 6))
             constraints = torch.zeros((len(nodes), 6), dtype=bool)
             return Shell(nodes, elements, forces, displacements, constraints, t, C, Cs)
-        elif etype in ["tetra" "hexahedron"]:
+        elif etype in ["tetra", "tetra10", "hexahedron", "hexahedron20"]:
             forces = torch.zeros_like(nodes)
             displacements = torch.zeros_like(nodes)
             constraints = torch.zeros_like(nodes, dtype=bool)
