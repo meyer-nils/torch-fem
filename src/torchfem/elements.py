@@ -59,10 +59,10 @@ class Tria2:
         )
 
     def ipoints(self) -> torch.Tensor:
-        return torch.tensor([[1.0 / 3.0, 1.0 / 3.0]])
+        return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
 
     def iweights(self) -> torch.Tensor:
-        return torch.tensor([0.5])
+        return torch.tensor([1.0 / 6.0, 1.0 / 6.0, 1.0 / 6.0])
 
 
 class Quad1:
