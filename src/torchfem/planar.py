@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 from matplotlib.collections import PolyCollection
 
-from .elements import Quad1, Tria1
+from .elements import Quad1, Quad2, Tria1, Tria2
 from .sparse import sparse_index_select, sparse_solve
 
 
@@ -33,10 +33,14 @@ class Planar:
             self.C = C
 
         # Element type
-        if len(elements[0]) == 4:
-            self.etype = Quad1()
-        else:
+        if len(elements[0]) == 3:
             self.etype = Tria1()
+        elif len(elements[0]) == 4:
+            self.etype = Quad1()
+        elif len(elements[0]) == 6:
+            self.etype = Tria2()
+        elif len(elements[0]) == 8:
+            self.etype = Quad2()
 
         # Compute efficient mapping from local to global indices
         global_indices = []
@@ -137,6 +141,7 @@ class Planar:
         node_property=None,
         element_property=None,
         node_labels=False,
+        node_markers=False,
         orientation=False,
         axes=False,
         bcs=True,
@@ -160,13 +165,13 @@ class Planar:
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
-            if isinstance(self.etype, Quad1):
+            if isinstance(self.etype, (Quad1, Quad2)):
                 triangles = []
                 for e in self.elements:
                     triangles.append([e[0], e[1], e[2]])
                     triangles.append([e[2], e[3], e[0]])
             else:
-                triangles = self.elements
+                triangles = self.elements[:, :3]
             plt.tricontourf(
                 pos[:, 0],
                 pos[:, 1],
@@ -193,7 +198,7 @@ class Planar:
                 pc.set_clim(vmin=vmin, vmax=vmax)
 
         # Nodes
-        if len(pos) < 200:
+        if node_markers:
             plt.scatter(pos[:, 0], pos[:, 1], color=color, marker="o")
             if node_labels:
                 for i, node in enumerate(pos):
@@ -201,6 +206,10 @@ class Planar:
 
         # Elements
         for element in self.elements:
+            if isinstance(self.etype, Tria2):
+                element = element[:3]
+            if isinstance(self.etype, Quad2):
+                element = element[:4]
             x1 = [pos[node, 0] for node in element] + [pos[element[0], 0]]
             x2 = [pos[node, 1] for node in element] + [pos[element[0], 1]]
             plt.plot(x1, x2, color=color, linewidth=linewidth)

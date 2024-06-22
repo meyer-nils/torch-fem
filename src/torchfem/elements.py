@@ -490,3 +490,40 @@ class Hexa2:
 
     def iweights(self) -> torch.Tensor:
         return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+
+def linear_to_quadratic(
+    nodes: torch.Tensor, elements: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    new_nodes = nodes.tolist()
+    midpoints = {}
+
+    def get_midpoint_index(n1, n2):
+        if (n1, n2) in midpoints:
+            return midpoints[(n1, n2)]
+        if (n2, n1) in midpoints:
+            return midpoints[(n2, n1)]
+
+        midpoint = (nodes[n1] + nodes[n2]) / 2
+        mid_index = len(new_nodes)
+        new_nodes.append(midpoint)
+        midpoints[(n1, n2)] = mid_index
+        return mid_index
+
+    new_elements = []
+    for element in elements:
+        if len(element) == 3:
+            n1, n2, n3 = element.numpy()
+            m12 = get_midpoint_index(n1, n2)
+            m23 = get_midpoint_index(n2, n3)
+            m31 = get_midpoint_index(n3, n1)
+            new_elements.append([n1, n2, n3, m12, m23, m31])
+        if len(element) == 4:
+            n1, n2, n3, n4 = element.numpy()
+            m12 = get_midpoint_index(n1, n2)
+            m23 = get_midpoint_index(n2, n3)
+            m34 = get_midpoint_index(n3, n4)
+            m41 = get_midpoint_index(n4, n1)
+            new_elements.append([n1, n2, n3, n4, m12, m23, m34, m41])
+
+    return torch.tensor(new_nodes), torch.tensor(new_elements)
