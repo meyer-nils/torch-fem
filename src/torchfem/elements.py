@@ -512,18 +512,65 @@ def linear_to_quadratic(
 
     new_elements = []
     for element in elements:
-        if len(element) == 3:
+        if len(element) == 3 and nodes.shape[1] == 2:
             n1, n2, n3 = element.numpy()
             m12 = get_midpoint_index(n1, n2)
             m23 = get_midpoint_index(n2, n3)
             m31 = get_midpoint_index(n3, n1)
             new_elements.append([n1, n2, n3, m12, m23, m31])
-        if len(element) == 4:
+        if len(element) == 4 and nodes.shape[1] == 2:
             n1, n2, n3, n4 = element.numpy()
             m12 = get_midpoint_index(n1, n2)
             m23 = get_midpoint_index(n2, n3)
             m34 = get_midpoint_index(n3, n4)
             m41 = get_midpoint_index(n4, n1)
             new_elements.append([n1, n2, n3, n4, m12, m23, m34, m41])
+        if len(element) == 4 and nodes.shape[1] == 3:
+            n1, n2, n3, n4 = element.numpy()
+            m12 = get_midpoint_index(n1, n2)
+            m23 = get_midpoint_index(n2, n3)
+            m13 = get_midpoint_index(n1, n3)
+            m41 = get_midpoint_index(n4, n1)
+            m24 = get_midpoint_index(n2, n4)
+            m34 = get_midpoint_index(n3, n4)
+            new_elements.append([n1, n2, n3, n4, m12, m23, m13, m41, m24, m34])
+        if len(element) == 8 and nodes.shape[1] == 3:
+            n1, n2, n3, n4, n5, n6, n7, n8 = element.numpy()
+            m12 = get_midpoint_index(n1, n2)
+            m23 = get_midpoint_index(n2, n3)
+            m34 = get_midpoint_index(n3, n4)
+            m41 = get_midpoint_index(n4, n1)
+            m56 = get_midpoint_index(n5, n6)
+            m67 = get_midpoint_index(n6, n7)
+            m78 = get_midpoint_index(n7, n8)
+            m85 = get_midpoint_index(n8, n5)
+            m15 = get_midpoint_index(n1, n5)
+            m26 = get_midpoint_index(n2, n6)
+            m37 = get_midpoint_index(n3, n7)
+            m48 = get_midpoint_index(n4, n8)
+            new_elements.append(
+                [
+                    n1,
+                    n2,
+                    n3,
+                    n4,
+                    n5,
+                    n6,
+                    n7,
+                    n8,
+                    m12,
+                    m23,
+                    m34,
+                    m41,
+                    m56,
+                    m67,
+                    m78,
+                    m85,
+                    m15,
+                    m26,
+                    m37,
+                    m48,
+                ]
+            )
 
     return torch.tensor(new_nodes), torch.tensor(new_elements)

@@ -1,6 +1,6 @@
 import torch
 
-from .elements import Hexa1, Tetra1
+from .elements import Hexa1, Hexa2, Tetra1, Tetra2
 from .sparse import sparse_index_select, sparse_solve
 
 
@@ -22,10 +22,15 @@ class Solid:
         self.forces = forces
         self.displacements = displacements
         self.constraints = constraints
-        if len(elements[0]) == 8:
-            self.etype = Hexa1()
-        elif len(elements[0]) == 4:
+        if len(elements[0]) == 4:
             self.etype = Tetra1()
+        elif len(elements[0]) == 8:
+            self.etype = Hexa1()
+        elif len(elements[0]) == 10:
+            self.etype = Tetra2()
+        elif len(elements[0]) == 20:
+            self.etype = Hexa2()
+
         self.strains = strains
 
         # Stack stiffness tensor (for general anisotropy and multi-material assignment)
@@ -176,8 +181,12 @@ class Solid:
         # VTK cell types
         if isinstance(self.etype, Tetra1):
             cell_types = self.n_elem * [pyvista.CellType.TETRA]
+        elif isinstance(self.etype, Tetra2):
+            cell_types = self.n_elem * [pyvista.CellType.QUADRATIC_TETRA]
         elif isinstance(self.etype, Hexa1):
             cell_types = self.n_elem * [pyvista.CellType.HEXAHEDRON]
+        elif isinstance(self.etype, Hexa2):
+            cell_types = self.n_elem * [pyvista.CellType.QUADRATIC_HEXAHEDRON]
 
         # VTK element list
         elements = []
