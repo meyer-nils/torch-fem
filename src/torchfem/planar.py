@@ -189,7 +189,12 @@ class Planar:
         # Color surface with element properties (if provided)
         if element_property is not None:
             ax = plt.gca()
-            verts = pos[self.elements]
+            if isinstance(self.etype, Tria2):
+                verts = pos[self.elements[:, :3]]
+            elif isinstance(self.etype, Quad2):
+                verts = pos[self.elements[:, :4]]
+            else:
+                verts = pos[self.elements]
             pc = PolyCollection(verts, cmap=cmap)
             pc.set_array(element_property)
             ax.add_collection(pc)
