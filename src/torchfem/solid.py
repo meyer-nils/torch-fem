@@ -209,10 +209,24 @@ class Solid:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val
 
-        pl.add_mesh(mesh, show_edges=show_edges)
+        # Trick to plot edges for quadratic elements
+        # See: https://github.com/pyvista/pyvista/discussions/5777
+        if show_edges:
+            surface = mesh.separate_cells().extract_surface(nonlinear_subdivision=4)
+            edges = surface.extract_feature_edges()
+            pl.add_mesh(surface)
+            actor = pl.add_mesh(edges, style="wireframe", color="black", line_width=3)
+            actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
+        else:
+            pl.add_mesh(mesh)
 
         if show_undeformed:
             undefo = pyvista.UnstructuredGrid(elements, cell_types, self.nodes.tolist())
-            pl.add_mesh(undefo, color="grey", style="wireframe")
+            edges = (
+                undefo.separate_cells()
+                .extract_surface(nonlinear_subdivision=4)
+                .extract_feature_edges()
+            )
+            pl.add_mesh(edges, style="wireframe", color="grey", line_width=3)
 
         pl.show(jupyter_backend="client")
