@@ -207,7 +207,7 @@ class Planar:
             plt.scatter(pos[:, 0], pos[:, 1], color=color, marker="o")
             if node_labels:
                 for i, node in enumerate(pos):
-                    plt.annotate(i, (node[0] + 0.01, node[1] + 0.1), color=color)
+                    plt.annotate(i, (node[0] + 0.01, node[1] + 0.01), color=color)
 
         # Elements
         for element in self.elements:
