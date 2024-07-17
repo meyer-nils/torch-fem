@@ -168,6 +168,7 @@ class Solid:
         element_property=None,
         show_edges=True,
         show_undeformed=False,
+        contour=None,
     ):
         try:
             import pyvista
@@ -209,6 +210,10 @@ class Solid:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val
 
+        if contour:
+            mesh = mesh.cell_data_to_point_data()
+            mesh = mesh.contour(contour)
+
         # Trick to plot edges for quadratic elements
         # See: https://github.com/pyvista/pyvista/discussions/5777
         if show_edges:
@@ -227,6 +232,6 @@ class Solid:
                 .extract_surface(nonlinear_subdivision=4)
                 .extract_feature_edges()
             )
-            pl.add_mesh(edges, style="wireframe", color="grey", line_width=3)
+            pl.add_mesh(edges, style="wireframe", color="grey", line_width=1)
 
         pl.show(jupyter_backend="client")
