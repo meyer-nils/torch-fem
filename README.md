@@ -13,19 +13,22 @@ Simple finite element assemblers for linear elasticity with PyTorch. The advanta
 ## Basic examples
 The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. 
 
-<img src="doc/cantilever_tria2.png" align="center" width="400"></br>
-**Simple cantilever beam:** There are examples with linear and quadratic triangles and quads.
+<figure align="center">
+    <img src="doc/cantilever_tria2.png" width="400">
+    <figcaption><b>Simple cantilever beam:</b> There are examples with linear and quadratic triangles and quads.</figcaption>
+</figure>
+
 
 ## Optimization examples
 The subdirectory `examples->optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization).
 
-<img src="doc/topopt_mbb.png" align="center" width="400"></br>
+<img src="doc/topopt_mbb.png" width="400"></br>
 **Simple topology optimization of a MBB beam:** You can switch between analytical sensitivities and autograd sensitivities.
 
-<img src="doc/fillet_shape_optimization.png" align="center" width="400"></br>
+<img src="doc/fillet_shape_optimization.png" width="400"></br>
 **Simple shape optimization of a fillet:** The shape is morphed with shape basis vectors and MMA + autograd is used to minimize the maximum stress.
 
-<img src="doc/plate_hole_shape_optimization.png" align="center" width="400"></br>
+<img src="doc/plate_hole_shape_optimization.png" width="400"></br>
 **Simple fiber orientation optimization of a plate with a hole:** Compliance is minimized by optimizing the fiber orientation of an anisotropic material using automatic differentiation w.r.t. element-wise fiber angles.
 
 ## Installation
