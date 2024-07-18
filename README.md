@@ -22,6 +22,9 @@ The subdirectory `examples->optimization` demonstrates the use of torch-fem for 
 <img src="doc/topopt_mbb.png" width="400"></br>
 **Simple topology optimization of a MBB beam:** You can switch between analytical sensitivities and autograd sensitivities.
 
+<img src="doc/topopt_3d.png" width="400"></br>
+**Simple topology optimization of a 3D beam:** The model is exported to Paraview for visualization.
+
 <img src="doc/fillet_shape_optimization.png" width="400"></br>
 **Simple shape optimization of a fillet:** The shape is morphed with shape basis vectors and MMA + autograd is used to minimize the maximum stress.
 
