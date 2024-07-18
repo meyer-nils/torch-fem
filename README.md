@@ -13,7 +13,7 @@ Simple finite element assemblers for linear elasticity with PyTorch. The advanta
 ## Basic examples
 The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. 
 
-<figure align="center">
+<figure align="center" width="100%">
     <img src="doc/cantilever_tria2.png" width="400">
     <figcaption><b>Simple cantilever beam:</b> There are examples with linear and quadratic triangles and quads.</figcaption>
 </figure>
