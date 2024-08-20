@@ -208,17 +208,19 @@ class Truss:
         # Bounding box
         size = torch.linalg.norm(pos.max() - pos.min()).item()
 
+        # Radii
+        radii = torch.sqrt(self.areas / torch.pi)
+
         # Elements
-        tubes = pyvista.MultiBlock()
         for j, element in enumerate(self.elements):
             n1 = element[0]
             n2 = element[1]
-            radius = torch.sqrt(self.areas[j] / torch.pi)
-            line = pyvista.Line(pos[n1], pos[n2])
-            tube = line.tube(radius=radius)
-            tube.cell_data["Stress"] = sigma[j]
-            tubes.append(tube)
-        pl.add_mesh(tubes, scalars="Stress", cmap="viridis")
+            tube = pyvista.Tube(pos[n1], pos[n2], radius=radii[j])
+            if sigma is not None:
+                tube.cell_data["Stress"] = sigma[j]
+                pl.add_mesh(tube, scalars="Stress", cmap="viridis")
+            else:
+                pl.add_mesh(tube, color="gray")
 
         # Forces
         force_centers = []
