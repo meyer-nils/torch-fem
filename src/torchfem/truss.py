@@ -191,7 +191,9 @@ class Truss:
         plt.axis("off")
 
     @torch.no_grad()
-    def plot3d(self, u=0.0, sigma=None, constraint_factor=0.5):
+    def plot3d(
+        self, u=0.0, sigma=None, force_size_factor=0.5, constraint_size_factor=0.1
+    ):
         try:
             import pyvista
         except ImportError:
@@ -232,7 +234,7 @@ class Truss:
         pl.add_arrows(
             torch.stack(force_centers).numpy(),
             torch.stack(force_directions).numpy(),
-            mag=constraint_factor * size,
+            mag=force_size_factor * size,
             color="gray",
         )
 
@@ -240,7 +242,7 @@ class Truss:
         for i, constraint in enumerate(self.constraints):
             if constraint.any():
                 sphere = pyvista.Sphere(
-                    radius=constraint_factor * size, center=pos[i].numpy()
+                    radius=constraint_size_factor * size, center=pos[i].numpy()
                 )
                 pl.add_mesh(sphere, color="gray")
 
