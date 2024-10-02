@@ -1,7 +1,18 @@
 import torch
-from scipy.sparse import coo_matrix
-from scipy.sparse.linalg import spsolve
 from torch.autograd import Function
+
+available_backends = []
+try:
+    import cupy
+    from cupyx.scipy.sparse import coo_matrix
+    from cupyx.scipy.sparse.linalg import spsolve
+
+    available_backends.append("cupyx")
+except ImportError:
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.linalg import spsolve
+
+    available_backends.append("scipy")
 
 
 class Solve(Function):
@@ -20,17 +31,27 @@ class Solve(Function):
         shape = A.size()
         A = A.coalesce()
 
-        # Convert to numpy
-        A_np = coo_matrix(
-            (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
-        ).tocsr()
-        b_np = b.data.numpy()
-
         # Solve the system
-        x_np = spsolve(A_np, b_np)
+        if "cupyx" in available_backends:
+            A_cp = coo_matrix(
+                (
+                    cupy.asarray(A._values()),
+                    (cupy.asarray(A._indices()[0]), cupy.asarray(A._indices()[1])),
+                ),
+                shape=shape,
+            ).tocsr()
+            b_cp = cupy.asarray(b.data.numpy())
+            x_cp = spsolve(A_cp, b_cp)
+            x_np = cupy.asnumpy(x_cp)
+        else:
+            A_np = coo_matrix(
+                (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
+            ).tocsr()
+            b_np = b.data.numpy()
+            x_np = spsolve(A_np, b_np)
 
         # Convert back to torch
-        x = torch.tensor(x_np, requires_grad=True)
+        x = torch.tensor(x_np, requires_grad=True, dtype=b.dtype, device=b.device)
 
         # Save the variables
         ctx.save_for_backward(A, b, x)
