@@ -1,6 +1,6 @@
 import torch
 from scipy.sparse import coo_matrix
-from scipy.sparse.linalg import spsolve
+from scipy.sparse.linalg import minres, spsolve
 from torch.autograd import Function
 
 
@@ -24,7 +24,14 @@ class Solve(Function):
             (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
         ).tocsr()
         b_np = b.data.numpy()
-        x_np = spsolve(A_np, b_np)
+        if shape[0] < 100000:
+            # Solve small systems with direct solver
+            x_np = spsolve(A_np, b_np)
+        else:
+            # Solve large systems with iterative solver
+            x_np, exit_code = minres(A_np, b_np, rtol=1e-10)
+            if exit_code != 0:
+                raise RuntimeError(f"minres failed with exit code {exit_code}")
 
         # Convert back to torch
         x = torch.tensor(x_np, requires_grad=True, dtype=b.dtype, device=b.device)
