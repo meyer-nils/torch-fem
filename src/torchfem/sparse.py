@@ -18,7 +18,7 @@ class Solve(Function):
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
         shape = A.size()
-        A = A.coalesce()
+        # A = A.coalesce()
 
         A_np = coo_matrix(
             (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
