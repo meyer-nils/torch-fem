@@ -37,7 +37,6 @@ Your may install torch-fem via pip with
 pip install torch-fem
 ```
 
-
 ## Minimal code
 This is a minimal example of how to use torch-fem to solve a simple cantilever problem. 
 
@@ -88,11 +87,11 @@ This solves the model and plots the result:
 The following benchmarks were performed on a cube subjected to a one dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of the displacements with respect to the forces.
 
 #### Apple M1 Pro (10 cores, 16 GB RAM)
-Python 3.10, NumPy 2.0.2, SciPy 1.14.1, linked against Apple Accelerate (BLAS, LAPACK, etc.)
+Python 3.10 with Apple Accelerate
 
 |  N  |    DOFs | FWD Time |  FWD Memory | BWD Time |  BWD Memory |
 | --- | ------- | -------- | ----------- | -------- | ----------- |
-|  10 |    3000 |    0.80s |    31.94 MB |    0.64s |     0.77 MB |
-|  20 |   24000 |    3.57s |   457.92 MB |    2.93s |   223.73 MB |
-|  30 |   81000 |   71.18s |  2304.69 MB |   68.04s |  2117.05 MB |
-|  40 |  192000 |  660.25s |  6369.42 MB |  648.31s |  6486.05 MB |
+|  10 |    3000 |    0.76s |    14.08 MB |    0.65s |     2.69 MB |
+|  20 |   24000 |    3.53s |   474.75 MB |    2.95s |   227.78 MB |
+|  30 |   81000 |   70.67s |  2774.97 MB |   69.70s |  1998.42 MB |
+|  40 |  192000 |  637.74s |  8962.11 MB |  626.16s |  8985.50 MB |
