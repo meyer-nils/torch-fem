@@ -84,3 +84,15 @@ This solves the model and plots the result:
 
 ![minimal](doc/minimal_example_solved.png)
 
+## Benchmarks 
+The following benchmarks were performed on a cube subjected to a one dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of the displacements with respect to the forces.
+
+#### Apple M1 Pro (10 cores, 16 GB RAM)
+Python 3.10, NumPy 2.0.2, SciPy 1.14.1, linked against Apple Accelerate (BLAS, LAPACK, etc.)
+
+|  N  |    DOFs | FWD Time |  FWD Memory | BWD Time |  BWD Memory |
+| --- | ------- | -------- | ----------- | -------- | ----------- |
+|  10 |    3000 |    0.80s |    31.94 MB |    0.64s |     0.77 MB |
+|  20 |   24000 |    3.57s |   457.92 MB |    2.93s |   223.73 MB |
+|  30 |   81000 |   71.18s |  2304.69 MB |   68.04s |  2117.05 MB |
+|  40 |  192000 |  660.25s |  6369.42 MB |  648.31s |  6486.05 MB |
