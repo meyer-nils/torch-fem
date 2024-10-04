@@ -24,7 +24,7 @@ class Solve(Function):
             (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
         ).tocsr()
         b_np = b.data.numpy()
-        if shape[0] < 100000:
+        if shape[0] < 50000:
             # Solve small systems with direct solver
             x_np = spsolve(A_np, b_np)
         else:
