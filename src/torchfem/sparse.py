@@ -62,6 +62,7 @@ sparse_solve = Solve.apply
 
 
 def sparse_index_select(t, slices):
+    coalesced = t.is_coalesced()
     indices = t.indices()
     values = t.values()
     in_shape = t.shape
@@ -77,4 +78,4 @@ def sparse_index_select(t, slices):
             values = values[mask]
             indices[dim] = cumsum[indices[dim]] - 1
 
-    return torch.sparse_coo_tensor(indices, values, out_shape)
+    return torch.sparse_coo_tensor(indices, values, out_shape, is_coalesced=coalesced)
