@@ -39,12 +39,16 @@ class Solid:
         else:
             self.C = C
 
-        # Compute efficient mapping from local to global indices
-        global_indices = []
-        for element in self.elements:
-            idx = torch.tensor([3 * n + i for n in element for i in range(3)])
-            global_indices.append(torch.stack(torch.meshgrid(idx, idx, indexing="xy")))
-        self.indices = torch.stack(global_indices, dim=1)
+        # Compute mapping from local to global indices (hard to read, but fast)
+        N = self.n_elem
+        idx = ((3 * self.elements).unsqueeze(-1) + torch.arange(3)).reshape(N, -1)
+        self.indices = torch.stack(
+            [
+                idx.unsqueeze(-1).expand(N, -1, idx.shape[1]),
+                idx.unsqueeze(1).expand(N, idx.shape[1], -1),
+            ],
+            dim=0,
+        )
 
     def J(self, q, nodes):
         # Jacobian and Jacobian determinant
