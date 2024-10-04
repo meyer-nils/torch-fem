@@ -61,18 +61,13 @@ class Solid:
     def D(self, B):
         # Element strain matrix
         zeros = torch.zeros(self.n_elem, self.etype.nodes)
-        D0 = torch.stack([B[:, 0, :], zeros, zeros], dim=-1).reshape(self.n_elem, -1)
-        D1 = torch.stack([zeros, B[:, 1, :], zeros], dim=-1).reshape(self.n_elem, -1)
-        D2 = torch.stack([zeros, zeros, B[:, 2, :]], dim=-1).reshape(self.n_elem, -1)
-        D3 = torch.stack([zeros, B[:, 2, :], B[:, 1, :]], dim=-1).reshape(
-            self.n_elem, -1
-        )
-        D4 = torch.stack([B[:, 2, :], zeros, B[:, 0, :]], dim=-1).reshape(
-            self.n_elem, -1
-        )
-        D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(
-            self.n_elem, -1
-        )
+        shape = [self.n_elem, -1]
+        D0 = torch.stack([B[:, 0, :], zeros, zeros], dim=-1).reshape(shape)
+        D1 = torch.stack([zeros, B[:, 1, :], zeros], dim=-1).reshape(shape)
+        D2 = torch.stack([zeros, zeros, B[:, 2, :]], dim=-1).reshape(shape)
+        D3 = torch.stack([zeros, B[:, 2, :], B[:, 1, :]], dim=-1).reshape(shape)
+        D4 = torch.stack([B[:, 2, :], zeros, B[:, 0, :]], dim=-1).reshape(shape)
+        D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
 
     def k(self):
@@ -81,10 +76,11 @@ class Solid:
         k = torch.zeros((self.n_elem, 3 * self.etype.nodes, 3 * self.etype.nodes))
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             J, detJ = self.J(q, nodes)
-            B = torch.linalg.inv(J) @ self.etype.B(q)
+            B = torch.matmul(torch.linalg.inv(J), self.etype.B(q))
             D = self.D(B)
-            DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
-            k[:, :, :] += torch.einsum("i,ijk->ijk", w * detJ, DCD)
+            CD = torch.matmul(self.C, D)
+            DCD = torch.matmul(CD.transpose(1, 2), D)
+            k[:, :, :] += (w * detJ)[:, None, None] * DCD
         return k
 
     def f(self, epsilon):
@@ -93,11 +89,11 @@ class Solid:
         f = torch.zeros(self.n_elem, 3 * self.etype.nodes)
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             J, detJ = self.J(q, nodes)
-            B = torch.linalg.inv(J) @ self.etype.B(q)
+            B = torch.matmul(torch.linalg.inv(J), self.etype.B(q))
             D = self.D(B)
-            DC = torch.einsum("...ji,...jk->...ik", D, self.C)
-            DCE = torch.einsum("...ij,...j->...i", DC, epsilon)
-            f[:, :] += torch.einsum("i,ij->ij", w * detJ, DCE)
+            CD = torch.matmul(self.C, D)
+            DCE = torch.matmul(CD.transpose(1, 2), epsilon.unsqueeze(-1)).squeeze(-1)
+            f[:, :] += (w * detJ)[:, None] * DCE
         return f
 
     def stiffness(self):
