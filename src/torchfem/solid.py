@@ -44,8 +44,8 @@ class Solid:
         idx = ((3 * self.elements).unsqueeze(-1) + torch.arange(3)).reshape(N, -1)
         self.indices = torch.stack(
             [
-                idx.unsqueeze(-1).expand(N, -1, idx.shape[1]),
                 idx.unsqueeze(1).expand(N, idx.shape[1], -1),
+                idx.unsqueeze(-1).expand(N, -1, idx.shape[1]),
             ],
             dim=0,
         )
