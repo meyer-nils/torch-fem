@@ -90,7 +90,7 @@ class Truss:
 
         return u, f
 
-    def compute_stress(self, u: torch.Tensor):
+    def compute_strain(self, u: torch.Tensor):
         # Compute displacement degrees of freedom
         disp = u[self.elements].reshape(-1, 2 * self.dim)
 
@@ -100,8 +100,15 @@ class Truss:
         c = dx / l0[:, None]
         m = torch.stack([s * c[:, j] for s in [-1, 1] for j in range(self.dim)], dim=-1)
 
+        # Compute strain
+        return torch.einsum("ij,ij->i", m, disp) / l0
+
+    def compute_stress(self, u: torch.Tensor):
+        # Compute displacement degrees of freedom
+        strain = self.compute_strain(u)
+
         # Compute stress
-        return self.moduli / l0 * torch.einsum("ij,ij->i", m, disp)
+        return self.moduli * strain
 
     def plot(self, **kwargs):
         if self.dim == 2:
