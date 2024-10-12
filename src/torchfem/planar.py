@@ -104,7 +104,7 @@ class Planar:
         f = f.reshape((-1, 2))
         return u, f
 
-    def compute_stress(self, u, xi=[0.0, 0.0], mises=False):
+    def compute_strain(self, u, xi=[0.0, 0.0]):
         # Extract node positions of element
         nodes = self.nodes[self.elements, :]
 
@@ -124,8 +124,17 @@ class Planar:
         D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
         D = torch.stack([D0, D1, D2], dim=1)
 
+        # Compute strain
+        epsilon = torch.einsum("...jk,...k->...j", D, disp)
+
+        return epsilon
+
+    def compute_stress(self, u, xi=[0.0, 0.0], mises=False):
+        # Compute strain
+        strain = self.compute_strain(u, xi)
+
         # Compute stress
-        sigma = torch.einsum("...ij,...jk,...k->...i", self.C, D, disp)
+        sigma = torch.einsum("...ij,...j->...i", self.C, strain)
 
         # Return stress
         if mises:

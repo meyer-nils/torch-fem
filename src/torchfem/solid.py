@@ -133,7 +133,7 @@ class Solid:
         f = f.reshape((-1, 3))
         return u, f
 
-    def compute_stress(self, u, xi=[0.0, 0.0, 0.0]):
+    def compute_strain(self, u, xi=[0.0, 0.0, 0.0]):
         # Extract node positions of element
         nodes = self.nodes[self.elements, :]
 
@@ -153,6 +153,12 @@ class Solid:
         epsilon = torch.einsum("...ij,...j->...i", D, disp)
         if self.strains is not None:
             epsilon -= self.strains
+
+        return epsilon
+
+    def compute_stress(self, u, xi=[0.0, 0.0, 0.0]):
+        # Compute strain
+        epsilon = self.compute_strain(u, xi)
 
         # Compute stress
         sigma = torch.einsum("...ij,...j->...i", self.C, epsilon)
