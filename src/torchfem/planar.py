@@ -157,6 +157,7 @@ class Planar:
         colorbar=False,
         vmin=None,
         vmax=None,
+        title=None,
     ):
         # Compute deformed positions
         pos = self.nodes + u
@@ -267,6 +268,9 @@ class Planar:
                 headwidth=0,
                 width=0.005,
             )
+
+        if title:
+            plt.title(title)
 
         plt.gca().set_aspect("equal", adjustable="box")
         if not axes:
