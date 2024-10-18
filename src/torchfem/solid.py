@@ -169,6 +169,7 @@ class Solid:
         show_edges=True,
         show_undeformed=False,
         contour=None,
+        cmap="viridis",
     ):
         try:
             import pyvista
@@ -219,11 +220,11 @@ class Solid:
         if show_edges:
             surface = mesh.separate_cells().extract_surface(nonlinear_subdivision=4)
             edges = surface.extract_feature_edges()
-            pl.add_mesh(surface)
+            pl.add_mesh(surface, cmap=cmap)
             actor = pl.add_mesh(edges, style="wireframe", color="black", line_width=3)
             actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
         else:
-            pl.add_mesh(mesh)
+            pl.add_mesh(mesh, cmap=cmap)
 
         if show_undeformed:
             undefo = pyvista.UnstructuredGrid(elements, cell_types, self.nodes.tolist())
