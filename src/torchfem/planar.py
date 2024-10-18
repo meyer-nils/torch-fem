@@ -112,6 +112,7 @@ class Planar:
         disp = u[self.elements, :].reshape(self.n_elem, -1)
 
         # Jacobian
+        xi = torch.tensor(xi)
         J = self.etype.B(xi) @ nodes
 
         # Compute B

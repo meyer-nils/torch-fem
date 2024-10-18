@@ -240,6 +240,7 @@ class Shell:
         disp = u[self.elements, :].reshape(self.n_elem, -1)
 
         # Jacobian
+        xi = torch.tensor(xi)
         J = self.etype.B(xi) @ self.loc_nodes
         A = torch.linalg.det(J) / 2.0
 
