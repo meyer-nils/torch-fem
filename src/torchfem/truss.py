@@ -4,26 +4,17 @@ from .sparse import sparse_index_select, sparse_solve
 
 
 class Truss:
-    def __init__(
-        self,
-        nodes: torch.Tensor,
-        elements: torch.Tensor,
-        forces: torch.Tensor,
-        displacements: torch.Tensor,
-        constraints: torch.Tensor,
-        areas: torch.Tensor,
-        moduli: torch.Tensor,
-    ):
+    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor):
         self.nodes = nodes
         self.dim = nodes.shape[1]
         self.n_dofs = torch.numel(self.nodes)
         self.elements = elements
         self.n_elem = len(self.elements)
-        self.forces = forces
-        self.displacements = displacements
-        self.constraints = constraints
-        self.areas = areas
-        self.moduli = moduli
+        self.forces = torch.zeros_like(nodes)
+        self.displacements = torch.zeros_like(nodes)
+        self.constraints = torch.zeros_like(nodes, dtype=bool)
+        self.areas = torch.ones((len(elements)))
+        self.moduli = torch.ones((len(elements)))
 
         # Precompute mapping from local to global indices
         global_indices = []

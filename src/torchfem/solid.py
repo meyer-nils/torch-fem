@@ -5,23 +5,14 @@ from .sparse import sparse_index_select, sparse_solve
 
 
 class Solid:
-    def __init__(
-        self,
-        nodes: torch.Tensor,
-        elements: torch.Tensor,
-        forces: torch.Tensor,
-        displacements: torch.Tensor,
-        constraints: torch.Tensor,
-        C: torch.Tensor,
-        strains=None,
-    ):
+    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
         self.nodes = nodes
         self.n_dofs = torch.numel(self.nodes)
         self.elements = elements
         self.n_elem = len(self.elements)
-        self.forces = forces
-        self.displacements = displacements
-        self.constraints = constraints
+        self.forces = torch.zeros_like(nodes)
+        self.displacements = torch.zeros_like(nodes)
+        self.constraints = torch.zeros_like(nodes, dtype=bool)
         if len(elements[0]) == 4:
             self.etype = Tetra1()
         elif len(elements[0]) == 8:
@@ -31,9 +22,11 @@ class Solid:
         elif len(elements[0]) == 20:
             self.etype = Hexa2()
 
-        self.strains = strains
+        # Additional strains
+        self.strains = None
 
         # Stack stiffness tensor (for general anisotropy and multi-material assignment)
+        C = material.C()
         if C.shape == torch.Size([6, 6]):
             self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
         else:

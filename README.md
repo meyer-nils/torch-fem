@@ -44,29 +44,21 @@ This is a minimal example of how to use torch-fem to solve a simple cantilever p
 from torchfem import Planar
 from torchfem.materials import IsotropicPlaneStress
 
-# Define a (minimal) mesh 
+# Nodes and elements
 nodes = torch.tensor([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 1.0]])
 elements = torch.tensor([[0, 1, 4, 3], [1, 2, 5, 4]])
 
-# Apply a load at the tip
-tip = (nodes[:, 0] == 2.0) & (nodes[:, 1] == 1.0)
-forces = torch.zeros_like(nodes)
-forces[tip, 1] = -1.0
+# Create model
+cantilever = Planar(nodes, elements, material)
+
+# Load at tip
+cantilever.forces[5, 1] = -1.0
 
 # Constrained displacement at left end
-left = nodes[:, 0] == 0.0
-displacements = torch.zeros_like(nodes)
-constraints = torch.zeros_like(nodes, dtype=bool)
-constraints[left, :] = True
+cantilever.constraints[[0, 3], :] = True
 
-# Thickness
-thickness = torch.ones(len(elements))
-
-# Material model (plane stress)
-material = IsotropicPlaneStress(E=1000.0, nu=0.3)
-
-# Create model
-cantilever = Planar(nodes, elements, forces, displacements, constraints, thickness, material.C())
+# Show model
+cantilever.plot(node_markers="o", node_labels=True)
 ```
 This creates a minimal planar FEM model:
 
@@ -77,7 +69,7 @@ This creates a minimal planar FEM model:
 u, f = cantilever.solve()
 
 # Plot
-cantilever.plot(u, node_property=torch.norm(u, dim=1), node_markers=True)
+cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 This solves the model and plots the result:
 

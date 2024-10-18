@@ -20,27 +20,18 @@ KAPPA = 5.0 / 6.0
 
 
 class Shell:
-    def __init__(
-        self,
-        nodes: torch.Tensor,
-        elements: torch.Tensor,
-        forces: torch.Tensor,
-        displacements: torch.Tensor,
-        constraints: torch.Tensor,
-        thickness: torch.Tensor,
-        C: torch.Tensor,
-        Cs: torch.Tensor,
-    ):
+    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
         self.nodes = nodes
         self.n_dofs = NDOF * len(self.nodes)
         self.elements = elements
         self.n_elem = len(self.elements)
-        self.forces = forces
-        self.displacements = displacements
-        self.constraints = constraints
-        self.thickness = thickness
-        self.C = C
-        self.Cs = Cs
+        N = len(nodes)
+        self.forces = torch.zeros((N, NDOF))
+        self.displacements = torch.zeros((N, NDOF))
+        self.constraints = torch.zeros((N, NDOF), dtype=bool)
+        self.thickness = torch.ones(len(elements))
+        self.C = material.C()
+        self.Cs = material.Cs()
 
         # Set nodes
         self.update_local_nodes()

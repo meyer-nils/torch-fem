@@ -7,26 +7,18 @@ from .sparse import sparse_index_select, sparse_solve
 
 
 class Planar:
-    def __init__(
-        self,
-        nodes: torch.Tensor,
-        elements: torch.Tensor,
-        forces: torch.Tensor,
-        displacements: torch.Tensor,
-        constraints: torch.Tensor,
-        thickness: torch.Tensor,
-        C: torch.Tensor,
-    ):
+    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
         self.nodes = nodes
         self.n_dofs = torch.numel(self.nodes)
         self.elements = elements
         self.n_elem = len(self.elements)
-        self.forces = forces
-        self.displacements = displacements
-        self.constraints = constraints
-        self.thickness = thickness
+        self.forces = torch.zeros_like(nodes)
+        self.displacements = torch.zeros_like(nodes)
+        self.constraints = torch.zeros_like(nodes, dtype=bool)
+        self.thickness = torch.ones(len(elements))
 
         # Stack stiffness tensor (for general anisotropy and multi-material assignment)
+        C = material.C()
         if C.shape == torch.Size([3, 3]):
             self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
         else:
