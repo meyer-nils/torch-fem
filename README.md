@@ -78,6 +78,17 @@ This solves the model and plots the result:
 
 ![minimal](doc/minimal_example_solved.png)
 
+If we want to compute gradients through the FEM model, we simply need to define the variables that require gradients. Automatic differentiation is performed through the entire FE solver.
+```python 
+# Enable automatic differentiation
+cantilever.thickness.requires_grad = True
+u, f = cantilever.solve()
+
+# Compute sensitivity
+compliance = torch.inner(f.ravel(), u.ravel())
+torch.autograd.grad(compliance, cantilever.thickness)[0]
+```
+
 ## Benchmarks 
 The following benchmarks were performed on a cube subjected to a one dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of displacements with respect to forces.
 
