@@ -44,6 +44,9 @@ This is a minimal example of how to use torch-fem to solve a simple cantilever p
 from torchfem import Planar
 from torchfem.materials import IsotropicPlaneStress
 
+# Material
+material = IsotropicPlaneStress(E=1000.0, nu=0.3)
+
 # Nodes and elements
 nodes = torch.tensor([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 1.0]])
 elements = torch.tensor([[0, 1, 4, 3], [1, 2, 5, 4]])
