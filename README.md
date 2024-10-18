@@ -19,6 +19,9 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
 ## Optimization examples
 The subdirectory `examples->optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization).
 
+<img src="doc/bridge.png" width="400"></br>
+**Simple shape optimization of a truss:** The top nodes are moved and MMA + autograd is used to minimize the compliance.
+
 <img src="doc/topopt_mbb.png" width="400"></br>
 **Simple topology optimization of a MBB beam:** You can switch between analytical sensitivities and autograd sensitivities.
 
