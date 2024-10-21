@@ -16,6 +16,9 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
 <img src="doc/cantilever_tria2.png" width="400"></br>
 **Simple cantilever beam:** There are examples with linear and quadratic triangles and quads.
 
+<img src="doc/plate_hole_plasticity.png" width="400"></br>
+**Plasticity in a plate with hole (experimental):** Isotropic linear hardening model for plane-stress.
+
 ## Optimization examples
 The subdirectory `examples->optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization).
 
@@ -26,7 +29,7 @@ The subdirectory `examples->optimization` demonstrates the use of torch-fem for 
 **Simple topology optimization of a MBB beam:** You can switch between analytical sensitivities and autograd sensitivities.
 
 <img src="doc/topopt_3d.png" width="400"></br>
-**Simple topology optimization of a 3D beam:** The model is exported to Paraview for visualization.
+**3D topology optimization of a jet engine bracket:** The model is exported to Paraview for visualization.
 
 <img src="doc/fillet_shape_optimization.png" width="400"></br>
 **Simple shape optimization of a fillet:** The shape is morphed with shape basis vectors and MMA + autograd is used to minimize the maximum stress.
