@@ -215,14 +215,17 @@ class Solid:
             mesh = mesh.cell_data_to_point_data()
             mesh = mesh.contour(contour)
 
-        # Trick to plot edges for quadratic elements
-        # See: https://github.com/pyvista/pyvista/discussions/5777
         if show_edges:
-            surface = mesh.separate_cells().extract_surface(nonlinear_subdivision=4)
-            edges = surface.extract_feature_edges()
-            pl.add_mesh(surface, cmap=cmap)
-            actor = pl.add_mesh(edges, style="wireframe", color="black", line_width=3)
-            actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
+            if isinstance(self.etype, Tetra2) or isinstance(self.etype, Hexa2):
+                # Trick to plot edges for quadratic elements
+                # See: https://github.com/pyvista/pyvista/discussions/5777
+                surface = mesh.separate_cells().extract_surface(nonlinear_subdivision=4)
+                edges = surface.extract_feature_edges()
+                pl.add_mesh(surface, cmap=cmap)
+                actor = pl.add_mesh(edges, style="wireframe", color="black")
+                actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
+            else:
+                pl.add_mesh(mesh, cmap=cmap, show_edges=True)
         else:
             pl.add_mesh(mesh, cmap=cmap)
 
@@ -233,6 +236,6 @@ class Solid:
                 .extract_surface(nonlinear_subdivision=4)
                 .extract_feature_edges()
             )
-            pl.add_mesh(edges, style="wireframe", color="grey", line_width=1)
+            pl.add_mesh(edges, style="wireframe", color="grey")
 
         pl.show(jupyter_backend="client")
