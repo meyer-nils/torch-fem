@@ -13,6 +13,7 @@ class Solid:
         self.forces = torch.zeros_like(nodes)
         self.displacements = torch.zeros_like(nodes)
         self.constraints = torch.zeros_like(nodes, dtype=bool)
+        self.ext_strain = torch.zeros(self.n_elem, 6)
         if len(elements[0]) == 4:
             self.etype = Tetra1()
         elif len(elements[0]) == 8:
@@ -52,7 +53,7 @@ class Solid:
         D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
 
-    def integrate_step(self, de, ds, du):
+    def integrate_step(self, de, ds, du, dde0):
         """Perform numerical integrations for element stiffness matrix."""
         nodes = self.nodes[self.elements, :]
         du = du[self.elements, :].reshape(self.n_elem, -1)
@@ -60,17 +61,18 @@ class Solid:
         f = torch.zeros((self.n_elem, 3 * self.etype.nodes))
         epsilon = torch.zeros(self.n_elem, 6)
         sigma = torch.zeros(self.n_elem, 6)
+        N = len(self.etype.iweights())
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
             # Compute gradient operators
             J, detJ = self.J(q, nodes)
             B = torch.matmul(torch.linalg.inv(J), self.etype.B(q))
             D = self.D(B)
             # Evaluate material response
-            dde = torch.einsum("...ij,...j->...i", D, du)
+            dde = torch.einsum("...ij,...j->...i", D, du) - dde0
             e_new, s_new, ddsdde = self.material.step(dde, de, ds)
             # Compute contribution to element strain and stress
-            epsilon[:, :] += (w * detJ)[:, None] * e_new
-            sigma[:, :] += (w * detJ)[:, None] * s_new
+            epsilon[:, :] += e_new / N
+            sigma[:, :] += s_new / N
             # Compute element internal forces
             f[:, :] += (w * detJ)[:, None] * torch.einsum("...ij,...i->...j", D, s_new)
             # Compute element stiffness matrix
@@ -113,17 +115,23 @@ class Solid:
         u = torch.zeros_like(self.nodes)
         du = torch.zeros_like(self.nodes).ravel()
 
+        # Incremental loading
         for i in range(1, len(increments)):
             # Increment size
             inc = increments[i] - increments[i - 1]
+
             # Load increment
             F_ext = inc * self.forces.ravel()
             DU = inc * self.displacements.clone().ravel()
+            DE = inc * self.ext_strain
+
+            # Newton-Raphson iterations
             for j in range(max_iter):
                 du[con] = DU[con]
+
                 # Element-wise integration
                 k, f_int, epsilon_new, sigma_new = self.integrate_step(
-                    epsilon, sigma, du.reshape((-1, 3))
+                    epsilon, sigma, du.reshape((-1, 3)), DE
                 )
 
                 # Assemble global stiffness matrix and internal force vector

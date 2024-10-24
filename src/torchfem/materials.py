@@ -4,21 +4,22 @@ import torch
 
 
 class Isotropic:
-    def __init__(self, E: Union[float, torch.Tensor], nu: Union[float, torch.Tensor]):
+    def __init__(
+        self,
+        E: Union[float, torch.Tensor],
+        nu: Union[float, torch.Tensor],
+        eps0: Union[float, torch.Tensor] = 0.0,
+    ):
         # Convert float inputs to tensors
-        if isinstance(E, float) and isinstance(nu, float):
+        if isinstance(E, float) and isinstance(nu, float) and isinstance(eps0, float):
             E = torch.tensor(E)
             nu = torch.tensor(nu)
+            eps0 = torch.tensor(eps0)
 
         # Store material properties
         self.E = E
         self.nu = nu
-
-        # We assume a vectorized material, if E is a tensor
-        if self.E.dim() == 0:
-            self.is_vectorized = False
-        else:
-            self.is_vectorized = True
+        self.eps0 = eps0
 
         # Lame parameters
         self.lbd = self.E * self.nu / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
@@ -26,17 +27,12 @@ class Isotropic:
 
         # Stiffness tensor
         z = torch.zeros_like(self.E)
+        diag = self.lbd + 2.0 * self.G
         self.C = torch.stack(
             [
-                torch.stack(
-                    [self.lbd + 2.0 * self.G, self.lbd, self.lbd, z, z, z], dim=-1
-                ),
-                torch.stack(
-                    [self.lbd, self.lbd + 2.0 * self.G, self.lbd, z, z, z], dim=-1
-                ),
-                torch.stack(
-                    [self.lbd, self.lbd, self.lbd + 2.0 * self.G, z, z, z], dim=-1
-                ),
+                torch.stack([diag, self.lbd, self.lbd, z, z, z], dim=-1),
+                torch.stack([self.lbd, diag, self.lbd, z, z, z], dim=-1),
+                torch.stack([self.lbd, self.lbd, diag, z, z, z], dim=-1),
                 torch.stack([z, z, z, self.G, z, z], dim=-1),
                 torch.stack([z, z, z, z, self.G, z], dim=-1),
                 torch.stack([z, z, z, z, z, self.G], dim=-1),
@@ -53,9 +49,11 @@ class Isotropic:
         """Create a vectorized copy of the material for `n_elm` elements."""
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
-        return Isotropic(E, nu)
+        eps0 = self.eps0.repeat(n_elem)
+        return Isotropic(E, nu, eps0)
 
     def step(self, depsilon, epsilon, sigma):
+        """Perform a strain increment."""
         epsilon_new = epsilon + depsilon
         sigma_new = sigma + torch.einsum("...ij,...j->...i", self.C, depsilon)
         ddsdde = self.C
