@@ -1,4 +1,5 @@
 import torch
+from tqdm import tqdm
 
 from .elements import Hexa1, Hexa2, Tetra1, Tetra2
 from .sparse import sparse_solve
@@ -9,6 +10,7 @@ class Solid:
         self.nodes = nodes
         self.n_dofs = torch.numel(self.nodes)
         self.elements = elements
+        self.n_nod = len(self.nodes)
         self.n_elem = len(self.elements)
         self.forces = torch.zeros_like(nodes)
         self.displacements = torch.zeros_like(nodes)
@@ -22,9 +24,10 @@ class Solid:
             self.etype = Tetra2()
         elif len(elements[0]) == 20:
             self.etype = Hexa2()
+        self.n_int = len(self.etype.iweights())
 
         # Stack stiffness tensor (for general anisotropy and multi-material assignment)
-        self.material = material.vectorize(self.n_elem)
+        self.material = material.vectorize(self.n_int, self.n_elem)
 
         # Compute mapping from local to global indices (hard to read, but fast)
         N = self.n_elem
@@ -53,33 +56,36 @@ class Solid:
         D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
 
-    def integrate_step(self, de, ds, du, dde0):
+    def integrate_step(self, de, ds, da, du, dde0):
         """Perform numerical integrations for element stiffness matrix."""
         nodes = self.nodes[self.elements, :]
         du = du[self.elements, :].reshape(self.n_elem, -1)
         k = torch.zeros((self.n_elem, 3 * self.etype.nodes, 3 * self.etype.nodes))
         f = torch.zeros((self.n_elem, 3 * self.etype.nodes))
-        epsilon = torch.zeros(self.n_elem, 6)
-        sigma = torch.zeros(self.n_elem, 6)
-        N = len(self.etype.iweights())
-        for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
+        epsilon = torch.zeros(self.n_int, self.n_elem, 6)
+        sigma = torch.zeros(self.n_int, self.n_elem, 6)
+        state = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
+        for i, (w, q) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
             # Compute gradient operators
             J, detJ = self.J(q, nodes)
             B = torch.matmul(torch.linalg.inv(J), self.etype.B(q))
             D = self.D(B)
             # Evaluate material response
             dde = torch.einsum("...ij,...j->...i", D, du) - dde0
-            e_new, s_new, ddsdde = self.material.step(dde, de, ds)
+            e_new, s_new, a_new, ddsdde = self.material.step(
+                dde, de[i], ds[i], da[i], i
+            )
             # Compute contribution to element strain and stress
-            epsilon[:, :] += e_new / N
-            sigma[:, :] += s_new / N
+            epsilon[i, :, :] = e_new
+            sigma[i, :, :] = s_new
+            state[i, :, :] = a_new
             # Compute element internal forces
             f[:, :] += (w * detJ)[:, None] * torch.einsum("...ij,...i->...j", D, s_new)
             # Compute element stiffness matrix
             CD = torch.matmul(ddsdde, D)
             DCD = torch.matmul(CD.transpose(1, 2), D)
             k[:, :, :] += (w * detJ)[:, None, None] * DCD
-        return k, f, epsilon, sigma
+        return k, f, epsilon, sigma, state
 
     def assemble_stiffness(self, k, con):
         """Assemble global stiffness matrix."""
@@ -103,20 +109,43 @@ class Solid:
         values = f.ravel()
         return F.index_add_(0, indices, values)
 
-    def solve(self, increments=[0, 1], max_iter=3, tol=1e-10):
-        """Solve with Newton-Raphson method."""
+    def solve(self, increments=[0, 1], max_iter=10, tol=1e-10, verbose=False):
+        """Solve the FEM problem with the Newton-Raphson method.
+
+        Args:
+            increments (sequence, optional): Steps for incremental loading.
+                Defaults to [0, 1].
+            max_iter (int, optional): Maximum number of Newton iterations per increment.
+                Defaults to 10.
+            tol (float, optional): Tolerance for residual. Defaults to 1e-10.
+            verbose (bool, optional): Print solver progress. Defaults to False.
+
+        Returns:
+            tuple: Nodal return values are:
+                `u`, `f`: Tensors of shape (N_increment, N_nodes, 3)
+                Elemental  values are:
+                `sigma`, `epsilon`, `state`: Tensors of shape
+                (N_increment, N_int, N_elem, 6) with N_int the number of integration
+                points and N_elem the number of elements.
+        """
+        # Number of increments
+        N = len(increments)
 
         # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
-        epsilon = torch.zeros(self.n_elem, 6)
-        sigma = torch.zeros(self.n_elem, 6)
-        f = torch.zeros_like(self.nodes)
-        u = torch.zeros_like(self.nodes)
+        # Initialize variables to be computed
+        epsilon = torch.zeros(N, self.n_int, self.n_elem, 6)
+        sigma = torch.zeros(N, self.n_int, self.n_elem, 6)
+        state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
+        f = torch.zeros(N, self.n_nod, 3)
+        u = torch.zeros(N, self.n_nod, 3)
+
+        # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
 
         # Incremental loading
-        for i in range(1, len(increments)):
+        for i in tqdm(range(1, len(increments)), disable=not verbose, desc="Increment"):
             # Increment size
             inc = increments[i] - increments[i - 1]
 
@@ -126,12 +155,17 @@ class Solid:
             DE = inc * self.ext_strain
 
             # Newton-Raphson iterations
-            for j in range(max_iter):
+            for j in tqdm(
+                range(max_iter),
+                disable=not verbose,
+                desc="Newton Iteration",
+                leave=False,
+            ):
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_int, epsilon_new, sigma_new = self.integrate_step(
-                    epsilon, sigma, du.reshape((-1, 3)), DE
+                k, f_int, epsilon_new, sigma_new, state_new = self.integrate_step(
+                    epsilon[i - 1], sigma[i - 1], state[i - 1], du.reshape((-1, 3)), DE
                 )
 
                 # Assemble global stiffness matrix and internal force vector
@@ -142,18 +176,20 @@ class Solid:
                 residual = F_int - F_ext
                 residual[con] = 0.0
                 res_norm = torch.linalg.norm(residual)
-                print(f"Residual (Increment {i}, Iteration {j}): {res_norm}")
+                if res_norm < tol:
+                    break
 
                 # Solve for displacement increment
                 du -= sparse_solve(K, residual)
 
             # Update increment
-            epsilon = epsilon_new
-            sigma = sigma_new
-            f = F_int.reshape((-1, 3))
-            u += du.reshape((-1, 3))
+            epsilon[i] = epsilon_new
+            sigma[i] = sigma_new
+            state[i] = state_new
+            f[i] = F_int.reshape((-1, 3))
+            u[i] += du.reshape((-1, 3))
 
-        return u, f, sigma, epsilon
+        return u, f, sigma, epsilon, state
 
     @torch.no_grad()
     def plot(
