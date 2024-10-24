@@ -36,55 +36,42 @@ class Solid:
         idx2 = idx.unsqueeze(-1).expand(N, -1, idx.shape[1])
         self.indices = torch.stack([idx1, idx2], dim=0)
 
-    def J(self, q, nodes):
-        """Jacobian and Jacobian determinant."""
-        J = self.etype.B(q) @ nodes
-        detJ = torch.linalg.det(J)
-        if torch.any(detJ <= 0.0):
-            raise Exception("Negative Jacobian. Check element numbering.")
-        return J, detJ
-
     def D(self, B):
         """Element gradient operator"""
-        zeros = torch.zeros(self.n_elem, self.etype.nodes)
-        shape = [self.n_elem, -1]
-        D0 = torch.stack([B[:, 0, :], zeros, zeros], dim=-1).reshape(shape)
-        D1 = torch.stack([zeros, B[:, 1, :], zeros], dim=-1).reshape(shape)
-        D2 = torch.stack([zeros, zeros, B[:, 2, :]], dim=-1).reshape(shape)
-        D3 = torch.stack([zeros, B[:, 2, :], B[:, 1, :]], dim=-1).reshape(shape)
-        D4 = torch.stack([B[:, 2, :], zeros, B[:, 0, :]], dim=-1).reshape(shape)
-        D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
-        return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
+        zeros = torch.zeros(self.n_int, self.n_elem, self.etype.nodes)
+        shape = [self.n_int, self.n_elem, -1]
+        D0 = torch.stack([B[:, :, 0, :], zeros, zeros], dim=-1).reshape(shape)
+        D1 = torch.stack([zeros, B[:, :, 1, :], zeros], dim=-1).reshape(shape)
+        D2 = torch.stack([zeros, zeros, B[:, :, 2, :]], dim=-1).reshape(shape)
+        D3 = torch.stack([zeros, B[:, :, 2, :], B[:, :, 1, :]], dim=-1).reshape(shape)
+        D4 = torch.stack([B[:, :, 2, :], zeros, B[:, :, 0, :]], dim=-1).reshape(shape)
+        D5 = torch.stack([B[:, :, 1, :], B[:, :, 0, :], zeros], dim=-1).reshape(shape)
+        return torch.stack([D0, D1, D2, D3, D4, D5], dim=2)
 
     def integrate_step(self, de, ds, da, du, dde0):
         """Perform numerical integrations for element stiffness matrix."""
         nodes = self.nodes[self.elements, :]
         du = du[self.elements, :].reshape(self.n_elem, -1)
-        k = torch.zeros((self.n_elem, 3 * self.etype.nodes, 3 * self.etype.nodes))
-        f = torch.zeros((self.n_elem, 3 * self.etype.nodes))
-        epsilon = torch.zeros(self.n_int, self.n_elem, 6)
-        sigma = torch.zeros(self.n_int, self.n_elem, 6)
-        state = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
-        for i, (w, q) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
-            # Compute gradient operators
-            J, detJ = self.J(q, nodes)
-            B = torch.matmul(torch.linalg.inv(J), self.etype.B(q))
-            D = self.D(B)
-            # Evaluate material response
-            dde = torch.einsum("...ij,...j->...i", D, du) - dde0
-            e_new, s_new, a_new, ddsdde = self.material.step(
-                dde, de[i], ds[i], da[i], i
-            )
-            # Compute contribution to element strain and stress
-            epsilon[i, :, :] = e_new
-            sigma[i, :, :] = s_new
-            state[i, :, :] = a_new
-            # Compute element internal forces
-            f[:, :] += (w * detJ)[:, None] * torch.einsum("...ij,...i->...j", D, s_new)
-            # Compute element stiffness matrix
-            CD = torch.matmul(ddsdde, D)
-            DCD = torch.matmul(CD.transpose(1, 2), D)
-            k[:, :, :] += (w * detJ)[:, None, None] * DCD
+        # Integration weights and points
+        w = self.etype.iweights()
+        xi = self.etype.ipoints()
+        # Compute gradient operators
+        b = self.etype.B(xi)
+        J = torch.einsum("ijk,mkl->imjl", b, nodes)
+        detJ = torch.linalg.det(J)
+        if torch.any(detJ <= 0.0):
+            raise Exception("Negative Jacobian. Check element numbering.")
+        B = torch.einsum("ijkl,ilm->ijkm", torch.linalg.inv(J), b)
+        D = self.D(B)
+        # Evaluate material response
+        dde = torch.einsum("ijkl,jl->ijk", D, du) - dde0
+        epsilon, sigma, state, ddsdde = self.material.step(dde, de, ds, da)
+        # Compute element internal forces
+        f = torch.einsum("i,ij,ijkl,ijk->ijl", w, detJ, D, sigma).sum(dim=0)
+        # Compute element stiffness matrix
+        CD = torch.matmul(ddsdde, D)
+        DCD = torch.matmul(CD.transpose(2, 3), D)
+        k = torch.einsum("i,ij,ijkl->ijkl", w, detJ, DCD).sum(dim=0)
         return k, f, epsilon, sigma, state
 
     def assemble_stiffness(self, k, con):
@@ -109,25 +96,8 @@ class Solid:
         values = f.ravel()
         return F.index_add_(0, indices, values)
 
-    def solve(self, increments=[0, 1], max_iter=10, tol=1e-10, verbose=False):
-        """Solve the FEM problem with the Newton-Raphson method.
-
-        Args:
-            increments (sequence, optional): Steps for incremental loading.
-                Defaults to [0, 1].
-            max_iter (int, optional): Maximum number of Newton iterations per increment.
-                Defaults to 10.
-            tol (float, optional): Tolerance for residual. Defaults to 1e-10.
-            verbose (bool, optional): Print solver progress. Defaults to False.
-
-        Returns:
-            tuple: Nodal return values are:
-                `u`, `f`: Tensors of shape (N_increment, N_nodes, 3)
-                Elemental  values are:
-                `sigma`, `epsilon`, `state`: Tensors of shape
-                (N_increment, N_int, N_elem, 6) with N_int the number of integration
-                points and N_elem the number of elements.
-        """
+    def solve(self, increments=[0, 1], max_iter=10, tol=1e-4, verbose=False):
+        """Solve the FEM problem with the Newton-Raphson method."""
         # Number of increments
         N = len(increments)
 
@@ -175,7 +145,7 @@ class Solid:
                 # Compute residual
                 residual = F_int - F_ext
                 residual[con] = 0.0
-                res_norm = torch.linalg.norm(residual)
+                res_norm = torch.max(residual) / torch.max(F_int)
                 if res_norm < tol:
                     break
 
