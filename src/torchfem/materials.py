@@ -1,52 +1,65 @@
+from typing import Union
+
 import torch
 
 
 class Isotropic:
-    def __init__(self, E: float, nu: float):
-        self._E = E
-        self._nu = nu
+    def __init__(self, E: Union[float, torch.Tensor], nu: Union[float, torch.Tensor]):
+        # Convert float inputs to tensors
+        if isinstance(E, float) and isinstance(nu, float):
+            E = torch.tensor(E)
+            nu = torch.tensor(nu)
 
-    def E(self) -> float:
-        """Young's modulus."""
-        return self._E
+        # Store material properties
+        self.E = E
+        self.nu = nu
 
-    def nu(self) -> float:
-        """Poisson's ration."""
-        return self._nu
+        # We assume a vectorized material, if E is a tensor
+        if self.E.dim() == 0:
+            self.is_vectorized = False
+        else:
+            self.is_vectorized = True
 
-    def lbd(self) -> float:
-        """Lamè parameter."""
-        return (self._E * self._nu) / ((1.0 + self._nu) * (1.0 - 2.0 * self._nu))
+        # Lame parameters
+        self.lbd = self.E * self.nu / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
+        self.G = self.E / (2.0 * (1.0 + self.nu))
 
-    def G(self) -> float:
-        """Shear modulus."""
-        return self._E / (2.0 * (1.0 + self._nu))
-
-    def K(self) -> float:
-        """Bulk modulus."""
-        return self._E / (3.0 * (1.0 - 2.0 * self._nu))
-
-    def C(self) -> torch.Tensor:
-        """Stiffness tensor in Voigt notation."""
-
-        lbd = self.lbd()
-        G = self.G()
-
-        # Return stiffness tensor
-        return torch.tensor(
+        # Stiffness tensor
+        z = torch.zeros_like(self.E)
+        self.C = torch.stack(
             [
-                [lbd + 2.0 * G, lbd, lbd, 0.0, 0.0, 0],
-                [lbd, lbd + 2.0 * G, lbd, 0.0, 0.0, 0],
-                [lbd, lbd, lbd + 2.0 * G, 0.0, 0.0, 0],
-                [0.0, 0.0, 0.0, G, 0.0, 0],
-                [0.0, 0.0, 0.0, 0.0, G, 0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, G],
-            ]
+                torch.stack(
+                    [self.lbd + 2.0 * self.G, self.lbd, self.lbd, z, z, z], dim=-1
+                ),
+                torch.stack(
+                    [self.lbd, self.lbd + 2.0 * self.G, self.lbd, z, z, z], dim=-1
+                ),
+                torch.stack(
+                    [self.lbd, self.lbd, self.lbd + 2.0 * self.G, z, z, z], dim=-1
+                ),
+                torch.stack([z, z, z, self.G, z, z], dim=-1),
+                torch.stack([z, z, z, z, self.G, z], dim=-1),
+                torch.stack([z, z, z, z, z, self.G], dim=-1),
+            ],
+            dim=-1,
         )
 
-    def Cs(self) -> torch.Tensor:
-        """Shear stiffness matrix for shells."""
-        return torch.tensor([[self.G(), 0], [0.0, self.G()]])
+        # Stiffness tensor for shells
+        self.Cs = torch.stack(
+            [torch.stack([self.G, z], dim=-1), torch.stack([z, self.G], dim=-1)], dim=-1
+        )
+
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        E = self.E.repeat(n_elem)
+        nu = self.nu.repeat(n_elem)
+        return Isotropic(E, nu)
+
+    def step(self, depsilon, epsilon, sigma):
+        epsilon_new = epsilon + depsilon
+        sigma_new = sigma + torch.einsum("...ij,...j->...i", self.C, depsilon)
+        ddsdde = self.C
+        return epsilon_new, sigma_new, ddsdde
 
 
 class IsotropicPlaneStress(Isotropic):

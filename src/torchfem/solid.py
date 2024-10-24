@@ -1,7 +1,7 @@
 import torch
 
 from .elements import Hexa1, Hexa2, Tetra1, Tetra2
-from .sparse import sparse_index_select, sparse_solve
+from .sparse import sparse_solve
 
 
 class Solid:
@@ -22,29 +22,18 @@ class Solid:
         elif len(elements[0]) == 20:
             self.etype = Hexa2()
 
-        # Additional strains
-        self.strains = None
-
         # Stack stiffness tensor (for general anisotropy and multi-material assignment)
-        C = material.C()
-        if C.shape == torch.Size([6, 6]):
-            self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
-        else:
-            self.C = C
+        self.material = material.vectorize(self.n_elem)
 
         # Compute mapping from local to global indices (hard to read, but fast)
         N = self.n_elem
         idx = ((3 * self.elements).unsqueeze(-1) + torch.arange(3)).reshape(N, -1)
-        self.indices = torch.stack(
-            [
-                idx.unsqueeze(1).expand(N, idx.shape[1], -1),
-                idx.unsqueeze(-1).expand(N, -1, idx.shape[1]),
-            ],
-            dim=0,
-        )
+        idx1 = idx.unsqueeze(1).expand(N, idx.shape[1], -1)
+        idx2 = idx.unsqueeze(-1).expand(N, -1, idx.shape[1])
+        self.indices = torch.stack([idx1, idx2], dim=0)
 
     def J(self, q, nodes):
-        # Jacobian and Jacobian determinant
+        """Jacobian and Jacobian determinant."""
         J = self.etype.B(q) @ nodes
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
@@ -52,7 +41,7 @@ class Solid:
         return J, detJ
 
     def D(self, B):
-        # Element strain matrix
+        """Element gradient operator"""
         zeros = torch.zeros(self.n_elem, self.etype.nodes)
         shape = [self.n_elem, -1]
         D0 = torch.stack([B[:, 0, :], zeros, zeros], dim=-1).reshape(shape)
@@ -63,102 +52,100 @@ class Solid:
         D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
 
-    def k(self):
-        # Perform numerical integrations for element stiffness matrix
+    def integrate_step(self, de, ds, du):
+        """Perform numerical integrations for element stiffness matrix."""
         nodes = self.nodes[self.elements, :]
+        du = du[self.elements, :].reshape(self.n_elem, -1)
         k = torch.zeros((self.n_elem, 3 * self.etype.nodes, 3 * self.etype.nodes))
+        f = torch.zeros((self.n_elem, 3 * self.etype.nodes))
+        epsilon = torch.zeros(self.n_elem, 6)
+        sigma = torch.zeros(self.n_elem, 6)
         for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
+            # Compute gradient operators
             J, detJ = self.J(q, nodes)
             B = torch.matmul(torch.linalg.inv(J), self.etype.B(q))
             D = self.D(B)
-            CD = torch.matmul(self.C, D)
+            # Evaluate material response
+            dde = torch.einsum("...ij,...j->...i", D, du)
+            e_new, s_new, ddsdde = self.material.step(dde, de, ds)
+            # Compute contribution to element strain and stress
+            epsilon[:, :] += (w * detJ)[:, None] * e_new
+            sigma[:, :] += (w * detJ)[:, None] * s_new
+            # Compute element internal forces
+            f[:, :] += (w * detJ)[:, None] * torch.einsum("...ij,...i->...j", D, s_new)
+            # Compute element stiffness matrix
+            CD = torch.matmul(ddsdde, D)
             DCD = torch.matmul(CD.transpose(1, 2), D)
             k[:, :, :] += (w * detJ)[:, None, None] * DCD
-        return k
+        return k, f, epsilon, sigma
 
-    def f(self, epsilon):
-        # Compute inelastic forces (e.g. from thermal strain fields)
-        nodes = self.nodes[self.elements, :]
-        f = torch.zeros(self.n_elem, 3 * self.etype.nodes)
-        for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
-            J, detJ = self.J(q, nodes)
-            B = torch.matmul(torch.linalg.inv(J), self.etype.B(q))
-            D = self.D(B)
-            CD = torch.matmul(self.C, D)
-            DCE = torch.matmul(CD.transpose(1, 2), epsilon.unsqueeze(-1)).squeeze(-1)
-            f[:, :] += (w * detJ)[:, None] * DCE
-        return f
-
-    def stiffness(self):
-        # Assemble global stiffness matrix
-        indices = self.indices.reshape((2, -1))
-        values = self.k().ravel()
+    def assemble_stiffness(self, k, con):
+        """Assemble global stiffness matrix."""
         size = (self.n_dofs, self.n_dofs)
+        # Unravel indices and values
+        indices = self.indices.reshape((2, -1))
+        values = k.ravel()
+        # Eliminate and replace constrained dofs
+        mask = ~(torch.isin(indices[0, :], con) | torch.isin(indices[1, :], con))
+        diag_index = torch.stack((con, con), dim=0)
+        diag_value = torch.ones_like(con, dtype=k.dtype)
+        # Concatenate
+        indices = torch.cat((indices[:, mask], diag_index), dim=1)
+        values = torch.cat((values[mask], diag_value), dim=0)
         return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
-    def solve(self):
-        # Compute global stiffness matrix
-        K = self.stiffness()
+    def assemble_force(self, f):
+        """Assemble global force vector."""
+        F = torch.zeros((self.n_dofs))
+        indices = self.indices[0, :, 0, :].ravel()
+        values = f.ravel()
+        return F.index_add_(0, indices, values)
 
-        # Compute inelastic strains (if provided)
-        F = torch.zeros(self.n_dofs)
-        if self.strains is not None:
-            f = self.f(self.strains)
-            for j in range(len(self.strains)):
-                F[self.indices[0, j]] += f[j]
+    def solve(self, increments=[0, 1], max_iter=3, tol=1e-10):
+        """Solve with Newton-Raphson method."""
 
-        # Get reduced stiffness matrix
+        # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
-        uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
-        f_d = sparse_index_select(K, [None, con]) @ self.displacements.ravel()[con]
-        K_red = sparse_index_select(K, [uncon, uncon])
-        f_red = (self.forces.ravel() - f_d + F)[uncon]
 
-        # Solve for displacement
-        u_red = sparse_solve(K_red, f_red)
-        u = self.displacements.clone().ravel()
-        u[uncon] = u_red
+        epsilon = torch.zeros(self.n_elem, 6)
+        sigma = torch.zeros(self.n_elem, 6)
+        f = torch.zeros_like(self.nodes)
+        u = torch.zeros_like(self.nodes)
+        du = torch.zeros_like(self.nodes).ravel()
 
-        # Evaluate force
-        f = K @ u
+        for i in range(1, len(increments)):
+            # Increment size
+            inc = increments[i] - increments[i - 1]
+            # Load increment
+            F_ext = inc * self.forces.ravel()
+            DU = inc * self.displacements.clone().ravel()
+            for j in range(max_iter):
+                du[con] = DU[con]
+                # Element-wise integration
+                k, f_int, epsilon_new, sigma_new = self.integrate_step(
+                    epsilon, sigma, du.reshape((-1, 3))
+                )
 
-        u = u.reshape((-1, 3))
-        f = f.reshape((-1, 3))
-        return u, f
+                # Assemble global stiffness matrix and internal force vector
+                K = self.assemble_stiffness(k, con)
+                F_int = self.assemble_force(f_int)
 
-    def compute_strain(self, u, xi=[0.0, 0.0, 0.0]):
-        # Extract node positions of element
-        nodes = self.nodes[self.elements, :]
+                # Compute residual
+                residual = F_int - F_ext
+                residual[con] = 0.0
+                res_norm = torch.linalg.norm(residual)
+                print(f"Residual (Increment {i}, Iteration {j}): {res_norm}")
 
-        # Extract displacement degrees of freedom
-        disp = u[self.elements, :].reshape(self.n_elem, -1)
+                # Solve for displacement increment
+                du -= sparse_solve(K, residual)
 
-        # Jacobian
-        xi = torch.tensor(xi)
-        J = self.etype.B(xi) @ nodes
+            # Update increment
+            epsilon = epsilon_new
+            sigma = sigma_new
+            f = F_int.reshape((-1, 3))
+            u += du.reshape((-1, 3))
 
-        # Compute B
-        B = torch.linalg.inv(J) @ self.etype.B(xi)
-
-        # Compute D
-        D = self.D(B)
-
-        # Compute strain
-        epsilon = torch.einsum("...ij,...j->...i", D, disp)
-        if self.strains is not None:
-            epsilon -= self.strains
-
-        return epsilon
-
-    def compute_stress(self, u, xi=[0.0, 0.0, 0.0]):
-        # Compute strain
-        epsilon = self.compute_strain(u, xi)
-
-        # Compute stress
-        sigma = torch.einsum("...ij,...j->...i", self.C, epsilon)
-
-        # Return stress
-        return sigma
+        return u, f, sigma, epsilon
 
     @torch.no_grad()
     def plot(
