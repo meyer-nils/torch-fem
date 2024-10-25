@@ -163,16 +163,27 @@ class IsotropicPlasticity(Isotropic):
 class IsotropicPlaneStress(Isotropic):
     """Isotropic 2D plane stress material."""
 
-    def C(self) -> torch.Tensor:
-        """Returns a plane stress stiffness tensor in Voigt notation."""
-        fac = self._E / (1.0 - self._nu**2)
-        return fac * torch.tensor(
+    def __init__(self, E: Union[float, torch.Tensor], nu: Union[float, torch.Tensor]):
+        super().__init__(E, nu)
+
+        # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
+        fac = self.E / (1.0 - self.nu**2)
+        zero = torch.zeros_like(self.E)
+        self.C = torch.stack(
             [
-                [1.0, self._nu, 0.0],
-                [self._nu, 1.0, 0.0],
-                [0.0, 0.0, 0.5 * (1.0 - self._nu)],
-            ]
+                torch.stack([fac, fac * self.nu, zero], dim=-1),
+                torch.stack([fac * self.nu, fac, zero], dim=-1),
+                torch.stack([zero, zero, fac * 0.5 * (1.0 - self.nu)], dim=-1),
+            ],
+            dim=-1,
         )
+
+    def vectorize(self, n_int: int, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
+        integration points."""
+        E = self.E.repeat(n_int, n_elem)
+        nu = self.nu.repeat(n_int, n_elem)
+        return IsotropicPlaneStress(E, nu)
 
 
 class IsotropicPlaneStrain(Isotropic):

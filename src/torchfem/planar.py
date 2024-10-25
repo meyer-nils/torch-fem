@@ -8,21 +8,20 @@ from .sparse import sparse_index_select, sparse_solve
 
 class Planar:
     def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
+        # Store nodes and elements
         self.nodes = nodes
-        self.n_dofs = torch.numel(self.nodes)
         self.elements = elements
+
+        # Compute problem size
+        self.n_dofs = torch.numel(self.nodes)
+        self.n_nod = len(self.nodes)
         self.n_elem = len(self.elements)
+
+        # Initialize load variables
         self.forces = torch.zeros_like(nodes)
         self.displacements = torch.zeros_like(nodes)
         self.constraints = torch.zeros_like(nodes, dtype=bool)
         self.thickness = torch.ones(len(elements))
-
-        # Stack stiffness tensor (for general anisotropy and multi-material assignment)
-        C = material.C()
-        if C.shape == torch.Size([3, 3]):
-            self.C = C.unsqueeze(0).repeat(self.n_elem, 1, 1)
-        else:
-            self.C = C
 
         # Element type
         if len(elements[0]) == 3:
@@ -33,6 +32,14 @@ class Planar:
             self.etype = Tria2()
         elif len(elements[0]) == 8:
             self.etype = Quad2()
+
+        # Integration weights and points
+        self.w = self.etype.iweights()
+        self.xi = self.etype.ipoints()
+        self.n_int = len(self.xi)
+
+        # Vectorize material
+        self.material = material.vectorize(self.n_int, self.n_elem)
 
         # Compute mapping from local to global indices (hard to read, but fast)
         N = self.n_elem
@@ -62,7 +69,7 @@ class Planar:
             D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(self.n_elem, -1)
             D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
             D = torch.stack([D0, D1, D2], dim=1)
-            DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.C, D)
+            DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.material.C[0], D)
             k[:, :, :] += torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DCD)
         return k
 

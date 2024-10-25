@@ -61,9 +61,18 @@ class Solid:
         D5 = torch.stack([B[:, :, 1, :], B[:, :, 0, :], zeros], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2, D3, D4, D5], dim=2)
 
-    def integrate_step(self, de, ds, da, du, dde0):
-        """Perform numerical integrations for element stiffness matrix."""
+    def k0(self):
+        """Compute element stiffness matrix for zero strain."""
+        de = torch.zeros(self.n_int, self.n_elem, 6)
+        ds = torch.zeros(self.n_int, self.n_elem, 6)
+        da = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
+        du = torch.zeros_like(self.nodes)
+        dde0 = torch.zeros(self.n_elem, 6)
+        k, _, _, _, _ = self.integrate(de, ds, da, du, dde0)
+        return k
 
+    def integrate(self, de, ds, da, du, dde0):
+        """Perform numerical integrations for element stiffness matrix."""
         # Reshape variables
         nodes = self.nodes[self.elements, :]
         du = du[self.elements, :].reshape(self.n_elem, -1)
@@ -124,7 +133,15 @@ class Solid:
 
         return F.index_add_(0, indices, values)
 
-    def solve(self, increments=[0, 1], max_iter=10, tol=1e-4, verbose=False):
+    def solve(
+        self,
+        increments=[0, 1],
+        max_iter=10,
+        tol=1e-4,
+        verbose=False,
+        return_intermediate=False,
+        aggregate_integration_points=True,
+    ):
         """Solve the FEM problem with the Newton-Raphson method."""
         # Number of increments
         N = len(increments)
@@ -162,7 +179,7 @@ class Solid:
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_int, epsilon_new, sigma_new, state_new = self.integrate_step(
+                k, f_int, epsilon_new, sigma_new, state_new = self.integrate(
                     epsilon[i - 1], sigma[i - 1], state[i - 1], du.reshape((-1, 3)), DE
                 )
 
@@ -187,7 +204,15 @@ class Solid:
             f[i] = F_int.reshape((-1, 3))
             u[i] += du.reshape((-1, 3))
 
-        return u, f, sigma, epsilon, state
+        if aggregate_integration_points:
+            epsilon = epsilon.mean(dim=1)
+            sigma = sigma.mean(dim=1)
+            state = state.mean(dim=1)
+
+        if return_intermediate:
+            return u, f, sigma, epsilon, state
+        else:
+            return u[-1], f[-1], sigma[-1], epsilon[-1], state[-1]
 
     @torch.no_grad()
     def plot(
