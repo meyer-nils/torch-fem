@@ -104,7 +104,9 @@ class FEM(ABC):
         values = k.ravel()
 
         # Eliminate and replace constrained dofs
-        mask = ~(torch.isin(indices[0, :], con) | torch.isin(indices[1, :], con))
+        con_mask = torch.zeros(indices[0].max() + 1, dtype=torch.bool)
+        con_mask[con] = True
+        mask = ~(con_mask[indices[0]] | con_mask[indices[1]])
         diag_index = torch.stack((con, con), dim=0)
         diag_value = torch.ones_like(con, dtype=k.dtype)
 
