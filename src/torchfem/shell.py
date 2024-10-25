@@ -30,8 +30,8 @@ class Shell:
         self.displacements = torch.zeros((N, NDOF))
         self.constraints = torch.zeros((N, NDOF), dtype=bool)
         self.thickness = torch.ones(len(elements))
-        self.C = material.C()
-        self.Cs = material.Cs()
+        self.C = material.C
+        self.Cs = material.Cs
 
         # Set nodes
         self.update_local_nodes()

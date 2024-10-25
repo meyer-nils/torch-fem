@@ -303,11 +303,16 @@ def compute_orientation_average(
     Id = torch.eye(3)
 
     # Coeffients from Advani-Tucker paper
-    B1 = C[0, 0, 0, 0] + C[1, 1, 1, 1] - 2 * C[0, 0, 1, 1] - 4 * C[0, 1, 0, 1]
-    B2 = C[0, 0, 1, 1] - C[1, 1, 2, 2]
-    B3 = C[0, 1, 0, 1] + 0.5 * (C[1, 1, 2, 2] - C[1, 1, 1, 1])
-    B4 = C[1, 1, 2, 2]
-    B5 = 0.5 * (C[1, 1, 1, 1] - C[1, 1, 2, 2])
+    B1 = (
+        C[..., 0, 0, 0, 0]
+        + C[..., 1, 1, 1, 1]
+        - 2 * C[..., 0, 0, 1, 1]
+        - 4 * C[..., 0, 1, 0, 1]
+    )
+    B2 = C[..., 0, 0, 1, 1] - C[..., 1, 1, 2, 2]
+    B3 = C[..., 0, 1, 0, 1] + 0.5 * (C[..., 1, 1, 2, 2] - C[..., 1, 1, 1, 1])
+    B4 = C[..., 1, 1, 2, 2]
+    B5 = 0.5 * (C[..., 1, 1, 1, 1] - C[..., 1, 1, 2, 2])
 
     # Einstein summation to fill stiffness matrix
     _C = (
@@ -373,12 +378,12 @@ def tandon_weng_homogenization(
     """
 
     # Extract scalar properties from matrix and fiber material
-    lambda0 = matrix.lbd()
-    G0 = matrix.G()
-    E0 = matrix.E()
-    nu0 = matrix.nu()
-    lambda1 = fiber.lbd()
-    G1 = fiber.G()
+    lambda0 = matrix.lbd
+    G0 = matrix.G
+    E0 = matrix.E
+    nu0 = matrix.nu
+    lambda1 = fiber.lbd
+    G1 = fiber.G
 
     # Utility variables
     b = a**2 - 1

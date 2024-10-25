@@ -163,12 +163,7 @@ class FEM(ABC):
             DE = inc * self.ext_strain
 
             # Newton-Raphson iterations
-            for j in tqdm(
-                range(max_iter),
-                disable=not verbose,
-                desc="Newton Iteration",
-                leave=False,
-            ):
+            for _ in range(max_iter):
                 du[con] = DU[con]
 
                 # Element-wise integration
