@@ -42,6 +42,9 @@ class FEM(ABC):
         idx2 = self.idx.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1])
         self.indices = torch.stack([idx1, idx2], dim=0).reshape((2, -1))
 
+        # Initialize element stiffness matrix
+        self._k = None
+
     @abstractmethod
     def D(self, B):
         pass
@@ -86,10 +89,14 @@ class FEM(ABC):
         # Compute element internal forces
         f = self.f(detJ, D, sigma)
 
-        # Compute element stiffness matrix
-        CD = torch.matmul(ddsdde, D)
-        DCD = torch.matmul(CD.transpose(2, 3), D)
-        k = self.k(detJ, DCD)
+        # Compute element stiffness matrix (only if state has changed)
+        if not (state == da).all() or self._k is None:
+            CD = torch.matmul(ddsdde, D)
+            DCD = torch.matmul(CD.transpose(2, 3), D)
+            k = self.k(detJ, DCD)
+            self._k = k
+        else:
+            k = self._k
 
         return k, f, epsilon, sigma, state
 
@@ -154,6 +161,9 @@ class FEM(ABC):
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
 
+        # Initialize global stiffness matrix
+        K = None
+
         # Incremental loading
         for i in tqdm(range(1, len(increments)), disable=not verbose, desc="Increment"):
             # Increment size
@@ -173,8 +183,10 @@ class FEM(ABC):
                     epsilon[i - 1], sigma[i - 1], state[i - 1], du, DE
                 )
 
-                # Assemble global stiffness matrix and internal force vector
-                K = self.assemble_stiffness(k, con)
+                # Assemble global stiffness matrix and internal force vector. (Only
+                # reassemble stiffness matrix if state has changed.)
+                if not (state_new == state[i - 1]).all() or K is None:
+                    K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_int)
 
                 # Compute residual
