@@ -2,26 +2,18 @@ import matplotlib.pyplot as plt
 import torch
 from matplotlib.collections import PolyCollection
 
+from .base import FEM
 from .elements import Quad1, Quad2, Tria1, Tria2
-from .sparse import sparse_index_select, sparse_solve
 
 
-class Planar:
+class Planar(FEM):
     def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
-        # Store nodes and elements
-        self.nodes = nodes
-        self.elements = elements
+        """Initialize the planar FEM problem."""
 
-        # Compute problem size
-        self.n_dofs = torch.numel(self.nodes)
-        self.n_nod = len(self.nodes)
-        self.n_elem = len(self.elements)
+        super().__init__(nodes, elements, material)
 
-        # Initialize load variables
-        self.forces = torch.zeros_like(nodes)
-        self.displacements = torch.zeros_like(nodes)
-        self.constraints = torch.zeros_like(nodes, dtype=bool)
-        self.thickness = torch.ones(len(elements))
+        # Set up thickness
+        self.thickness = torch.ones(self.n_elem)
 
         # Element type
         if len(elements[0]) == 3:
@@ -41,111 +33,24 @@ class Planar:
         # Vectorize material
         self.material = material.vectorize(self.n_int, self.n_elem)
 
-        # Compute mapping from local to global indices (hard to read, but fast)
-        N = self.n_elem
-        idx = ((2 * self.elements).unsqueeze(-1) + torch.arange(2)).reshape(N, -1)
-        self.indices = torch.stack(
-            [
-                idx.unsqueeze(-1).expand(N, -1, idx.shape[1]),
-                idx.unsqueeze(1).expand(N, idx.shape[1], -1),
-            ],
-            dim=0,
-        )
+    def D(self, B):
+        """Element gradient operator."""
+        zeros = torch.zeros(self.n_int, self.n_elem, self.etype.nodes)
+        shape = [self.n_int, self.n_elem, -1]
+        D0 = torch.stack([B[:, :, 0, :], zeros], dim=-1).reshape(shape)
+        D1 = torch.stack([zeros, B[:, :, 1, :]], dim=-1).reshape(shape)
+        D2 = torch.stack([B[:, :, 1, :], B[:, :, 0, :]], dim=-1).reshape(shape)
+        return torch.stack([D0, D1, D2], dim=2)
 
-    def k(self):
-        # Perform integrations
-        nodes = self.nodes[self.elements, :]
-        k = torch.zeros((self.n_elem, 2 * self.etype.nodes, 2 * self.etype.nodes))
-        for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
-            # Jacobian
-            J = self.etype.B(q) @ nodes
-            detJ = torch.linalg.det(J)
-            if torch.any(detJ <= 0.0):
-                raise Exception("Negative Jacobian. Check element numbering.")
-            # Element stiffness
-            B = torch.linalg.inv(J) @ self.etype.B(q)
-            zeros = torch.zeros(self.n_elem, self.etype.nodes)
-            D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(self.n_elem, -1)
-            D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(self.n_elem, -1)
-            D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
-            D = torch.stack([D0, D1, D2], dim=1)
-            DCD = torch.einsum("...ji,...jk,...kl->...il", D, self.material.C[0], D)
-            k[:, :, :] += torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DCD)
-        return k
+    def k(self, detJ, DCD):
+        """Element stiffness matrix."""
+        k = torch.einsum("i,j,ij,ijkl->ijkl", self.w, self.thickness, detJ, DCD)
+        return k.sum(dim=0)
 
-    def stiffness(self):
-        # Assemble global stiffness matrix
-        indices = self.indices.reshape((2, -1))
-        values = self.k().ravel()
-        size = (self.n_dofs, self.n_dofs)
-        return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
-
-    def solve(self):
-        # Compute global stiffness matrix
-        K = self.stiffness()
-
-        # Get reduced stiffness matrix
-        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
-        uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
-        f_d = sparse_index_select(K, [None, con]) @ self.displacements.ravel()[con]
-        K_red = sparse_index_select(K, [uncon, uncon])
-        f_red = (self.forces.ravel() - f_d)[uncon]
-
-        # Solve for displacement
-        u_red = sparse_solve(K_red, f_red)
-        u = self.displacements.detach().ravel()
-        u[uncon] = u_red
-
-        # Evaluate force
-        f = K @ u
-
-        u = u.reshape((-1, 2))
-        f = f.reshape((-1, 2))
-        return u, f
-
-    def compute_strain(self, u, xi=[0.0, 0.0]):
-        # Extract node positions of element
-        nodes = self.nodes[self.elements, :]
-
-        # Extract displacement degrees of freedom
-        disp = u[self.elements, :].reshape(self.n_elem, -1)
-
-        # Jacobian
-        xi = torch.tensor(xi)
-        J = self.etype.B(xi) @ nodes
-
-        # Compute B
-        B = torch.linalg.inv(J) @ self.etype.B(xi)
-
-        # Compute D
-        zeros = torch.zeros(self.n_elem, self.etype.nodes)
-        D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(self.n_elem, -1)
-        D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(self.n_elem, -1)
-        D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(self.n_elem, -1)
-        D = torch.stack([D0, D1, D2], dim=1)
-
-        # Compute strain
-        epsilon = torch.einsum("...jk,...k->...j", D, disp)
-
-        return epsilon
-
-    def compute_stress(self, u, xi=[0.0, 0.0], mises=False):
-        # Compute strain
-        strain = self.compute_strain(u, xi)
-
-        # Compute stress
-        sigma = torch.einsum("...ij,...j->...i", self.C, strain)
-
-        # Return stress
-        if mises:
-            return torch.sqrt(
-                sigma[:, 0] ** 2
-                - sigma[:, 0] * sigma[:, 1]
-                + sigma[:, 1] ** 2
-                + 3 * sigma[:, 2] ** 2
-            )
-        else:
-            return sigma
+    def f(self, detJ, D, S):
+        """Element internal force vector."""
+        f = torch.einsum("i,j, ij,ijkl,ijk->ijl", self.w, self.thickness, detJ, D, S)
+        return f.sum(dim=0)
 
     @torch.no_grad()
     def plot(
