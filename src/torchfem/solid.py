@@ -7,15 +7,24 @@ from .sparse import sparse_solve
 
 class Solid:
     def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
+        """Initialize the solid FEM problem."""
+
+        # Store nodes and elements
         self.nodes = nodes
-        self.n_dofs = torch.numel(self.nodes)
         self.elements = elements
+
+        # Compute problem size
+        self.n_dofs = torch.numel(self.nodes)
         self.n_nod = len(self.nodes)
         self.n_elem = len(self.elements)
+
+        # Initialize load variables
         self.forces = torch.zeros_like(nodes)
         self.displacements = torch.zeros_like(nodes)
         self.constraints = torch.zeros_like(nodes, dtype=bool)
         self.ext_strain = torch.zeros(self.n_elem, 6)
+
+        # Set element type depending on number of nodes per element
         if len(elements[0]) == 4:
             self.etype = Tetra1()
         elif len(elements[0]) == 8:
@@ -24,17 +33,21 @@ class Solid:
             self.etype = Tetra2()
         elif len(elements[0]) == 20:
             self.etype = Hexa2()
-        self.n_int = len(self.etype.iweights())
 
-        # Stack stiffness tensor (for general anisotropy and multi-material assignment)
+        # Integration weights and points
+        self.w = self.etype.iweights()
+        self.xi = self.etype.ipoints()
+        self.n_int = len(self.xi)
+
+        # Vectorize material
         self.material = material.vectorize(self.n_int, self.n_elem)
 
         # Compute mapping from local to global indices (hard to read, but fast)
         N = self.n_elem
-        idx = ((3 * self.elements).unsqueeze(-1) + torch.arange(3)).reshape(N, -1)
-        idx1 = idx.unsqueeze(1).expand(N, idx.shape[1], -1)
-        idx2 = idx.unsqueeze(-1).expand(N, -1, idx.shape[1])
-        self.indices = torch.stack([idx1, idx2], dim=0)
+        self.idx = ((3 * self.elements).unsqueeze(-1) + torch.arange(3)).reshape(N, -1)
+        idx1 = self.idx.unsqueeze(1).expand(N, self.idx.shape[1], -1)
+        idx2 = self.idx.unsqueeze(-1).expand(N, -1, self.idx.shape[1])
+        self.indices = torch.stack([idx1, idx2], dim=0).reshape((2, -1))
 
     def D(self, B):
         """Element gradient operator"""
@@ -50,50 +63,65 @@ class Solid:
 
     def integrate_step(self, de, ds, da, du, dde0):
         """Perform numerical integrations for element stiffness matrix."""
+
+        # Reshape variables
         nodes = self.nodes[self.elements, :]
         du = du[self.elements, :].reshape(self.n_elem, -1)
-        # Integration weights and points
-        w = self.etype.iweights()
-        xi = self.etype.ipoints()
+
         # Compute gradient operators
-        b = self.etype.B(xi)
+        b = self.etype.B(self.xi)
         J = torch.einsum("ijk,mkl->imjl", b, nodes)
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
         B = torch.einsum("ijkl,ilm->ijkm", torch.linalg.inv(J), b)
         D = self.D(B)
+
         # Evaluate material response
         dde = torch.einsum("ijkl,jl->ijk", D, du) - dde0
         epsilon, sigma, state, ddsdde = self.material.step(dde, de, ds, da)
+
         # Compute element internal forces
-        f = torch.einsum("i,ij,ijkl,ijk->ijl", w, detJ, D, sigma).sum(dim=0)
+        f = torch.einsum("i,ij,ijkl,ijk->ijl", self.w, detJ, D, sigma).sum(dim=0)
+
         # Compute element stiffness matrix
         CD = torch.matmul(ddsdde, D)
         DCD = torch.matmul(CD.transpose(2, 3), D)
-        k = torch.einsum("i,ij,ijkl->ijkl", w, detJ, DCD).sum(dim=0)
+        k = torch.einsum("i,ij,ijkl->ijkl", self.w, detJ, DCD).sum(dim=0)
+
         return k, f, epsilon, sigma, state
 
     def assemble_stiffness(self, k, con):
         """Assemble global stiffness matrix."""
+
+        # Initialize sparse matrix size
         size = (self.n_dofs, self.n_dofs)
-        # Unravel indices and values
-        indices = self.indices.reshape((2, -1))
+
+        # Ravel indices and values
+        indices = self.indices
         values = k.ravel()
+
         # Eliminate and replace constrained dofs
         mask = ~(torch.isin(indices[0, :], con) | torch.isin(indices[1, :], con))
         diag_index = torch.stack((con, con), dim=0)
         diag_value = torch.ones_like(con, dtype=k.dtype)
+
         # Concatenate
         indices = torch.cat((indices[:, mask], diag_index), dim=1)
         values = torch.cat((values[mask], diag_value), dim=0)
+
         return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
     def assemble_force(self, f):
         """Assemble global force vector."""
+
+        # Initialize force vector
         F = torch.zeros((self.n_dofs))
-        indices = self.indices[0, :, 0, :].ravel()
+
+        # Ravel indices and values
+        indices = self.idx.ravel()
         values = f.ravel()
+
         return F.index_add_(0, indices, values)
 
     def solve(self, increments=[0, 1], max_iter=10, tol=1e-4, verbose=False):
