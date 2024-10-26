@@ -91,8 +91,7 @@ class FEM(ABC):
 
         # Compute element stiffness matrix (only if state has changed)
         if not (state == da).all() or self._k is None:
-            CD = torch.matmul(ddsdde, D)
-            DCD = torch.matmul(CD.transpose(2, 3), D)
+            DCD = torch.einsum("ijkl,ijlm,ijkn->ijmn", ddsdde, D, D)
             k = self.k(detJ, DCD)
             self._k = k
         else:
