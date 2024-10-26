@@ -75,7 +75,7 @@ This creates a minimal planar FEM model:
 
 ```python
 # Solve
-u, f = cantilever.solve()
+u, f, σ, ε, α = cantilever.solve()
 
 # Plot
 cantilever.plot(u, node_property=torch.norm(u, dim=1))
