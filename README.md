@@ -6,9 +6,23 @@
 
 
 
-# torch-fem: differentiable linear elastic finite elements
+# torch-fem: differentiable finite elements in PyTorch
 
-Simple finite element assemblers for linear elasticity with PyTorch. The advantage of using PyTorch is the ability to efficiently compute sensitivities and use them in structural optimization. 
+Simple finite element assemblers for small-deformation mechanics with PyTorch. The advantage of using PyTorch is the ability to efficiently compute sensitivities and use them in optimization tasks.
+
+## Features 
+- Elements
+  - 1D: Bar (linear) 
+  - 2D: Quadrilateral (linear & quadratic) and triangle (linear & quadratic)
+  - 3D: Hexahedron (linear & quadratic) and tetrahedron (linear & quadratic)
+  - Shell: Flat-facet triangle (linear)
+- Material models
+  - Isotropic linear elasticity
+  - Orthotropic linear elasticity 
+  - Isotropic plane-stress and plane-stain elasticity 
+  - Orthotropic plane-stress elasticity 
+  - Isotropic plasticity 
+  - Isotropic plane-stress plasticity 
 
 ## Basic examples
 The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. 
@@ -17,7 +31,7 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
 **Simple cantilever beam:** There are examples with linear and quadratic triangles and quads.
 
 <img src="doc/plate_hole_plasticity.png" width="400"></br>
-**Plasticity in a plate with hole (experimental):** Isotropic linear hardening model for plane-stress.
+**Plasticity in a plate with hole:** Isotropic linear hardening model for plane-stress.
 
 ## Optimization examples
 The subdirectory `examples->optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization).
@@ -103,15 +117,15 @@ Python 3.10 with Apple Accelerate
 
 |  N  |    DOFs | FWD Time |  FWD Memory | BWD Time |  BWD Memory |
 | --- | ------- | -------- | ----------- | -------- | ----------- |
-|  10 |    3000 |    0.75s |    23.59 MB |    0.59s |     0.09 MB |
-|  20 |   24000 |    3.37s |   439.23 MB |    2.82s |   227.05 MB |
-|  30 |   81000 |    3.09s |   728.31 MB |    1.47s |     0.06 MB |
-|  40 |  192000 |    7.84s |   807.41 MB |    3.99s |   217.56 MB |
-|  50 |  375000 |   16.29s |  1211.27 MB |    9.50s |   433.30 MB |
-|  60 |  648000 |   30.78s |  2638.23 MB |   19.17s |  1484.67 MB |
-|  70 | 1029000 |   55.14s |  3546.22 MB |   34.41s |  1997.77 MB |
-|  80 | 1536000 |   87.83s |  5066.81 MB |   56.23s |  3594.27 MB |
-|  90 | 2187000 |  131.09s |  7795.83 MB |  107.40s |  5020.55 MB |
+|  10 |    3000 |    0.84s |     0.53 MB |    0.66s |     0.12 MB |
+|  20 |   24000 |    5.92s |   268.69 MB |    5.45s |   235.25 MB |
+|  30 |   81000 |    2.94s |   670.89 MB |    1.58s |     0.62 MB |
+|  40 |  192000 |    7.86s |  1681.77 MB |    4.08s |   350.62 MB |
+|  50 |  375000 |   16.45s |  3056.41 MB |    9.30s |   834.12 MB |
+|  60 |  648000 |   31.62s |  4049.66 MB |   19.37s |  1296.44 MB |
+|  70 | 1029000 |   56.33s |  4495.06 MB |   34.10s |  2405.62 MB |
+|  80 | 1536000 |   93.71s |  6787.83 MB |   56.53s |  3716.17 MB |
+|  90 | 2187000 |  146.70s |  8282.39 MB |  109.08s |  6407.16 MB |
 
 
 #### AMD Ryzen Threadripper PRO 5995WX (64 Cores, 512 GB RAM)
