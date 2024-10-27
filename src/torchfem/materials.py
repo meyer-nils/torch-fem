@@ -10,9 +10,8 @@ class Material(ABC):
     """Base class for material models."""
 
     @abstractmethod
-    def vectorize(self, n_int: int, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
-        integration points."""
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
         pass
 
     @abstractmethod
@@ -68,12 +67,11 @@ class Isotropic(Material):
             [torch.stack([self.G, z], dim=-1), torch.stack([z, self.G], dim=-1)], dim=-1
         )
 
-    def vectorize(self, n_int: int, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
-        integration points."""
-        E = self.E.repeat(n_int, n_elem)
-        nu = self.nu.repeat(n_int, n_elem)
-        eps0 = self.eps0.repeat(n_int, n_elem)
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        E = self.E.repeat(n_elem)
+        nu = self.nu.repeat(n_elem)
+        eps0 = self.eps0.repeat(n_elem)
         return Isotropic(E, nu, eps0)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
@@ -104,10 +102,10 @@ class IsotropicPlasticity(Isotropic):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_int: int, n_elem: int):
+    def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_int, n_elem)
-        nu = self.nu.repeat(n_int, n_elem)
+        E = self.E.repeat(n_elem)
+        nu = self.nu.repeat(n_elem)
         return IsotropicPlasticity(E, nu, self.sigma_f, self.sigma_f_prime)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
@@ -204,11 +202,10 @@ class IsotropicPlaneStress(Isotropic):
             dim=-1,
         )
 
-    def vectorize(self, n_int: int, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
-        integration points."""
-        E = self.E.repeat(n_int, n_elem)
-        nu = self.nu.repeat(n_int, n_elem)
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        E = self.E.repeat(n_elem)
+        nu = self.nu.repeat(n_elem)
         return IsotropicPlaneStress(E, nu)
 
 
@@ -232,10 +229,10 @@ class IsotropicPlaneStressPlasticity(IsotropicPlaneStress):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_int: int, n_elem: int):
+    def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_int, n_elem)
-        nu = self.nu.repeat(n_int, n_elem)
+        E = self.E.repeat(n_elem)
+        nu = self.nu.repeat(n_elem)
         return IsotropicPlaneStressPlasticity(E, nu, self.sigma_f, self.sigma_f_prime)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
@@ -345,11 +342,11 @@ class IsotropicPlaneStrain(Isotropic):
             dim=-1,
         )
 
-    def vectorize(self, n_int: int, n_elem: int):
+    def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements and `n_int`
         integration points."""
-        E = self.E.repeat(n_int, n_elem)
-        nu = self.nu.repeat(n_int, n_elem)
+        E = self.E.repeat(n_elem)
+        nu = self.nu.repeat(n_elem)
         return IsotropicPlaneStrain(E, nu)
 
 
@@ -484,18 +481,18 @@ class Orthotropic(Material):
             dim=-1,
         )
 
-    def vectorize(self, n_int: int, n_elem: int):
+    def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements and `n_int`
         integration points."""
-        E_1 = self.E_1.repeat(n_int, n_elem)
-        E_2 = self.E_2.repeat(n_int, n_elem)
-        E_3 = self.E_3.repeat(n_int, n_elem)
-        nu_12 = self.nu_12.repeat(n_int, n_elem)
-        nu_13 = self.nu_13.repeat(n_int, n_elem)
-        nu_23 = self.nu_23.repeat(n_int, n_elem)
-        G_12 = self.G_12.repeat(n_int, n_elem)
-        G_13 = self.G_13.repeat(n_int, n_elem)
-        G_23 = self.G_23.repeat(n_int, n_elem)
+        E_1 = self.E_1.repeat(n_elem)
+        E_2 = self.E_2.repeat(n_elem)
+        E_3 = self.E_3.repeat(n_elem)
+        nu_12 = self.nu_12.repeat(n_elem)
+        nu_13 = self.nu_13.repeat(n_elem)
+        nu_23 = self.nu_23.repeat(n_elem)
+        G_12 = self.G_12.repeat(n_elem)
+        G_13 = self.G_13.repeat(n_elem)
+        G_23 = self.G_23.repeat(n_elem)
         return Orthotropic(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
@@ -564,15 +561,14 @@ class OrthotropicPlaneStress(Material):
             dim=-1,
         )
 
-    def vectorize(self, n_int: int, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
-        integration points."""
-        E_1 = self.E_1.repeat(n_int, n_elem)
-        E_2 = self.E_2.repeat(n_int, n_elem)
-        nu_12 = self.nu_12.repeat(n_int, n_elem)
-        G_12 = self.G_12.repeat(n_int, n_elem)
-        G_13 = self.G_13.repeat(n_int, n_elem)
-        G_23 = self.G_23.repeat(n_int, n_elem)
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        E_1 = self.E_1.repeat(n_elem)
+        E_2 = self.E_2.repeat(n_elem)
+        nu_12 = self.nu_12.repeat(n_elem)
+        G_12 = self.G_12.repeat(n_elem)
+        G_13 = self.G_13.repeat(n_elem)
+        G_23 = self.G_23.repeat(n_elem)
         return OrthotropicPlaneStress(E_1, E_2, nu_12, G_12, G_13, G_23)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):

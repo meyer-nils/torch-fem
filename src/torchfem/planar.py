@@ -25,32 +25,25 @@ class Planar(FEM):
         elif len(elements[0]) == 8:
             self.etype = Quad2()
 
-        # Integration weights and points
-        self.w = self.etype.iweights()
-        self.xi = self.etype.ipoints()
-        self.n_int = len(self.xi)
-
-        # Vectorize material
-        self.material = material.vectorize(self.n_int, self.n_elem)
+        # Number of integration points
+        self.n_int = len(self.etype.iweights())
 
     def D(self, B):
         """Element gradient operator."""
-        zeros = torch.zeros(self.n_int, self.n_elem, self.etype.nodes)
-        shape = [self.n_int, self.n_elem, -1]
-        D0 = torch.stack([B[:, :, 0, :], zeros], dim=-1).reshape(shape)
-        D1 = torch.stack([zeros, B[:, :, 1, :]], dim=-1).reshape(shape)
-        D2 = torch.stack([B[:, :, 1, :], B[:, :, 0, :]], dim=-1).reshape(shape)
-        return torch.stack([D0, D1, D2], dim=2)
+        zeros = torch.zeros(self.n_elem, self.etype.nodes)
+        shape = [self.n_elem, -1]
+        D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(shape)
+        D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(shape)
+        D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(shape)
+        return torch.stack([D0, D1, D2], dim=1)
 
-    def k(self, detJ, DCD):
+    def compute_k(self, detJ, DCD):
         """Element stiffness matrix."""
-        k = torch.einsum("i,j,ij,ijkl->ijkl", self.w, self.thickness, detJ, DCD)
-        return k.sum(dim=0)
+        return torch.einsum("j,j,jkl->jkl", self.thickness, detJ, DCD)
 
-    def f(self, detJ, D, S):
+    def compute_f(self, detJ, D, S):
         """Element internal force vector."""
-        f = torch.einsum("i,j, ij,ijkl,ijk->ijl", self.w, self.thickness, detJ, D, S)
-        return f.sum(dim=0)
+        return torch.einsum("j,j,jkl,jk->jl", self.thickness, detJ, D, S)
 
     @torch.no_grad()
     def plot(

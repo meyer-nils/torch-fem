@@ -42,19 +42,22 @@ class FEM(ABC):
         idx2 = self.idx.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1])
         self.indices = torch.stack([idx1, idx2], dim=0).reshape((2, -1))
 
-        # Initialize element stiffness matrix
-        self._k = None
+        # Vectorize material
+        self.material = material.vectorize(self.n_elem)
+
+        # Initialize global stiffness matrix
+        self.K = None
 
     @abstractmethod
     def D(self, B):
         pass
 
     @abstractmethod
-    def k(self, detJ, DCD):
+    def compute_k(self, detJ, DCD):
         pass
 
     @abstractmethod
-    def f(self, detJ, D, S):
+    def compute_f(self, detJ, D, S):
         pass
 
     def k0(self):
@@ -67,37 +70,47 @@ class FEM(ABC):
         k, _, _, _, _ = self.integrate(de, ds, da, du, dde0)
         return k
 
-    def integrate(self, de, ds, da, du, dde0):
+    def integrate(self, eps_old, sig_old, sta_old, du, de0):
         """Perform numerical integrations for element stiffness matrix."""
         # Reshape variables
         nodes = self.nodes[self.elements, :]
         du = du.reshape((-1, self.n_dim))[self.elements, :].reshape(self.n_elem, -1)
 
-        # Compute gradient operators
-        b = self.etype.B(self.xi)
-        J = torch.einsum("ijk,mkl->imjl", b, nodes)
-        detJ = torch.linalg.det(J)
-        if torch.any(detJ <= 0.0):
-            raise Exception("Negative Jacobian. Check element numbering.")
-        B = torch.einsum("ijkl,ilm->ijkm", torch.linalg.inv(J), b)
-        D = self.D(B)
+        # Initialize solution
+        eps_new = torch.zeros((self.n_int, self.n_elem, self.n_strains))
+        sig_new = torch.zeros((self.n_int, self.n_elem, self.n_strains))
+        sta_new = torch.zeros((self.n_int, self.n_elem, self.material.n_state))
 
-        # Evaluate material response
-        dde = torch.einsum("ijkl,jl->ijk", D, du) - dde0
-        epsilon, sigma, state, ddsdde = self.material.step(dde, de, ds, da)
+        # Initialize nodal force and stiffness
+        N_nod = self.etype.nodes
+        f = torch.zeros(self.n_elem, self.n_dim * N_nod)
+        k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
 
-        # Compute element internal forces
-        f = self.f(detJ, D, sigma)
+        for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
+            # Compute gradient operators
+            b = self.etype.B(xi)
+            J = torch.einsum("jk,mkl->mjl", b, nodes)
+            detJ = torch.linalg.det(J)
+            if torch.any(detJ <= 0.0):
+                raise Exception("Negative Jacobian. Check element numbering.")
+            B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
+            D = self.D(B)
 
-        # Compute element stiffness matrix (only if state has changed)
-        if not (state == da).all() or self._k is None:
-            DCD = torch.einsum("ijkl,ijlm,ijkn->ijmn", ddsdde, D, D)
-            k = self.k(detJ, DCD)
-            self._k = k
-        else:
-            k = self._k
+            # Evaluate material response
+            de = torch.einsum("jkl,jl->jk", D, du) - de0
+            eps_new[i], sig_new[i], sta_new[i], ddsdde = self.material.step(
+                de, eps_old[i], sig_old[i], sta_old[i]
+            )
 
-        return k, f, epsilon, sigma, state
+            # Compute element internal forces
+            f[:] += w * self.compute_f(detJ, D, sig_new[i])
+
+            # Compute element stiffness matrix
+            if self.K is None or not self.material.n_state == 0:
+                DCD = torch.einsum("jkl,jlm,jkn->jmn", ddsdde, D, D)
+                k[:, :, :] += w * self.compute_k(detJ, DCD)
+
+        return k, f, eps_new, sig_new, sta_new
 
     def assemble_stiffness(self, k, con):
         """Assemble global stiffness matrix."""
@@ -160,9 +173,6 @@ class FEM(ABC):
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
 
-        # Initialize global stiffness matrix
-        K = None
-
         # Incremental loading
         for i in tqdm(range(1, len(increments)), disable=not verbose, desc="Increment"):
             # Increment size
@@ -184,8 +194,8 @@ class FEM(ABC):
 
                 # Assemble global stiffness matrix and internal force vector. (Only
                 # reassemble stiffness matrix if state has changed.)
-                if not (state_new == state[i - 1]).all() or K is None:
-                    K = self.assemble_stiffness(k, con)
+                if not (state_new == state[i - 1]).all() or self.K is None:
+                    self.K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_int)
 
                 # Compute residual
@@ -196,7 +206,7 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                du -= sparse_solve(K, residual)
+                du -= sparse_solve(self.K, residual)
 
             # Update increment
             epsilon[i] = epsilon_new

@@ -20,33 +20,28 @@ class Solid(FEM):
         elif len(elements[0]) == 20:
             self.etype = Hexa2()
 
-        # Integration weights and points
-        self.w = self.etype.iweights()
-        self.xi = self.etype.ipoints()
-        self.n_int = len(self.xi)
-
-        # Vectorize material
-        self.material = material.vectorize(self.n_int, self.n_elem)
+        # Number of integration points
+        self.n_int = len(self.etype.iweights())
 
     def D(self, B):
         """Element gradient operator"""
-        zeros = torch.zeros(self.n_int, self.n_elem, self.etype.nodes)
-        shape = [self.n_int, self.n_elem, -1]
-        D0 = torch.stack([B[:, :, 0, :], zeros, zeros], dim=-1).reshape(shape)
-        D1 = torch.stack([zeros, B[:, :, 1, :], zeros], dim=-1).reshape(shape)
-        D2 = torch.stack([zeros, zeros, B[:, :, 2, :]], dim=-1).reshape(shape)
-        D3 = torch.stack([zeros, B[:, :, 2, :], B[:, :, 1, :]], dim=-1).reshape(shape)
-        D4 = torch.stack([B[:, :, 2, :], zeros, B[:, :, 0, :]], dim=-1).reshape(shape)
-        D5 = torch.stack([B[:, :, 1, :], B[:, :, 0, :], zeros], dim=-1).reshape(shape)
-        return torch.stack([D0, D1, D2, D3, D4, D5], dim=2)
+        zeros = torch.zeros(self.n_elem, self.etype.nodes)
+        shape = [self.n_elem, -1]
+        D0 = torch.stack([B[:, 0, :], zeros, zeros], dim=-1).reshape(shape)
+        D1 = torch.stack([zeros, B[:, 1, :], zeros], dim=-1).reshape(shape)
+        D2 = torch.stack([zeros, zeros, B[:, 2, :]], dim=-1).reshape(shape)
+        D3 = torch.stack([zeros, B[:, 2, :], B[:, 1, :]], dim=-1).reshape(shape)
+        D4 = torch.stack([B[:, 2, :], zeros, B[:, 0, :]], dim=-1).reshape(shape)
+        D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
+        return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
 
-    def k(self, detJ, DCD):
+    def compute_k(self, detJ, DCD):
         """Element stiffness matrix"""
-        return torch.einsum("i,ij,ijkl->ijkl", self.w, detJ, DCD).sum(dim=0)
+        return torch.einsum("j,jkl->jkl", detJ, DCD)
 
-    def f(self, detJ, D, S):
+    def compute_f(self, detJ, D, S):
         """Element internal force vector."""
-        return torch.einsum("i,ij,ijkl,ijk->ijl", self.w, detJ, D, S).sum(dim=0)
+        return torch.einsum("j,jkl,jk->jl", detJ, D, S)
 
     @torch.no_grad()
     def plot(
