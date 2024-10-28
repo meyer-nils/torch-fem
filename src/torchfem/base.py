@@ -45,9 +45,6 @@ class FEM(ABC):
         # Vectorize material
         self.material = material.vectorize(self.n_elem)
 
-        # Initialize global stiffness matrix
-        self.K = None
-
     @abstractmethod
     def D(self, B):
         pass
@@ -67,6 +64,7 @@ class FEM(ABC):
         da = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros_like(self.nodes)
         dde0 = torch.zeros(self.n_elem, self.n_strains)
+        self.K = None
         k, _, _, _, _ = self.integrate(de, ds, da, du, dde0)
         return k
 
@@ -103,12 +101,12 @@ class FEM(ABC):
             )
 
             # Compute element internal forces
-            f[:] += w * self.compute_f(detJ, D, sig_new[i])
+            f += w * self.compute_f(detJ, D, sig_new[i].clone())
 
             # Compute element stiffness matrix
             if self.K is None or not self.material.n_state == 0:
                 DCD = torch.einsum("jkl,jlm,jkn->jmn", ddsdde, D, D)
-                k[:, :, :] += w * self.compute_k(detJ, DCD)
+                k += w * self.compute_k(detJ, DCD)
 
         return k, f, eps_new, sig_new, sta_new
 
@@ -169,6 +167,9 @@ class FEM(ABC):
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
         f = torch.zeros(N, self.n_nod, self.n_dim)
         u = torch.zeros(N, self.n_nod, self.n_dim)
+
+        # Initialize global stiffness matrix
+        self.K = None
 
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
