@@ -20,7 +20,7 @@ class Material(ABC):
         pass
 
 
-class Isotropic(Material):
+class IsotropicElasticity3D(Material):
     def __init__(
         self,
         E: Union[float, Tensor],
@@ -72,7 +72,7 @@ class Isotropic(Material):
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
         eps0 = self.eps0.repeat(n_elem)
-        return Isotropic(E, nu, eps0)
+        return IsotropicElasticity3D(E, nu, eps0)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -83,7 +83,7 @@ class Isotropic(Material):
         return epsilon_new, sigma_new, state_new, ddsdde
 
 
-class IsotropicPlasticity(Isotropic):
+class IsotropicPlasticity3D(IsotropicElasticity3D):
     """Isotropic plasticity with isotropic hardening"""
 
     def __init__(
@@ -106,7 +106,7 @@ class IsotropicPlasticity(Isotropic):
         """Create a vectorized copy of the material for `n_elm` elements."""
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
-        return IsotropicPlasticity(E, nu, self.sigma_f, self.sigma_f_prime)
+        return IsotropicPlasticity3D(E, nu, self.sigma_f, self.sigma_f_prime)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -184,7 +184,7 @@ class IsotropicPlasticity(Isotropic):
         return epsilon_new, sigma_new, state_new, ddsdde
 
 
-class IsotropicPlaneStress(Isotropic):
+class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
     """Isotropic 2D plane stress material."""
 
     def __init__(self, E: Union[float, Tensor], nu: Union[float, Tensor]):
@@ -206,10 +206,10 @@ class IsotropicPlaneStress(Isotropic):
         """Create a vectorized copy of the material for `n_elm` elements."""
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
-        return IsotropicPlaneStress(E, nu)
+        return IsotropicElasticityPlaneStress(E, nu)
 
 
-class IsotropicPlaneStressPlasticity(IsotropicPlaneStress):
+class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
     """Isotropic 2D plane stress material with isotropic hardening."""
 
     def __init__(
@@ -233,7 +233,7 @@ class IsotropicPlaneStressPlasticity(IsotropicPlaneStress):
         """Create a vectorized copy of the material for `n_elm` elements."""
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
-        return IsotropicPlaneStressPlasticity(E, nu, self.sigma_f, self.sigma_f_prime)
+        return IsotropicPlasticityPlaneStress(E, nu, self.sigma_f, self.sigma_f_prime)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -323,7 +323,7 @@ class IsotropicPlaneStressPlasticity(IsotropicPlaneStress):
         return epsilon_new, sigma_new, state_new, ddsdde
 
 
-class IsotropicPlaneStrain(Isotropic):
+class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
     """Isotropic 2D plane strain material."""
 
     def __init__(self, E: Union[float, Tensor], nu: Union[float, Tensor]):
@@ -347,10 +347,10 @@ class IsotropicPlaneStrain(Isotropic):
         integration points."""
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
-        return IsotropicPlaneStrain(E, nu)
+        return IsotropicElasticityPlaneStrain(E, nu)
 
 
-class Orthotropic(Material):
+class OrthotropicElasticity3D(Material):
     """Orthotropic material."""
 
     def __init__(
@@ -493,7 +493,9 @@ class Orthotropic(Material):
         G_12 = self.G_12.repeat(n_elem)
         G_13 = self.G_13.repeat(n_elem)
         G_23 = self.G_23.repeat(n_elem)
-        return Orthotropic(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23)
+        return OrthotropicElasticity3D(
+            E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
+        )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -504,7 +506,7 @@ class Orthotropic(Material):
         return epsilon_new, sigma_new, state_new, ddsdde
 
 
-class OrthotropicPlaneStress(Material):
+class OrthotropicElasticityPlaneStress(Material):
     """Orthotropic 2D plane stress material."""
 
     def __init__(
@@ -569,7 +571,7 @@ class OrthotropicPlaneStress(Material):
         G_12 = self.G_12.repeat(n_elem)
         G_13 = self.G_13.repeat(n_elem)
         G_23 = self.G_23.repeat(n_elem)
-        return OrthotropicPlaneStress(E_1, E_2, nu_12, G_12, G_13, G_23)
+        return OrthotropicElasticityPlaneStress(E_1, E_2, nu_12, G_12, G_13, G_23)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""

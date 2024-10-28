@@ -3,7 +3,7 @@ from math import acosh
 
 import torch
 
-from .materials import Isotropic, Orthotropic
+from .materials import IsotropicElasticity3D, OrthotropicElasticity3D
 
 
 def IBOF_closure(A2: torch.Tensor) -> torch.Tensor:
@@ -351,8 +351,8 @@ def compute_orientation_average(
 
 
 def tandon_weng_homogenization(
-    matrix: Isotropic, fiber: Isotropic, a, volfrac
-) -> Orthotropic:
+    matrix: IsotropicElasticity3D, fiber: IsotropicElasticity3D, a, volfrac
+) -> OrthotropicElasticity3D:
     """Compute transversly isotropic material based on Tandon-Wengs's paper [1]. See
     also [2] for more general Mori-Tanka approach.
 
@@ -368,8 +368,8 @@ def tandon_weng_homogenization(
 
 
     Args:
-        matrix (Isotropic): Isotropic matrix material
-        fiber (Isotropic): Isotropic fiber material
+        matrix (IsotropicElasticity3D): Isotropic elastic matrix material
+        fiber (IsotropicElasticity3D): Isotropic elastic fiber material
         a (float): Aspect ratio of inclusion
         volfrac (float): Volume fraction of inclusions
 
@@ -464,4 +464,4 @@ def tandon_weng_homogenization(
     nu23 = E22 / (2 * G23) - 1
     nu13 = nu12
 
-    return Orthotropic(E11, E22, E33, nu12, nu13, nu23, G12, G13, G23)
+    return OrthotropicElasticity3D(E11, E22, E33, nu12, nu13, nu23, G12, G13, G23)
