@@ -21,18 +21,10 @@ class FEM(ABC):
         self.n_dim = nodes.shape[1]
         self.n_elem = len(self.elements)
 
-        if self.n_dim == 3:
-            self.n_strains = 6
-        elif self.n_dim == 2:
-            self.n_strains = 3
-        else:
-            raise Exception("Only 2D and 3D problems are supported.")
-
         # Initialize load variables
         self.forces = torch.zeros_like(nodes)
         self.displacements = torch.zeros_like(nodes)
         self.constraints = torch.zeros_like(nodes, dtype=bool)
-        self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
         # Compute mapping from local to global indices (hard to read, but fast)
         self.idx = (

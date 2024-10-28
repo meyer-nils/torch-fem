@@ -25,8 +25,12 @@ class Planar(FEM):
         elif len(elements[0]) == 8:
             self.etype = Quad2()
 
-        # Number of integration points
+        # Set element type specific sizes
+        self.n_strains = 3
         self.n_int = len(self.etype.iweights())
+
+        # Initialize external strain
+        self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
     def D(self, B):
         """Element gradient operator."""
