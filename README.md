@@ -12,7 +12,7 @@ Simple finite element assemblers for small-deformation mechanics with PyTorch. T
 
 ## Features 
 - Elements
-  - 1D: Bar (linear) 
+  - 1D: Bar (linear & quadratic) 
   - 2D: Quadrilateral (linear & quadratic) and triangle (linear & quadratic)
   - 3D: Hexahedron (linear & quadratic) and tetrahedron (linear & quadratic)
   - Shell: Flat-facet triangle (linear)

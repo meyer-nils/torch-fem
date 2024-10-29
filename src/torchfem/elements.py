@@ -26,6 +26,38 @@ class Bar1:
         return torch.tensor([2.0])
 
 
+class Bar2:
+    def __init__(self):
+        self.nodes = 3
+
+    def N(self, xi: torch.Tensor) -> torch.Tensor:
+        N_1 = 1 / 2 * xi[..., 0] * (xi[..., 0] - 1)
+        N_2 = 1 / 2 * xi[..., 0] * (xi[..., 0] + 1)
+        N_3 = 1 - xi[..., 0] ** 2
+        return torch.stack([N_1, N_2, N_3], dim=-1)
+
+    def B(self, xi: torch.Tensor) -> torch.Tensor:
+        return torch.stack(
+            [
+                torch.stack(
+                    [
+                        0.5 * (2 * xi[..., 0] - 1),
+                        0.5 * (2 * xi[..., 0] + 1),
+                        -2 * xi[..., 0],
+                    ],
+                    dim=-1,
+                )
+            ],
+            dim=xi.dim() - 1,
+        )
+
+    def ipoints(self) -> torch.Tensor:
+        return torch.tensor([[-1 / sqrt(3.0)], [1 / sqrt(3.0)]])
+
+    def iweights(self) -> torch.Tensor:
+        return torch.tensor([1.0, 1.0])
+
+
 class Tria1:
     def __init__(self):
         self.nodes = 3
@@ -656,6 +688,10 @@ def linear_to_quadratic(
 
     new_elements = []
     for element in elements:
+        if len(element) == 2:
+            n1, n2 = element.numpy()
+            m12 = get_midpoint_index(n1, n2)
+            new_elements.append([n1, n2, m12])
         if len(element) == 3 and nodes.shape[1] == 2:
             n1, n2, n3 = element.numpy()
             m12 = get_midpoint_index(n1, n2)

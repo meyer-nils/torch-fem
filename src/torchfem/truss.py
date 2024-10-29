@@ -1,7 +1,7 @@
 import torch
 
 from .base import FEM
-from .elements import Bar1
+from .elements import Bar1, Bar2
 from .materials import Material
 
 
@@ -17,6 +17,8 @@ class Truss(FEM):
         # Element type
         if len(elements[0]) == 2:
             self.etype = Bar1()
+        elif len(elements[0]) == 3:
+            self.etype = Bar2()
         else:
             raise ValueError("Element type not supported.")
 
@@ -31,7 +33,7 @@ class Truss(FEM):
         """Element gradient operator."""
 
         # Direction of the element
-        dx = nodes[:, -1] - nodes[:, 0]
+        dx = nodes[:, 1] - nodes[:, 0]
         # Length of the element
         l0 = torch.linalg.norm(dx, dim=-1)
         # Cosine and sine of the element
