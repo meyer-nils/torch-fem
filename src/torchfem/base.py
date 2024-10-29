@@ -205,6 +205,9 @@ class FEM(ABC):
                 # Solve for displacement increment
                 du -= sparse_solve(self.K, residual)
 
+            if res_norm > tol:
+                raise Exception("Newton-Raphson iteration did not converge.")
+
             # Update increment
             epsilon[i] = epsilon_new
             sigma[i] = sigma_new
