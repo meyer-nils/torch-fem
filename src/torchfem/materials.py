@@ -236,7 +236,13 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         return IsotropicPlasticityPlaneStress(E, nu, self.sigma_f, self.sigma_f_prime)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
-        """Perform a strain increment."""
+        """Perform a strain increment.
+
+        See: de Souza Neto, E. A., Peri, D., Owen, D. R. J. *Computational Methods for
+        Plasticity*, Chapter 9: Plane Stress Plasticity, 2008.
+        https://doi.org/10.1002/9780470694626.ch9
+        """
+
         P = 1 / 3 * torch.tensor([[2, -1, 0], [-1, 2, 0], [0, 0, 6]])
 
         # Solution variables
