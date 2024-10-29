@@ -27,22 +27,21 @@ class Truss(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
-    def D(self, B):
+    def D(self, _, nodes: torch.Tensor):
         """Element gradient operator."""
-        shape = [self.n_elem, -1]
-        if self.n_dim == 2:
-            D0 = torch.stack([B[:, 0, :], B[:, 0, :]], dim=-1).reshape(shape)
-        elif self.n_dim == 3:
-            D0 = torch.stack([B[:, 0, :], B[:, 0, :], B[:, 0, :]], dim=-1).reshape(
-                shape
-            )
-        return torch.stack([D0], dim=1)
+        dx = nodes[:, 1] - nodes[:, 0]
+        l0 = torch.linalg.norm(dx, dim=-1)
+        c = dx / l0[:, None]
+        m = torch.stack(
+            [s * c[:, j] for s in [-1, 1] for j in range(self.n_dim)], dim=-1
+        )[:, None, :]
+        return m / l0[:, None, None]
 
-    def compute_k(self, detJ, DCD):
+    def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
         """Element stiffness matrix."""
         return torch.einsum("j,j,jkl->jkl", self.areas, detJ, DCD)
 
-    def compute_f(self, detJ, D, S):
+    def compute_f(self, detJ: torch.Tensor, D: torch.Tensor, S: torch.Tensor):
         """Element internal force vector."""
         return torch.einsum("j,j,jkl,jk->jl", self.areas, detJ, D, S)
 

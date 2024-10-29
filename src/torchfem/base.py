@@ -38,15 +38,15 @@ class FEM(ABC):
         self.material = material.vectorize(self.n_elem)
 
     @abstractmethod
-    def D(self, B):
+    def D(self, B: torch.Tensor, nodes: torch.Tensor):
         pass
 
     @abstractmethod
-    def compute_k(self, detJ, DCD):
+    def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
         pass
 
     @abstractmethod
-    def compute_f(self, detJ, D, S):
+    def compute_f(self, detJ: torch.Tensor, D: torch.Tensor, S: torch.Tensor):
         pass
 
     def k0(self):
@@ -80,14 +80,15 @@ class FEM(ABC):
             # Compute gradient operators
             b = self.etype.B(xi)
             if b.shape[0] == 1:
-                J = torch.linalg.norm(nodes[:, 1] - nodes[:, 0], dim=1)[:, None, None]
+                dx = nodes[:, 1] - nodes[:, 0]
+                J = 0.5 * torch.linalg.norm(dx, dim=1)[:, None, None]
             else:
                 J = torch.einsum("jk,mkl->mjl", b, nodes)
             detJ = torch.linalg.det(J)
             if torch.any(detJ <= 0.0):
                 raise Exception("Negative Jacobian. Check element numbering.")
             B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
-            D = self.D(B)
+            D = self.D(B, nodes)
 
             # Evaluate material response
             de = torch.einsum("jkl,jl->jk", D, du) - de0

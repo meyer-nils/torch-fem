@@ -35,7 +35,7 @@ class Planar(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
-    def D(self, B):
+    def D(self, B: torch.Tensor, _):
         """Element gradient operator."""
         zeros = torch.zeros(self.n_elem, self.etype.nodes)
         shape = [self.n_elem, -1]
@@ -44,11 +44,11 @@ class Planar(FEM):
         D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2], dim=1)
 
-    def compute_k(self, detJ, DCD):
+    def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
         """Element stiffness matrix."""
         return torch.einsum("j,j,jkl->jkl", self.thickness, detJ, DCD)
 
-    def compute_f(self, detJ, D, S):
+    def compute_f(self, detJ: torch.Tensor, D: torch.Tensor, S: torch.Tensor):
         """Element internal force vector."""
         return torch.einsum("j,j,jkl,jk->jl", self.thickness, detJ, D, S)
 
