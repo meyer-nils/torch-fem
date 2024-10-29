@@ -393,6 +393,83 @@ class IsotropicElasticity1D(Material):
         return epsilon_new, sigma_new, state_new, ddsdde
 
 
+class IsotropicPlasticity1D(IsotropicElasticity1D):
+    """Isotropic plasticity with isotropic hardening"""
+
+    def __init__(
+        self,
+        E: Union[float, Tensor],
+        sigma_f: Callable,
+        sigma_f_prime: Callable,
+        tolerance: float = 1e-5,
+        max_iter: int = 10,
+    ):
+        super().__init__(E)
+        self.sigma_f = sigma_f
+        self.sigma_f_prime = sigma_f_prime
+        self.n_state = 1
+        self.tolerance = tolerance
+        self.max_iter = max_iter
+
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        E = self.E.repeat(n_elem)
+        return IsotropicPlasticity1D(
+            E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+        )
+
+    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+        """Perform a strain increment."""
+        # Solution variables
+        epsilon_new = epsilon + depsilon
+        sigma_new = sigma.clone()
+        state_new = state.clone()
+        q = state_new[..., 0]
+        ddsdde = self.C.clone()
+
+        # Compute trial stress
+        s_trial = sigma + torch.einsum("...kl,...l->...k", self.C, depsilon)
+        s_norm = torch.abs(s_trial).squeeze()
+
+        # Flow potential
+        f = s_norm - self.sigma_f(q)
+        fm = f > 0
+
+        # Local Newton solver to find plastic strain increment
+        dGamma = torch.zeros_like(f[fm])
+        E = self.E[fm]
+        for _ in range(self.max_iter):
+            res = s_norm[fm] - E * dGamma - self.sigma_f(q[fm])
+            ddGamma = res / (E + self.sigma_f_prime(q[fm]))
+            dGamma += ddGamma
+            q[fm] += ddGamma
+
+            # Check convergence for early stopping
+            if (torch.abs(res) < self.tolerance).all():
+                break
+
+        # Check if the local Newton iteration converged
+        if (torch.abs(res) > self.tolerance).any():
+            print("Local Newton iteration did not converge.")
+
+        # Update stress
+        sigma_new[~fm] = s_trial[~fm]
+        sigma_new[fm] = (1.0 - (dGamma * E) / s_norm[fm])[:, None] * s_trial[fm]
+
+        # Update state
+        state_new[..., 0] = q
+
+        # Update algorithmic tangent
+        if fm.sum() > 0:
+            ddsdde[fm] = (
+                E[:, None, None]
+                * self.sigma_f_prime(q[fm])
+                / (E[:, None, None] + self.sigma_f_prime(q[fm]))
+            )
+
+        return epsilon_new, sigma_new, state_new, ddsdde
+
+
 class OrthotropicElasticity3D(Material):
     """Orthotropic material."""
 
