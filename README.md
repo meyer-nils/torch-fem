@@ -17,12 +17,9 @@ Simple finite element assemblers for small-deformation mechanics with PyTorch. T
   - 3D: Hexahedron (linear & quadratic) and tetrahedron (linear & quadratic)
   - Shell: Flat-facet triangle (linear)
 - Material models
-  - Isotropic linear elasticity
-  - Orthotropic linear elasticity 
-  - Isotropic plane-stress and plane-stain elasticity 
-  - Orthotropic plane-stress elasticity 
-  - Isotropic plasticity 
-  - Isotropic plane-stress plasticity 
+  - Isotropic linear elasticity (3D, plane stress, plane strain, 1D)
+  - Orthotropic linear elasticity (3D, plane stress, plane strain)
+  - Isotropic plasticity (3D, plane stress)
 
 ## Basic examples
 The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. 
