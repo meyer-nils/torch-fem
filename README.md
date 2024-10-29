@@ -5,21 +5,29 @@
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/meyer-nils/torch-fem/HEAD)
 
 
-
 # torch-fem: differentiable finite elements in PyTorch
 
 Simple finite element assemblers for small-deformation mechanics with PyTorch. The advantage of using PyTorch is the ability to efficiently compute sensitivities and use them in optimization tasks.
 
+## Installation
+Your may install torch-fem via pip with
+```
+pip install torch-fem
+```
+
 ## Features 
 - Elements
-  - 1D: Bar (linear & quadratic) 
-  - 2D: Quadrilateral (linear & quadratic) and triangle (linear & quadratic)
-  - 3D: Hexahedron (linear & quadratic) and tetrahedron (linear & quadratic)
+  - 1D: Bar1 (linear), Bar2 (quadratic) 
+  - 2D: Quad1 (linear), Quad2 (quadratic), Tria1 (linear), Tria2 (quadratic)
+  - 3D: Hexa1 (linear), Hexa2 (quadratic), Tetra1 (linear), Tetra2 (quadratic)
   - Shell: Flat-facet triangle (linear)
 - Material models
   - Isotropic linear elasticity (3D, plane stress, plane strain, 1D)
   - Orthotropic linear elasticity (3D, plane stress, plane strain)
   - Isotropic plasticity (3D, plane stress)
+- Utilities
+  - Homogenization of orthotropic stiffness (mean field)
+  - I/O to and from other mesh formats via meshio
 
 ## Basic examples
 The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. 
@@ -48,11 +56,7 @@ The subdirectory `examples->optimization` demonstrates the use of torch-fem for 
 <img src="doc/plate_hole_shape_optimization.png" width="400"></br>
 **Simple fiber orientation optimization of a plate with a hole:** Compliance is minimized by optimizing the fiber orientation of an anisotropic material using automatic differentiation w.r.t. element-wise fiber angles.
 
-## Installation
-Your may install torch-fem via pip with
-```
-pip install torch-fem
-```
+
 
 ## Minimal code
 This is a minimal example of how to use torch-fem to solve a simple cantilever problem. 
