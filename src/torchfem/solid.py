@@ -2,10 +2,11 @@ import torch
 
 from .base import FEM
 from .elements import Hexa1, Hexa2, Tetra1, Tetra2
+from .materials import Material
 
 
 class Solid(FEM):
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
+    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material: Material):
         """Initialize the solid FEM problem."""
 
         super().__init__(nodes, elements, material)
@@ -19,6 +20,8 @@ class Solid(FEM):
             self.etype = Tetra2()
         elif len(elements[0]) == 20:
             self.etype = Hexa2()
+        else:
+            raise ValueError("Element type not supported.")
 
         # Set element type specific sizes
         self.n_strains = 6

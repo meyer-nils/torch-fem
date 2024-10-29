@@ -4,10 +4,11 @@ from matplotlib.collections import PolyCollection
 
 from .base import FEM
 from .elements import Quad1, Quad2, Tria1, Tria2
+from .materials import Material
 
 
 class Planar(FEM):
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
+    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material: Material):
         """Initialize the planar FEM problem."""
 
         super().__init__(nodes, elements, material)
@@ -24,6 +25,8 @@ class Planar(FEM):
             self.etype = Tria2()
         elif len(elements[0]) == 8:
             self.etype = Quad2()
+        else:
+            raise ValueError("Element type not supported.")
 
         # Set element type specific sizes
         self.n_strains = 3
