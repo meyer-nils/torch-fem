@@ -27,15 +27,17 @@ class Truss(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
-    def D(self, _, nodes: torch.Tensor):
+    def D(self, B: torch.tensor, nodes: torch.Tensor):
         """Element gradient operator."""
-        dx = nodes[:, 1] - nodes[:, 0]
+
+        # Direction of the element
+        dx = nodes[:, -1] - nodes[:, 0]
+        # Length of the element
         l0 = torch.linalg.norm(dx, dim=-1)
-        c = dx / l0[:, None]
-        m = torch.stack(
-            [s * c[:, j] for s in [-1, 1] for j in range(self.n_dim)], dim=-1
-        )[:, None, :]
-        return m / l0[:, None, None]
+        # Cosine and sine of the element
+        cs = dx / l0[:, None]
+
+        return torch.einsum("ijk,il->ijkl", B, cs).reshape(self.n_elem, -1)[:, None, :]
 
     def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
         """Element stiffness matrix."""
