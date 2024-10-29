@@ -79,7 +79,10 @@ class FEM(ABC):
         for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
             # Compute gradient operators
             b = self.etype.B(xi)
-            J = torch.einsum("jk,mkl->mjl", b, nodes)
+            if b.shape[0] == 1:
+                J = torch.linalg.norm(nodes[:, 1] - nodes[:, 0], dim=1)[:, None, None]
+            else:
+                J = torch.einsum("jk,mkl->mjl", b, nodes)
             detJ = torch.linalg.det(J)
             if torch.any(detJ <= 0.0):
                 raise Exception("Negative Jacobian. Check element numbering.")

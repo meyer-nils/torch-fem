@@ -356,6 +356,39 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         return IsotropicElasticityPlaneStrain(E, nu)
 
 
+class IsotropicElasticity1D(Material):
+    def __init__(self, E: Union[float, Tensor], eps0: Union[float, Tensor] = 0.0):
+        # Convert float inputs to tensors
+        if isinstance(E, float):
+            E = torch.tensor(E)
+        if isinstance(eps0, float):
+            eps0 = torch.tensor(eps0)
+
+        # Store material properties
+        self.E = E
+        self.eps0 = eps0
+
+        # There are no internal variables
+        self.n_state = 0
+
+        # Stiffness tensor (in 1D, this is a 1x1 "tensor")
+        self.C = self.E.unsqueeze(-1).unsqueeze(-1)
+
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        E = self.E.repeat(n_elem)
+        eps0 = self.eps0.repeat(n_elem)
+        return IsotropicElasticity1D(E, eps0)
+
+    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+        """Perform a strain increment."""
+        epsilon_new = epsilon + depsilon
+        sigma_new = sigma + torch.einsum("...ij,...j->...i", self.C, depsilon)
+        state_new = state
+        ddsdde = self.C
+        return epsilon_new, sigma_new, state_new, ddsdde
+
+
 class OrthotropicElasticity3D(Material):
     """Orthotropic material."""
 

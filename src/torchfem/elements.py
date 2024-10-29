@@ -3,6 +3,29 @@ from math import sqrt
 import torch
 
 
+class Bar1:
+    def __init__(self):
+        self.nodes = 2
+
+    def N(self, xi: torch.Tensor) -> torch.Tensor:
+        N_1 = 1 - xi[..., 0]
+        N_2 = 1 + xi[..., 0]
+        return 1 / 2 * torch.stack([N_1, N_2], dim=-1)
+
+    def B(self, xi: torch.Tensor) -> torch.Tensor:
+        if xi.dim() == 1:
+            return torch.tensor([[-0.5, 0.5]])
+        else:
+            N = xi.shape[0]
+            return torch.tensor([[-0.5, 0.5]]).repeat(N, 1, 1)
+
+    def ipoints(self) -> torch.Tensor:
+        return torch.tensor([[0.0]])
+
+    def iweights(self) -> torch.Tensor:
+        return torch.tensor([2.0])
+
+
 class Tria1:
     def __init__(self):
         self.nodes = 3

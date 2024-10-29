@@ -1,110 +1,55 @@
 import torch
 
-from .sparse import sparse_index_select, sparse_solve
+from .base import FEM
+from .elements import Bar1
+from .materials import Material
 
 
-class Truss:
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor):
-        self.nodes = nodes
-        self.dim = nodes.shape[1]
-        self.n_dofs = torch.numel(self.nodes)
-        self.elements = elements
-        self.n_elem = len(self.elements)
-        self.forces = torch.zeros_like(nodes)
-        self.displacements = torch.zeros_like(nodes)
-        self.constraints = torch.zeros_like(nodes, dtype=bool)
+class Truss(FEM):
+    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material: Material):
+        """Initialize a truss FEM problem."""
+
+        super().__init__(nodes, elements, material)
+
+        # Set up areas
         self.areas = torch.ones((len(elements)))
-        self.moduli = torch.ones((len(elements)))
 
-        # Precompute mapping from local to global indices
-        global_indices = []
-        for element in self.elements:
-            indices = [self.dim * n + i for n in element for i in range(self.dim)]
-            idx = torch.tensor(indices)
-            global_indices.append(torch.stack(torch.meshgrid(idx, idx, indexing="xy")))
-        self.indices = torch.stack(global_indices, dim=1)
+        # Element type
+        if len(elements[0]) == 2:
+            self.etype = Bar1()
+        else:
+            raise ValueError("Element type not supported.")
 
-    def k(self):
-        dx = self.nodes[self.elements[:, 0]] - self.nodes[self.elements[:, 1]]
-        l0 = torch.linalg.norm(dx, dim=-1)
-        c = dx / l0[:, None]
-        dims = range(self.dim)
-        s1 = [1, -1]
-        s2 = [-1, 1]
-        m = torch.stack(
-            [
-                torch.stack([s * c[:, i] * c[:, j] for s in s1 for j in dims], dim=-1)
-                for i in dims
-            ]
-            + [
-                torch.stack([s * c[:, i] * c[:, j] for s in s2 for j in dims], dim=-1)
-                for i in dims
-            ],
-            dim=-1,
-        )
-        return (
-            self.areas[:, None, None]
-            * self.moduli[:, None, None]
-            / l0[:, None, None]
-            * m
-        )
+        # Set element type specific sizes
+        self.n_strains = 1
+        self.n_int = len(self.etype.iweights())
 
-    def stiffness(self):
-        # Assemble global stiffness matrix
-        indices = self.indices.reshape((2, -1))
-        values = self.k().ravel()
-        size = (self.n_dofs, self.n_dofs)
-        return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
+        # Initialize external strain
+        self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
-    def solve(self):
-        # Compute global stiffness matrix
-        K = self.stiffness()
+    def D(self, B):
+        """Element gradient operator."""
+        shape = [self.n_elem, -1]
+        if self.n_dim == 2:
+            D0 = torch.stack([B[:, 0, :], B[:, 0, :]], dim=-1).reshape(shape)
+        elif self.n_dim == 3:
+            D0 = torch.stack([B[:, 0, :], B[:, 0, :], B[:, 0, :]], dim=-1).reshape(
+                shape
+            )
+        return torch.stack([D0], dim=1)
 
-        # Get reduced stiffness matrix
-        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
-        uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
-        f_d = sparse_index_select(K, [None, con]) @ self.displacements.ravel()[con]
-        K_red = sparse_index_select(K, [uncon, uncon])
-        f_red = (self.forces.ravel() - f_d)[uncon]
+    def compute_k(self, detJ, DCD):
+        """Element stiffness matrix."""
+        return torch.einsum("j,j,jkl->jkl", self.areas, detJ, DCD)
 
-        # Solve for displacement
-        u_red = sparse_solve(K_red, f_red)
-        u = self.displacements.clone().ravel()
-        u[uncon] = u_red
-
-        # Evaluate force
-        f = K @ u
-
-        # Reshape
-        u = u.reshape((-1, self.dim))
-        f = f.reshape((-1, self.dim))
-
-        return u, f
-
-    def compute_strain(self, u: torch.Tensor):
-        # Compute displacement degrees of freedom
-        disp = u[self.elements].reshape(-1, 2 * self.dim)
-
-        # Compute orientations
-        dx = self.nodes[self.elements[:, 1]] - self.nodes[self.elements[:, 0]]
-        l0 = torch.linalg.norm(dx, dim=-1)
-        c = dx / l0[:, None]
-        m = torch.stack([s * c[:, j] for s in [-1, 1] for j in range(self.dim)], dim=-1)
-
-        # Compute strain
-        return torch.einsum("ij,ij->i", m, disp) / l0
-
-    def compute_stress(self, u: torch.Tensor):
-        # Compute displacement degrees of freedom
-        strain = self.compute_strain(u)
-
-        # Compute stress
-        return self.moduli * strain
+    def compute_f(self, detJ, D, S):
+        """Element internal force vector."""
+        return torch.einsum("j,j,jkl,jk->jl", self.areas, detJ, D, S)
 
     def plot(self, **kwargs):
-        if self.dim == 2:
+        if self.n_dim == 2:
             self.plot2d(**kwargs)
-        elif self.dim == 3:
+        elif self.n_dim == 3:
             self.plot3d(**kwargs)
 
     @torch.no_grad()
@@ -217,6 +162,7 @@ class Truss:
             n2 = element[1]
             tube = pyvista.Tube(pos[n1], pos[n2], radius=radii[j])
             if sigma is not None:
+                sigma = sigma.squeeze()
                 tube.cell_data["Stress"] = sigma[j]
                 pl.add_mesh(tube, scalars="Stress", cmap="viridis")
             else:
