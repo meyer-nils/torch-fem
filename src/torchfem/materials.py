@@ -106,7 +106,9 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         """Create a vectorized copy of the material for `n_elm` elements."""
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
-        return IsotropicPlasticity3D(E, nu, self.sigma_f, self.sigma_f_prime)
+        return IsotropicPlasticity3D(
+            E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+        )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -233,7 +235,9 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         """Create a vectorized copy of the material for `n_elm` elements."""
         E = self.E.repeat(n_elem)
         nu = self.nu.repeat(n_elem)
-        return IsotropicPlasticityPlaneStress(E, nu, self.sigma_f, self.sigma_f_prime)
+        return IsotropicPlasticityPlaneStress(
+            E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+        )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment.
