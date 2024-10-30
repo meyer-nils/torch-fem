@@ -1,14 +1,17 @@
 from abc import ABC, abstractmethod
+from typing import Tuple
 
 import torch
+from torch import Tensor
 from tqdm import tqdm
 
+from .elements import Element
 from .materials import Material
 from .sparse import sparse_solve
 
 
 class FEM(ABC):
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a general FEM problem."""
 
         # Store nodes and elements
@@ -24,7 +27,7 @@ class FEM(ABC):
         # Initialize load variables
         self.forces = torch.zeros_like(nodes)
         self.displacements = torch.zeros_like(nodes)
-        self.constraints = torch.zeros_like(nodes, dtype=bool)
+        self.constraints = torch.zeros_like(nodes, dtype=torch.bool)
 
         # Compute mapping from local to global indices (hard to read, but fast)
         self.idx = (
@@ -37,30 +40,43 @@ class FEM(ABC):
         # Vectorize material
         self.material = material.vectorize(self.n_elem)
 
-    @abstractmethod
-    def D(self, B: torch.Tensor, nodes: torch.Tensor):
-        pass
+        # Initialize types
+        self.n_strains: int
+        self.n_int: int
+        self.ext_strain: Tensor
+        self.etype: Element
 
     @abstractmethod
-    def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
-        pass
+    def D(self, B: Tensor, nodes: Tensor) -> Tensor:
+        raise NotImplementedError
 
     @abstractmethod
-    def compute_f(self, detJ: torch.Tensor, D: torch.Tensor, S: torch.Tensor):
-        pass
+    def compute_k(self, detJ: Tensor, DCD: Tensor) -> Tensor:
+        raise NotImplementedError
 
-    def k0(self):
+    @abstractmethod
+    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor):
+        raise NotImplementedError
+
+    def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
         de = torch.zeros(self.n_int, self.n_elem, self.n_strains)
         ds = torch.zeros(self.n_int, self.n_elem, self.n_strains)
         da = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros_like(self.nodes)
         dde0 = torch.zeros(self.n_elem, self.n_strains)
-        self.K = None
+        self.K = torch.empty(0)
         k, _, _, _, _ = self.integrate(de, ds, da, du, dde0)
         return k
 
-    def integrate(self, eps_old, sig_old, sta_old, du, de0):
+    def integrate(
+        self,
+        eps_old: Tensor,
+        sig_old: Tensor,
+        sta_old: Tensor,
+        du: Tensor,
+        de0: Tensor,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
         # Reshape variables
         nodes = self.nodes[self.elements, :]
@@ -100,13 +116,13 @@ class FEM(ABC):
             f += w * self.compute_f(detJ, D, sig_new[i].clone())
 
             # Compute element stiffness matrix
-            if self.K is None or not self.material.n_state == 0:
+            if self.K.numel() == 0 or not self.material.n_state == 0:
                 DCD = torch.einsum("jkl,jlm,jkn->jmn", ddsdde, D, D)
                 k += w * self.compute_k(detJ, DCD)
 
         return k, f, eps_new, sig_new, sta_new
 
-    def assemble_stiffness(self, k, con):
+    def assemble_stiffness(self, k: Tensor, con: Tensor) -> torch.sparse.Tensor:
         """Assemble global stiffness matrix."""
 
         # Initialize sparse matrix size
@@ -117,7 +133,7 @@ class FEM(ABC):
         values = k.ravel()
 
         # Eliminate and replace constrained dofs
-        con_mask = torch.zeros(indices[0].max() + 1, dtype=torch.bool)
+        con_mask = torch.zeros(int(indices[0].max()) + 1, dtype=torch.bool)
         con_mask[con] = True
         mask = ~(con_mask[indices[0]] | con_mask[indices[1]])
         diag_index = torch.stack((con, con), dim=0)
@@ -129,7 +145,7 @@ class FEM(ABC):
 
         return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
-    def assemble_force(self, f):
+    def assemble_force(self, f: Tensor) -> Tensor:
         """Assemble global force vector."""
 
         # Initialize force vector
@@ -143,13 +159,13 @@ class FEM(ABC):
 
     def solve(
         self,
-        increments=[0, 1],
-        max_iter=10,
-        tol=1e-4,
-        verbose=False,
-        return_intermediate=False,
-        aggregate_integration_points=True,
-    ):
+        increments: Tensor = torch.tensor([0.0, 1.0]),
+        max_iter: int = 10,
+        tol: float = 1e-4,
+        verbose: bool = False,
+        return_intermediate: bool = False,
+        aggregate_integration_points: bool = True,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method."""
         # Number of increments
         N = len(increments)
@@ -165,7 +181,7 @@ class FEM(ABC):
         u = torch.zeros(N, self.n_nod, self.n_dim)
 
         # Initialize global stiffness matrix
-        self.K = None
+        self.K = torch.empty(0)
 
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
@@ -191,7 +207,7 @@ class FEM(ABC):
 
                 # Assemble global stiffness matrix and internal force vector. (Only
                 # reassemble stiffness matrix if state has changed.)
-                if self.K is None or not self.material.n_state == 0:
+                if self.K.numel() == 0 or not self.material.n_state == 0:
                     self.K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_int)
 

@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import torch
 from matplotlib.collections import PolyCollection
+from torch import Tensor
 
 from .base import FEM
 from .elements import Quad1, Quad2, Tria1, Tria2
@@ -8,7 +9,7 @@ from .materials import Material
 
 
 class Planar(FEM):
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the planar FEM problem."""
 
         super().__init__(nodes, elements, material)
@@ -35,7 +36,7 @@ class Planar(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
-    def D(self, B: torch.Tensor, _):
+    def D(self, B: Tensor, _):
         """Element gradient operator."""
         zeros = torch.zeros(self.n_elem, self.etype.nodes)
         shape = [self.n_elem, -1]
@@ -44,11 +45,11 @@ class Planar(FEM):
         D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2], dim=1)
 
-    def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
+    def compute_k(self, detJ: Tensor, DCD: Tensor):
         """Element stiffness matrix."""
         return torch.einsum("j,j,jkl->jkl", self.thickness, detJ, DCD)
 
-    def compute_f(self, detJ: torch.Tensor, D: torch.Tensor, S: torch.Tensor):
+    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor):
         """Element internal force vector."""
         return torch.einsum("j,j,jkl,jk->jl", self.thickness, detJ, D, S)
 

@@ -9,6 +9,7 @@ https://doi.org/10.1002/nme.6944
 from math import sqrt
 
 import torch
+from torch import Tensor
 
 from .elements import Tria1
 from .sparse import sparse_index_select, sparse_solve
@@ -20,7 +21,7 @@ KAPPA = 5.0 / 6.0
 
 
 class Shell:
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material):
         self.nodes = nodes
         self.n_dofs = NDOF * len(self.nodes)
         self.elements = elements
@@ -28,7 +29,7 @@ class Shell:
         N = len(nodes)
         self.forces = torch.zeros((N, NDOF))
         self.displacements = torch.zeros((N, NDOF))
-        self.constraints = torch.zeros((N, NDOF), dtype=bool)
+        self.constraints = torch.zeros((N, NDOF), dtype=torch.bool)
         self.thickness = torch.ones(len(elements))
         self.C = material.C
         self.Cs = material.Cs

@@ -1,42 +1,67 @@
+from abc import ABC, abstractmethod
 from math import sqrt
+from typing import Dict, Tuple
 
 import torch
+from torch import Tensor
 
 
-class Bar1:
+class Element(ABC):
+
+    def __init__(self):
+        self.nodes: 0
+
+    @abstractmethod
+    def N(self, xi: Tensor) -> Tensor:
+        pass
+
+    @abstractmethod
+    def B(self, xi: Tensor) -> Tensor:
+        pass
+
+    @abstractmethod
+    def ipoints(self) -> Tensor:
+        pass
+
+    @abstractmethod
+    def iweights(self) -> Tensor:
+        pass
+
+
+class Bar1(Element):
     def __init__(self):
         self.nodes = 2
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = 1 - xi[..., 0]
         N_2 = 1 + xi[..., 0]
         return 1 / 2 * torch.stack([N_1, N_2], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         if xi.dim() == 1:
             return torch.tensor([[-0.5, 0.5]])
         else:
             N = xi.shape[0]
             return torch.tensor([[-0.5, 0.5]]).repeat(N, 1, 1)
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor([[0.0]])
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([2.0])
 
 
-class Bar2:
+class Bar2(Element):
     def __init__(self):
         self.nodes = 3
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = 1 / 2 * xi[..., 0] * (xi[..., 0] - 1)
         N_2 = 1 / 2 * xi[..., 0] * (xi[..., 0] + 1)
         N_3 = 1 - xi[..., 0] ** 2
         return torch.stack([N_1, N_2, N_3], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         return torch.stack(
             [
                 torch.stack(
@@ -51,42 +76,42 @@ class Bar2:
             dim=xi.dim() - 1,
         )
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor([[-1 / sqrt(3.0)], [1 / sqrt(3.0)]])
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([1.0, 1.0])
 
 
-class Tria1:
+class Tria1(Element):
     def __init__(self):
         self.nodes = 3
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = 1.0 - xi[..., 0] - xi[..., 1]
         N_2 = xi[..., 0]
         N_3 = xi[..., 1]
         return torch.stack([N_1, N_2, N_3], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         if xi.dim() == 1:
             return torch.tensor([[-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
         else:
             N = xi.shape[0]
             return torch.tensor([[-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]]).repeat(N, 1, 1)
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor([[1.0 / 3.0, 1.0 / 3.0]])
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([0.5])
 
 
-class Tria2:
+class Tria2(Element):
     def __init__(self):
         self.nodes = 6
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = (1 - xi[..., 0] - xi[..., 1]) * (1 - 2 * xi[..., 0] - 2 * xi[..., 1])
         N_2 = xi[..., 0] * (2 * xi[..., 0] - 1)
         N_3 = xi[..., 1] * (2 * xi[..., 1] - 1)
@@ -95,7 +120,7 @@ class Tria2:
         N_6 = 4 * xi[..., 1] * (1 - xi[..., 0] - xi[..., 1])
         return torch.stack([N_1, N_2, N_3, N_4, N_5, N_6], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         zeros = torch.zeros_like(xi[..., 0])
         return torch.stack(
             [
@@ -125,25 +150,25 @@ class Tria2:
             dim=xi.dim() - 1,
         )
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([1.0 / 6.0, 1.0 / 6.0, 1.0 / 6.0])
 
 
-class Quad1:
+class Quad1(Element):
     def __init__(self):
         self.nodes = 4
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1])
         N_2 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1])
         N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1])
         N_4 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1])
         return 0.25 * torch.stack([N_1, N_2, N_3, N_4], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         return 0.25 * torch.stack(
             [
                 torch.stack(
@@ -168,7 +193,7 @@ class Quad1:
             dim=xi.dim() - 1,
         )
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor(
             [
                 [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0)]
@@ -177,15 +202,15 @@ class Quad1:
             ]
         )
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([1, 1, 1, 1])
 
 
-class Quad2:
+class Quad2(Element):
     def __init__(self):
         self.nodes = 8
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = -(1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 0] + xi[..., 1])
         N_2 = -(1 + xi[..., 0]) * (1 - xi[..., 1]) * (1 - xi[..., 0] + xi[..., 1])
         N_3 = -(1 + xi[..., 0]) * (1 + xi[..., 1]) * (1 - xi[..., 0] - xi[..., 1])
@@ -196,7 +221,7 @@ class Quad2:
         N_8 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 1])
         return 0.25 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         return 0.25 * torch.stack(
             [
                 torch.stack(
@@ -229,7 +254,7 @@ class Quad2:
             dim=xi.dim() - 1,
         )
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor(
             [
                 [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0)]
@@ -238,22 +263,22 @@ class Quad2:
             ]
         )
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([1, 1, 1, 1])
 
 
-class Tetra1:
+class Tetra1(Element):
     def __init__(self):
         self.nodes = 4
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = 1.0 - xi[..., 0] - xi[..., 1] - xi[..., 2]
         N_2 = xi[..., 0]
         N_3 = xi[..., 1]
         N_4 = xi[..., 2]
         return torch.stack([N_1, N_2, N_3, N_4], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         if xi.dim() == 1:
             return torch.tensor(
                 [[-1.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 1.0, 0.0], [-1.0, 0.0, 0.0, 1.0]]
@@ -264,18 +289,18 @@ class Tetra1:
                 [[-1.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 1.0, 0.0], [-1.0, 0.0, 0.0, 1.0]]
             ).repeat(N, 1, 1)
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor([[0.25, 0.25, 0.25]])
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([1.0 / 6.0])
 
 
-class Tetra2:
+class Tetra2(Element):
     def __init__(self):
         self.nodes = 10
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = (1.0 - xi[..., 0] - xi[..., 1] - xi[..., 2]) * (
             2 * (1.0 - xi[..., 0] - xi[..., 1] - xi[..., 2]) - 1
         )
@@ -290,7 +315,7 @@ class Tetra2:
         N_10 = 4 * xi[..., 1] * xi[..., 2]
         return torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8, N_9, N_10], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         zeros = torch.zeros_like(xi[..., 0])
         return torch.stack(
             [
@@ -343,7 +368,7 @@ class Tetra2:
             dim=xi.dim() - 1,
         )
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor(
             [
                 [0.58541020, 0.13819660, 0.13819660],
@@ -353,15 +378,15 @@ class Tetra2:
             ]
         )
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([0.041666667, 0.041666667, 0.041666667, 0.041666667])
 
 
-class Hexa1:
+class Hexa1(Element):
     def __init__(self):
         self.nodes = 8
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 - xi[..., 2])
         N_2 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 - xi[..., 2])
         N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 - xi[..., 2])
@@ -372,7 +397,7 @@ class Hexa1:
         N_8 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
         return 0.125 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         return 0.125 * torch.stack(
             [
                 torch.stack(
@@ -418,7 +443,7 @@ class Hexa1:
             dim=xi.dim() - 1,
         )
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor(
             [
                 [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0), xi_3 / sqrt(3.0)]
@@ -428,15 +453,15 @@ class Hexa1:
             ]
         )
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 
 
-class Hexa2:
+class Hexa2(Element):
     def __init__(self):
         self.nodes = 20
 
-    def N(self, xi: torch.Tensor) -> torch.Tensor:
+    def N(self, xi: Tensor) -> Tensor:
         N_1 = (
             (1 - xi[..., 0])
             * (1 - xi[..., 1])
@@ -524,7 +549,7 @@ class Hexa2:
             dim=-1,
         )
 
-    def B(self, xi: torch.Tensor) -> torch.Tensor:
+    def B(self, xi: Tensor) -> Tensor:
         return 0.125 * torch.stack(
             [
                 torch.stack(
@@ -654,7 +679,7 @@ class Hexa2:
             dim=xi.dim() - 1,
         )
 
-    def ipoints(self) -> torch.Tensor:
+    def ipoints(self) -> Tensor:
         return torch.tensor(
             [
                 [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0), xi_3 / sqrt(3.0)]
@@ -664,17 +689,15 @@ class Hexa2:
             ]
         )
 
-    def iweights(self) -> torch.Tensor:
+    def iweights(self) -> Tensor:
         return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 
 
-def linear_to_quadratic(
-    nodes: torch.Tensor, elements: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor]:
+def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor]:
     new_nodes = nodes.tolist()
-    midpoints = {}
+    midpoints: Dict[Tuple, int] = {}
 
-    def get_midpoint_index(n1, n2):
+    def get_midpoint_index(n1: Tensor, n2: Tensor) -> int:
         if (n1, n2) in midpoints:
             return midpoints[(n1, n2)]
         if (n2, n1) in midpoints:

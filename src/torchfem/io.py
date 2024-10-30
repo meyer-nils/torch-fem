@@ -1,12 +1,23 @@
+from typing import Dict
+
 import torch
 from meshio import Mesh
+from torch import Tensor
 
 from torchfem import Planar, Shell, Solid, Truss
-from torchfem.elements import Hexa1, Hexa2, Quad1, Quad2, Tetra1, Tetra2, Tria1, Tria2
+
+from .base import FEM
+from .elements import Hexa1, Hexa2, Quad1, Quad2, Tetra1, Tetra2, Tria1, Tria2
+from .materials import Material
 
 
 @torch.no_grad()
-def export_mesh(mesh, filename, nodal_data={}, elem_data={}):
+def export_mesh(
+    mesh: FEM,
+    filename: str,
+    nodal_data: Dict[str, Tensor] = {},
+    elem_data: Dict[str, Tensor] = {},
+):
     if isinstance(mesh, Truss):
         etype = "line"
     else:
@@ -27,21 +38,21 @@ def export_mesh(mesh, filename, nodal_data={}, elem_data={}):
         elif isinstance(mesh.etype, Hexa2):
             etype = "hexahedron20"
 
-    mesh = Mesh(
+    msh = Mesh(
         points=mesh.nodes,
         cells={etype: mesh.elements},
         point_data=nodal_data,
         cell_data=elem_data,
     )
-    mesh.write(filename)
+    msh.write(filename)
 
 
-def import_mesh(filename, material):
+def import_mesh(filename: str, material: Material):
     import meshio
     import numpy as np
 
     mesh = meshio.read(filename)
-    elements = []
+    elems = []
     etypes = []
     for cell_block in mesh.cells:
         if cell_block.type in [
@@ -55,12 +66,12 @@ def import_mesh(filename, material):
             "hexahedron20",
         ]:
             etypes.append(cell_block.type)
-            elements += cell_block.data.tolist()
+            elems += cell_block.data.tolist()
     if len(etypes) > 1:
         raise Exception("Currently, only single element types are supported.")
     etype = etypes[0]
 
-    elements = torch.tensor(elements)
+    elements = torch.tensor(elems)
     dtype = torch.get_default_dtype()
 
     if not np.allclose(mesh.points[:, 2], np.zeros_like(mesh.points[:, 2])):

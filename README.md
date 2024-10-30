@@ -22,9 +22,9 @@ pip install torch-fem
   - 3D: Hexa1 (linear), Hexa2 (quadratic), Tetra1 (linear), Tetra2 (quadratic)
   - Shell: Flat-facet triangle (linear)
 - Material models
-  - Isotropic linear elasticity (3D, plane stress, plane strain, 1D)
-  - Orthotropic linear elasticity (3D, plane stress, plane strain)
-  - Isotropic plasticity (3D, plane stress)
+  - Isotropic linear elasticity (3D, 2D plane stress, 2D plane strain, 1D)
+  - Orthotropic linear elasticity (3D, 2D plane stress, 2D plane strain)
+  - Isotropic plasticity (3D, 2D plane stress, 1D)
 - Utilities
   - Homogenization of orthotropic stiffness (mean field)
   - I/O to and from other mesh formats via meshio

@@ -1,4 +1,7 @@
+from typing import Optional, Union
+
 import torch
+from torch import Tensor
 
 from .base import FEM
 from .elements import Bar1, Bar2
@@ -6,7 +9,7 @@ from .materials import Material
 
 
 class Truss(FEM):
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem."""
 
         super().__init__(nodes, elements, material)
@@ -29,7 +32,7 @@ class Truss(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
-    def D(self, B: torch.tensor, nodes: torch.Tensor):
+    def D(self, B: Tensor, nodes: Tensor) -> Tensor:
         """Element gradient operator."""
 
         # Direction of the element
@@ -41,11 +44,11 @@ class Truss(FEM):
 
         return torch.einsum("ijk,il->ijkl", B, cs).reshape(self.n_elem, -1)[:, None, :]
 
-    def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
+    def compute_k(self, detJ: Tensor, DCD: Tensor) -> Tensor:
         """Element stiffness matrix."""
         return torch.einsum("j,j,jkl->jkl", self.areas, detJ, DCD)
 
-    def compute_f(self, detJ: torch.Tensor, D: torch.Tensor, S: torch.Tensor):
+    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor) -> Tensor:
         """Element internal force vector."""
         return torch.einsum("j,j,jkl,jk->jl", self.areas, detJ, D, S)
 
@@ -58,12 +61,12 @@ class Truss(FEM):
     @torch.no_grad()
     def plot2d(
         self,
-        u=0.0,
-        sigma=None,
-        node_labels=True,
-        show_thickness=False,
-        thickness_threshold=0.0,
-        default_color="black",
+        u: Union[float, Tensor] = 0.0,
+        sigma: Optional[Tensor] = None,
+        node_labels: bool = True,
+        show_thickness: bool = False,
+        thickness_threshold: float = 0.0,
+        default_color: str = "black",
     ):
         try:
             import matplotlib.pyplot as plt
@@ -82,8 +85,8 @@ class Truss(FEM):
         # Line color from stress (if present)
         if sigma is not None:
             cmap = cm.viridis
-            vmin = min(sigma.min(), 0.0)
-            vmax = max(sigma.max(), 0.0)
+            vmin = min(float(sigma.min()), 0.0)
+            vmax = max(float(sigma.max()), 0.0)
             color = cmap((sigma - vmin) / (vmax - vmin))
             sm = plt.cm.ScalarMappable(
                 cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax)
@@ -97,7 +100,9 @@ class Truss(FEM):
         plt.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o")
         if node_labels:
             for i, node in enumerate(pos):
-                plt.annotate(i, (node[0] + 0.01, node[1] + 0.1), color=default_color)
+                plt.annotate(
+                    str(i), (node[0] + 0.01, node[1] + 0.1), color=default_color
+                )
 
         # Bounding box
         size = torch.linalg.norm(pos.max() - pos.min())
@@ -114,25 +119,33 @@ class Truss(FEM):
         for i, force in enumerate(self.forces):
             if torch.norm(force) > 0.0:
                 s = 0.05 * size / torch.linalg.norm(force)  # scale
-                x = pos[i][0]
-                y = pos[i][1]
                 plt.arrow(
-                    x, y, s * force[0], s * force[1], width=0.05, facecolor="gray"
+                    float(pos[i][0]),
+                    float(pos[i][1]),
+                    s * force[0],
+                    s * force[1],
+                    width=0.05,
+                    facecolor="gray",
                 )
 
         # Constraints
         for i, constraint in enumerate(self.constraints):
-            x = pos[i][0]
-            y = pos[i][1]
             if constraint[0]:
-                plt.plot(x - 0.1, y, ">", color="gray")
+                plt.plot(pos[i][0] - 0.1, pos[i][1], ">", color="gray")
             if constraint[1]:
-                plt.plot(x, y - 0.1, "^", color="gray")
+                plt.plot(pos[i][0], pos[i][1] - 0.1, "^", color="gray")
 
         # Adjustments
         nmin = pos.min(dim=0).values
         nmax = pos.max(dim=0).values
-        plt.axis([nmin[0] - 0.5, nmax[0] + 0.5, nmin[1] - 0.5, nmax[1] + 0.5])
+        plt.axis(
+            (
+                float(nmin[0]) - 0.5,
+                float(nmax[0]) + 0.5,
+                float(nmin[1]) - 0.5,
+                float(nmax[1]) + 0.5,
+            )
+        )
         plt.gca().set_aspect("equal", adjustable="box")
         plt.axis("off")
 

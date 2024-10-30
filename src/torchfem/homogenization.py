@@ -2,11 +2,12 @@ from itertools import permutations
 from math import acosh
 
 import torch
+from torch import Tensor
 
 from .materials import IsotropicElasticity3D, OrthotropicElasticity3D
 
 
-def IBOF_closure(A2: torch.Tensor) -> torch.Tensor:
+def IBOF_closure(A2: Tensor) -> Tensor:
     """IBOF closure [1]. This is a PyTorch re-implementation of fiberoripy [2].
 
     [1] Du Hwan Chung and Tai Hun Kwon (2002)
@@ -255,7 +256,7 @@ def IBOF_closure(A2: torch.Tensor) -> torch.Tensor:
     )
 
 
-def symm(A4: torch.Tensor) -> torch.Tensor:
+def symm(A4: Tensor) -> Tensor:
     """Symmetrize a fourth order tensor. This is a PyTorch re-implementation of
     fiberoripy [1].
 
@@ -264,18 +265,16 @@ def symm(A4: torch.Tensor) -> torch.Tensor:
         https://doi.org/10.5281/zenodo.7305587
 
     Args:
-        A4 (torch.Tensor): Input tensor (shape Nx3x3x3x3)
+        A4 (Tensor): Input tensor (shape Nx3x3x3x3)
 
     Returns:
-        torch.Tensor: Symmetrized outout tensor
+        Tensor: Symmetrized outout tensor
     """
     B4 = torch.stack([torch.permute(A4, (0, *p)) for p in permutations([1, 2, 3, 4])])
     return B4.sum(dim=0) / 24
 
 
-def compute_orientation_average(
-    C: torch.Tensor, A2: torch.Tensor, A4: torch.Tensor
-) -> torch.Tensor:
+def compute_orientation_average(C: Tensor, A2: Tensor, A4: Tensor) -> Tensor:
     """Orientation averaging according to Advani and Tucker [1]. See also homopy [2].
 
     [1] Suresh G. Advani, Charles L. Tucker (1987)

@@ -1,4 +1,7 @@
+from typing import Dict, Optional, Union
+
 import torch
+from torch import Tensor
 
 from .base import FEM
 from .elements import Hexa1, Hexa2, Tetra1, Tetra2
@@ -6,7 +9,7 @@ from .materials import Material
 
 
 class Solid(FEM):
-    def __init__(self, nodes: torch.Tensor, elements: torch.Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the solid FEM problem."""
 
         super().__init__(nodes, elements, material)
@@ -30,7 +33,7 @@ class Solid(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
 
-    def D(self, B: torch.Tensor, _):
+    def D(self, B: Tensor, nodes: Tensor) -> Tensor:
         """Element gradient operator"""
         zeros = torch.zeros(self.n_elem, self.etype.nodes)
         shape = [self.n_elem, -1]
@@ -42,24 +45,23 @@ class Solid(FEM):
         D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
         return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
 
-    def compute_k(self, detJ: torch.Tensor, DCD: torch.Tensor):
+    def compute_k(self, detJ: Tensor, DCD: Tensor) -> Tensor:
         """Element stiffness matrix"""
         return torch.einsum("j,jkl->jkl", detJ, DCD)
 
-    def compute_f(self, detJ: torch.Tensor, D: torch.Tensor, S: torch.Tensor):
+    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor) -> Tensor:
         """Element internal force vector."""
         return torch.einsum("j,jkl,jk->jl", detJ, D, S)
 
     @torch.no_grad()
     def plot(
         self,
-        u=0.0,
-        node_property=None,
-        element_property=None,
-        show_edges=True,
-        show_undeformed=False,
-        contour=None,
-        cmap="viridis",
+        u: Union[float, Tensor] = 0.0,
+        node_property: Optional[Dict[str, Tensor]] = None,
+        element_property: Optional[Dict[str, Tensor]] = None,
+        show_edges: bool = True,
+        show_undeformed: bool = False,
+        cmap: str = "viridis",
     ):
         try:
             import pyvista
@@ -94,16 +96,12 @@ class Solid(FEM):
         # Plot node properties
         if node_property:
             for key, val in node_property.items():
-                mesh.point_data[key] = val
+                mesh.point_data[key] = val.numpy()
 
         # Plot cell properties
         if element_property:
             for key, val in element_property.items():
-                mesh.cell_data[key] = val
-
-        if contour:
-            mesh = mesh.cell_data_to_point_data()
-            mesh = mesh.contour(contour)
+                mesh.cell_data[key] = val.numpy()
 
         if show_edges:
             if isinstance(self.etype, Tetra2) or isinstance(self.etype, Hexa2):

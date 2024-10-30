@@ -1,6 +1,7 @@
 import torch
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import minres, spsolve
+from torch import Tensor
 from torch.autograd import Function
 
 
@@ -60,7 +61,7 @@ class Solve(Function):
 sparse_solve = Solve.apply
 
 
-def sparse_index_select(t, slices):
+def sparse_index_select(t: Tensor, slices: Tensor) -> Tensor:
     coalesced = t.is_coalesced()
     indices = t.indices()
     values = t.values()
