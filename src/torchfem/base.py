@@ -191,7 +191,7 @@ class FEM(ABC):
 
                 # Assemble global stiffness matrix and internal force vector. (Only
                 # reassemble stiffness matrix if state has changed.)
-                if not (state_new == state[i - 1]).all() or self.K is None:
+                if self.K is None or not self.material.n_state == 0:
                     self.K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_int)
 
