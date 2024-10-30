@@ -360,6 +360,114 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         return IsotropicElasticityPlaneStrain(E, nu)
 
 
+class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
+    """Isotropic plasticity with isotropic hardening"""
+
+    def __init__(
+        self,
+        E: Union[float, Tensor],
+        nu: Union[float, Tensor],
+        sigma_f: Callable,
+        sigma_f_prime: Callable,
+        tolerance: float = 1e-5,
+        max_iter: int = 10,
+    ):
+        super().__init__(E, nu)
+        self.sigma_f = sigma_f
+        self.sigma_f_prime = sigma_f_prime
+        self.n_state = 2
+        self.tolerance = tolerance
+        self.max_iter = max_iter
+
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        E = self.E.repeat(n_elem)
+        nu = self.nu.repeat(n_elem)
+        return IsotropicPlasticityPlaneStrain(
+            E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+        )
+
+    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+        """Perform a strain increment."""
+        # Solution variables
+        epsilon_new = epsilon + depsilon
+        sigma_new = sigma.clone()
+        state_new = state.clone()
+        q = state_new[..., 0]
+        ez = state_new[..., 1]
+        ddsdde = self.C.clone()
+
+        # Compute trial stress
+        s_trial_2D = sigma + torch.einsum("...kl,...l->...k", self.C, depsilon)
+        s_trial = torch.stack(
+            [
+                s_trial_2D[..., 0],
+                s_trial_2D[..., 1],
+                self.nu * (s_trial_2D[..., 0] + s_trial_2D[..., 1]) - self.E * ez,
+                s_trial_2D[..., 2],
+                torch.zeros_like(s_trial_2D[..., 0]),
+                torch.zeros_like(s_trial_2D[..., 0]),
+            ],
+            dim=-1,
+        )
+
+        # Compute the deviatoric trial stress
+        s_trial_trace = s_trial[..., 0] + s_trial[..., 1] + s_trial[..., 2]
+        dev = s_trial.clone()
+        dev[..., 0:3] -= s_trial_trace[..., None] / 3
+        dev_norm = torch.sqrt((dev[..., 0:3] ** 2 + 2 * dev[..., 3:6] ** 2).sum(dim=-1))
+
+        # Flow potential
+        f = dev_norm - sqrt(2.0 / 3.0) * self.sigma_f(q)
+        fm = f > 0
+
+        # Direction of flow
+        n = dev[fm] / dev_norm[fm][..., None]
+
+        # Local Newton solver to find plastic strain increment
+        dGamma = torch.zeros_like(f[fm])
+        G = self.G[fm]
+        for _ in range(self.max_iter):
+            res = (
+                dev_norm[fm] - 2.0 * G * dGamma - sqrt(2.0 / 3.0) * self.sigma_f(q[fm])
+            )
+            ddGamma = res / (2.0 * G + 2.0 / 3.0 * self.sigma_f_prime(q[fm]))
+            dGamma += ddGamma
+            q[fm] += sqrt(2.0 / 3.0) * ddGamma
+
+            # Check convergence for early stopping
+            if (torch.abs(res) < self.tolerance).all():
+                break
+
+        # Check if the local Newton iteration converged
+        if (torch.abs(res) > self.tolerance).any():
+            print("Local Newton iteration did not converge")
+
+        # Update stress
+        sigma_new[~fm] = s_trial[~fm][..., [0, 1, 3]]
+        sigma_new[fm] = (s_trial[fm] - (2.0 * G * dGamma)[:, None] * n)[..., [0, 1, 3]]
+
+        # Update state
+        state_new[..., 0] = q
+        ez[fm] += dGamma * n[..., 2]
+        state_new[..., 1] = ez
+
+        # Update algorithmic tangent
+        A = 2.0 * G / (1.0 + self.sigma_f_prime(q[fm]) / (3.0 * G))
+        B = 4.0 * G**2 * dGamma / dev_norm[fm]
+        C = self.C[fm]
+        D = C.clone()
+        D[:, 0, 0] = C[:, 0, 0] - A * n[:, 0] ** 2 - B * (2 / 3 - n[:, 0] ** 2)
+        D[:, 1, 1] = C[:, 1, 1] - A * n[:, 1] ** 2 - B * (2 / 3 - n[:, 1] ** 2)
+        n0n1 = n[:, 0] * n[:, 1]
+        D[:, 0, 1] = C[:, 0, 1] - A * n0n1 - B * (-1 / 3 - n0n1)
+        D[:, 1, 0] = D[:, 0, 1]
+        D[:, 2, 2] = C[:, 2, 2] - A * n[:, 3] ** 2 - B * (1 / 2 - n[:, 3] ** 2)
+        ddsdde[fm] = D
+
+        return epsilon_new, sigma_new, state_new, ddsdde
+
+
 class IsotropicElasticity1D(Material):
     def __init__(self, E: Union[float, Tensor], eps0: Union[float, Tensor] = 0.0):
         # Convert float inputs to tensors

@@ -24,7 +24,7 @@ pip install torch-fem
 - Material models
   - Isotropic linear elasticity (3D, 2D plane stress, 2D plane strain, 1D)
   - Orthotropic linear elasticity (3D, 2D plane stress, 2D plane strain)
-  - Isotropic plasticity (3D, 2D plane stress, 1D)
+  - Isotropic plasticity (3D, 2D plane stress, 2D plane strain, 1D)
 - Utilities
   - Homogenization of orthotropic stiffness (mean field)
   - I/O to and from other mesh formats via meshio
