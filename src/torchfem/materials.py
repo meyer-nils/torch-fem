@@ -700,3 +700,58 @@ class OrthotropicElasticityPlaneStress(Material):
         state_new = state
         ddsdde = self.C
         return epsilon_new, sigma_new, state_new, ddsdde
+
+
+class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
+    """Orthotropic 2D plane strain material."""
+
+    def __init__(
+        self,
+        E_1: Union[float, Tensor],
+        E_2: Union[float, Tensor],
+        E_3: Union[float, Tensor],
+        nu_12: Union[float, Tensor],
+        nu_13: Union[float, Tensor],
+        nu_23: Union[float, Tensor],
+        G_12: Union[float, Tensor],
+        G_13: Union[float, Tensor] = 0.0,
+        G_23: Union[float, Tensor] = 0.0,
+    ):
+        super().__init__(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23)
+
+        # Overwrite the 3D stiffness tensor with a 2D plane strain tensor
+        z = torch.zeros_like(self.E_1)
+        self.C = torch.stack(
+            [
+                torch.stack(
+                    [self._C[..., 0, 0, 0, 0], self._C[..., 0, 0, 1, 1], z], dim=-1
+                ),
+                torch.stack(
+                    [self._C[..., 1, 1, 0, 0], self._C[..., 1, 1, 1, 1], z], dim=-1
+                ),
+                torch.stack([z, z, self._C[..., 0, 1, 0, 1]], dim=-1),
+            ],
+            dim=-1,
+        )
+
+        # Transverse shear stiffness matrix for shells
+        self.Cs = torch.stack(
+            [torch.stack([self.G_13, z], dim=-1), torch.stack([z, self.G_23], dim=-1)],
+            dim=-1,
+        )
+
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
+        integration points."""
+        E_1 = self.E_1.repeat(n_elem)
+        E_2 = self.E_2.repeat(n_elem)
+        E_3 = self.E_3.repeat(n_elem)
+        nu_12 = self.nu_12.repeat(n_elem)
+        nu_13 = self.nu_13.repeat(n_elem)
+        nu_23 = self.nu_23.repeat(n_elem)
+        G_12 = self.G_12.repeat(n_elem)
+        G_13 = self.G_13.repeat(n_elem)
+        G_23 = self.G_23.repeat(n_elem)
+        return OrthotropicElasticityPlaneStrain(
+            E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
+        )
