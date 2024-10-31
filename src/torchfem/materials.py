@@ -10,6 +10,13 @@ class Material(ABC):
     """Base class for material models."""
 
     @abstractmethod
+    def __init__(self):
+        self.n_state: int
+        self.is_vectorized: bool
+        self.C: Tensor
+        pass
+
+    @abstractmethod
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
         pass
@@ -43,6 +50,12 @@ class IsotropicElasticity3D(Material):
         # There are no internal variables
         self.n_state = 0
 
+        # Check if the material is vectorized
+        if E.dim() > 0:
+            self.is_vectorized = True
+        else:
+            self.is_vectorized = False
+
         # Lame parameters
         self.lbd = self.E * self.nu / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
         self.G = self.E / (2.0 * (1.0 + self.nu))
@@ -69,10 +82,14 @@ class IsotropicElasticity3D(Material):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_elem)
-        nu = self.nu.repeat(n_elem)
-        eps0 = self.eps0.repeat(n_elem)
-        return IsotropicElasticity3D(E, nu, eps0)
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            eps0 = self.eps0.repeat(n_elem)
+            return IsotropicElasticity3D(E, nu, eps0)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -104,11 +121,15 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_elem)
-        nu = self.nu.repeat(n_elem)
-        return IsotropicPlasticity3D(
-            E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
-        )
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicPlasticity3D(
+                E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+            )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -206,9 +227,13 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_elem)
-        nu = self.nu.repeat(n_elem)
-        return IsotropicElasticityPlaneStress(E, nu)
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicElasticityPlaneStress(E, nu)
 
 
 class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
@@ -233,11 +258,15 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_elem)
-        nu = self.nu.repeat(n_elem)
-        return IsotropicPlasticityPlaneStress(
-            E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
-        )
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicPlasticityPlaneStress(
+                E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+            )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment.
@@ -353,11 +382,14 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         )
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
-        integration points."""
-        E = self.E.repeat(n_elem)
-        nu = self.nu.repeat(n_elem)
-        return IsotropicElasticityPlaneStrain(E, nu)
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicElasticityPlaneStrain(E, nu)
 
 
 class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
@@ -381,11 +413,15 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_elem)
-        nu = self.nu.repeat(n_elem)
-        return IsotropicPlasticityPlaneStrain(
-            E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
-        )
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicPlasticityPlaneStrain(
+                E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+            )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -476,6 +512,12 @@ class IsotropicElasticity1D(Material):
         if isinstance(eps0, float):
             eps0 = torch.tensor(eps0)
 
+        # Check if the material is vectorized
+        if E.dim() > 0:
+            self.is_vectorized = True
+        else:
+            self.is_vectorized = False
+
         # Store material properties
         self.E = E
         self.eps0 = eps0
@@ -488,9 +530,13 @@ class IsotropicElasticity1D(Material):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_elem)
-        eps0 = self.eps0.repeat(n_elem)
-        return IsotropicElasticity1D(E, eps0)
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            eps0 = self.eps0.repeat(n_elem)
+            return IsotropicElasticity1D(E, eps0)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -521,10 +567,14 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E = self.E.repeat(n_elem)
-        return IsotropicPlasticity1D(
-            E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
-        )
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            return IsotropicPlasticity1D(
+                E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+            )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -612,6 +662,12 @@ class OrthotropicElasticity3D(Material):
             G_13 = torch.tensor(G_13)
         if isinstance(G_23, float):
             G_23 = torch.tensor(G_23)
+
+        # Check if the material is vectorized
+        if E_1.dim() > 0:
+            self.is_vectorized = True
+        else:
+            self.is_vectorized = False
 
         # Store material properties
         self.E_1 = E_1
@@ -710,20 +766,23 @@ class OrthotropicElasticity3D(Material):
         )
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
-        integration points."""
-        E_1 = self.E_1.repeat(n_elem)
-        E_2 = self.E_2.repeat(n_elem)
-        E_3 = self.E_3.repeat(n_elem)
-        nu_12 = self.nu_12.repeat(n_elem)
-        nu_13 = self.nu_13.repeat(n_elem)
-        nu_23 = self.nu_23.repeat(n_elem)
-        G_12 = self.G_12.repeat(n_elem)
-        G_13 = self.G_13.repeat(n_elem)
-        G_23 = self.G_23.repeat(n_elem)
-        return OrthotropicElasticity3D(
-            E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
-        )
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E_1 = self.E_1.repeat(n_elem)
+            E_2 = self.E_2.repeat(n_elem)
+            E_3 = self.E_3.repeat(n_elem)
+            nu_12 = self.nu_12.repeat(n_elem)
+            nu_13 = self.nu_13.repeat(n_elem)
+            nu_23 = self.nu_23.repeat(n_elem)
+            G_12 = self.G_12.repeat(n_elem)
+            G_13 = self.G_13.repeat(n_elem)
+            G_23 = self.G_23.repeat(n_elem)
+            return OrthotropicElasticity3D(
+                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
+            )
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -760,6 +819,12 @@ class OrthotropicElasticityPlaneStress(Material):
         if isinstance(G_23, float):
             G_23 = torch.tensor(G_23)
 
+        # Check if the material is vectorized
+        if E_1.dim() > 0:
+            self.is_vectorized = True
+        else:
+            self.is_vectorized = False
+
         # Store material properties
         self.E_1 = E_1
         self.E_2 = E_2
@@ -793,13 +858,17 @@ class OrthotropicElasticityPlaneStress(Material):
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
-        E_1 = self.E_1.repeat(n_elem)
-        E_2 = self.E_2.repeat(n_elem)
-        nu_12 = self.nu_12.repeat(n_elem)
-        G_12 = self.G_12.repeat(n_elem)
-        G_13 = self.G_13.repeat(n_elem)
-        G_23 = self.G_23.repeat(n_elem)
-        return OrthotropicElasticityPlaneStress(E_1, E_2, nu_12, G_12, G_13, G_23)
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E_1 = self.E_1.repeat(n_elem)
+            E_2 = self.E_2.repeat(n_elem)
+            nu_12 = self.nu_12.repeat(n_elem)
+            G_12 = self.G_12.repeat(n_elem)
+            G_13 = self.G_13.repeat(n_elem)
+            G_23 = self.G_23.repeat(n_elem)
+            return OrthotropicElasticityPlaneStress(E_1, E_2, nu_12, G_12, G_13, G_23)
 
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
@@ -849,17 +918,20 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         )
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements and `n_int`
-        integration points."""
-        E_1 = self.E_1.repeat(n_elem)
-        E_2 = self.E_2.repeat(n_elem)
-        E_3 = self.E_3.repeat(n_elem)
-        nu_12 = self.nu_12.repeat(n_elem)
-        nu_13 = self.nu_13.repeat(n_elem)
-        nu_23 = self.nu_23.repeat(n_elem)
-        G_12 = self.G_12.repeat(n_elem)
-        G_13 = self.G_13.repeat(n_elem)
-        G_23 = self.G_23.repeat(n_elem)
-        return OrthotropicElasticityPlaneStrain(
-            E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
-        )
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E_1 = self.E_1.repeat(n_elem)
+            E_2 = self.E_2.repeat(n_elem)
+            E_3 = self.E_3.repeat(n_elem)
+            nu_12 = self.nu_12.repeat(n_elem)
+            nu_13 = self.nu_13.repeat(n_elem)
+            nu_23 = self.nu_23.repeat(n_elem)
+            G_12 = self.G_12.repeat(n_elem)
+            G_13 = self.G_13.repeat(n_elem)
+            G_23 = self.G_23.repeat(n_elem)
+            return OrthotropicElasticityPlaneStrain(
+                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
+            )

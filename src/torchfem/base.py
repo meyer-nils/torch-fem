@@ -38,7 +38,10 @@ class FEM(ABC):
         self.indices = torch.stack([idx1, idx2], dim=0).reshape((2, -1))
 
         # Vectorize material
-        self.material = material.vectorize(self.n_elem)
+        if material.is_vectorized:
+            self.material = material
+        else:
+            self.material = material.vectorize(self.n_elem)
 
         # Initialize types
         self.n_strains: int
