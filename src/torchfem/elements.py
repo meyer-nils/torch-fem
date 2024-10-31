@@ -715,20 +715,20 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
             n1, n2 = element.numpy()
             m12 = get_midpoint_index(n1, n2)
             new_elements.append([n1, n2, m12])
-        if len(element) == 3 and nodes.shape[1] == 2:
+        elif len(element) == 3 and nodes.shape[1] == 2:
             n1, n2, n3 = element.numpy()
             m12 = get_midpoint_index(n1, n2)
             m23 = get_midpoint_index(n2, n3)
             m31 = get_midpoint_index(n3, n1)
             new_elements.append([n1, n2, n3, m12, m23, m31])
-        if len(element) == 4 and nodes.shape[1] == 2:
+        elif len(element) == 4 and nodes.shape[1] == 2:
             n1, n2, n3, n4 = element.numpy()
             m12 = get_midpoint_index(n1, n2)
             m23 = get_midpoint_index(n2, n3)
             m34 = get_midpoint_index(n3, n4)
             m41 = get_midpoint_index(n4, n1)
             new_elements.append([n1, n2, n3, n4, m12, m23, m34, m41])
-        if len(element) == 4 and nodes.shape[1] == 3:
+        elif len(element) == 4 and nodes.shape[1] == 3:
             n1, n2, n3, n4 = element.numpy()
             m12 = get_midpoint_index(n1, n2)
             m23 = get_midpoint_index(n2, n3)
@@ -737,7 +737,7 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
             m24 = get_midpoint_index(n2, n4)
             m34 = get_midpoint_index(n3, n4)
             new_elements.append([n1, n2, n3, n4, m12, m23, m13, m41, m24, m34])
-        if len(element) == 8 and nodes.shape[1] == 3:
+        elif len(element) == 8 and nodes.shape[1] == 3:
             n1, n2, n3, n4, n5, n6, n7, n8 = element.numpy()
             m12 = get_midpoint_index(n1, n2)
             m23 = get_midpoint_index(n2, n3)
@@ -775,5 +775,12 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
                     m48,
                 ]
             )
+        else:
+            print(
+                "The element type is not supported for conversion to quadratic."
+                "Maybe the element is already quadratic? Anyway, returning the "
+                "original elements."
+            )
+            new_elements.append(elements.numpy())
 
     return torch.tensor(new_nodes), torch.tensor(new_elements)
