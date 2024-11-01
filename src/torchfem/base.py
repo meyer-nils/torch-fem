@@ -3,7 +3,6 @@ from typing import Tuple
 
 import torch
 from torch import Tensor
-from tqdm import tqdm
 
 from .elements import Element
 from .materials import Material
@@ -190,22 +189,22 @@ class FEM(ABC):
         du = torch.zeros_like(self.nodes).ravel()
 
         # Incremental loading
-        for i in tqdm(range(1, len(increments)), disable=not verbose, desc="Increment"):
+        for n in range(1, N):
             # Increment size
-            inc = increments[i] - increments[i - 1]
+            inc = increments[n] - increments[n - 1]
 
             # Load increment
-            F_ext = increments[i] * self.forces.ravel()
+            F_ext = increments[n] * self.forces.ravel()
             DU = inc * self.displacements.clone().ravel()
             DE = inc * self.ext_strain
 
             # Newton-Raphson iterations
-            for _ in range(max_iter):
+            for i in range(max_iter):
                 du[con] = DU[con]
 
                 # Element-wise integration
                 k, f_int, epsilon_new, sigma_new, state_new = self.integrate(
-                    epsilon[i - 1], sigma[i - 1], state[i - 1], du, DE
+                    epsilon[n - 1], sigma[n - 1], state[n - 1], du, DE
                 )
 
                 # Assemble global stiffness matrix and internal force vector. (Only
@@ -218,6 +217,8 @@ class FEM(ABC):
                 residual = F_int - F_ext
                 residual[con] = 0.0
                 res_norm = residual.abs().max() / F_int.abs().max()
+                if verbose:
+                    print(f"Increment {n} | Iteration {i+1} | Residual: {res_norm:.5f}")
                 if res_norm < tol:
                     break
 
@@ -228,11 +229,11 @@ class FEM(ABC):
                 raise Exception("Newton-Raphson iteration did not converge.")
 
             # Update increment
-            epsilon[i] = epsilon_new
-            sigma[i] = sigma_new
-            state[i] = state_new
-            f[i] = F_int.reshape((-1, self.n_dim))
-            u[i] = u[i - 1] + du.reshape((-1, self.n_dim))
+            epsilon[n] = epsilon_new
+            sigma[n] = sigma_new
+            state[n] = state_new
+            f[n] = F_int.reshape((-1, self.n_dim))
+            u[n] = u[n - 1] + du.reshape((-1, self.n_dim))
 
         # Aggregate integration points as mean
         if aggregate_integration_points:
