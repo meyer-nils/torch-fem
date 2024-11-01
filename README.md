@@ -7,12 +7,19 @@
 
 # torch-fem: differentiable finite elements in PyTorch
 
-Simple finite element assemblers for small-deformation mechanics with PyTorch. The advantage of using PyTorch is the ability to efficiently compute sensitivities and use them in optimization tasks.
+Simple GPU accelerated finite element assemblers for small-deformation mechanics with PyTorch. 
+The advantage of using PyTorch is the ability to efficiently compute sensitivities and use them in optimization tasks.
 
 ## Installation
 Your may install torch-fem via pip with
 ```
 pip install torch-fem
+```
+
+*Optional*: For GPU support, install CUDA and the corresponding CuPy version with
+```
+pip install cupy-cuda11x # v11.2 - 11.8
+pip install cupy-cuda12x # v12.x
 ```
 
 ## Features 
@@ -66,10 +73,10 @@ from torchfem import Planar
 from torchfem.materials import IsotropicPlaneStress
 
 # Material
-material = IsotropicPlaneStress(E=1000.0, nu=0.3)
+material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
 
 # Nodes and elements
-nodes = torch.tensor([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 1.0]])
+nodes = torch.tensor([[0., 0.], [1., 0.], [2., 0.], [0., 1.], [1., 1.], [2., 1.]])
 elements = torch.tensor([[0, 1, 4, 3], [1, 2, 5, 4]])
 
 # Create model
@@ -111,36 +118,49 @@ torch.autograd.grad(compliance, cantilever.thickness)[0]
 ```
 
 ## Benchmarks 
-The following benchmarks were performed on a cube subjected to a one dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of displacements with respect to forces.
+The following benchmarks were performed on a cube subjected to a one-dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of displacements with respect to forces.
 
 #### Apple M1 Pro (10 cores, 16 GB RAM)
-Python 3.10 with Apple Accelerate
+Python 3.10, SciPy 1.14.1, Apple Accelerate
 
-|  N  |    DOFs | FWD Time |  FWD Memory | BWD Time |  BWD Memory |
-| --- | ------- | -------- | ----------- | -------- | ----------- |
-|  10 |    3000 |    0.84s |     0.53 MB |    0.66s |     0.12 MB |
-|  20 |   24000 |    5.92s |   268.69 MB |    5.45s |   235.25 MB |
-|  30 |   81000 |    2.94s |   670.89 MB |    1.58s |     0.62 MB |
-|  40 |  192000 |    7.86s |  1681.77 MB |    4.08s |   350.62 MB |
-|  50 |  375000 |   16.45s |  3056.41 MB |    9.30s |   834.12 MB |
-|  60 |  648000 |   31.62s |  4049.66 MB |   19.37s |  1296.44 MB |
-|  70 | 1029000 |   56.33s |  4495.06 MB |   34.10s |  2405.62 MB |
-|  80 | 1536000 |   93.71s |  6787.83 MB |   56.53s |  3716.17 MB |
-|  90 | 2187000 |  146.70s |  8282.39 MB |  109.08s |  6407.16 MB |
+|  N  |     DOFs |  FWD Time |  BWD Time |   Peak RAM |
+| --- | -------- | --------- | --------- | ---------- |
+|  10 |     3000 |     0.16s |     0.06s |    592.0MB |
+|  20 |    24000 |     0.84s |     0.27s |   1037.9MB |
+|  30 |    81000 |     2.80s |     1.20s |   1756.7MB |
+|  40 |   192000 |     7.40s |     3.70s |   2287.3MB |
+|  50 |   375000 |    16.26s |     8.93s |   3546.5MB |
+|  60 |   648000 |    31.71s |    18.76s |   4255.7MB |
+|  70 |  1029000 |    53.01s |    33.30s |   6785.7MB |
+|  80 |  1536000 |    84.99s |    56.86s |   8134.6MB |
+|  90 |  2187000 |   138.40s |   106.53s |   9586.2MB |
 
+#### AMD Ryzen Threadripper PRO 5995WX (64 Cores, 512 GB RAM) 
+Python 3.12, SciPy 1.14.1, scipy-openblas 0.3.27.dev
 
-#### AMD Ryzen Threadripper PRO 5995WX (64 Cores, 512 GB RAM)
-Python 3.12 with openBLAS
+|  N  |     DOFs |  FWD Time |  BWD Time |   Peak RAM |
+| --- | -------- | --------- | --------- | ---------- |
+|  10 |     3000 |     0.12s |     0.06s |    618.5MB |
+|  20 |    24000 |     0.54s |     0.34s |    934.7MB |
+|  30 |    81000 |     1.90s |     1.33s |   1949.0MB |
+|  40 |   192000 |     4.84s |     4.00s |   4061.1MB |
+|  50 |   375000 |    10.43s |     9.58s |   6877.9MB |
+|  60 |   648000 |    19.05s |    21.73s |  11318.2MB |
+|  70 |  1029000 |    34.34s |    40.30s |  16345.3MB |
+|  80 |  1536000 |    55.64s |    56.67s |  23191.6MB |
+|  90 |  2187000 |    82.74s |   136.69s |  32951.2MB |
 
-|  N  |    DOFs | FWD Time |   FWD Memory | BWD Time |   BWD Memory |
-| --- | ------- | -------- | ------------ | -------- | ------------ |
-|  10 |    3000 |    1.42s |     17.27 MB |    1.87s |      0.00 MB |
-|  20 |   24000 |    1.30s |    160.49 MB |    0.98s |     62.64 MB |
-|  30 |   81000 |    2.76s |    480.52 MB |    2.16s |    305.76 MB |
-|  40 |  192000 |    6.68s |   1732.11 MB |    5.15s |    762.89 MB |
-|  50 |  375000 |   12.51s |   3030.36 MB |   11.29s |   1044.85 MB |
-|  60 |  648000 |   22.94s |   5813.95 MB |   25.54s |   3481.15 MB |
-|  70 | 1029000 |   38.81s |   7874.30 MB |   45.06s |   4704.93 MB |
-|  80 | 1536000 |   63.07s |  14278.46 MB |   63.70s |   8505.52 MB |
-|  90 | 2187000 |   93.47s |  16803.27 MB |  142.94s |  10995.63 MB |
+#### AMD Ryzen Threadripper PRO 5995WX (64 Cores, 512 GB RAM) and NVIDIA GeForce RTX 4090
+Python 3.12, CuPy 13.3.0, CUDA 11.8
+
+|  N  |     DOFs |  FWD Time |  BWD Time |   Peak RAM |
+| --- | -------- | --------- | --------- | ---------- |
+|  10 |     3000 |     0.55s |     0.11s |   1286.6MB |
+|  20 |    24000 |     0.59s |     0.17s |   1286.8MB |
+|  30 |    81000 |     0.68s |     0.26s |   1287.4MB |
+|  40 |   192000 |     1.34s |     0.83s |   1314.3MB |
+|  50 |   375000 |     1.68s |     1.10s |   1310.0MB |
+|  60 |   648000 |     2.31s |     1.49s |   1303.9MB |
+|  70 |  1029000 |     3.16s |     2.24s |   1303.9MB |
+
 
