@@ -1,8 +1,19 @@
 import torch
-from scipy.sparse import coo_matrix
-from scipy.sparse.linalg import minres, spsolve
+from scipy.sparse import coo_matrix as scipy_coo_matrix
+from scipy.sparse.linalg import minres as scipy_minres
 from torch import Tensor
 from torch.autograd import Function
+
+available_backends = ["scipy"]
+
+try:
+    import cupy
+    from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
+    from cupyx.scipy.sparse.linalg import minres as cupy_minres
+
+    available_backends.append("cupy")
+except ImportError:
+    pass
 
 
 class Solve(Function):
@@ -20,21 +31,29 @@ class Solve(Function):
             raise ValueError("A should be a square 2D matrix.")
         shape = A.size()
 
-        A_np = coo_matrix(
-            (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
-        ).tocsr()
-        b_np = b.data.numpy()
-        if shape[0] < 50000:
-            # Solve small systems with direct solver
-            x_np = spsolve(A_np, b_np)
+        if A.device.type == "cuda" and "cupy" in available_backends:
+            A_cp = cupy_coo_matrix(
+                (
+                    cupy.asarray(A._values()),
+                    (cupy.asarray(A._indices()[0]), cupy.asarray(A._indices()[1])),
+                ),
+                shape=shape,
+            ).tocsr()
+            b_cp = cupy.asarray(b.data)
+            x_xp, exit_code = cupy_minres(A_cp, b_cp, tol=1e-10)
+            if exit_code != 0:
+                raise RuntimeError(f"minres failed with exit code {exit_code}")
         else:
-            # Solve large systems with iterative solver
-            x_np, exit_code = minres(A_np, b_np, rtol=1e-10)
+            A_np = scipy_coo_matrix(
+                (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
+            ).tocsr()
+            b_np = b.data.numpy()
+            x_xp, exit_code = scipy_minres(A_np, b_np, rtol=1e-10)
             if exit_code != 0:
                 raise RuntimeError(f"minres failed with exit code {exit_code}")
 
         # Convert back to torch
-        x = torch.tensor(x_np, requires_grad=True, dtype=b.dtype, device=b.device)
+        x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=b.device)
 
         # Save the variables
         ctx.save_for_backward(A, b, x)
