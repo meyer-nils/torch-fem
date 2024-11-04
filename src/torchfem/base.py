@@ -219,7 +219,7 @@ class FEM(ABC):
                 # Compute residual
                 residual = F_int - F_ext
                 residual[con] = 0.0
-                res_norm = residual.abs().max() / F_int.abs().max()
+                res_norm = torch.linalg.norm(residual) / self.n_dofs
                 if verbose:
                     print(f"Increment {n} | Iteration {i+1} | Residual: {res_norm:.5f}")
                 if res_norm < tol:
