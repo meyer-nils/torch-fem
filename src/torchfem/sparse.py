@@ -1,6 +1,7 @@
 import torch
 from scipy.sparse import coo_matrix as scipy_coo_matrix
 from scipy.sparse.linalg import minres as scipy_minres
+from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
 from torch.autograd import Function
 
@@ -10,6 +11,7 @@ try:
     import cupy
     from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
     from cupyx.scipy.sparse.linalg import minres as cupy_minres
+    from cupyx.scipy.sparse.linalg import spsolve as cupy_spsolve
 
     available_backends.append("cupy")
 except ImportError:
@@ -40,17 +42,23 @@ class Solve(Function):
                 shape=shape,
             ).tocsr()
             b_cp = cupy.asarray(b.data)
-            x_xp, exit_code = cupy_minres(A_cp, b_cp, tol=1e-10)
-            if exit_code != 0:
-                raise RuntimeError(f"minres failed with exit code {exit_code}")
+            if shape[0] < 10000:
+                x_xp = cupy_spsolve(A_cp, b_cp)
+            else:
+                x_xp, exit_code = cupy_minres(A_cp, b_cp, tol=1e-10)
+                if exit_code != 0:
+                    raise RuntimeError(f"minres failed with exit code {exit_code}")
         else:
             A_np = scipy_coo_matrix(
                 (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
             ).tocsr()
             b_np = b.data.numpy()
-            x_xp, exit_code = scipy_minres(A_np, b_np, rtol=1e-10)
-            if exit_code != 0:
-                raise RuntimeError(f"minres failed with exit code {exit_code}")
+            if shape[0] < 10000:
+                x_xp = scipy_spsolve(A_np, b_np)
+            else:
+                x_xp, exit_code = scipy_minres(A_np, b_np, rtol=1e-10)
+                if exit_code != 0:
+                    raise RuntimeError(f"minres failed with exit code {exit_code}")
 
         # Convert back to torch
         x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=b.device)

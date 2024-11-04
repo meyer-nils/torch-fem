@@ -30,8 +30,10 @@ class FEM(ABC):
 
         # Compute mapping from local to global indices (hard to read, but fast)
         self.idx = (
-            (self.n_dim * self.elements).unsqueeze(-1) + torch.arange(self.n_dim)
-        ).reshape(self.n_elem, -1)
+            ((self.n_dim * self.elements).unsqueeze(-1) + torch.arange(self.n_dim))
+            .reshape(self.n_elem, -1)
+            .to(torch.int32)
+        )
         idx1 = self.idx.unsqueeze(1).expand(self.n_elem, self.idx.shape[1], -1)
         idx2 = self.idx.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1])
         self.indices = torch.stack([idx1, idx2], dim=0).reshape((2, -1))
@@ -62,20 +64,21 @@ class FEM(ABC):
 
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
-        de = torch.zeros(self.n_int, self.n_elem, self.n_strains)
-        ds = torch.zeros(self.n_int, self.n_elem, self.n_strains)
-        da = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
+        e = torch.zeros(2, self.n_int, self.n_elem, self.n_strains)
+        s = torch.zeros(2, self.n_int, self.n_elem, self.n_strains)
+        a = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros_like(self.nodes)
         dde0 = torch.zeros(self.n_elem, self.n_strains)
         self.K = torch.empty(0)
-        k, _, _, _, _ = self.integrate(de, ds, da, du, dde0)
+        k, _ = self.integrate(e, s, a, 1, du, dde0)
         return k
 
     def integrate(
         self,
-        eps_old: Tensor,
-        sig_old: Tensor,
-        sta_old: Tensor,
+        eps: Tensor,
+        sig: Tensor,
+        sta: Tensor,
+        n: int,
         du: Tensor,
         de0: Tensor,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -83,11 +86,6 @@ class FEM(ABC):
         # Reshape variables
         nodes = self.nodes[self.elements, :]
         du = du.reshape((-1, self.n_dim))[self.elements, :].reshape(self.n_elem, -1)
-
-        # Initialize solution
-        eps_new = torch.zeros((self.n_int, self.n_elem, self.n_strains))
-        sig_new = torch.zeros((self.n_int, self.n_elem, self.n_strains))
-        sta_new = torch.zeros((self.n_int, self.n_elem, self.material.n_state))
 
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
@@ -113,19 +111,19 @@ class FEM(ABC):
 
             # Evaluate material response
             de = torch.einsum("jkl,jl->jk", D, du) - de0
-            eps_new[i], sig_new[i], sta_new[i], ddsdde = self.material.step(
-                de, eps_old[i], sig_old[i], sta_old[i]
+            eps[n, i], sig[n, i], sta[n, i], ddsdde = self.material.step(
+                de, eps[n - 1, i], sig[n - 1, i], sta[n - 1, i]
             )
 
             # Compute element internal forces
-            f += w * self.compute_f(detJ, D, sig_new[i].clone())
+            f += w * self.compute_f(detJ, D, sig[n, i].clone())
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0:
                 DCD = torch.einsum("jkl,jlm,jkn->jmn", ddsdde, D, D)
                 k += w * self.compute_k(detJ, DCD)
 
-        return k, f, eps_new, sig_new, sta_new
+        return k, f
 
     def assemble_stiffness(self, k: Tensor, con: Tensor) -> torch.sparse.Tensor:
         """Assemble global stiffness matrix."""
@@ -166,7 +164,7 @@ class FEM(ABC):
         self,
         increments: Tensor = torch.tensor([0.0, 1.0]),
         max_iter: int = 10,
-        tol: float = 1e-4,
+        tol: float = 1e-8,
         verbose: bool = False,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
@@ -206,9 +204,7 @@ class FEM(ABC):
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_int, epsilon_new, sigma_new, state_new = self.integrate(
-                    epsilon[n - 1], sigma[n - 1], state[n - 1], du, DE
-                )
+                k, f_int = self.integrate(epsilon, sigma, state, n, du, DE)
 
                 # Assemble global stiffness matrix and internal force vector. (Only
                 # reassemble stiffness matrix if state has changed.)
@@ -221,7 +217,7 @@ class FEM(ABC):
                 residual[con] = 0.0
                 res_norm = torch.linalg.norm(residual) / self.n_dofs
                 if verbose:
-                    print(f"Increment {n} | Iteration {i+1} | Residual: {res_norm:.5f}")
+                    print(f"Increment {n} | Iteration {i+1} | Residual: {res_norm:.5e}")
                 if res_norm < tol:
                     break
 
@@ -232,9 +228,6 @@ class FEM(ABC):
                 raise Exception("Newton-Raphson iteration did not converge.")
 
             # Update increment
-            epsilon[n] = epsilon_new
-            sigma[n] = sigma_new
-            state[n] = state_new
             f[n] = F_int.reshape((-1, self.n_dim))
             u[n] = u[n - 1] + du.reshape((-1, self.n_dim))
 
