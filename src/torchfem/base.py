@@ -92,7 +92,10 @@ class FEM(ABC):
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
         f = torch.zeros(self.n_elem, self.n_dim * N_nod)
-        k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
+        if self.K.numel() == 0 or not self.material.n_state == 0:
+            k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
+        else:
+            k = torch.empty(0)
 
         for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
             # Compute gradient operators
