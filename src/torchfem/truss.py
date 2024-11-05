@@ -1,5 +1,3 @@
-from typing import Optional, Union
-
 import torch
 from torch import Tensor
 
@@ -61,8 +59,8 @@ class Truss(FEM):
     @torch.no_grad()
     def plot2d(
         self,
-        u: Union[float, Tensor] = 0.0,
-        sigma: Optional[Tensor] = None,
+        u: float | Tensor = 0.0,
+        sigma: Tensor | None = None,
         node_labels: bool = True,
         show_thickness: bool = False,
         thickness_threshold: float = 0.0,

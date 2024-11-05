@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from math import sqrt
-from typing import Callable, Union
+from typing import Callable
 
 import torch
 from torch import Tensor
@@ -30,9 +30,9 @@ class Material(ABC):
 class IsotropicElasticity3D(Material):
     def __init__(
         self,
-        E: Union[float, Tensor],
-        nu: Union[float, Tensor],
-        eps0: Union[float, Tensor] = 0.0,
+        E: float | Tensor,
+        nu: float | Tensor,
+        eps0: float | Tensor = 0.0,
     ):
         # Convert float inputs to tensors
         if isinstance(E, float):
@@ -105,8 +105,8 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
     def __init__(
         self,
-        E: Union[float, Tensor],
-        nu: Union[float, Tensor],
+        E: float | Tensor,
+        nu: float | Tensor,
         sigma_f: Callable,
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
@@ -210,7 +210,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
     """Isotropic 2D plane stress material."""
 
-    def __init__(self, E: Union[float, Tensor], nu: Union[float, Tensor]):
+    def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
 
         # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
@@ -241,8 +241,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
 
     def __init__(
         self,
-        E: Union[float, Tensor],
-        nu: Union[float, Tensor],
+        E: float | Tensor,
+        nu: float | Tensor,
         sigma_f: Callable,
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
@@ -365,7 +365,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
 class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
     """Isotropic 2D plane strain material."""
 
-    def __init__(self, E: Union[float, Tensor], nu: Union[float, Tensor]):
+    def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
 
         # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
@@ -397,8 +397,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
     def __init__(
         self,
-        E: Union[float, Tensor],
-        nu: Union[float, Tensor],
+        E: float | Tensor,
+        nu: float | Tensor,
         sigma_f: Callable,
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
@@ -505,7 +505,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
 
 class IsotropicElasticity1D(Material):
-    def __init__(self, E: Union[float, Tensor], eps0: Union[float, Tensor] = 0.0):
+    def __init__(self, E: float | Tensor, eps0: float | Tensor = 0.0):
         # Convert float inputs to tensors
         if isinstance(E, float):
             E = torch.tensor(E)
@@ -552,7 +552,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
 
     def __init__(
         self,
-        E: Union[float, Tensor],
+        E: float | Tensor,
         sigma_f: Callable,
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
@@ -633,15 +633,15 @@ class OrthotropicElasticity3D(Material):
 
     def __init__(
         self,
-        E_1: Union[float, Tensor],
-        E_2: Union[float, Tensor],
-        E_3: Union[float, Tensor],
-        nu_12: Union[float, Tensor],
-        nu_13: Union[float, Tensor],
-        nu_23: Union[float, Tensor],
-        G_12: Union[float, Tensor],
-        G_13: Union[float, Tensor],
-        G_23: Union[float, Tensor],
+        E_1: float | Tensor,
+        E_2: float | Tensor,
+        E_3: float | Tensor,
+        nu_12: float | Tensor,
+        nu_13: float | Tensor,
+        nu_23: float | Tensor,
+        G_12: float | Tensor,
+        G_13: float | Tensor,
+        G_23: float | Tensor,
     ):
         # Convert float inputs to tensors
         if isinstance(E_1, float):
@@ -798,12 +798,12 @@ class OrthotropicElasticityPlaneStress(Material):
 
     def __init__(
         self,
-        E_1: Union[float, Tensor],
-        E_2: Union[float, Tensor],
-        nu_12: Union[float, Tensor],
-        G_12: Union[float, Tensor],
-        G_13: Union[float, Tensor] = 0.0,
-        G_23: Union[float, Tensor] = 0.0,
+        E_1: float | Tensor,
+        E_2: float | Tensor,
+        nu_12: float | Tensor,
+        G_12: float | Tensor,
+        G_13: float | Tensor = 0.0,
+        G_23: float | Tensor = 0.0,
     ):
         # Convert float inputs to tensors
         if isinstance(E_1, float):
@@ -884,15 +884,15 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
 
     def __init__(
         self,
-        E_1: Union[float, Tensor],
-        E_2: Union[float, Tensor],
-        E_3: Union[float, Tensor],
-        nu_12: Union[float, Tensor],
-        nu_13: Union[float, Tensor],
-        nu_23: Union[float, Tensor],
-        G_12: Union[float, Tensor],
-        G_13: Union[float, Tensor] = 0.0,
-        G_23: Union[float, Tensor] = 0.0,
+        E_1: float | Tensor,
+        E_2: float | Tensor,
+        E_3: float | Tensor,
+        nu_12: float | Tensor,
+        nu_13: float | Tensor,
+        nu_23: float | Tensor,
+        G_12: float | Tensor,
+        G_13: float | Tensor = 0.0,
+        G_23: float | Tensor = 0.0,
     ):
         super().__init__(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23)
 

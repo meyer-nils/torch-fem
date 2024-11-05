@@ -1,5 +1,3 @@
-from typing import Dict, Optional, Union
-
 import torch
 from torch import Tensor
 
@@ -56,9 +54,9 @@ class Solid(FEM):
     @torch.no_grad()
     def plot(
         self,
-        u: Union[float, Tensor] = 0.0,
-        node_property: Optional[Dict[str, Tensor]] = None,
-        element_property: Optional[Dict[str, Tensor]] = None,
+        u: float | Tensor = 0.0,
+        node_property: dict[str, Tensor] | None = None,
+        element_property: dict[str, Tensor] | None = None,
         show_edges: bool = True,
         show_undeformed: bool = False,
         cmap: str = "viridis",
