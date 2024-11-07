@@ -39,10 +39,13 @@ def export_mesh(
             etype = "hexahedron20"
 
     msh = Mesh(
-        points=mesh.nodes,
-        cells={etype: mesh.elements},
-        point_data=nodal_data,
-        cell_data=elem_data,
+        points=mesh.nodes.cpu().detach(),
+        cells={etype: mesh.elements.cpu().detach()},
+        point_data={key: tensor.cpu().detach() for key, tensor in nodal_data.items()},
+        cell_data={
+            key: [tensor.cpu().detach() for tensor in tensor_list]
+            for key, tensor_list in elem_data.items()
+        },
     )
     msh.write(filename)
 
