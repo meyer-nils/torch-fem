@@ -1,0 +1,40 @@
+name: Generate HTML via nbconvert
+
+on: push
+
+permissions:
+  id-token: write
+  pages: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run nbconvert
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install jupyter nbconvert
+          python -m pip install .
+          jupyter nbconvert --to HTML --output-dir . examples/basic/planar.ipynb
+          
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: https://meyer-nils.github.io/torch-fem
+    runs-on: ubuntu-latest
+    needs: convert_via_pandoc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
