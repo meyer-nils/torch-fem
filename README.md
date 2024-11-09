@@ -22,18 +22,18 @@ pip install cupy-cuda11x # v11.2 - 11.8
 pip install cupy-cuda12x # v12.x
 ```
 
-## Features 
+## Features
 - Elements
-  - 1D: Bar1 (linear), Bar2 (quadratic) 
-  - 2D: Quad1 (linear), Quad2 (quadratic), Tria1 (linear), Tria2 (quadratic)
-  - 3D: Hexa1 (linear), Hexa2 (quadratic), Tetra1 (linear), Tetra2 (quadratic)
-  - Shell: Flat-facet triangle (linear)
-- Material models
-  - Isotropic linear elasticity (3D, 2D plane stress, 2D plane strain, 1D)
-  - Orthotropic linear elasticity (3D, 2D plane stress, 2D plane strain)
-  - Isotropic plasticity (3D, 2D plane stress, 2D plane strain, 1D)
+  - 1D: Bar1, Bar2
+  - 2D: Quad1, Quad2, Tria1, Tria2
+  - 3D: Hexa1, Hexa2, Tetra1, Tetra2
+  - Shell: Flat-facet triangle (linear only)
+- Material models (3D, 2D plane stress, 2D plane strain, 1D)
+  - Isotropic linear elasticity 
+  - Orthotropic linear elasticity
+  - Isotropic plasticity
 - Utilities
-  - Homogenization of orthotropic stiffness (mean field)
+  - Homogenization of orthotropic stiffness
   - I/O to and from other mesh formats via meshio
 
 ## Basic examples
