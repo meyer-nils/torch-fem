@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "torch-fem"
 version = "0.3.2"
 authors = [{ name = "Nils Meyer", email = "nils.meyer@uni-a.de" }]
-description = "Simple finite element assemblers with torch."
+description = "GPU accelerated differential finite elements for solid mechanics with PyTorch."
 readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["finite elements", "automatic differentiation"]

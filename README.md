@@ -5,10 +5,11 @@
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/meyer-nils/torch-fem/HEAD)
 
 
-# torch-fem: differentiable finite elements in PyTorch
+# torch-fem
+> GPU accelerated differential finite elements for solid mechanics with PyTorch
 
-Simple GPU accelerated finite element assemblers for small-deformation mechanics with PyTorch. 
-The advantage of using PyTorch is the ability to efficiently compute sensitivities and use them in optimization tasks.
+Simple GPU accelerated finite element assemblers for small-deformation solid mechanics with PyTorch. 
+PyTorch enables efficient computation of sensitivities and using them in optimization tasks.
 
 ## Installation
 Your may install torch-fem via pip with
@@ -64,13 +65,13 @@ The subdirectory `examples->optimization` demonstrates the use of torch-fem for 
 **Simple fiber orientation optimization of a plate with a hole:** Compliance is minimized by optimizing the fiber orientation of an anisotropic material using automatic differentiation w.r.t. element-wise fiber angles.
 
 
-
-## Minimal code
+## Minimal example
 This is a minimal example of how to use torch-fem to solve a simple cantilever problem. 
 
 ```python
+import torch
 from torchfem import Planar
-from torchfem.materials import IsotropicPlaneStress
+from torchfem.materials import IsotropicElasticityPlaneStress
 
 # Material
 material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
@@ -82,10 +83,10 @@ elements = torch.tensor([[0, 1, 4, 3], [1, 2, 5, 4]])
 # Create model
 cantilever = Planar(nodes, elements, material)
 
-# Load at tip
+# Load at tip [Node_ID, DOF]
 cantilever.forces[5, 1] = -1.0
 
-# Constrained displacement at left end
+# Constrained displacement at left end [Node_IDs, DOFs]
 cantilever.constraints[[0, 3], :] = True
 
 # Show model
@@ -97,9 +98,9 @@ This creates a minimal planar FEM model:
 
 ```python
 # Solve
-u, f, σ, ε, α = cantilever.solve()
+u, f, σ, ε, α = cantilever.solve(tol=1e-6)
 
-# Plot
+# Plot displacement magnitude on deformed state
 cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 This solves the model and plots the result:
@@ -110,9 +111,9 @@ If we want to compute gradients through the FEM model, we simply need to define 
 ```python 
 # Enable automatic differentiation
 cantilever.thickness.requires_grad = True
-u, f = cantilever.solve()
+u, f, _, _, _ = cantilever.solve(tol=1e-6)
 
-# Compute sensitivity
+# Compute sensitivity of compliance w.r.t. element thicknesses
 compliance = torch.inner(f.ravel(), u.ravel())
 torch.autograd.grad(compliance, cantilever.thickness)[0]
 ```
