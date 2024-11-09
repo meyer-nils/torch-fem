@@ -17,7 +17,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install jupyter nbconvert
           python -m pip install .
-          jupyter nbconvert --to HTML --output-dir . examples/basic/planar.ipynb
+          jupyter nbconvert --to HTML --output-dir . examples/basic/planar/*.ipynb
+          jupyter nbconvert --to HTML --execute --output-dir . examples/basic/solid/*.ipynb
+          jupyter nbconvert --to HTML --execute --output-dir . examples/basic/truss/*.ipynb
+          jupyter nbconvert --to HTML --execute --output-dir . examples/basic/shell/*.ipynb
           
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
