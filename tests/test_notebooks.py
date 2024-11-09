@@ -61,21 +61,26 @@ def test_solid_plasticity_notebook(tb):
     tb.execute()
 
 
-@testbook("examples/optimization/topology_optimization.ipynb", execute=True, timeout=90)
-def test_topology_optimization_notebook(tb):
+@testbook("examples/optimization/planar/topology.ipynb", execute=True)
+def test_planar_topology_optimization_notebook(tb):
     tb.execute()
 
 
-@testbook("examples/optimization/shape_optimization_planar.ipynb", execute=True)
-def test_shape_optimization_planar_notebook(tb):
+@testbook("examples/optimization/solid/topology.ipynb", execute=True, timeout=90)
+def test_solid_topology_optimization_notebook(tb):
     tb.execute()
 
 
-@testbook("examples/optimization/orientation_optimization_planar.ipynb", execute=True)
-def test_orientation_optimization_planar_notebook(tb):
+@testbook("examples/optimization/planar/shape.ipynb", execute=True)
+def test_planar_shape_optimization_notebook(tb):
     tb.execute()
 
 
-@testbook("examples/optimization/orientation_optimization_shell.ipynb", execute=True)
-def test_orientation_optimization_shell_notebook(tb):
+@testbook("examples/optimization/planar/orientation.ipynb", execute=True)
+def test_planar_orientation_optimization_notebook(tb):
+    tb.execute()
+
+
+@testbook("examples/optimization/shell/orientation.ipynb", execute=True)
+def test_shell_orientation_optimization_notebook(tb):
     tb.execute()
