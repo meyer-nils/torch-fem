@@ -28,15 +28,9 @@ class FEM(ABC):
         self.displacements = torch.zeros_like(nodes)
         self.constraints = torch.zeros_like(nodes, dtype=torch.bool)
 
-        # Compute mapping from local to global indices (hard to read, but fast)
-        self.idx = (
-            ((self.n_dim * self.elements).unsqueeze(-1) + torch.arange(self.n_dim))
-            .reshape(self.n_elem, -1)
-            .to(torch.int32)
-        )
-        idx1 = self.idx.unsqueeze(1).expand(self.n_elem, self.idx.shape[1], -1)
-        idx2 = self.idx.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1])
-        self.indices = torch.stack([idx1, idx2], dim=0).reshape((2, -1))
+        # Compute mapping from local to global indices
+        idx = (self.n_dim * self.elements).unsqueeze(-1) + torch.arange(self.n_dim)
+        self.idx = idx.reshape(self.n_elem, -1).to(torch.int32)
 
         # Vectorize material
         if material.is_vectorized:
@@ -132,7 +126,9 @@ class FEM(ABC):
         size = (self.n_dofs, self.n_dofs)
 
         # Ravel indices and values
-        indices = self.indices
+        col = self.idx.unsqueeze(1).expand(self.n_elem, self.idx.shape[1], -1).ravel()
+        row = self.idx.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1]).ravel()
+        indices = torch.stack([row, col], dim=0)
         values = k.ravel()
 
         # Eliminate and replace constrained dofs
