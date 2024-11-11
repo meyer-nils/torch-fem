@@ -150,10 +150,11 @@ class FEM(ABC):
         agg_flat, inverse = flat_indices.unique_consecutive(return_inverse=True)
         agg_vals = torch.zeros(agg_flat.shape[0], dtype=k.dtype)
         agg_vals.index_add_(0, inverse, flat_values)
-        del flat_values, flat_indices
+        del flat_values, flat_indices, inverse
 
         # Convert aggregated flat indices to 2D indices
         agg_idx = torch.stack((agg_flat // size[1], agg_flat % size[1]), dim=0)
+        del agg_flat
 
         # Construct sparse tensor
         return torch.sparse_coo_tensor(agg_idx, agg_vals, size=size, is_coalesced=True)
