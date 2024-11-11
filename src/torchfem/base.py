@@ -30,7 +30,7 @@ class FEM(ABC):
 
         # Compute mapping from local to global indices
         idx = (self.n_dim * self.elements).unsqueeze(-1) + torch.arange(self.n_dim)
-        self.idx = idx.reshape(self.n_elem, -1).to(torch.int32)
+        self.idx = idx.reshape(self.n_elem, -1)
 
         # Vectorize material
         if material.is_vectorized:
@@ -125,24 +125,38 @@ class FEM(ABC):
         # Initialize sparse matrix size
         size = (self.n_dofs, self.n_dofs)
 
-        # Ravel indices and values
+        # Get flat indices and values
         col = self.idx.unsqueeze(1).expand(self.n_elem, self.idx.shape[1], -1).ravel()
         row = self.idx.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1]).ravel()
-        indices = torch.stack([row, col], dim=0)
-        values = k.ravel()
+        all_indices_flat = row * size[1] + col
+        all_values_flat = k.ravel()
+        del col, row
 
-        # Eliminate and replace constrained dofs
-        con_mask = torch.zeros(int(indices[0].max()) + 1, dtype=torch.bool)
-        con_mask[con] = True
-        mask = ~(con_mask[indices[0]] | con_mask[indices[1]])
-        diag_index = torch.stack((con, con), dim=0)
-        diag_value = torch.ones_like(con, dtype=k.dtype)
+        # Check if any of the indices are in the constrained list directly
+        ci = torch.isin(self.idx, con)
+        mask_col = ci.unsqueeze(1).expand(self.n_elem, self.idx.shape[1], -1).ravel()
+        mask_row = ci.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1]).ravel()
+        mask = ~(mask_col | mask_row)
+        del mask_col, mask_row
 
-        # Concatenate
-        indices = torch.cat((indices[:, mask], diag_index), dim=1)
-        values = torch.cat((values[mask], diag_value), dim=0)
+        # Add diagonal entries for constrained DOFs
+        diag_indices = con * (size[1] + 1)
+        diag_values = torch.ones(con.shape[0], dtype=k.dtype)
+        flat_indices = torch.cat((all_indices_flat[mask], diag_indices))
+        flat_values = torch.cat((all_values_flat[mask], diag_values))
+        del diag_indices, diag_values, mask
 
-        return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
+        # Aggregate values by unique indices
+        agg_flat, inverse = flat_indices.unique_consecutive(return_inverse=True)
+        agg_vals = torch.zeros(agg_flat.shape[0], dtype=k.dtype)
+        agg_vals.index_add_(0, inverse, flat_values)
+        del flat_values, flat_indices
+
+        # Convert aggregated flat indices to 2D indices
+        agg_idx = torch.stack((agg_flat // size[1], agg_flat % size[1]), dim=0)
+
+        # Construct sparse tensor
+        return torch.sparse_coo_tensor(agg_idx, agg_vals, size=size, is_coalesced=True)
 
     def assemble_force(self, f: Tensor) -> Tensor:
         """Assemble global force vector."""
@@ -202,8 +216,7 @@ class FEM(ABC):
                 # Element-wise integration
                 k, f_int = self.integrate(epsilon, sigma, state, n, du, DE)
 
-                # Assemble global stiffness matrix and internal force vector. (Only
-                # reassemble stiffness matrix if state has changed.)
+                # Assemble global stiffness matrix and internal force vector (if needed)
                 if self.K.numel() == 0 or not self.material.n_state == 0:
                     self.K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_int)
