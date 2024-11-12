@@ -59,9 +59,9 @@ class Planar(FEM):
         u: float | Tensor = 0.0,
         node_property: Tensor | None = None,
         element_property: Tensor | None = None,
+        orientation: Tensor | None = None,
         node_labels: bool = False,
         node_markers: bool = False,
-        orientation: bool = False,
         axes: bool = False,
         bcs: bool = True,
         color: str = "black",
@@ -93,7 +93,7 @@ class Planar(FEM):
                     triangles.append([e[0], e[1], e[2]])
                     triangles.append([e[2], e[3], e[0]])
             else:
-                triangles = self.elements[:, :3]
+                triangles = self.elements[:, :3].tolist()
             ax.tricontourf(
                 pos[:, 0],
                 pos[:, 1],
@@ -116,7 +116,7 @@ class Planar(FEM):
                 verts = pos[self.elements[:, :4]]
             else:
                 verts = pos[self.elements]
-            pc = PolyCollection(verts, cmap=cmap)
+            pc = PolyCollection(verts.numpy(), cmap=cmap)
             pc.set_array(element_property)
             ax.add_collection(pc)
             if colorbar:
@@ -128,7 +128,7 @@ class Planar(FEM):
             ax.scatter(pos[:, 0], pos[:, 1], color=color, marker="o")
             if node_labels:
                 for i, node in enumerate(pos):
-                    ax.annotate(i, (node[0] + 0.01, node[1] + 0.01), color=color)
+                    ax.annotate(str(i), (node[0] + 0.01, node[1] + 0.01), color=color)
 
         # Elements
         for element in self.elements:
@@ -144,8 +144,8 @@ class Planar(FEM):
         if bcs:
             for i, force in enumerate(self.forces):
                 if torch.norm(force) > 0.0:
-                    x = pos[i][0]
-                    y = pos[i][1]
+                    x = float(pos[i][0])
+                    y = float(pos[i][1])
                     ax.arrow(
                         x,
                         y,
@@ -160,18 +160,22 @@ class Planar(FEM):
         # Constraints
         if bcs:
             for i, constraint in enumerate(self.constraints):
-                x = pos[i][0]
-                y = pos[i][1]
+                x = float(pos[i][0])
+                y = float(pos[i][1])
                 if constraint[0]:
                     ax.plot(x - 0.01 * size, y, ">", color="gray")
                 if constraint[1]:
                     ax.plot(x, y - 0.01 * size, "^", color="gray")
 
         # Material orientations
-        if orientation:
+        if orientation is not None:
             centers = pos[self.elements, :].mean(dim=1)
             dir = torch.stack(
-                [torch.cos(self.phi), -torch.sin(self.phi), torch.zeros_like(self.phi)]
+                [
+                    torch.cos(orientation),
+                    -torch.sin(orientation),
+                    torch.zeros_like(orientation),
+                ]
             ).T
             ax.quiver(
                 centers[:, 0],
