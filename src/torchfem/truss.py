@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
 
@@ -60,17 +61,21 @@ class Truss(FEM):
     def plot2d(
         self,
         u: float | Tensor = 0.0,
-        sigma: Tensor | None = None,
+        element_property: Tensor | None = None,
         node_labels: bool = True,
         show_thickness: bool = False,
         thickness_threshold: float = 0.0,
         default_color: str = "black",
+        cmap: str = "viridis",
+        title: str | None = None,
+        axes: bool = False,
+        vmin: float | None = None,
+        vmax: float | None = None,
+        ax: plt.Axes | None = None,
     ):
-        try:
-            import matplotlib.pyplot as plt
-            from matplotlib import cm
-        except ImportError:
-            raise Exception("Plotting 2D requires matplotlib.")
+        # Set figure size
+        if ax is None:
+            _, ax = plt.subplots()
 
         # Line widths from areas
         if show_thickness:
@@ -81,24 +86,26 @@ class Truss(FEM):
             linewidth[self.areas < thickness_threshold] = 0.0
 
         # Line color from stress (if present)
-        if sigma is not None:
-            cmap = cm.viridis
-            vmin = min(float(sigma.min()), 0.0)
-            vmax = max(float(sigma.max()), 0.0)
-            color = cmap((sigma - vmin) / (vmax - vmin))
+        if element_property is not None:
+            cm = plt.get_cmap(cmap)
+            if vmin is None:
+                vmin = min(float(element_property.min()), 0.0)
+            if vmax is None:
+                vmax = max(float(element_property.max()), 0.0)
+            color = cm((element_property - vmin) / (vmax - vmin))
             sm = plt.cm.ScalarMappable(
-                cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax)
+                cmap=cm, norm=plt.Normalize(vmin=vmin, vmax=vmax)
             )
-            plt.colorbar(sm, ax=plt.gca(), label="Stress", shrink=0.5)
+            plt.colorbar(sm, ax=ax, shrink=0.5)
         else:
             color = self.n_elem * [default_color]
 
         # Nodes
         pos = self.nodes + u
-        plt.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o")
+        ax.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o", zorder=10)
         if node_labels:
             for i, node in enumerate(pos):
-                plt.annotate(
+                ax.annotate(
                     str(i), (node[0] + 0.01, node[1] + 0.1), color=default_color
                 )
 
@@ -111,7 +118,7 @@ class Truss(FEM):
             n2 = element[1]
             x = [pos[n1][0], pos[n2][0]]
             y = [pos[n1][1], pos[n2][1]]
-            plt.plot(x, y, linewidth=linewidth[j], c=color[j])
+            ax.plot(x, y, linewidth=linewidth[j], c=color[j])
 
         # Forces
         for i, force in enumerate(self.forces):
@@ -129,27 +136,33 @@ class Truss(FEM):
         # Constraints
         for i, constraint in enumerate(self.constraints):
             if constraint[0]:
-                plt.plot(pos[i][0] - 0.1, pos[i][1], ">", color="gray")
+                ax.plot(pos[i][0] - 0.1, pos[i][1], ">", color="gray")
             if constraint[1]:
-                plt.plot(pos[i][0], pos[i][1] - 0.1, "^", color="gray")
+                ax.plot(pos[i][0], pos[i][1] - 0.1, "^", color="gray")
 
         # Adjustments
         nmin = pos.min(dim=0).values
         nmax = pos.max(dim=0).values
-        plt.axis(
-            (
-                float(nmin[0]) - 0.5,
-                float(nmax[0]) + 0.5,
-                float(nmin[1]) - 0.5,
-                float(nmax[1]) + 0.5,
-            )
+        ax.set(
+            xlim=(float(nmin[0]) - 0.5, float(nmax[0]) + 0.5),
+            ylim=(float(nmin[1]) - 0.5, float(nmax[1]) + 0.5),
         )
-        plt.gca().set_aspect("equal", adjustable="box")
-        plt.axis("off")
+
+        if title:
+            ax.set_title(title)
+
+        ax.set_aspect("equal", adjustable="box")
+        if not axes:
+            ax.set_axis_off()
 
     @torch.no_grad()
     def plot3d(
-        self, u=0.0, sigma=None, force_size_factor=0.5, constraint_size_factor=0.1
+        self,
+        u: float | Tensor = 0.0,
+        element_property: dict[str, Tensor] | None = None,
+        force_size_factor: float = 0.5,
+        constraint_size_factor: float = 0.1,
+        cmap: str = "viridis",
     ):
         try:
             import pyvista
@@ -175,10 +188,11 @@ class Truss(FEM):
             n1 = element[0]
             n2 = element[1]
             tube = pyvista.Tube(pos[n1], pos[n2], radius=radii[j])
-            if sigma is not None:
-                sigma = sigma.squeeze()
-                tube.cell_data["Stress"] = sigma[j]
-                pl.add_mesh(tube, scalars="Stress", cmap="viridis")
+            if element_property is not None:
+                for key, value in element_property.items():
+                    value = element_property[key].squeeze()
+                    tube.cell_data[key] = value[j]
+                pl.add_mesh(tube, scalars=key, cmap=cmap)
             else:
                 pl.add_mesh(tube, color="gray")
 
