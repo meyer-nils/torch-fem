@@ -75,7 +75,7 @@ class FEM(ABC):
         n: int,
         du: Tensor,
         de0: Tensor,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
         # Reshape variables
         nodes = self.nodes[self.elements, :]
