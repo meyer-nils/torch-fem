@@ -73,6 +73,7 @@ class Planar(FEM):
         vmin=None,
         vmax=None,
         title=None,
+        ax=None,
     ):
         # Compute deformed positions
         pos = self.nodes + u
@@ -81,7 +82,8 @@ class Planar(FEM):
         size = torch.linalg.norm(pos.max() - pos.min())
 
         # Set figure size
-        plt.figure(figsize=figsize)
+        if ax is None:
+            _, ax = plt.subplots(figsize=figsize)
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
@@ -92,7 +94,7 @@ class Planar(FEM):
                     triangles.append([e[2], e[3], e[0]])
             else:
                 triangles = self.elements[:, :3]
-            plt.tricontourf(
+            ax.tricontourf(
                 pos[:, 0],
                 pos[:, 1],
                 triangles,
@@ -104,11 +106,10 @@ class Planar(FEM):
                 vmax=vmax,
             )
             if colorbar:
-                plt.colorbar()
+                plt.colorbar(ax=ax)
 
         # Color surface with element properties (if provided)
         if element_property is not None:
-            ax = plt.gca()
             if isinstance(self.etype, Tria2):
                 verts = pos[self.elements[:, :3]]
             elif isinstance(self.etype, Quad2):
@@ -119,15 +120,15 @@ class Planar(FEM):
             pc.set_array(element_property)
             ax.add_collection(pc)
             if colorbar:
-                plt.colorbar(pc)
+                plt.colorbar(pc, ax=ax)
                 pc.set_clim(vmin=vmin, vmax=vmax)
 
         # Nodes
         if node_markers:
-            plt.scatter(pos[:, 0], pos[:, 1], color=color, marker="o")
+            ax.scatter(pos[:, 0], pos[:, 1], color=color, marker="o")
             if node_labels:
                 for i, node in enumerate(pos):
-                    plt.annotate(i, (node[0] + 0.01, node[1] + 0.01), color=color)
+                    ax.annotate(i, (node[0] + 0.01, node[1] + 0.01), color=color)
 
         # Elements
         for element in self.elements:
@@ -137,7 +138,7 @@ class Planar(FEM):
                 element = element[:4]
             x1 = [pos[node, 0] for node in element] + [pos[element[0], 0]]
             x2 = [pos[node, 1] for node in element] + [pos[element[0], 1]]
-            plt.plot(x1, x2, color=color, linewidth=linewidth)
+            ax.plot(x1, x2, color=color, linewidth=linewidth)
 
         # Forces
         if bcs:
@@ -145,7 +146,7 @@ class Planar(FEM):
                 if torch.norm(force) > 0.0:
                     x = pos[i][0]
                     y = pos[i][1]
-                    plt.arrow(
+                    ax.arrow(
                         x,
                         y,
                         size * 0.05 * force[0] / torch.norm(force),
@@ -162,9 +163,9 @@ class Planar(FEM):
                 x = pos[i][0]
                 y = pos[i][1]
                 if constraint[0]:
-                    plt.plot(x - 0.01 * size, y, ">", color="gray")
+                    ax.plot(x - 0.01 * size, y, ">", color="gray")
                 if constraint[1]:
-                    plt.plot(x, y - 0.01 * size, "^", color="gray")
+                    ax.plot(x, y - 0.01 * size, "^", color="gray")
 
         # Material orientations
         if orientation:
@@ -172,7 +173,7 @@ class Planar(FEM):
             dir = torch.stack(
                 [torch.cos(self.phi), -torch.sin(self.phi), torch.zeros_like(self.phi)]
             ).T
-            plt.quiver(
+            ax.quiver(
                 centers[:, 0],
                 centers[:, 1],
                 dir[:, 0],
@@ -185,8 +186,8 @@ class Planar(FEM):
             )
 
         if title:
-            plt.title(title)
+            ax.set_title(title)
 
-        plt.gca().set_aspect("equal", adjustable="box")
+        ax.set_aspect("equal", adjustable="box")
         if not axes:
-            plt.axis("off")
+            ax.set_axis_off()
