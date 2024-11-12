@@ -9,7 +9,7 @@ from torch import Tensor
 class Element(ABC):
 
     def __init__(self):
-        self.nodes: 0
+        self.nodes: int
 
     @abstractmethod
     def N(self, xi: Tensor) -> Tensor:

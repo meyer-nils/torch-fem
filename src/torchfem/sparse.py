@@ -88,7 +88,7 @@ class Solve(Function):
 sparse_solve = Solve.apply
 
 
-def sparse_index_select(t: Tensor, slices: Tensor) -> Tensor:
+def sparse_index_select(t: Tensor, slices: list[Tensor | None]) -> Tensor:
     coalesced = t.is_coalesced()
     indices = t.indices()
     values = t.values()
