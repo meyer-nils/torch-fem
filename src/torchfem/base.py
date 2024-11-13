@@ -122,30 +122,37 @@ class FEM(ABC):
     def assemble_stiffness(self, k: Tensor, con: Tensor) -> torch.sparse.Tensor:
         """Assemble global stiffness matrix."""
 
-        # Initialize sparse matrix size
+        # Initialize sparse matrix
         size = (self.n_dofs, self.n_dofs)
+        K = torch.empty(size, layout=torch.sparse_coo)
 
-        # Ravel indices and values
-        col = self.idx.unsqueeze(1).expand(self.n_elem, self.idx.shape[1], -1).ravel()
-        row = self.idx.unsqueeze(-1).expand(self.n_elem, -1, self.idx.shape[1]).ravel()
-        indices = torch.stack([row, col], dim=0)
-        values = k.ravel()
+        # Build matrix in chunks to prevent excessive memory usage
+        chunks = 4
+        for idx, k_chunk in zip(torch.chunk(self.idx, chunks), torch.chunk(k, chunks)):
+            # Ravel indices and values
+            chunk_size = idx.shape[0]
+            col = idx.unsqueeze(1).expand(chunk_size, self.idx.shape[1], -1).ravel()
+            row = idx.unsqueeze(-1).expand(chunk_size, -1, self.idx.shape[1]).ravel()
+            indices = torch.stack([row, col], dim=0)
+            values = k_chunk.ravel()
 
-        # Eliminate and replace constrained dofs
-        con_mask = torch.zeros(int(indices[0].max()) + 1, dtype=torch.bool)
-        con_mask[con] = True
-        mask = ~(con_mask[indices[0]] | con_mask[indices[1]])
-        diag_index = torch.stack((con, con), dim=0)
-        diag_value = torch.ones_like(con, dtype=k.dtype)
+            # Eliminate and replace constrained dofs
+            ci = torch.isin(idx, con)
+            mask_col = ci.unsqueeze(1).expand(chunk_size, self.idx.shape[1], -1).ravel()
+            mask_row = (
+                ci.unsqueeze(-1).expand(chunk_size, -1, self.idx.shape[1]).ravel()
+            )
+            mask = ~(mask_col | mask_row)
+            diag_index = torch.stack((con, con), dim=0)
+            diag_value = torch.ones_like(con, dtype=k.dtype)
 
-        # Concatenate
-        indices = torch.cat((indices[:, mask], diag_index), dim=1)
-        values = torch.cat((values[mask], diag_value), dim=0)
+            # Concatenate
+            indices = torch.cat((indices[:, mask], diag_index), dim=1)
+            values = torch.cat((values[mask], diag_value), dim=0)
 
-        # Release some memory prior to coalescing
-        del col, row, mask, con_mask, diag_index, diag_value
+            K += torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
-        return torch.sparse_coo_tensor(indices, values, size=size).coalesce()
+        return K
 
     def assemble_force(self, f: Tensor) -> Tensor:
         """Assemble global force vector."""
