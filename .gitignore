@@ -18,3 +18,7 @@ dist
 
 # Abaqus 
 *.inp
+
+# VTU files except for the ones in the folder data 
+*.vtu
+!src/torchfem/data/*.vtu
