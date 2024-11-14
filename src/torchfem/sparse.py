@@ -77,8 +77,8 @@ class Solve(Function):
         gradb = Solve.apply(A.T, grad)
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
-        row = A.indices()[0, :]
-        col = A.indices()[1, :]
+        row = A._indices()[0, :]
+        col = A._indices()[1, :]
         val = -gradb[row] * x[col]
         gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
 
