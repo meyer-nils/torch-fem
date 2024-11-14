@@ -6,7 +6,7 @@
 
 
 # torch-fem
-> GPU accelerated differential finite elements for solid mechanics with PyTorch
+> GPU accelerated differentiable finite elements for solid mechanics with PyTorch
 
 Simple GPU accelerated finite element assemblers for small-deformation solid mechanics with PyTorch. 
 PyTorch enables efficient computation of sensitivities and using them in optimization tasks.
