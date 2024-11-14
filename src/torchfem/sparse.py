@@ -64,14 +64,14 @@ class Solve(Function):
         x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=b.device)
 
         # Save the variables
-        ctx.save_for_backward(A, b, x)
+        ctx.save_for_backward(A, x)
 
         return x
 
     @staticmethod
     def backward(ctx, grad):
         # Access the saved variables
-        A, b, x = ctx.saved_tensors
+        A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
         gradb = Solve.apply(A.T, grad)
