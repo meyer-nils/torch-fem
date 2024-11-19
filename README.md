@@ -6,10 +6,8 @@
 
 
 # torch-fem
-> GPU accelerated differentiable finite elements for solid mechanics with PyTorch
-
-Simple GPU accelerated finite element assemblers for small-deformation solid mechanics with PyTorch. 
-PyTorch enables efficient computation of sensitivities and using them in optimization tasks.
+Simple GPU accelerated differentiable finite elements for small-deformation solid mechanics with PyTorch. 
+PyTorch enables efficient computation of sensitivities via automatic differentiation and using them in optimization tasks.
 
 ## Installation
 Your may install torch-fem via pip with
@@ -38,35 +36,63 @@ pip install cupy-cuda12x # v12.x
   - I/O to and from other mesh formats via meshio
 
 ## Basic examples
-The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. 
+The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. You may click on the examples to check out the notebooks online.
 
-<img src="doc/cantilever_tria2.png" width="400"></br>
-**Simple cantilever beam:** There are examples with linear and quadratic triangles and quads.
-
-<img src="doc/plate_hole_plasticity.png" width="400"></br>
-**Plasticity in a plate with hole:** Isotropic linear hardening model for plane-stress.
+<table>
+    <tbody>
+        <tr>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/cubes.html"><img src="https://meyer-nils.github.io/torch-fem/cubes.png"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/cantilever.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_tria2.png"></a></td>
+        </tr>
+        <tr>
+            <td align="center"><b>Solid cubes:</b> There are several examples with different element types rendered in PyVista.</td>
+            <td align="center"><b>Planar cantilever beams:</b> There are several examples with different element types rendered in matplotlib.</td>
+        </tr>
+        <tr>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/plate_hole_plasticity.png"></a></td>
+        </tr>
+        <tr>
+            <td colspan="2" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
+        </tr>
+    </tbody>
+</table>
 
 ## Optimization examples
-The subdirectory `examples->optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization).
+The subdirectory `examples->optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization). You may click on the examples to check out the notebooks online.
 
-<img src="doc/bridge.png" width="400"></br>
-**Simple shape optimization of a truss:** The top nodes are moved and MMA + autograd is used to minimize the compliance.
-
-<img src="doc/topopt_mbb.png" width="400"></br>
-**Simple topology optimization of a MBB beam:** You can switch between analytical sensitivities and autograd sensitivities.
-
-<img src="doc/topopt_3d.png" width="400"></br>
-**3D topology optimization of a jet engine bracket:** The model is exported to Paraview for visualization.
-
-<img src="doc/fillet_shape_optimization.png" width="400"></br>
-**Simple shape optimization of a fillet:** The shape is morphed with shape basis vectors and MMA + autograd is used to minimize the maximum stress.
-
-<img src="doc/plate_hole_shape_optimization.png" width="400"></br>
-**Simple fiber orientation optimization of a plate with a hole:** Compliance is minimized by optimizing the fiber orientation of an anisotropic material using automatic differentiation w.r.t. element-wise fiber angles.
+<table>
+    <tbody>
+        <tr>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/truss/shape.html"><img src="https://meyer-nils.github.io/torch-fem/bridge.png"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/shape.html"><img src="https://meyer-nils.github.io/torch-fem/fillet_shape_optimization.png"></a></td>
+        </tr>
+        <tr>
+            <td align="center"><b>Shape optimization of a truss:</b> The top nodes are moved and MMA + autograd is used to minimize the compliance.</td>
+            <td align="center"><b>Shape optimization of a fillet:</b> The shape is morphed with shape basis vectors and MMA + autograd is used to minimize the maximum stress.</td>
+        </tr>
+        <tr>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology.html"><img src="https://meyer-nils.github.io/torch-fem/topopt_mbb.png"></a></td>
+            <td style="width: 50%;"><img src="https://meyer-nils.github.io/torch-fem/topopt_3d.png"></td>
+        </tr>
+        <tr>
+            <td align="center"><b>Topology optimization of a MBB beam:</b> You can switch between analytical and autograd sensitivities.</td>
+            <td align="center"><b>Topology optimization of a jet engine bracket:</b> The 3D model is exported to Paraview for visualization.</td>
+        </tr>
+        <tr>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology+orientation.html"><img src="https://meyer-nils.github.io/torch-fem/topo+ori.png"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/orientation.html"><img src="https://meyer-nils.github.io/torch-fem/plate_hole_shape_optimization.png"></a>
+            </td>
+        </tr>
+        <tr>
+            <td align="center"><b>Combined topology and orientation optimization:</b> Compliance is minimized by optimizing fiber orientation and density of an anisotropic material using automatic differentiation.</td>
+            <td align="center"><b>Fiber orientation optimization of a plate with a hole</b> Compliance is minimized by optimizing the fiber orientation of an anisotropic material using automatic differentiation w.r.t. element-wise fiber angles.</td>
+        </tr>
+    </tbody>
+</table>
 
 
 ## Minimal example
-This is a minimal example of how to use torch-fem to solve a simple cantilever problem. 
+This is a minimal example of how to use torch-fem to solve a very simple planar cantilever problem. 
 
 ```python
 import torch
@@ -94,7 +120,7 @@ cantilever.plot(node_markers="o", node_labels=True)
 ```
 This creates a minimal planar FEM model:
 
-![minimal](doc/minimal_example.png)
+![minimal](https://meyer-nils.github.io/torch-fem/minimal_example.png)
 
 ```python
 # Solve
@@ -105,7 +131,7 @@ cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 This solves the model and plots the result:
 
-![minimal](doc/minimal_example_solved.png)
+![minimal](https://meyer-nils.github.io/torch-fem/minimal_example_solved.png)
 
 If we want to compute gradients through the FEM model, we simply need to define the variables that require gradients. Automatic differentiation is performed through the entire FE solver.
 ```python 
