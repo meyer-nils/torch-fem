@@ -14,12 +14,14 @@ jobs:
 
       - name: Set up headless display
         run: |
-          sudo apt install libgl1-mesa-glx xvfb 
-          export DISPLAY=:99
-          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+          sudo apt install -y libgl1-mesa-glx xvfb
+          Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 &
 
       - name: Run nbconvert
+        env:
+          DISPLAY: ":99"
         run: |
+          echo "DISPLAY variable: $DISPLAY"
           python -m pip install --upgrade pip
           python -m pip install jupyter nbconvert
           python -m pip install .
