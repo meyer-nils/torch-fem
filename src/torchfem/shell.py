@@ -349,4 +349,4 @@ class Shell:
         if mirror[2]:
             for msh in pl.meshes:
                 pl.add_mesh(msh.reflect((0, 0, 1)), show_edges=True, opacity=0.5)
-        pl.show(jupyter_backend="client")
+        pl.show(jupyter_backend="html")

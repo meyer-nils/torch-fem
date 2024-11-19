@@ -124,4 +124,4 @@ class Solid(FEM):
             )
             pl.add_mesh(edges, style="wireframe", color="grey")
 
-        pl.show(jupyter_backend="client")
+        pl.show(jupyter_backend="html")

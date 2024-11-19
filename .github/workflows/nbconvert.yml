@@ -17,7 +17,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install jupyter nbconvert
           python -m pip install .
-          jupyter nbconvert --to HTML --output-dir doc/examples/basic/planar/ examples/basic/planar/*.ipynb
+          jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/planar/ examples/basic/planar/*.ipynb
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/solid/ examples/basic/solid/*.ipynb
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/truss/ examples/basic/truss/*.ipynb
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/shell/ examples/basic/shell/*.ipynb

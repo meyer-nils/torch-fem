@@ -218,4 +218,4 @@ class Truss(FEM):
                 )
                 pl.add_mesh(sphere, color="gray")
 
-        pl.show(jupyter_backend="client")
+        pl.show(jupyter_backend="html")
