@@ -29,6 +29,8 @@ jobs:
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/solid/ examples/basic/solid/*.ipynb
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/truss/ examples/basic/truss/*.ipynb
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/shell/ examples/basic/shell/*.ipynb
+          jupyter nbconvert --to HTML --execute --output-dir doc/examples/optimization/planar/ examples/optimization/planar/*.ipynb
+          jupyter nbconvert --to HTML --execute --output-dir doc/examples/optimization/truss/ examples/optimization/truss/*.ipynb
           
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
