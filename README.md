@@ -99,6 +99,8 @@ import torch
 from torchfem import Planar
 from torchfem.materials import IsotropicElasticityPlaneStress
 
+torch.set_default_dtype(torch.float64)
+
 # Material
 material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
 
@@ -124,7 +126,7 @@ This creates a minimal planar FEM model:
 
 ```python
 # Solve
-u, f, σ, ε, α = cantilever.solve(tol=1e-6)
+u, f, σ, ε, α = cantilever.solve()
 
 # Plot displacement magnitude on deformed state
 cantilever.plot(u, node_property=torch.norm(u, dim=1))
@@ -137,7 +139,7 @@ If we want to compute gradients through the FEM model, we simply need to define 
 ```python 
 # Enable automatic differentiation
 cantilever.thickness.requires_grad = True
-u, f, _, _, _ = cantilever.solve(tol=1e-6)
+u, f, _, _, _ = cantilever.solve()
 
 # Compute sensitivity of compliance w.r.t. element thicknesses
 compliance = torch.inner(f.ravel(), u.ravel())
