@@ -170,7 +170,8 @@ class FEM(ABC):
         self,
         increments: Tensor = torch.tensor([0.0, 1.0]),
         max_iter: int = 10,
-        tol: float = 1e-8,
+        rtol: float = 1e-8,
+        atol: float = 1e-6,
         verbose: bool = False,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
@@ -220,16 +221,24 @@ class FEM(ABC):
                 # Compute residual
                 residual = F_int - F_ext
                 residual[con] = 0.0
-                res_norm = torch.linalg.norm(residual) / self.n_dofs
+                res_norm = torch.linalg.norm(residual)
+
+                # Save initial residual
+                if i == 0:
+                    res_norm0 = res_norm
+
+                # Print iteration information
                 if verbose:
                     print(f"Increment {n} | Iteration {i+1} | Residual: {res_norm:.5e}")
-                if res_norm < tol:
+
+                # Check convergence
+                if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual)
+                du -= sparse_solve(self.K, residual, rtol)
 
-            if res_norm > tol:
+            if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
 
             # Update increment
