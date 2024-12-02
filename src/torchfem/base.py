@@ -172,6 +172,7 @@ class FEM(ABC):
         max_iter: int = 10,
         rtol: float = 1e-8,
         atol: float = 1e-6,
+        stol: float = 1e-8,
         verbose: bool = False,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
@@ -236,7 +237,7 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, rtol)
+                du -= sparse_solve(self.K, residual, stol)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
