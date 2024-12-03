@@ -41,18 +41,20 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
 <table>
     <tbody>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/cubes.html"><img src="https://meyer-nils.github.io/torch-fem/cubes.png"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/cantilever.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_tria2.png"></a></td>
+            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/gyroid.html"><img src="https://meyer-nils.github.io/torch-fem/gyroid.png"></a></td>
+            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/cubes.html"><img src="https://meyer-nils.github.io/torch-fem/cubes.png"></a></td>
+            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/cantilever.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_tria2.png"></a></td>
         </tr>
         <tr>
+            <td align="center"><b>Gyroid:</b> Support for voxel meshes and implicit surfaces.</td>
             <td align="center"><b>Solid cubes:</b> There are several examples with different element types rendered in PyVista.</td>
             <td align="center"><b>Planar cantilever beams:</b> There are several examples with different element types rendered in matplotlib.</td>
         </tr>
         <tr>
-            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/plate_hole_plasticity.png"></a></td>
+            <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/plate_hole_plasticity.png"></a></td>
         </tr>
         <tr>
-            <td colspan="2" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
+            <td colspan="3" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
         </tr>
     </tbody>
 </table>
