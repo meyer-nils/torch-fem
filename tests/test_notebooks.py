@@ -51,6 +51,11 @@ def test_solid_cubes_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/solid/gyroid.ipynb", execute=True, timeout=90)
+def test_solid_gyroid_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/solid/inelasticity.ipynb", execute=True)
 def test_solid_inelasticity_notebook(tb):
     tb.execute()
