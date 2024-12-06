@@ -64,10 +64,10 @@ class FEM(ABC):
         du = torch.zeros_like(self.nodes)
         dde0 = torch.zeros(self.n_elem, self.n_strains)
         self.K = torch.empty(0)
-        k, _ = self.integrate(e, s, a, 1, du, dde0)
+        k, _ = self.integrate_material(e, s, a, 1, du, dde0)
         return k
 
-    def integrate(
+    def integrate_material(
         self,
         eps: Tensor,
         sig: Tensor,
@@ -118,6 +118,25 @@ class FEM(ABC):
                 k += w * self.compute_k(detJ, DCD)
 
         return k, f
+
+    def integrate_field(self, field: Tensor | None = None) -> Tensor:
+        """Integrate scalar field over elements."""
+
+        # Default field is ones to integrate volume
+        if field is None:
+            field = torch.ones(self.n_nod)
+
+        # Integrate
+        nodes = self.nodes[self.elements, :]
+        res = torch.zeros(len(self.elements))
+        for w, xi in zip(self.etype.iweights(), self.etype.ipoints()):
+            N = self.etype.N(xi)
+            B = self.etype.B(xi)
+            J = torch.einsum("jk,mkl->mjl", B, nodes)
+            detJ = torch.linalg.det(J)
+            f = field[self.elements, None].squeeze() @ N
+            res += w * f * detJ
+        return res
 
     def assemble_stiffness(self, k: Tensor, con: Tensor) -> torch.sparse.Tensor:
         """Assemble global stiffness matrix."""
@@ -212,7 +231,7 @@ class FEM(ABC):
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_int = self.integrate(epsilon, sigma, state, n, du, DE)
+                k, f_int = self.integrate_material(epsilon, sigma, state, n, du, DE)
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if self.K.numel() == 0 or not self.material.n_state == 0:
