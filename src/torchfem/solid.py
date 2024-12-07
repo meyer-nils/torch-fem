@@ -59,7 +59,8 @@ class Solid(FEM):
         element_property: dict[str, Tensor] | None = None,
         show_edges: bool = True,
         show_undeformed: bool = False,
-        cmap: str = "viridis",
+        contour: tuple[str, list[float]] | None = None,
+        **kwargs,
     ):
         try:
             import pyvista
@@ -81,9 +82,8 @@ class Solid(FEM):
             cell_types = self.n_elem * [pyvista.CellType.QUADRATIC_HEXAHEDRON]
 
         # VTK element list
-        elements = []
-        for element in self.elements:
-            elements += [len(element), *element]
+        el = len(self.elements[0]) * torch.ones(self.n_elem, dtype=self.elements.dtype)
+        elements = torch.cat([el[:, None], self.elements], dim=1).view(-1).tolist()
 
         # Deformed node positions
         pos = self.nodes + u
@@ -101,19 +101,26 @@ class Solid(FEM):
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.numpy()
 
-        if show_edges:
-            if isinstance(self.etype, Tetra2) or isinstance(self.etype, Hexa2):
-                # Trick to plot edges for quadratic elements
-                # See: https://github.com/pyvista/pyvista/discussions/5777
-                surface = mesh.separate_cells().extract_surface(nonlinear_subdivision=4)
-                edges = surface.extract_feature_edges()
-                pl.add_mesh(surface, cmap=cmap)
-                actor = pl.add_mesh(edges, style="wireframe", color="black")
-                actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
-            else:
-                pl.add_mesh(mesh, cmap=cmap, show_edges=True)
+        if contour:
+            scalars, values = contour
+            pl.add_mesh(mesh.outline(), color="black")
+            pl.add_mesh(mesh.contour(values, scalars=scalars), **kwargs)
         else:
-            pl.add_mesh(mesh, cmap=cmap)
+            if show_edges:
+                if isinstance(self.etype, Tetra2) or isinstance(self.etype, Hexa2):
+                    # Trick to plot edges for quadratic elements
+                    # See: https://github.com/pyvista/pyvista/discussions/5777
+                    surface = mesh.separate_cells().extract_surface(
+                        nonlinear_subdivision=4
+                    )
+                    edges = surface.extract_feature_edges()
+                    pl.add_mesh(surface, **kwargs)
+                    actor = pl.add_mesh(edges, style="wireframe", color="black")
+                    actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
+                else:
+                    pl.add_mesh(mesh, show_edges=True, **kwargs)
+            else:
+                pl.add_mesh(mesh, **kwargs)
 
         if show_undeformed:
             undefo = pyvista.UnstructuredGrid(elements, cell_types, self.nodes.tolist())
