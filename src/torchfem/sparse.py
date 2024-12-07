@@ -1,5 +1,6 @@
 import torch
 from scipy.sparse import coo_matrix as scipy_coo_matrix
+from scipy.sparse import diags as scipy_diags
 from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
@@ -10,6 +11,7 @@ available_backends = ["scipy"]
 try:
     import cupy
     from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
+    from cupyx.scipy.sparse import diags as cupy_diags
     from cupyx.scipy.sparse.linalg import minres as cupy_minres
     from cupyx.scipy.sparse.linalg import spsolve as cupy_spsolve
 
@@ -50,7 +52,10 @@ class Solve(Function):
             if shape[0] < 10000:
                 x_xp = cupy_spsolve(A_cp, b_cp)
             else:
-                x_xp, exit_code = cupy_minres(A_cp, b_cp, tol=rtol)
+                # Jacobi preconditioner
+                M = cupy_diags(1.0 / A_cp.diagonal())
+                # Solve with minres
+                x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
         else:
@@ -61,7 +66,10 @@ class Solve(Function):
             if shape[0] < 10000:
                 x_xp = scipy_spsolve(A_np, b_np)
             else:
-                x_xp, exit_code = scipy_minres(A_np, b_np, rtol=rtol)
+                # Jacobi preconditioner
+                M = scipy_diags(1.0 / A_np.diagonal())
+                # Solve with minres
+                x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=rtol)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
 

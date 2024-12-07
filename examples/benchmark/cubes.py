@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     # Forward pass
     start_time = time.time()
-    u, f, sigma, epsilon, state = box.solve()
+    u, f, sigma, epsilon, state = box.solve(rtol=1e-5)
     end_time = time.time()
     fwd_t = end_time - start_time
 
