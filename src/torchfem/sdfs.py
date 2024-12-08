@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from typing import Callable
 
 import torch
 from torch import Tensor
@@ -423,13 +424,23 @@ class Plane(SDF):
 
 
 class Shell(SDF):
-    def __init__(self, other: SDF, thickness: float):
+    def __init__(self, other: SDF, thickness: float = 1.0, modulation: Callable = None):
         super().__init__(other.center)
+
+        # Set modulation to identity function if not provided
+        if modulation is None:
+
+            def modulation(points: Tensor) -> Tensor:
+                return torch.ones_like(points[:, 0])
+
         self.other = other
         self.thickness = thickness
+        self.modulation = modulation
 
     def _f(self, points: Tensor) -> Tensor:
-        return torch.abs(self.other.sdf(points)) - 0.5 * self.thickness
+        return torch.abs(
+            self.other.sdf(points)
+        ) - 0.5 * self.thickness * self.modulation(points)
 
     def _grad(self, points: Tensor) -> Tensor:
         return self.other._grad(points)
