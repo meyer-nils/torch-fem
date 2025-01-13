@@ -694,6 +694,10 @@ class Hexa2(Element):
 
 
 def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor]:
+    dvc = nodes.device
+    if "cuda" in dvc.type:
+        nodes = nodes.cpu()
+        elements = elements.cpu()
     new_nodes = nodes.tolist()
     midpoints: Dict[Tuple, int] = {}
 
@@ -783,4 +787,4 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
             )
             new_elements.append(elements.numpy())
 
-    return torch.tensor(new_nodes), torch.tensor(new_elements)
+    return torch.tensor(new_nodes, device=dvc), torch.tensor(new_elements, device=dvc)

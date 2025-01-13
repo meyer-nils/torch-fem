@@ -4,12 +4,17 @@ import time
 import torch
 
 from torchfem import Solid
+from torchfem.elements import linear_to_quadratic
 from torchfem.materials import IsotropicElasticity3D
 from torchfem.mesh import cube_hexa
 
 
-def get_cube(N):
+def get_cube(N, order=1):
     nodes, elements = cube_hexa(N, N, N)
+    if order == 2:
+        nodes, elements = linear_to_quadratic(nodes, elements)
+    elif order > 2:
+        raise ValueError("Only linear and quadratic elements are supported.")
 
     # Material model
     material = IsotropicElasticity3D(E=1000.0, nu=0.3)
@@ -30,11 +35,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Solve the cube problem.")
     parser.add_argument("-N", type=int, help="The value of N", default=10)
     parser.add_argument("-device", type=str, help="Troch default device", default="cpu")
+    parser.add_argument("-order", type=int, help="The order of the element", default=1)
     args = parser.parse_args()
 
     torch.set_default_device(args.device)
 
-    box = get_cube(args.N)
+    box = get_cube(args.N, args.order)
     dofs = box.n_dofs
 
     # Forward pass
