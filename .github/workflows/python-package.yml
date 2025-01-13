@@ -34,7 +34,7 @@ jobs:
 
     - name: Set up headless display
       run: |
-        sudo apt install -y libgl1-mesa-glx xvfb
+        sudo apt install -y libgl1 libglx-mesa0 xvfb
         Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 &
 
     - name: Test with pytest
