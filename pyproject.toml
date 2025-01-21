@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torch-fem"
-version = "0.3.5"
+version = "0.3.6"
 authors = [{ name = "Nils Meyer", email = "nils.meyer@uni-a.de" }]
 description = "GPU accelerated differential finite elements for solid mechanics with PyTorch."
 readme = "README.md"
