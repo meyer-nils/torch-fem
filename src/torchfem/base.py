@@ -56,6 +56,27 @@ class FEM(ABC):
     def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor):
         raise NotImplementedError
 
+    def compute_B(self) -> Tensor:
+        """Null space representing rigid body modes."""
+        if self.n_dim == 3:
+            B = torch.zeros((self.n_dofs, 6))
+            B[0::3, 0] = 1
+            B[1::3, 1] = 1
+            B[2::3, 2] = 1
+            B[1::3, 3] = -self.nodes[:, 2]
+            B[2::3, 3] = self.nodes[:, 1]
+            B[0::3, 4] = self.nodes[:, 2]
+            B[2::3, 4] = -self.nodes[:, 0]
+            B[0::3, 5] = -self.nodes[:, 1]
+            B[1::3, 5] = self.nodes[:, 0]
+        else:
+            B = torch.zeros((self.n_dofs, 3))
+            B[0::2, 0] = 1
+            B[1::2, 1] = 1
+            B[1::2, 2] = -self.nodes[:, 0]
+            B[0::2, 2] = self.nodes[:, 1]
+        return B
+
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
         e = torch.zeros(2, self.n_int, self.n_elem, self.n_strains)
@@ -193,12 +214,17 @@ class FEM(ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         verbose: bool = False,
+        direct: bool = None,
+        device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method."""
         # Number of increments
         N = len(increments)
+
+        # Null space rigid body modes for AMG preconditioner
+        B = self.compute_B()
 
         # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
@@ -256,7 +282,7 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, stol)
+                du -= sparse_solve(self.K, residual, B, stol, device, direct)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
