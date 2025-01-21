@@ -193,6 +193,7 @@ class FEM(ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         verbose: bool = False,
+        direct: bool = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -256,7 +257,7 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, stol)
+                du -= sparse_solve(self.K, residual, stol, direct)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")

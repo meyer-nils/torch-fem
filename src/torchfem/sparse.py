@@ -29,7 +29,7 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(ctx, A, b, rtol=1e-10, device=None):
+    def forward(ctx, A, b, rtol=1e-10, device=None, direct=None):
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
@@ -40,6 +40,10 @@ class Solve(Function):
             A = A.to(device)
             b = b.to(device)
 
+        # Set solver type. If direct is None, use direct solver for small matrices
+        if direct is not None:
+            direct = shape[0] < 10000
+
         if A.device.type == "cuda" and "cupy" in available_backends:
             A_cp = cupy_coo_matrix(
                 (
@@ -49,7 +53,7 @@ class Solve(Function):
                 shape=shape,
             ).tocsr()
             b_cp = cupy.asarray(b.data)
-            if shape[0] < 10000:
+            if direct:
                 x_xp = cupy_spsolve(A_cp, b_cp)
             else:
                 # Jacobi preconditioner
@@ -63,7 +67,7 @@ class Solve(Function):
                 (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
             ).tocsr()
             b_np = b.data.numpy()
-            if shape[0] < 10000:
+            if direct:
                 x_xp = scipy_spsolve(A_np, b_np)
             else:
                 # Jacobi preconditioner
@@ -80,6 +84,7 @@ class Solve(Function):
         ctx.save_for_backward(A, x)
         ctx.rtol = rtol
         ctx.device = device
+        ctx.direct = direct
 
         return x
 
@@ -89,7 +94,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(A.T, grad, ctx.rtol, ctx.device)
+        gradb = Solve.apply(A.T, grad, ctx.rtol, ctx.device, ctx.direct)
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A._indices()[0, :]
