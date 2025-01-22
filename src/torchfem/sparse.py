@@ -27,7 +27,7 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(ctx, A, b, B=None, rtol=1e-10, device=None, direct=None):
+    def forward(ctx, A, b, B=None, rtol=1e-10, device=None, direct=None, M=None):
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
@@ -73,8 +73,9 @@ class Solve(Function):
                 x_xp = scipy_spsolve(A_np, b_np)
             else:
                 # AMG preconditioner with Jacobi smoother
-                ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
-                M = ml.aspreconditioner()
+                if M is None:
+                    ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
+                    M = ml.aspreconditioner()
 
                 # Solve with minres
                 x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=rtol)
@@ -86,10 +87,13 @@ class Solve(Function):
 
         # Save the variables
         ctx.save_for_backward(A, x)
+
+        # Save the parameters for backward pass (including the preconditioner)
         ctx.rtol = rtol
         ctx.device = device
         ctx.direct = direct
         ctx.B = B
+        ctx.M = M
 
         return x
 
@@ -99,7 +103,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct)
+        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M)
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A._indices()[0, :]
