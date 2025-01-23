@@ -26,6 +26,11 @@ class Material(ABC):
         """Perform a strain increment."""
         pass
 
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        self.C = R.transpose(-1, -2) @ self.C @ R
+        return self
+
 
 class IsotropicElasticity3D(Material):
     def __init__(
