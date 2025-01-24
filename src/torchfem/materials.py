@@ -816,7 +816,7 @@ class OrthotropicElasticity3D(Material):
 
         # Compute rotated stiffness tensor
         Q = voigt_stress_rotation(R)
-        self.C = Q.transpose(-1, -2) @ self.C @ Q
+        self.C = Q @ self.C @ Q.transpose(-1, -2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)
@@ -924,7 +924,7 @@ class OrthotropicElasticityPlaneStress(Material):
 
         # Compute rotated stiffness tensor
         Q = voigt_stress_rotation(R)
-        self.C = Q.transpose(-1, -2) @ self.C @ Q
+        self.C = Q @ self.C @ Q.transpose(-1, -2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)
@@ -999,7 +999,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
 
         # Compute rotated stiffness tensor
         Q = voigt_stress_rotation(R)
-        self.C = Q.transpose(-1, -2) @ self.C @ Q
+        self.C = Q @ self.C @ Q.transpose(-1, -2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)
