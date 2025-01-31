@@ -78,7 +78,7 @@ class Solve(Function):
                     M = ml.aspreconditioner()
 
                 # Solve with minres
-                x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=rtol)
+                x_xp, exit_code = scipy_minres(A_np, b_np, M=M)#, rtol=rtol)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
 

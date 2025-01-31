@@ -627,7 +627,6 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
 
         return epsilon_new, sigma_new, state_new, ddsdde
 
-
 class OrthotropicElasticity3D(Material):
     """Orthotropic material."""
 
@@ -791,6 +790,32 @@ class OrthotropicElasticity3D(Material):
         state_new = state
         ddsdde = self.C
         return epsilon_new, sigma_new, state_new, ddsdde
+
+class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
+    """Transversely isotropic material."""
+    
+    def __init__(
+        self,
+        E_L: float | Tensor,
+        E_T: float | Tensor,
+        nu_L: float | Tensor,
+        nu_T: float | Tensor,
+        G: float | Tensor,
+    ):
+        # https://webpages.tuni.fi/rakmek/jmm/slides/jmm_lect_06.pdf
+        E_1 = E_L
+        E_2 = E_T
+        E_3 = E_T
+        nu_12 = nu_L
+        nu_13 = nu_L
+        nu_23 = nu_T
+        G_12 = G
+        G_13 = G
+        G_23 = E_2 / (1 + nu_23)
+        
+        super().__init__(
+            E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
+        )
 
 
 class OrthotropicElasticityPlaneStress(Material):

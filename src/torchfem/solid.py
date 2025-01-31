@@ -94,12 +94,12 @@ class Solid(FEM):
         # Plot node properties
         if node_property:
             for key, val in node_property.items():
-                mesh.point_data[key] = val.numpy()
+                mesh.point_data[key] = val.cpu().numpy()
 
         # Plot cell properties
         if element_property:
             for key, val in element_property.items():
-                mesh.cell_data[key] = val.numpy()
+                mesh.cell_data[key] = val.cpu().numpy()
 
         if contour:
             scalars, values = contour
