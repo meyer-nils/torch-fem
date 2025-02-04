@@ -5,8 +5,6 @@ from typing import Callable
 import torch
 from torch import Tensor
 
-from torchfem.rotations import voigt_stress_rotation
-
 from .utils import (
     stiffness2voigt,
     strain2voigt,
@@ -763,11 +761,9 @@ class OrthotropicElasticity3D(Material):
 
         # Full stiffness tensor
         if self.E_1.dim() == 0:
-            self._C = torch.zeros(3, 3, 3, 3)
-            z = torch.tensor(0.0)
+            self.C = torch.zeros(3, 3, 3, 3)
         else:
-            self._C = torch.zeros(*E_1.shape, 3, 3, 3, 3)
-            z = torch.zeros_like(self.E_1)
+            self.C = torch.zeros(*E_1.shape, 3, 3, 3, 3)
         F = 1 / (
             1
             - self.nu_12 * self.nu_21
@@ -775,70 +771,27 @@ class OrthotropicElasticity3D(Material):
             - self.nu_23 * self.nu_32
             - 2 * self.nu_21 * self.nu_32 * self.nu_13
         )
-        self._C[..., 0, 0, 0, 0] = self.E_1 * (1 - self.nu_23 * self.nu_32) * F
-        self._C[..., 1, 1, 1, 1] = self.E_2 * (1 - self.nu_13 * self.nu_31) * F
-        self._C[..., 2, 2, 2, 2] = self.E_3 * (1 - self.nu_12 * self.nu_21) * F
-        self._C[..., 0, 0, 1, 1] = self.E_1 * (self.nu_21 + self.nu_31 * self.nu_23) * F
-        self._C[..., 1, 1, 0, 0] = self._C[..., 0, 0, 1, 1]
-        self._C[..., 0, 0, 2, 2] = self.E_1 * (self.nu_31 + self.nu_21 * self.nu_32) * F
-        self._C[..., 2, 2, 0, 0] = self._C[..., 0, 0, 2, 2]
-        self._C[..., 1, 1, 2, 2] = self.E_2 * (self.nu_32 + self.nu_12 * self.nu_31) * F
-        self._C[..., 2, 2, 1, 1] = self._C[..., 1, 1, 2, 2]
-        self._C[..., 0, 1, 0, 1] = self.G_12
-        self._C[..., 1, 0, 1, 0] = self.G_12
-        self._C[..., 0, 1, 1, 0] = self.G_12
-        self._C[..., 1, 0, 0, 1] = self.G_12
-        self._C[..., 0, 2, 0, 2] = self.G_13
-        self._C[..., 2, 0, 2, 0] = self.G_13
-        self._C[..., 0, 2, 2, 0] = self.G_13
-        self._C[..., 2, 0, 0, 2] = self.G_13
-        self._C[..., 1, 2, 1, 2] = self.G_23
-        self._C[..., 2, 1, 2, 1] = self.G_23
-        self._C[..., 1, 2, 2, 1] = self.G_23
-        self._C[..., 2, 1, 1, 2] = self.G_23
-
-        # Stiffness tensor in Voigt notation
-        self.C = torch.stack(
-            [
-                torch.stack(
-                    [
-                        self._C[..., 0, 0, 0, 0],
-                        self._C[..., 0, 0, 1, 1],
-                        self._C[..., 0, 0, 2, 2],
-                        z,
-                        z,
-                        z,
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        self._C[..., 1, 1, 0, 0],
-                        self._C[..., 1, 1, 1, 1],
-                        self._C[..., 1, 1, 2, 2],
-                        z,
-                        z,
-                        z,
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        self._C[..., 2, 2, 0, 0],
-                        self._C[..., 2, 2, 1, 1],
-                        self._C[..., 2, 2, 2, 2],
-                        z,
-                        z,
-                        z,
-                    ],
-                    dim=-1,
-                ),
-                torch.stack([z, z, z, self._C[..., 1, 2, 1, 2], z, z], dim=-1),
-                torch.stack([z, z, z, z, self._C[..., 0, 2, 0, 2], z], dim=-1),
-                torch.stack([z, z, z, z, z, self._C[..., 0, 1, 0, 1]], dim=-1),
-            ],
-            dim=-1,
-        )
+        self.C[..., 0, 0, 0, 0] = self.E_1 * (1 - self.nu_23 * self.nu_32) * F
+        self.C[..., 1, 1, 1, 1] = self.E_2 * (1 - self.nu_13 * self.nu_31) * F
+        self.C[..., 2, 2, 2, 2] = self.E_3 * (1 - self.nu_12 * self.nu_21) * F
+        self.C[..., 0, 0, 1, 1] = self.E_1 * (self.nu_21 + self.nu_31 * self.nu_23) * F
+        self.C[..., 1, 1, 0, 0] = self.C[..., 0, 0, 1, 1]
+        self.C[..., 0, 0, 2, 2] = self.E_1 * (self.nu_31 + self.nu_21 * self.nu_32) * F
+        self.C[..., 2, 2, 0, 0] = self.C[..., 0, 0, 2, 2]
+        self.C[..., 1, 1, 2, 2] = self.E_2 * (self.nu_32 + self.nu_12 * self.nu_31) * F
+        self.C[..., 2, 2, 1, 1] = self.C[..., 1, 1, 2, 2]
+        self.C[..., 0, 1, 0, 1] = self.G_12
+        self.C[..., 1, 0, 1, 0] = self.G_12
+        self.C[..., 0, 1, 1, 0] = self.G_12
+        self.C[..., 1, 0, 0, 1] = self.G_12
+        self.C[..., 0, 2, 0, 2] = self.G_13
+        self.C[..., 2, 0, 2, 0] = self.G_13
+        self.C[..., 0, 2, 2, 0] = self.G_13
+        self.C[..., 2, 0, 0, 2] = self.G_13
+        self.C[..., 1, 2, 1, 2] = self.G_23
+        self.C[..., 2, 1, 2, 1] = self.G_23
+        self.C[..., 1, 2, 2, 1] = self.G_23
+        self.C[..., 2, 1, 1, 2] = self.G_23
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
@@ -859,13 +812,21 @@ class OrthotropicElasticity3D(Material):
                 E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
             )
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
         """Perform a strain increment."""
-        epsilon_new = epsilon + depsilon
-        sigma_new = sigma + torch.einsum("...ij,...j->...i", self.C, depsilon)
+        # Second order identity tensor
+        I2 = torch.eye(F_inc.shape[-1])
+        # Update deformation gradient assuming small strains
+        F_new = F + (F_inc - I2)
+        # Compute small strain tensor
+        depsilon = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        # Compute new stress
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
+        # Update internal state (this material does not change state)
         state_new = state
+        # Algorithmic tangent
         ddsdde = self.C
-        return epsilon_new, sigma_new, state_new, ddsdde
+        return F_new, sigma_new, state_new, ddsdde
 
     def rotate(self, R):
         """Rotate the material with rotation matrix R."""
@@ -873,11 +834,12 @@ class OrthotropicElasticity3D(Material):
             raise ValueError("Rotation matrix must be a 3x3 tensor.")
 
         # Compute rotated stiffness tensor
-        Q = voigt_stress_rotation(R)
-        self.C = Q @ self.C @ Q.transpose(-1, -2)
+        self.C = torch.einsum(
+            "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
+        )
 
         # Compute rotated internal variables
-        S = torch.linalg.inv(self.C)
+        S = torch.linalg.inv(stiffness2voigt(self.C))
         self.E_1 = 1 / S[..., 0, 0]
         self.E_2 = 1 / S[..., 1, 1]
         self.E_3 = 1 / S[..., 2, 2]
@@ -890,7 +852,7 @@ class OrthotropicElasticity3D(Material):
         return self
 
 
-class OrthotropicElasticityPlaneStress(Material):
+class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
     """Orthotropic 2D plane stress material."""
 
     def __init__(
@@ -936,18 +898,22 @@ class OrthotropicElasticityPlaneStress(Material):
         self.n_state = 0
 
         # Stiffness tensor
-        z = torch.zeros_like(self.E_1)
+        if E_1.dim() == 0:
+            self.C = torch.zeros(2, 2, 2, 2)
+        else:
+            self.C = torch.zeros(*E_1.shape, 2, 2, 2, 2)
         nu2 = self.nu_12 * self.nu_21
-        self.C = torch.stack(
-            [
-                torch.stack([E_1 / (1 - nu2), nu_12 * E_2 / (1 - nu2), z], dim=-1),
-                torch.stack([nu_21 * E_1 / (1 - nu2), E_2 / (1 - nu2), z], dim=-1),
-                torch.stack([z, z, G_12], dim=-1),
-            ],
-            dim=-1,
-        )
+        self.C[..., 0, 0, 0, 0] = E_1 / (1 - nu2)
+        self.C[..., 0, 0, 1, 1] = nu_12 * E_2 / (1 - nu2)
+        self.C[..., 1, 1, 0, 0] = nu_12 * E_2 / (1 - nu2)
+        self.C[..., 1, 1, 1, 1] = E_2 / (1 - nu2)
+        self.C[..., 0, 1, 0, 1] = G_12
+        self.C[..., 0, 1, 1, 0] = G_12
+        self.C[..., 1, 0, 0, 1] = G_12
+        self.C[..., 1, 0, 1, 0] = G_12
 
         # Transverse shear stiffness matrix for shells
+        z = torch.zeros_like(E_1)
         self.Cs = torch.stack(
             [torch.stack([self.G_13, z], dim=-1), torch.stack([z, self.G_23], dim=-1)],
             dim=-1,
@@ -967,29 +933,22 @@ class OrthotropicElasticityPlaneStress(Material):
             G_23 = self.G_23.repeat(n_elem)
             return OrthotropicElasticityPlaneStress(E_1, E_2, nu_12, G_12, G_13, G_23)
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
-        """Perform a strain increment."""
-        epsilon_new = epsilon + depsilon
-        sigma_new = sigma + torch.einsum("...ij,...j->...i", self.C, depsilon)
-        state_new = state
-        ddsdde = self.C
-        return epsilon_new, sigma_new, state_new, ddsdde
-
     def rotate(self, R):
         """Rotate the material with rotation matrix R."""
         if R.shape[-2] != 2 or R.shape[-1] != 2:
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
 
         # Compute rotated stiffness tensor
-        Q = voigt_stress_rotation(R)
-        self.C = Q @ self.C @ Q.transpose(-1, -2)
+        self.C = torch.einsum(
+            "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
+        )
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)
-        self.E_1 = 1 / S[..., 0, 0]
-        self.E_2 = 1 / S[..., 1, 1]
-        self.nu_12 = -S[..., 0, 0] * S[..., 0, 1]
-        self.G_12 = 1 / S[..., 2, 2]
+        self.E_1 = 1 / S[..., 0, 0, 0, 0]
+        self.E_2 = 1 / S[..., 1, 1, 1, 1]
+        self.nu_12 = -S[..., 0, 0, 0, 0] * S[..., 0, 0, 1, 1]
+        self.G_12 = 1 / S[..., 0, 1, 0, 1]
         return self
 
 
@@ -1012,18 +971,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
 
         # Overwrite the 3D stiffness tensor with a 2D plane strain tensor
         z = torch.zeros_like(self.E_1)
-        self.C = torch.stack(
-            [
-                torch.stack(
-                    [self._C[..., 0, 0, 0, 0], self._C[..., 0, 0, 1, 1], z], dim=-1
-                ),
-                torch.stack(
-                    [self._C[..., 1, 1, 0, 0], self._C[..., 1, 1, 1, 1], z], dim=-1
-                ),
-                torch.stack([z, z, self._C[..., 0, 1, 0, 1]], dim=-1),
-            ],
-            dim=-1,
-        )
+        self.C = self.C[..., :2, :2, :2, :2]
 
         # Transverse shear stiffness matrix for shells
         self.Cs = torch.stack(
@@ -1056,8 +1004,9 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
 
         # Compute rotated stiffness tensor
-        Q = voigt_stress_rotation(R)
-        self.C = Q @ self.C @ Q.transpose(-1, -2)
+        self.C = torch.einsum(
+            "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
+        )
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)

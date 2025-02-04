@@ -6,7 +6,7 @@
 
 
 # torch-fem
-Simple GPU accelerated differentiable finite elements for small-deformation solid mechanics with PyTorch. 
+Simple GPU accelerated differentiable finite elements for solid mechanics with PyTorch. 
 PyTorch enables efficient computation of sensitivities via automatic differentiation and using them in optimization tasks.
 
 ## Installation
@@ -27,10 +27,12 @@ pip install cupy-cuda12x # v12.x
   - 2D: Quad1, Quad2, Tria1, Tria2
   - 3D: Hexa1, Hexa2, Tetra1, Tetra2
   - Shell: Flat-facet triangle (linear only)
-- Material models (3D, 2D plane stress, 2D plane strain, 1D)
+- Small-strain material models (3D, 2D plane stress, 2D plane strain, 1D)
   - Isotropic linear elasticity 
   - Orthotropic linear elasticity
   - Isotropic plasticity
+- Finite-strain material models
+  - Kirchhoff elasticity (3D)
 - Utilities
   - Homogenization of orthotropic stiffness
   - I/O to and from other mesh formats via meshio
