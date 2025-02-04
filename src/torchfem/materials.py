@@ -7,6 +7,14 @@ from torch import Tensor
 
 from torchfem.rotations import voigt_stress_rotation
 
+from .utils import (
+    stiffness2voigt,
+    strain2voigt,
+    stress2voigt,
+    voigt2stiffness,
+    voigt2stress,
+)
+
 
 class Material(ABC):
     """Base class for material models."""
@@ -35,54 +43,41 @@ class Material(ABC):
 
 
 class IsotropicElasticity3D(Material):
-    def __init__(
-        self,
-        E: float | Tensor,
-        nu: float | Tensor,
-        eps0: float | Tensor = 0.0,
-    ):
+    """Isotropic elastic material with small strains."""
+
+    def __init__(self, E: float | Tensor, nu: float | Tensor):
         # Convert float inputs to tensors
         if isinstance(E, float):
             E = torch.tensor(E)
         if isinstance(nu, float):
             nu = torch.tensor(nu)
-        if isinstance(eps0, float):
-            eps0 = torch.tensor(eps0)
 
         # Store material properties
         self.E = E
         self.nu = nu
-        self.eps0 = eps0
 
         # There are no internal variables
         self.n_state = 0
 
         # Check if the material is vectorized
-        if E.dim() > 0:
-            self.is_vectorized = True
-        else:
-            self.is_vectorized = False
+        self.is_vectorized = E.dim() > 0
 
         # Lame parameters
         self.lbd = self.E * self.nu / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
         self.G = self.E / (2.0 * (1.0 + self.nu))
 
-        # Stiffness tensor
-        z = torch.zeros_like(self.E)
-        diag = self.lbd + 2.0 * self.G
-        self.C = torch.stack(
-            [
-                torch.stack([diag, self.lbd, self.lbd, z, z, z], dim=-1),
-                torch.stack([self.lbd, diag, self.lbd, z, z, z], dim=-1),
-                torch.stack([self.lbd, self.lbd, diag, z, z, z], dim=-1),
-                torch.stack([z, z, z, self.G, z, z], dim=-1),
-                torch.stack([z, z, z, z, self.G, z], dim=-1),
-                torch.stack([z, z, z, z, z, self.G], dim=-1),
-            ],
-            dim=-1,
-        )
+        # Identity tensors
+        I2 = torch.eye(3)
+        I4 = torch.einsum("ij,kl->ijkl", I2, I2)
+        I4S = torch.einsum("ik,jl->ijkl", I2, I2) + torch.einsum("il,jk->ijkl", I2, I2)
 
-        # Stiffness tensor for shells
+        # Stiffness tensor
+        lbd = self.lbd[..., None, None, None, None]
+        G = self.G[..., None, None, None, None]
+        self.C = lbd * I4 + G * I4S
+
+        # Shear stiffness for shells
+        z = torch.zeros_like(self.E)
         self.Cs = torch.stack(
             [torch.stack([self.G, z], dim=-1), torch.stack([z, self.G], dim=-1)], dim=-1
         )
@@ -95,16 +90,23 @@ class IsotropicElasticity3D(Material):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            eps0 = self.eps0.repeat(n_elem)
-            return IsotropicElasticity3D(E, nu, eps0)
+            return IsotropicElasticity3D(E, nu)
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
         """Perform a strain increment."""
-        epsilon_new = epsilon + depsilon
-        sigma_new = sigma + torch.einsum("...ij,...j->...i", self.C, depsilon)
+        # Second order identity tensor
+        I2 = torch.eye(F_inc.shape[-1])
+        # Update deformation gradient assuming small strains
+        F_new = F + (F_inc - I2)
+        # Compute small strain tensor
+        depsilon = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        # Compute new stress
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
+        # Update internal state (this material does not change state)
         state_new = state
+        # Algorithmic tangent
         ddsdde = self.C
-        return epsilon_new, sigma_new, state_new, ddsdde
+        return F_new, sigma_new, state_new, ddsdde
 
     def rotate(self, R: Tensor):
         """Rotate the material with rotation matrix R."""
@@ -112,8 +114,44 @@ class IsotropicElasticity3D(Material):
         return self
 
 
+class IsotropicKirchhoff3D(IsotropicElasticity3D):
+    def vectorize(self, n_elem: int):
+        """Create a vectorized copy of the material for `n_elm` elements."""
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicKirchhoff3D(E, nu)
+
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
+        """Perform a strain increment."""
+        # Second order identity tensor
+        I2 = torch.eye(F_inc.shape[-1])
+        # Update deformation gradient assuming large strains
+        F_new = F_inc @ F
+        # Compute polar decomposition
+        U, _, Vh = torch.linalg.svd(F_new)
+        R = U @ Vh
+        # Compute Green-Lagrange strain
+        E_new = 0.5 * (F_new.transpose(-1, -2) @ F_new - I2)
+        # Compute second Piola-Kirchhoff stress
+        S_new = torch.einsum("...ijkl,...kl->...ij", self.C, E_new - de0)
+        # Compute Cauchy stress
+        J_new = torch.det(F_new)[:, None, None]
+        sigma_new = F_new @ S_new @ F_new.transpose(-1, -2) / J_new
+        # Update internal state (this material does not change state)
+        state_new = state
+        # Algorithmic tangent (rotated)
+        ddsdde = torch.einsum(
+            "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
+        )
+        return F_new, sigma_new, state_new, ddsdde
+
+
 class IsotropicPlasticity3D(IsotropicElasticity3D):
-    """Isotropic plasticity with isotropic hardening"""
+    """Isotropic plasticity with isotropic hardening for small strains."""
 
     def __init__(
         self,
@@ -143,30 +181,38 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
                 E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
         """Perform a strain increment."""
-        # Solution variables
-        epsilon_new = epsilon + depsilon
+        # Second order identity tensor
+        I2 = torch.eye(F_inc.shape[-1])
+        # Compute new deformation gradient assuming small strains
+        F_new = F + (F_inc - I2)
+        # Compute small strain tensor
+        depsilon = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+
+        # Initialize solution variables
         sigma_new = sigma.clone()
         state_new = state.clone()
         q = state_new[..., 0]
         ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_trial = sigma + torch.einsum("...kl,...l->...k", self.C, depsilon)
+        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
 
         # Compute the deviatoric trial stress
-        s_trial_trace = s_trial[..., 0] + s_trial[..., 1] + s_trial[..., 2]
+        s_trial_trace = s_trial[..., 0, 0] + s_trial[..., 1, 1] + s_trial[..., 2, 2]
         dev = s_trial.clone()
-        dev[..., 0:3] -= s_trial_trace[..., None] / 3
-        dev_norm = torch.sqrt((dev[..., 0:3] ** 2 + 2 * dev[..., 3:6] ** 2).sum(dim=-1))
+        dev[..., 0, 0] -= s_trial_trace / 3
+        dev[..., 1, 1] -= s_trial_trace / 3
+        dev[..., 2, 2] -= s_trial_trace / 3
+        dev_norm = torch.linalg.norm(dev, dim=(-1, -2))
 
         # Flow potential
         f = dev_norm - sqrt(2.0 / 3.0) * self.sigma_f(q)
         fm = f > 0
 
         # Direction of flow
-        n = dev[fm] / dev_norm[fm][..., None]
+        n = dev[fm] / dev_norm[fm][..., None, None]
 
         # Local Newton solver to find plastic strain increment
         dGamma = torch.zeros_like(f[fm])
@@ -189,7 +235,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
         # Update stress
         sigma_new[~fm] = s_trial[~fm]
-        sigma_new[fm] = s_trial[fm] - (2.0 * G * dGamma)[:, None] * n
+        sigma_new[fm] = s_trial[fm] - (2.0 * G * dGamma)[:, None, None] * n
 
         # Update state
         state_new[..., 0] = q
@@ -197,45 +243,39 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         # Update algorithmic tangent
         A = 2.0 * G / (1.0 + self.sigma_f_prime(q[fm]) / (3.0 * G))
         B = 4.0 * G**2 * dGamma / dev_norm[fm]
-        C = self.C[fm]
-        D = C.clone()
-        D[:, 0, 0] = C[:, 0, 0] - A * n[:, 0] ** 2 - B * (2 / 3 - n[:, 0] ** 2)
-        D[:, 1, 1] = C[:, 1, 1] - A * n[:, 1] ** 2 - B * (2 / 3 - n[:, 1] ** 2)
-        D[:, 2, 2] = C[:, 2, 2] - A * n[:, 2] ** 2 - B * (2 / 3 - n[:, 2] ** 2)
-        n0n1 = n[:, 0] * n[:, 1]
-        D[:, 0, 1] = C[:, 0, 1] - A * n0n1 - B * (-1 / 3 - n0n1)
-        D[:, 1, 0] = D[:, 0, 1]
-        n0n2 = n[:, 0] * n[:, 2]
-        D[:, 0, 2] = C[:, 0, 2] - A * n0n2 - B * (-1 / 3 - n0n2)
-        D[:, 2, 0] = D[:, 0, 2]
-        n1n2 = n[:, 1] * n[:, 2]
-        D[:, 1, 2] = C[:, 1, 2] - A * n1n2 - B * (-1 / 3 - n1n2)
-        D[:, 2, 1] = D[:, 1, 2]
-        D[:, 3, 3] = C[:, 3, 3] - A * n[:, 3] ** 2 - B * (1 / 2 - n[:, 3] ** 2)
-        D[:, 4, 4] = C[:, 4, 4] - A * n[:, 4] ** 2 - B * (1 / 2 - n[:, 4] ** 2)
-        D[:, 5, 5] = C[:, 5, 5] - A * n[:, 5] ** 2 - B * (1 / 2 - n[:, 5] ** 2)
-        ddsdde[fm] = D
+        I2 = torch.eye(3)
+        I4 = torch.einsum("ij,kl->ijkl", I2, I2)
+        I4S = torch.einsum("ik,jl->ijkl", I2, I2) + torch.einsum("il,jk->ijkl", I2, I2)
+        nn = torch.einsum("...ij,...kl->...ijkl", n, n)
+        ddsdde[fm] = (
+            self.C[fm]
+            - A[..., None, None, None, None] * nn
+            - B[..., None, None, None, None] * (1 / 2 * I4S - 1 / 3 * I4 - nn)
+        )
 
-        return epsilon_new, sigma_new, state_new, ddsdde
+        return F_new, sigma_new, state_new, ddsdde
 
 
 class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
-    """Isotropic 2D plane stress material."""
+    """Isotropic 2D plane stress material with small strains."""
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
 
         # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
         fac = self.E / (1.0 - self.nu**2)
-        zero = torch.zeros_like(self.E)
-        self.C = torch.stack(
-            [
-                torch.stack([fac, fac * self.nu, zero], dim=-1),
-                torch.stack([fac * self.nu, fac, zero], dim=-1),
-                torch.stack([zero, zero, fac * 0.5 * (1.0 - self.nu)], dim=-1),
-            ],
-            dim=-1,
-        )
+        if self.E.dim() == 0:
+            self.C = torch.zeros(2, 2, 2, 2)
+        else:
+            self.C = torch.zeros(*E.shape, 2, 2, 2, 2)
+        self.C[..., 0, 0, 0, 0] = fac
+        self.C[..., 0, 0, 1, 1] = fac * self.nu
+        self.C[..., 1, 1, 0, 0] = fac * self.nu
+        self.C[..., 1, 1, 1, 1] = fac
+        self.C[..., 0, 1, 0, 1] = fac * 0.5 * (1.0 - self.nu)
+        self.C[..., 0, 1, 1, 0] = fac * 0.5 * (1.0 - self.nu)
+        self.C[..., 1, 0, 0, 1] = fac * 0.5 * (1.0 - self.nu)
+        self.C[..., 1, 0, 1, 0] = fac * 0.5 * (1.0 - self.nu)
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
@@ -261,7 +301,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         max_iter: int = 10,
     ):
         super().__init__(E, nu)
-        self.S = torch.linalg.inv(self.C)
+        self._C = stiffness2voigt(self.C)
+        self._S = torch.linalg.inv(self._C)
         self.sigma_f = sigma_f
         self.sigma_f_prime = sigma_f_prime
         self.n_state = 1
@@ -280,25 +321,34 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
                 E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
-        """Perform a strain increment.
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
+        """Perform a strain increment assuming small strains in Voigt notation.
 
         See: de Souza Neto, E. A., Peri, D., Owen, D. R. J. *Computational Methods for
         Plasticity*, Chapter 9: Plane Stress Plasticity, 2008.
         https://doi.org/10.1002/9780470694626.ch9
         """
 
+        # Projection operator
         P = 1 / 3 * torch.tensor([[2, -1, 0], [-1, 2, 0], [0, 0, 6]])
+        # Second order identity tensor
+        I2 = torch.eye(2)
+
+        # Compute new deformation gradient assuming small strains
+        F_new = F + (F_inc - I2)
+        # Compute small strain tensor in Voigt notation
+        depsilon = strain2voigt(0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2 - de0)
+        # Convert stress to Voigt notation
+        sigma = stress2voigt(sigma)
 
         # Solution variables
-        epsilon_new = epsilon + depsilon
         sigma_new = sigma.clone()
         state_new = state.clone()
         q = state_new[..., 0]
-        ddsdde = self.C.clone()
+        ddsdde = self._C.clone()
 
         # Compute trial stress
-        s_trial = sigma + torch.einsum("...kl,...l->...k", self.C, depsilon)
+        s_trial = sigma + torch.einsum("...kl,...l->...k", self._C, depsilon)
 
         # Flow potential
         a1 = (s_trial[..., 0] + s_trial[..., 1]) ** 2
@@ -351,11 +401,11 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             print("Local Newton iteration did not converge.")
 
         # Compute inverse operator
-        inv = torch.linalg.inv(self.S[fm] + dGamma[None, :, None, None] * P)
+        inv = torch.linalg.inv(self._S[fm] + dGamma[None, :, None, None] * P)
 
         # Update stress
         sigma_new[~fm] = s_trial[~fm]
-        sigma_new[fm] = (inv @ self.S[fm] @ s_trial[fm][:, :, None]).squeeze(-1)
+        sigma_new[fm] = (inv @ self._S[fm] @ s_trial[fm][:, :, None]).squeeze(-1)
 
         # Update state
         q[fm] = qq
@@ -371,7 +421,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         )
         ddsdde[fm] = inv - alpha * n @ n.transpose(-1, -2)
 
-        return epsilon_new, sigma_new, state_new, ddsdde
+        return F_new, voigt2stress(sigma_new), state_new, voigt2stiffness(ddsdde)
 
 
 class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
@@ -380,18 +430,21 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
     def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
 
-        # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
+        # Overwrite the 3D stiffness tensor with a 2D plane strain tensor
         lbd = self.lbd
         G = self.G
-        zero = torch.zeros_like(self.E)
-        self.C = torch.stack(
-            [
-                torch.stack([2.0 * G + lbd, lbd, zero], dim=-1),
-                torch.stack([lbd, 2.0 * G + lbd, zero], dim=-1),
-                torch.stack([zero, zero, G], dim=-1),
-            ],
-            dim=-1,
-        )
+        if self.E.dim() == 0:
+            self.C = torch.zeros(2, 2, 2, 2)
+        else:
+            self.C = torch.zeros(*E.shape, 2, 2, 2, 2)
+        self.C[..., 0, 0, 0, 0] = 2.0 * G + lbd
+        self.C[..., 0, 0, 1, 1] = lbd
+        self.C[..., 1, 1, 0, 0] = lbd
+        self.C[..., 1, 1, 1, 1] = 2.0 * G + lbd
+        self.C[..., 0, 1, 0, 1] = G
+        self.C[..., 0, 1, 1, 0] = G
+        self.C[..., 1, 0, 0, 1] = G
+        self.C[..., 1, 0, 1, 0] = G
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
@@ -435,18 +488,27 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
                 E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
         """Perform a strain increment."""
+        # Second order identity tensor
+        I2 = torch.eye(2)
+        # Compute new deformation gradient assuming small strains
+        F_new = F + (F_inc - I2)
+        # Compute small strain tensor in Voigt notation
+        depsilon = strain2voigt(0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2 - de0)
+        # Convert stress to Voigt notation
+        sigma = stress2voigt(sigma)
+        C = stiffness2voigt(self.C)
+
         # Solution variables
-        epsilon_new = epsilon + depsilon
         sigma_new = sigma.clone()
         state_new = state.clone()
         q = state_new[..., 0]
         ez = state_new[..., 1]
-        ddsdde = self.C.clone()
+        ddsdde = C
 
         # Compute trial stress
-        s_trial_2D = sigma + torch.einsum("...kl,...l->...k", self.C, depsilon)
+        s_trial_2D = sigma + torch.einsum("...kl,...l->...k", C, depsilon)
         s_trial = torch.stack(
             [
                 s_trial_2D[..., 0],
@@ -503,7 +565,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         # Update algorithmic tangent
         A = 2.0 * G / (1.0 + self.sigma_f_prime(q[fm]) / (3.0 * G))
         B = 4.0 * G**2 * dGamma / dev_norm[fm]
-        C = self.C[fm]
+        C = C[fm]
         D = C.clone()
         D[:, 0, 0] = C[:, 0, 0] - A * n[:, 0] ** 2 - B * (2 / 3 - n[:, 0] ** 2)
         D[:, 1, 1] = C[:, 1, 1] - A * n[:, 1] ** 2 - B * (2 / 3 - n[:, 1] ** 2)
@@ -513,32 +575,26 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         D[:, 2, 2] = C[:, 2, 2] - A * n[:, 3] ** 2 - B * (1 / 2 - n[:, 3] ** 2)
         ddsdde[fm] = D
 
-        return epsilon_new, sigma_new, state_new, ddsdde
+        return F_new, voigt2stress(sigma_new), state_new, voigt2stiffness(ddsdde)
 
 
 class IsotropicElasticity1D(Material):
-    def __init__(self, E: float | Tensor, eps0: float | Tensor = 0.0):
+    def __init__(self, E: float | Tensor):
         # Convert float inputs to tensors
         if isinstance(E, float):
             E = torch.tensor(E)
-        if isinstance(eps0, float):
-            eps0 = torch.tensor(eps0)
 
         # Check if the material is vectorized
-        if E.dim() > 0:
-            self.is_vectorized = True
-        else:
-            self.is_vectorized = False
+        self.is_vectorized = E.dim() > 0
 
         # Store material properties
         self.E = E
-        self.eps0 = eps0
 
         # There are no internal variables
         self.n_state = 0
 
-        # Stiffness tensor (in 1D, this is a 1x1 "tensor")
-        self.C = self.E.unsqueeze(-1).unsqueeze(-1)
+        # Stiffness tensor (in 1D, this is a 1x1x1x1 "tensor")
+        self.C = self.E[..., None, None, None, None]
 
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
@@ -547,16 +603,16 @@ class IsotropicElasticity1D(Material):
             return self
         else:
             E = self.E.repeat(n_elem)
-            eps0 = self.eps0.repeat(n_elem)
-            return IsotropicElasticity1D(E, eps0)
+            return IsotropicElasticity1D(E)
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
         """Perform a strain increment."""
-        epsilon_new = epsilon + depsilon
-        sigma_new = sigma + torch.einsum("...ij,...j->...i", self.C, depsilon)
+        depsilon = F_inc - 1.0
+        F_new = F + depsilon
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
         state_new = state
         ddsdde = self.C
-        return epsilon_new, sigma_new, state_new, ddsdde
+        return F_new, sigma_new, state_new, ddsdde
 
     def rotate(self, R: Tensor):
         """Rotate the material with rotation matrix R."""
@@ -593,17 +649,19 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
                 E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
+    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
         """Perform a strain increment."""
+        F_new = F + (F_inc - 1.0)
+        depsilon = F_inc - 1.0
+
         # Solution variables
-        epsilon_new = epsilon + depsilon
         sigma_new = sigma.clone()
         state_new = state.clone()
         q = state_new[..., 0]
         ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_trial = sigma + torch.einsum("...kl,...l->...k", self.C, depsilon)
+        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
         s_norm = torch.abs(s_trial).squeeze()
 
         # Flow potential
@@ -629,7 +687,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
 
         # Update stress
         sigma_new[~fm] = s_trial[~fm]
-        sigma_new[fm] = (1.0 - (dGamma * E) / s_norm[fm])[:, None] * s_trial[fm]
+        sigma_new[fm] = (1.0 - (dGamma * E) / s_norm[fm])[:, None, None] * s_trial[fm]
 
         # Update state
         state_new[..., 0] = q
@@ -637,12 +695,12 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         # Update algorithmic tangent
         if fm.sum() > 0:
             ddsdde[fm] = (
-                E[:, None, None]
+                E[:, None, None, None, None]
                 * self.sigma_f_prime(q[fm])
-                / (E[:, None, None] + self.sigma_f_prime(q[fm]))
+                / (E[:, None, None, None, None] + self.sigma_f_prime(q[fm]))
             )
 
-        return epsilon_new, sigma_new, state_new, ddsdde
+        return F_new, sigma_new, state_new, ddsdde
 
 
 class OrthotropicElasticity3D(Material):

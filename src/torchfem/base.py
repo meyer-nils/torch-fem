@@ -39,13 +39,13 @@ class FEM(ABC):
             self.material = material.vectorize(self.n_elem)
 
         # Initialize types
-        self.n_strains: int
+        self.n_stress: int
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
 
     @abstractmethod
-    def D(self, B: Tensor, nodes: Tensor) -> Tensor:
+    def eval_shape_functions(self, xi: Tensor) -> Tensor:
         raise NotImplementedError
 
     @abstractmethod
@@ -79,18 +79,18 @@ class FEM(ABC):
 
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
-        e = torch.zeros(2, self.n_int, self.n_elem, self.n_strains)
-        s = torch.zeros(2, self.n_int, self.n_elem, self.n_strains)
+        f = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
+        s = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         a = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros_like(self.nodes)
-        dde0 = torch.zeros(self.n_elem, self.n_strains)
+        dde0 = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
         self.K = torch.empty(0)
-        k, _ = self.integrate_material(e, s, a, 1, du, dde0)
+        k, _ = self.integrate_material(f, s, a, 1, du, dde0)
         return k
 
     def integrate_material(
         self,
-        eps: Tensor,
+        F: Tensor,
         sig: Tensor,
         sta: Tensor,
         n: int,
@@ -99,8 +99,9 @@ class FEM(ABC):
     ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
         # Reshape variables
-        nodes = self.nodes[self.elements, :]
-        du = du.reshape((-1, self.n_dim))[self.elements, :].reshape(self.n_elem, -1)
+        du = du.view(-1, self.n_dim)[self.elements].reshape(
+            self.n_elem, -1, self.n_stress
+        )
 
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
@@ -111,32 +112,26 @@ class FEM(ABC):
             k = torch.empty(0)
 
         for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
-            # Compute gradient operators
-            b = self.etype.B(xi)
-            if b.shape[0] == 1:
-                dx = nodes[:, 1] - nodes[:, 0]
-                J = 0.5 * torch.linalg.norm(dx, dim=1)[:, None, None]
-            else:
-                J = torch.einsum("jk,mkl->mjl", b, nodes)
-            detJ = torch.linalg.det(J)
-            if torch.any(detJ <= 0.0):
-                raise Exception("Negative Jacobian. Check element numbering.")
-            B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
-            D = self.D(B, nodes)
+            # Compute gradient operator
+            N, B, detJ = self.eval_shape_functions(xi)
+
+            # Compute deformation gradient
+            F_inc = torch.einsum("...ij,...jk->...ik", B, du) + torch.eye(self.n_stress)
 
             # Evaluate material response
-            de = torch.einsum("jkl,jl->jk", D, du) - de0
-            eps[n, i], sig[n, i], sta[n, i], ddsdde = self.material.step(
-                de, eps[n - 1, i], sig[n - 1, i], sta[n - 1, i]
+            F[n, i], sig[n, i], sta[n, i], ddsdde = self.material.step(
+                F_inc, F[n - 1, i], sig[n - 1, i], sta[n - 1, i], de0
             )
 
             # Compute element internal forces
-            f += w * self.compute_f(detJ, D, sig[n, i].clone())
+            force_contrib = self.compute_f(detJ, B, sig[n, i].clone())
+            f += w * force_contrib.reshape(-1, self.n_dim * N_nod)
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0:
-                DCD = torch.einsum("jkl,jlm,jkn->jmn", ddsdde, D, D)
-                k += w * self.compute_k(detJ, DCD)
+                BCB = torch.einsum("...ijpq,...qk,...il->...ljkp", ddsdde, B, B)
+                BCB = BCB.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
+                k += w * self.compute_k(detJ, BCB)
 
         return k, f
 
@@ -148,13 +143,9 @@ class FEM(ABC):
             field = torch.ones(self.n_nod)
 
         # Integrate
-        nodes = self.nodes[self.elements, :]
         res = torch.zeros(len(self.elements))
         for w, xi in zip(self.etype.iweights(), self.etype.ipoints()):
-            N = self.etype.N(xi)
-            B = self.etype.B(xi)
-            J = torch.einsum("jk,mkl->mjl", B, nodes)
-            detJ = torch.linalg.det(J)
+            N, B, detJ = self.eval_shape_functions(xi)
             f = field[self.elements, None].squeeze() @ N
             res += w * f * detJ
         return res
@@ -230,8 +221,9 @@ class FEM(ABC):
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
-        epsilon = torch.zeros(N, self.n_int, self.n_elem, self.n_strains)
-        sigma = torch.zeros(N, self.n_int, self.n_elem, self.n_strains)
+        defgrad = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
+        defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
+        sigma = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
         f = torch.zeros(N, self.n_nod, self.n_dim)
         u = torch.zeros(N, self.n_nod, self.n_dim)
@@ -250,14 +242,14 @@ class FEM(ABC):
             # Load increment
             F_ext = increments[n] * self.forces.ravel()
             DU = inc * self.displacements.clone().ravel()
-            DE = inc * self.ext_strain
+            de0 = inc * self.ext_strain
 
             # Newton-Raphson iterations
             for i in range(max_iter):
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_int = self.integrate_material(epsilon, sigma, state, n, du, DE)
+                k, f_int = self.integrate_material(defgrad, sigma, state, n, du, de0)
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if self.K.numel() == 0 or not self.material.n_state == 0:
@@ -293,13 +285,17 @@ class FEM(ABC):
 
         # Aggregate integration points as mean
         if aggregate_integration_points:
-            epsilon = epsilon.mean(dim=1)
+            defgrad = defgrad.mean(dim=1)
             sigma = sigma.mean(dim=1)
             state = state.mean(dim=1)
 
+        # Squeeze outputs
+        sigma = sigma.squeeze()
+        defgrad = defgrad.squeeze()
+
         if return_intermediate:
             # Return all intermediate values
-            return u, f, sigma, epsilon, state
+            return u, f, sigma, defgrad, state
         else:
             # Return only the final values
-            return u[-1], f[-1], sigma[-1], epsilon[-1], state[-1]
+            return u[-1], f[-1], sigma[-1], defgrad[-1], state[-1]

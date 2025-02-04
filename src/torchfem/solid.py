@@ -25,31 +25,30 @@ class Solid(FEM):
             raise ValueError("Element type not supported.")
 
         # Set element type specific sizes
-        self.n_strains = 6
+        self.n_stress = 3
         self.n_int = len(self.etype.iweights())
 
         # Initialize external strain
-        self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
+        self.ext_strain = torch.zeros(self.n_elem, 3, 3)
 
-    def D(self, B: Tensor, nodes: Tensor) -> Tensor:
-        """Element gradient operator"""
-        zeros = torch.zeros(self.n_elem, self.etype.nodes)
-        shape = [self.n_elem, -1]
-        D0 = torch.stack([B[:, 0, :], zeros, zeros], dim=-1).reshape(shape)
-        D1 = torch.stack([zeros, B[:, 1, :], zeros], dim=-1).reshape(shape)
-        D2 = torch.stack([zeros, zeros, B[:, 2, :]], dim=-1).reshape(shape)
-        D3 = torch.stack([zeros, B[:, 2, :], B[:, 1, :]], dim=-1).reshape(shape)
-        D4 = torch.stack([B[:, 2, :], zeros, B[:, 0, :]], dim=-1).reshape(shape)
-        D5 = torch.stack([B[:, 1, :], B[:, 0, :], zeros], dim=-1).reshape(shape)
-        return torch.stack([D0, D1, D2, D3, D4, D5], dim=1)
+    def eval_shape_functions(self, xi: Tensor) -> Tensor:
+        """Gradient operator at integration points xi."""
+        nodes = self.nodes[self.elements, :]
+        b = self.etype.B(xi)
+        J = torch.einsum("jk,mkl->mjl", b, nodes)
+        detJ = torch.linalg.det(J)
+        if torch.any(detJ <= 0.0):
+            raise Exception("Negative Jacobian. Check element numbering.")
+        B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
+        return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, DCD: Tensor) -> Tensor:
         """Element stiffness matrix"""
         return torch.einsum("j,jkl->jkl", detJ, DCD)
 
-    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor) -> Tensor:
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
         """Element internal force vector."""
-        return torch.einsum("j,jkl,jk->jl", detJ, D, S)
+        return torch.einsum("...,...ik,...ij->...kj", detJ, B, S)
 
     @torch.no_grad()
     def plot(
@@ -57,6 +56,7 @@ class Solid(FEM):
         u: float | Tensor = 0.0,
         node_property: dict[str, Tensor] | None = None,
         element_property: dict[str, Tensor] | None = None,
+        orientations: Tensor | None = None,
         show_edges: bool = True,
         show_undeformed: bool = False,
         contour: tuple[str, list[float]] | None = None,
@@ -101,6 +101,20 @@ class Solid(FEM):
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.numpy()
 
+        # Plot orientations
+        if orientations is not None:
+            ecenters = pos[self.elements].mean(dim=1)
+            for j in range(3):
+                directions = orientations[:, j, :]
+                pl.add_arrows(
+                    ecenters.numpy(),
+                    directions.numpy(),
+                    mag=0.1,
+                    color="black",
+                    show_scalar_bar=False,
+                )
+
+        # Plot mesh
         if contour:
             scalars, values = contour
             pl.add_mesh(mesh.outline(), color="black")

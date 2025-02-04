@@ -30,28 +30,30 @@ class Planar(FEM):
             raise ValueError("Element type not supported.")
 
         # Set element type specific sizes
-        self.n_strains = 3
+        self.n_stress = 2
         self.n_int = len(self.etype.iweights())
 
         # Initialize external strain
-        self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
+        self.ext_strain = torch.zeros(self.n_elem, 2, 2)
 
-    def D(self, B: Tensor, _):
-        """Element gradient operator."""
-        zeros = torch.zeros(self.n_elem, self.etype.nodes)
-        shape = [self.n_elem, -1]
-        D0 = torch.stack([B[:, 0, :], zeros], dim=-1).reshape(shape)
-        D1 = torch.stack([zeros, B[:, 1, :]], dim=-1).reshape(shape)
-        D2 = torch.stack([B[:, 1, :], B[:, 0, :]], dim=-1).reshape(shape)
-        return torch.stack([D0, D1, D2], dim=1)
+    def eval_shape_functions(self, xi: Tensor) -> Tensor:
+        """Gradient operator at integration points xi."""
+        nodes = self.nodes[self.elements, :]
+        b = self.etype.B(xi)
+        J = torch.einsum("jk,mkl->mjl", b, nodes)
+        detJ = torch.linalg.det(J)
+        if torch.any(detJ <= 0.0):
+            raise Exception("Negative Jacobian. Check element numbering.")
+        B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
+        return self.etype.N(xi), B, detJ
 
-    def compute_k(self, detJ: Tensor, DCD: Tensor):
+    def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix."""
-        return torch.einsum("j,j,jkl->jkl", self.thickness, detJ, DCD)
+        return torch.einsum("...,...,...kl->...kl", self.thickness, detJ, BCB)
 
-    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor):
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         """Element internal force vector."""
-        return torch.einsum("j,j,jkl,jk->jl", self.thickness, detJ, D, S)
+        return torch.einsum("...,...,...ik,...ij->...kj", self.thickness, detJ, B, S)
 
     @torch.no_grad()
     def plot(

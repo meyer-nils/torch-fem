@@ -56,6 +56,63 @@ def strain2voigt(epsilon: Tensor) -> Tensor:
         raise ValueError("Invalid shape for strain tensor.")
 
 
+def stiffness2voigt(C: Tensor) -> Tensor:
+    """Convert a stiffness tensor to Voigt notation."""
+    if C.shape[-1] == 2 and C.shape[-2] == 2:
+        z = torch.zeros_like(C[..., 0, 0, 0, 0])
+        return torch.stack(
+            [
+                torch.stack([C[..., 0, 0, 0, 0], C[..., 0, 0, 1, 1], z], dim=-1),
+                torch.stack([C[..., 1, 1, 0, 0], C[..., 1, 1, 1, 1], z], dim=-1),
+                torch.stack([z, z, C[..., 0, 1, 0, 1]], dim=-1),
+            ],
+            dim=-1,
+        )
+    elif C.shape[-1] == 3 and C.shape[-2] == 3:
+        z = torch.zeros_like(C[..., 0, 0, 0, 0])
+        return torch.stack(
+            [
+                torch.stack(
+                    [
+                        C[..., 0, 0, 0, 0],
+                        C[..., 0, 0, 1, 1],
+                        C[..., 0, 0, 2, 2],
+                        z,
+                        z,
+                        z,
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        C[..., 1, 1, 0, 0],
+                        C[..., 1, 1, 1, 1],
+                        C[..., 1, 1, 2, 2],
+                        z,
+                        z,
+                        z,
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        C[..., 2, 2, 0, 0],
+                        C[..., 2, 2, 1, 1],
+                        C[..., 2, 2, 2, 2],
+                        z,
+                        z,
+                        z,
+                    ],
+                    dim=-1,
+                ),
+                torch.stack([z, z, z, C[..., 1, 2, 1, 2], z, z], dim=-1),
+                torch.stack([z, z, z, z, C[..., 0, 2, 0, 2], z], dim=-1),
+                torch.stack([z, z, z, z, z, C[..., 0, 1, 0, 1]], dim=-1),
+            ],
+            dim=-1,
+        )
+
+
 def voigt2stress(voigt: Tensor) -> Tensor:
     """Convert a stress tensor from Voigt notation."""
     if voigt.shape[-1] == 3:
@@ -106,3 +163,26 @@ def voigt2strain(voigt: Tensor) -> Tensor:
         )
     else:
         raise ValueError("Invalid shape for Voigt notation.")
+
+
+def voigt2stiffness(voigt: Tensor) -> Tensor:
+    """Convert a stiffness tensor from Voigt notation."""
+    if voigt.shape[-1] == 3:
+        C = torch.zeros(voigt.shape[0], 2, 2, 2, 2)
+        C[..., 0, 0, 0, 0] = voigt[..., 0, 0]
+        C[..., 1, 1, 1, 1] = voigt[..., 1, 1]
+        C[..., 0, 0, 1, 1] = voigt[..., 0, 1]
+        C[..., 1, 1, 0, 0] = voigt[..., 1, 0]
+        C[..., 0, 0, 0, 1] = voigt[..., 0, 2]
+        C[..., 0, 0, 1, 0] = voigt[..., 0, 2]
+        C[..., 1, 0, 0, 0] = voigt[..., 2, 0]
+        C[..., 0, 1, 0, 0] = voigt[..., 2, 0]
+        C[..., 1, 0, 1, 1] = voigt[..., 2, 1]
+        C[..., 0, 1, 1, 1] = voigt[..., 2, 1]
+        C[..., 1, 1, 1, 0] = voigt[..., 1, 2]
+        C[..., 1, 1, 0, 1] = voigt[..., 1, 2]
+        C[..., 1, 0, 0, 1] = voigt[..., 2, 2]
+        C[..., 0, 1, 0, 1] = voigt[..., 2, 2]
+        C[..., 1, 0, 1, 0] = voigt[..., 2, 2]
+        C[..., 0, 1, 1, 0] = voigt[..., 2, 2]
+        return C
