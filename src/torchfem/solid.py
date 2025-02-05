@@ -28,7 +28,8 @@ class Solid(FEM):
         self.n_stress = 3
         self.n_int = len(self.etype.iweights())
 
-        # Initialize external strain
+        # Initialize external stress and strain
+        self.ext_stress = torch.zeros(self.n_elem, 3, 3)
         self.ext_strain = torch.zeros(self.n_elem, 3, 3)
 
     def eval_shape_functions(self, xi: Tensor) -> Tensor:
@@ -104,13 +105,13 @@ class Solid(FEM):
         # Plot orientations
         if orientations is not None:
             ecenters = pos[self.elements].mean(dim=1)
-            for j in range(3):
+            for j, color in enumerate(["red", "green", "blue"]):
                 directions = orientations[:, j, :]
                 pl.add_arrows(
                     ecenters.numpy(),
                     directions.numpy(),
                     mag=0.1,
-                    color="black",
+                    color=color,
                     show_scalar_bar=False,
                 )
 
