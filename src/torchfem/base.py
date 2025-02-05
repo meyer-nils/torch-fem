@@ -96,6 +96,7 @@ class FEM(ABC):
         n: int,
         du: Tensor,
         de0: Tensor,
+        ds0: Tensor,
     ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
         # Reshape variables
@@ -120,7 +121,7 @@ class FEM(ABC):
 
             # Evaluate material response
             F[n, i], sig[n, i], sta[n, i], ddsdde = self.material.step(
-                F_inc, F[n - 1, i], sig[n - 1, i], sta[n - 1, i], de0
+                F_inc, F[n - 1, i], sig[n - 1, i], sta[n - 1, i], de0, ds0
             )
 
             # Compute element internal forces
@@ -243,18 +244,19 @@ class FEM(ABC):
             F_ext = increments[n] * self.forces.ravel()
             DU = inc * self.displacements.clone().ravel()
             de0 = inc * self.ext_strain
+            ds0 = inc * self.ext_stress
 
             # Newton-Raphson iterations
             for i in range(max_iter):
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_int = self.integrate_material(defgrad, sigma, state, n, du, de0)
+                k, f_i = self.integrate_material(defgrad, sigma, state, n, du, de0, ds0)
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if self.K.numel() == 0 or not self.material.n_state == 0:
                     self.K = self.assemble_stiffness(k, con)
-                F_int = self.assemble_force(f_int)
+                F_int = self.assemble_force(f_i)
 
                 # Compute residual
                 residual = F_int - F_ext

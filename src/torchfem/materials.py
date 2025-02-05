@@ -26,22 +26,47 @@ class Material(ABC):
 
     @abstractmethod
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
         pass
 
     @abstractmethod
-    def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
-        """Perform a strain increment."""
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         pass
 
     @abstractmethod
-    def rotate(self, R):
-        """Rotate the material with rotation matrix R."""
+    def rotate(self, R: Tensor):
         pass
 
 
 class IsotropicElasticity3D(Material):
-    """Isotropic elastic material with small strains."""
+    """Isotropic elastic material.
+
+    This class represents a 3D isotropic linear elastic material under small-strain
+    assumptions, defined by Young's modulus E and Poisson's ratio ν.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        lbd (Tensor): First Lamé parameter.
+            Shape: `()` (scalar) or `(N,)` (batch).
+        G (Tensor): Shear modulus (second Lamé parameter).
+            Shape: `()` (scalar) or `(N,)` (batch).
+        C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
+            Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
+        Cs (Tensor): Shear stiffness tensor for shell elements.
+            Shape: `(N, 2, 2)` if vectorized, otherwise `(2, 2)`.
+    """
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
         # Convert float inputs to tensors
@@ -81,7 +106,18 @@ class IsotropicElasticity3D(Material):
         )
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicElasticity3D: A new material instance with vectorized properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -90,16 +126,53 @@ class IsotropicElasticity3D(Material):
             nu = self.nu.repeat(n_elem)
             return IsotropicElasticity3D(E, nu)
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
-        """Perform a strain increment."""
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Performs an incremental step in the small-strain isotropic elasticity model.
+
+        This function updates the deformation gradient, stress, and internal state
+        variables based on a small-strain assumption.
+
+        Args:
+            F_inc (Tensor): Incremental deformation gradient.
+                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                - Shape: `(..., 3, 3)`, same as `F_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                - Shape: `(..., 3, 3)`.
+            state (Tensor): Internal state variables (unused in linear elasticity).
+                - Shape: Arbitrary, remains unchanged.
+            de0 (Tensor): External small strain increment (e.g., thermal).
+                - Shape: `(..., 3, 3)`.
+            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+                - Shape: `(..., 3, 3)`.
+
+        Returns:
+            tuple:
+                - **F_new (Tensor)**: Updated deformation gradient.
+                Shape: `(..., 3, 3)`.
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                Shape: `(..., 3, 3)`.
+                - **state_new (Tensor)**: Updated internal state (unchanged).
+                Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 3, 3, 3, 3)`.
+        """
         # Second order identity tensor
         I2 = torch.eye(F_inc.shape[-1])
         # Update deformation gradient assuming small strains
         F_new = F + (F_inc - I2)
         # Compute small strain tensor
-        depsilon = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
         # Compute new stress
-        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
@@ -107,14 +180,60 @@ class IsotropicElasticity3D(Material):
         return F_new, sigma_new, state_new, ddsdde
 
     def rotate(self, R: Tensor):
-        """Rotate the material with rotation matrix R."""
+        """Rotates the material using a given rotation matrix.
+
+        For isotropic materials, rotation has no effect, since their properties
+        remain unchanged under coordinate transformations. This function exists for API
+        consistency with anisotropic materials.
+
+        Args:
+            R (Tensor): Rotation matrix of shape `(3, 3)` or `(..., 3, 3)` for batched
+            rotations.
+
+        Returns:
+            IsotropicElasticity3D: The same material instance (no effect).
+
+        """
         print("Rotating an isotropic material has no effect.")
         return self
 
 
 class IsotropicKirchhoff3D(IsotropicElasticity3D):
+    """Isotropic Kirchhoff material.
+
+    This class implements a hyperelastic material model based on the Kirchhoff
+    formulation, suitable for small strains and large rotations.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        lbd (Tensor): First Lamé parameter.
+            Shape: `()` (scalar) or `(N,)` (batch).
+        G (Tensor): Shear modulus (second Lamé parameter).
+            Shape: `()` (scalar) or `(N,)` (batch).
+        C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
+            Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
+        Cs (Tensor): Shear stiffness tensor for shell elements.
+            Shape: `(N, 2, 2)` if vectorized, otherwise `(2, 2)`.
+    """
+
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicKirchhoff3D: A new material instance with vectorized properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -123,8 +242,46 @@ class IsotropicKirchhoff3D(IsotropicElasticity3D):
             nu = self.nu.repeat(n_elem)
             return IsotropicKirchhoff3D(E, nu)
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
-        """Perform a strain increment."""
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Performs an incremental step in the large-strain Kirchhoff elasticity model.
+
+        This function updates the deformation gradient, computes the Green-Lagrange
+        strain, and evaluates stress using the second Piola-Kirchhoff stress tensor.
+        The algorithmic tangent stiffness is computed in the rotated configuration.
+
+        Args:
+            F_inc (Tensor): Incremental deformation gradient.
+                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                - Shape: `(..., 3, 3)`, same as `F_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                - Shape: `(..., 3, 3)`.
+            state (Tensor): Internal state variables (unused in linear elasticity).
+                - Shape: Arbitrary, remains unchanged.
+            de0 (Tensor): External Green-Lagrange strain increment (e.g., thermal).
+                - Shape: `(..., 3, 3)`.
+            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+                - Shape: `(..., 3, 3)`.
+
+        Returns:
+            tuple:
+                - **F_new (Tensor)**: Updated deformation gradient.
+                Shape: `(..., 3, 3)`.
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                Shape: `(..., 3, 3)`.
+                - **state_new (Tensor)**: Updated internal state (unchanged).
+                Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 3, 3, 3, 3)`.
+        """
         # Second order identity tensor
         I2 = torch.eye(F_inc.shape[-1])
         # Update deformation gradient assuming large strains
@@ -138,7 +295,7 @@ class IsotropicKirchhoff3D(IsotropicElasticity3D):
         S_new = torch.einsum("...ijkl,...kl->...ij", self.C, E_new - de0)
         # Compute Cauchy stress
         J_new = torch.det(F_new)[:, None, None]
-        sigma_new = F_new @ S_new @ F_new.transpose(-1, -2) / J_new
+        sigma_new = F_new @ S_new @ F_new.transpose(-1, -2) / J_new - ds0
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent (rotated)
@@ -149,7 +306,29 @@ class IsotropicKirchhoff3D(IsotropicElasticity3D):
 
 
 class IsotropicPlasticity3D(IsotropicElasticity3D):
-    """Isotropic plasticity with isotropic hardening for small strains."""
+    """Isotropic elastoplastic material model.
+
+    This class extends `IsotropicElasticity3D` to incorporate isotropic plasticity
+    with a von Mises yield criterion. The model follows a return-mapping algorithm
+    for small strains and enforces associative plastic flow with a given yield function
+    and its derivative.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 1).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        sigma_f (Callable): Function that defines the yield stress as a function
+            of the equivalent plastic strain.
+        sigma_f_prime (Callable): Derivative of the yield function with respect to
+            the equivalent plastic strain.
+        tolerance (float, optional): Convergence tolerance for the plasticity
+            return-mapping algorithm. Default is `1e-5`.
+        max_iter (int, optional): Maximum number of iterations for the local Newton
+            solver in plasticity correction. Default is `10`.
+    """
 
     def __init__(
         self,
@@ -168,7 +347,18 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         self.max_iter = max_iter
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicPlasticity3D: A new material instance with vectorized properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -179,14 +369,53 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
                 E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
-        """Perform a strain increment."""
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Perform a strain increment with an elastoplastic model using small strains.
+
+        This function updates the deformation gradient, computes the small strain
+        tensor, evaluates trial stress, and updates the stress based on the yield
+        condition and flow rule. The algorithm uses a local Newton solver to find the
+        plastic strain increment and adjusts the stress and internal state accordingly.
+
+        Args:
+            F_inc (Tensor): Incremental deformation gradient.
+                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                - Shape: `(..., 3, 3)`, same as `F_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                - Shape: `(..., 3, 3)`.
+            state (Tensor): Internal state variables, here: equivalent plastic strain.
+                - Shape: `(..., 1)`.
+            de0 (Tensor): External small strain increment (e.g., thermal).
+                - Shape: `(..., 3, 3)`.
+            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+                - Shape: `(..., 3, 3)`.
+
+        Returns:
+            tuple:
+                - **F_new (Tensor)**: Updated deformation gradient.
+                    Shape: `(..., 3, 3)`.
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor after plastic
+                    update. Shape: `(..., 3, 3)`.
+                - **state_new (Tensor)**: Updated internal state with updated plastic
+                    strain. Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                    Shape: `(..., 3, 3, 3, 3)`.
+        """
         # Second order identity tensor
         I2 = torch.eye(F_inc.shape[-1])
         # Compute new deformation gradient assuming small strains
         F_new = F + (F_inc - I2)
         # Compute small strain tensor
-        depsilon = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
 
         # Initialize solution variables
         sigma_new = sigma.clone()
@@ -195,7 +424,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
+        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
 
         # Compute the deviatoric trial stress
         s_trial_trace = s_trial[..., 0, 0] + s_trial[..., 1, 1] + s_trial[..., 2, 2]
@@ -255,7 +484,25 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
 
 class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
-    """Isotropic 2D plane stress material with small strains."""
+    """Isotropic elastic material for planar stress problems.
+
+    This class represents a 2D isotropic linear elastic material for plane stress
+    under small-strain assumptions, defined by Young's modulus E and Poisson's ratio ν.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        lbd (Tensor): First Lamé parameter.
+            Shape: `()` (scalar) or `(N,)` (batch).
+        G (Tensor): Shear modulus (second Lamé parameter).
+            Shape: `()` (scalar) or `(N,)` (batch).
+        C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
+            Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
+    """
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
@@ -276,7 +523,19 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         self.C[..., 1, 0, 1, 0] = fac * 0.5 * (1.0 - self.nu)
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicElasticityPlaneStress: A new material instance with vectorized
+                properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -287,7 +546,29 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
 
 
 class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
-    """Isotropic 2D plane stress material with isotropic hardening."""
+    """Isotropic elastoplastic material model for planar stress problems.
+
+    This class extends `IsotropicElasticityPlaneStress` to incorporate isotropic
+    plasticity with a von Mises yield criterion. The model follows a return-mapping
+    algorithm for small strains and enforces associative plastic flow with a given yield
+    function and its derivative.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 1).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        sigma_f (Callable): Function that defines the yield stress as a function
+            of the equivalent plastic strain.
+        sigma_f_prime (Callable): Derivative of the yield function with respect to
+            the equivalent plastic strain.
+        tolerance (float, optional): Convergence tolerance for the plasticity
+            return-mapping algorithm. Default is `1e-5`.
+        max_iter (int, optional): Maximum number of iterations for the local Newton
+            solver in plasticity correction. Default is `10`.
+    """
 
     def __init__(
         self,
@@ -308,7 +589,19 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         self.max_iter = max_iter
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicPlasticityPlaneStress: A new material instance with vectorized
+                properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -319,12 +612,46 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
                 E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains in Voigt notation.
 
         See: de Souza Neto, E. A., Peri, D., Owen, D. R. J. *Computational Methods for
         Plasticity*, Chapter 9: Plane Stress Plasticity, 2008.
         https://doi.org/10.1002/9780470694626.ch9
+
+
+        Args:
+            F_inc (Tensor): Incremental deformation gradient.
+                Shape: `(..., 2, 2)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                Shape: `(..., 2, 2)`, same as `F_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                Shape: `(..., 2, 2)`.
+            state (Tensor): Internal state variables, here: equivalent plastic strain.
+                Shape: `(..., 1)`.
+            de0 (Tensor): External small strain increment (e.g., thermal).
+                Shape: `(..., 2, 2)`.
+            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+                Shape: `(..., 2, 2)`.
+
+        Returns:
+            tuple:
+                - **F_new (Tensor)**: Updated deformation gradient.
+                    Shape: `(..., 2, 2)`.
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor after plastic
+                    update. Shape: `(..., 2, 2)`.
+                - **state_new (Tensor)**: Updated internal state with updated plastic
+                    strain. Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                    Shape: `(..., 2, 2, 2, 2)`.
         """
 
         # Projection operator
@@ -423,7 +750,25 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
 
 
 class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
-    """Isotropic 2D plane strain material."""
+    """Isotropic elastic material for planar strain problems.
+
+    This class represents a 2D isotropic linear elastic material for plane strain
+    under small-strain assumptions, defined by Young's modulus E and Poisson's ratio ν.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        lbd (Tensor): First Lamé parameter.
+            Shape: `()` (scalar) or `(N,)` (batch).
+        G (Tensor): Shear modulus (second Lamé parameter).
+            Shape: `()` (scalar) or `(N,)` (batch).
+        C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
+            Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
+    """
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
@@ -445,7 +790,19 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         self.C[..., 1, 0, 1, 0] = G
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicElasticityPlaneStrain: A new material instance with vectorized
+                properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -456,7 +813,29 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
 
 
 class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
-    """Isotropic plasticity with isotropic hardening"""
+    """Isotropic elastoplastic material model for planar strain problems.
+
+    This class extends `IsotropicElasticityPlaneStrain` to incorporate isotropic
+    plasticity with a von Mises yield criterion. The model follows a return-mapping
+    algorithm for small strains and enforces associative plastic flow with a given yield
+    function and its derivative.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 2).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        sigma_f (Callable): Function that defines the yield stress as a function
+            of the equivalent plastic strain.
+        sigma_f_prime (Callable): Derivative of the yield function with respect to
+            the equivalent plastic strain.
+        tolerance (float, optional): Convergence tolerance for the plasticity
+            return-mapping algorithm. Default is `1e-5`.
+        max_iter (int, optional): Maximum number of iterations for the local Newton
+            solver in plasticity correction. Default is `10`.
+    """
 
     def __init__(
         self,
@@ -486,51 +865,77 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
                 E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
-        """Perform a strain increment."""
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Perform a strain increment assuming small strains.
+
+
+        Args:
+            F_inc (Tensor): Incremental deformation gradient.
+                Shape: `(..., 2, 2)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                Shape: `(..., 2, 2)`, same as `F_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                Shape: `(..., 2, 2)`.
+            state (Tensor): Internal state variables, here: equivalent plastic strain
+                and stress in the third direction. Shape: `(..., 2)`.
+            de0 (Tensor): External small strain increment (e.g., thermal).
+                Shape: `(..., 2, 2)`.
+            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+                Shape: `(..., 2, 2)`.
+
+        Returns:
+            tuple:
+                - **F_new (Tensor)**: Updated deformation gradient.
+                    Shape: `(..., 2, 2)`.
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor after plastic
+                    update. Shape: `(..., 2, 2)`.
+                - **state_new (Tensor)**: Updated internal state with updated plastic
+                    strain. Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                    Shape: `(..., 2, 2, 2, 2)`.
+        """
         # Second order identity tensor
         I2 = torch.eye(2)
         # Compute new deformation gradient assuming small strains
         F_new = F + (F_inc - I2)
         # Compute small strain tensor in Voigt notation
-        depsilon = strain2voigt(0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2 - de0)
-        # Convert stress to Voigt notation
-        sigma = stress2voigt(sigma)
-        C = stiffness2voigt(self.C)
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
 
         # Solution variables
         sigma_new = sigma.clone()
         state_new = state.clone()
         q = state_new[..., 0]
         ez = state_new[..., 1]
-        ddsdde = C
+        ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_trial_2D = sigma + torch.einsum("...kl,...l->...k", C, depsilon)
-        s_trial = torch.stack(
-            [
-                s_trial_2D[..., 0],
-                s_trial_2D[..., 1],
-                self.nu * (s_trial_2D[..., 0] + s_trial_2D[..., 1]) - self.E * ez,
-                s_trial_2D[..., 2],
-                torch.zeros_like(s_trial_2D[..., 0]),
-                torch.zeros_like(s_trial_2D[..., 0]),
-            ],
-            dim=-1,
-        )
+        s_2D = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
+        s_trial = torch.zeros(sigma.shape[0], 3, 3)
+        s_trial[..., :2, :2] = s_2D
+        s_trial[..., 2, 2] = self.nu * (s_2D[..., 0, 0] + s_2D[..., 1, 1]) - self.E * ez
 
         # Compute the deviatoric trial stress
-        s_trial_trace = s_trial[..., 0] + s_trial[..., 1] + s_trial[..., 2]
+        s_trial_trace = s_trial[..., 0, 0] + s_trial[..., 1, 1] + s_trial[..., 2, 2]
         dev = s_trial.clone()
-        dev[..., 0:3] -= s_trial_trace[..., None] / 3
-        dev_norm = torch.sqrt((dev[..., 0:3] ** 2 + 2 * dev[..., 3:6] ** 2).sum(dim=-1))
+        dev[..., 0, 0] -= s_trial_trace / 3
+        dev[..., 1, 1] -= s_trial_trace / 3
+        dev[..., 2, 2] -= s_trial_trace / 3
+        dev_norm = torch.linalg.norm(dev, dim=(-1, -2))
 
         # Flow potential
         f = dev_norm - sqrt(2.0 / 3.0) * self.sigma_f(q)
         fm = f > 0
 
         # Direction of flow
-        n = dev[fm] / dev_norm[fm][..., None]
+        n = dev[fm] / dev_norm[fm][..., None, None]
 
         # Local Newton solver to find plastic strain increment
         dGamma = torch.zeros_like(f[fm])
@@ -552,28 +957,30 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             print("Local Newton iteration did not converge")
 
         # Update stress
-        sigma_new[~fm] = s_trial[~fm][..., [0, 1, 3]]
-        sigma_new[fm] = (s_trial[fm] - (2.0 * G * dGamma)[:, None] * n)[..., [0, 1, 3]]
+        sigma_new[~fm] = s_trial[~fm][..., :2, :2]
+        sigma_new[fm] = (s_trial[fm] - (2.0 * G * dGamma)[:, None, None] * n)[
+            ..., :2, :2
+        ]
 
         # Update state
         state_new[..., 0] = q
-        ez[fm] += dGamma * n[..., 2]
+        ez[fm] += dGamma * n[..., 2, 2]
         state_new[..., 1] = ez
 
         # Update algorithmic tangent
         A = 2.0 * G / (1.0 + self.sigma_f_prime(q[fm]) / (3.0 * G))
         B = 4.0 * G**2 * dGamma / dev_norm[fm]
-        C = C[fm]
-        D = C.clone()
-        D[:, 0, 0] = C[:, 0, 0] - A * n[:, 0] ** 2 - B * (2 / 3 - n[:, 0] ** 2)
-        D[:, 1, 1] = C[:, 1, 1] - A * n[:, 1] ** 2 - B * (2 / 3 - n[:, 1] ** 2)
-        n0n1 = n[:, 0] * n[:, 1]
-        D[:, 0, 1] = C[:, 0, 1] - A * n0n1 - B * (-1 / 3 - n0n1)
-        D[:, 1, 0] = D[:, 0, 1]
-        D[:, 2, 2] = C[:, 2, 2] - A * n[:, 3] ** 2 - B * (1 / 2 - n[:, 3] ** 2)
-        ddsdde[fm] = D
+        n0n1 = n[:, 0, 0] * n[:, 1, 1]
+        ddsdde[fm, 0, 0, 0, 0] += -A * n[:, 0, 0] ** 2 - B * (2 / 3 - n[:, 0, 0] ** 2)
+        ddsdde[fm, 1, 1, 1, 1] += -A * n[:, 1, 1] ** 2 - B * (2 / 3 - n[:, 1, 1] ** 2)
+        ddsdde[fm, 0, 0, 1, 1] += -A * n0n1 - B * (-1 / 3 - n0n1)
+        ddsdde[fm, 1, 1, 0, 0] += -A * n0n1 - B * (-1 / 3 - n0n1)
+        ddsdde[fm, 0, 1, 0, 1] += -A * n[:, 0, 1] ** 2 - B * (1 / 2 - n[:, 0, 1] ** 2)
+        ddsdde[fm, 0, 1, 1, 0] += -A * n[:, 0, 1] ** 2 - B * (1 / 2 - n[:, 1, 0] ** 2)
+        ddsdde[fm, 1, 0, 0, 1] += -A * n[:, 1, 0] ** 2 - B * (1 / 2 - n[:, 0, 1] ** 2)
+        ddsdde[fm, 1, 0, 1, 0] += -A * n[:, 1, 0] ** 2 - B * (1 / 2 - n[:, 1, 0] ** 2)
 
-        return F_new, voigt2stress(sigma_new), state_new, voigt2stiffness(ddsdde)
+        return F_new, sigma_new, state_new, ddsdde
 
 
 class IsotropicElasticity1D(Material):
@@ -603,11 +1010,19 @@ class IsotropicElasticity1D(Material):
             E = self.E.repeat(n_elem)
             return IsotropicElasticity1D(E)
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
-        depsilon = F_inc - 1.0
-        F_new = F + depsilon
-        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
+        de = F_inc - 1.0
+        F_new = F + de
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
         state_new = state
         ddsdde = self.C
         return F_new, sigma_new, state_new, ddsdde
@@ -647,10 +1062,18 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
                 E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
             )
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         F_new = F + (F_inc - 1.0)
-        depsilon = F_inc - 1.0
+        de = F_inc - 1.0
 
         # Solution variables
         sigma_new = sigma.clone()
@@ -659,7 +1082,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
+        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
         s_norm = torch.abs(s_trial).squeeze()
 
         # Flow potential
@@ -812,16 +1235,24 @@ class OrthotropicElasticity3D(Material):
                 E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
             )
 
-    def step(self, F_inc: Tensor, F: Tensor, sigma: Tensor, state: Tensor, de0: Tensor):
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Second order identity tensor
         I2 = torch.eye(F_inc.shape[-1])
         # Update deformation gradient assuming small strains
         F_new = F + (F_inc - I2)
         # Compute small strain tensor
-        depsilon = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
         # Compute new stress
-        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, depsilon - de0)
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
