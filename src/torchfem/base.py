@@ -83,9 +83,10 @@ class FEM(ABC):
         s = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         a = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros_like(self.nodes)
-        dde0 = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
+        de0 = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
+        ds0 = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
         self.K = torch.empty(0)
-        k, _ = self.integrate_material(f, s, a, 1, du, dde0)
+        k, _ = self.integrate_material(f, s, a, 1, du, de0, ds0)
         return k
 
     def integrate_material(
