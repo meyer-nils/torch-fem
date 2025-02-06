@@ -1398,13 +1398,72 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         G_13: float | Tensor = 0.0,
         G_23: float | Tensor = 0.0,
     ):
-        super().__init__(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23)
+        # Convert float inputs to tensors
+        if isinstance(E_1, float):
+            E_1 = torch.tensor(E_1)
+        if isinstance(E_2, float):
+            E_2 = torch.tensor(E_2)
+        if isinstance(E_3, float):
+            E_3 = torch.tensor(E_3)
+        if isinstance(nu_12, float):
+            nu_12 = torch.tensor(nu_12)
+        if isinstance(nu_13, float):
+            nu_13 = torch.tensor(nu_13)
+        if isinstance(nu_23, float):
+            nu_23 = torch.tensor(nu_23)
+        if isinstance(G_12, float):
+            G_12 = torch.tensor(G_12)
+        if isinstance(G_13, float):
+            G_13 = torch.tensor(G_13)
+        if isinstance(G_23, float):
+            G_23 = torch.tensor(G_23)
 
-        # Overwrite the 3D stiffness tensor with a 2D plane strain tensor
-        z = torch.zeros_like(self.E_1)
-        self.C = self.C[..., :2, :2, :2, :2]
+        # Check if the material is vectorized
+        if E_1.dim() > 0:
+            self.is_vectorized = True
+        else:
+            self.is_vectorized = False
+
+        # Store material properties
+        self.E_1 = E_1
+        self.E_2 = E_2
+        self.E_3 = E_3
+        self.nu_12 = nu_12
+        self.nu_21 = E_2 / E_1 * nu_12
+        self.nu_13 = nu_13
+        self.nu_31 = E_3 / E_1 * nu_13
+        self.nu_23 = nu_23
+        self.nu_32 = E_3 / E_2 * nu_23
+        self.G_12 = G_12
+        self.G_13 = G_13
+        self.G_23 = G_23
+
+        # There are no internal variables
+        self.n_state = 0
+
+        # Full stiffness tensor
+        if self.E_1.dim() == 0:
+            self.C = torch.zeros(3, 3, 3, 3)
+        else:
+            self.C = torch.zeros(*E_1.shape, 3, 3, 3, 3)
+        F = 1 / (
+            1
+            - self.nu_12 * self.nu_21
+            - self.nu_13 * self.nu_31
+            - self.nu_23 * self.nu_32
+            - 2 * self.nu_21 * self.nu_32 * self.nu_13
+        )
+        self.C[..., 0, 0, 0, 0] = self.E_1 * (1 - self.nu_23 * self.nu_32) * F
+        self.C[..., 1, 1, 1, 1] = self.E_2 * (1 - self.nu_13 * self.nu_31) * F
+        self.C[..., 0, 0, 1, 1] = self.E_1 * (self.nu_21 + self.nu_31 * self.nu_23) * F
+        self.C[..., 1, 1, 0, 0] = self.C[..., 0, 0, 1, 1]
+        self.C[..., 0, 1, 0, 1] = self.G_12
+        self.C[..., 1, 0, 1, 0] = self.G_12
+        self.C[..., 0, 1, 1, 0] = self.G_12
+        self.C[..., 1, 0, 0, 1] = self.G_12
 
         # Transverse shear stiffness matrix for shells
+        z = torch.zeros_like(self.E_1)
         self.Cs = torch.stack(
             [torch.stack([self.G_13, z], dim=-1), torch.stack([z, self.G_23], dim=-1)],
             dim=-1,
