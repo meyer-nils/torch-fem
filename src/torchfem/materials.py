@@ -198,11 +198,11 @@ class IsotropicElasticity3D(Material):
         return self
 
 
-class IsotropicKirchhoff3D(IsotropicElasticity3D):
-    """Isotropic Kirchhoff material.
+class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
+    """Isotropic Saint Venant-Kirchhoff material.
 
-    This class implements a hyperelastic material model based on the Kirchhoff
-    formulation, suitable for small strains and large rotations.
+    This class implements a hyperelastic material model based on the Saint Venant-
+    Kirchhoff formulation, suitable for small strains and large rotations.
 
     Attributes:
         E (Tensor): Young's modulus. If a float is provided, it is converted.
@@ -240,7 +240,7 @@ class IsotropicKirchhoff3D(IsotropicElasticity3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicKirchhoff3D(E, nu)
+            return IsotropicSaintVenantKirchhoff3D(E, nu)
 
     def step(
         self,
