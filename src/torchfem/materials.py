@@ -1270,7 +1270,7 @@ class OrthotropicElasticity3D(Material):
         )
 
         # Compute rotated shell stiffness matrix
-        self.Cs = torch.einsum("...ij,...ik,...jl->...jl", self.Cs, R**2, R**2)
+        self.Cs = torch.einsum("...ij,...ik,...jl->...kl", self.Cs, R**2, R**2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(stiffness2voigt(self.C))
@@ -1378,7 +1378,7 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         )
 
         # Compute rotated shell stiffness matrix
-        self.Cs = torch.einsum("...ij,...ik,...jl->...jl", self.Cs, R**2, R**2)
+        self.Cs = torch.einsum("...ij,...ik,...jl->...kl", self.Cs, R**2, R**2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)
@@ -1505,7 +1505,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         )
 
         # Compute rotated shell stiffness matrix
-        self.Cs = torch.einsum("...ij,...ik,...jl->...jl", self.Cs, R**2, R**2)
+        self.Cs = torch.einsum("...ij,...ik,...jl->...kl", self.Cs, R**2, R**2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)
