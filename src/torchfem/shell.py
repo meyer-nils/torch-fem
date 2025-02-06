@@ -13,6 +13,7 @@ from torch import Tensor
 
 from .elements import Tria1
 from .sparse import sparse_index_select, sparse_solve
+from .utils import stiffness2voigt
 
 NDOF = 6
 NU = 0.5
@@ -31,8 +32,11 @@ class Shell:
         self.displacements = torch.zeros((N, NDOF))
         self.constraints = torch.zeros((N, NDOF), dtype=torch.bool)
         self.thickness = torch.ones(len(elements))
-        self.C = material.C
-        self.Cs = material.Cs
+        # Vectorize material
+        if material.is_vectorized:
+            self.material = material
+        else:
+            self.material = material.vectorize(self.n_elem)
 
         # Set nodes
         self.update_local_nodes()
@@ -167,14 +171,18 @@ class Shell:
             # Derivative of shape functions
             B = torch.linalg.inv(J) @ self.etype.B(q)
 
+            # Material stiffness
+            C = stiffness2voigt(self.material.C)
+            Cs = self.material.Cs
+
             # Element membrane stiffness
             Dm = self._Dm(B)
-            DmCDm = torch.einsum("...ji,...jk,...kl->...il", Dm, self.C, Dm)
+            DmCDm = torch.einsum("...ji,...jk,...kl->...il", Dm, C, Dm)
             km = torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DmCDm)
 
             # Element bending stiffness
             Db = self._Db(B)
-            DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, self.C, Db)
+            DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, C, Db)
             kb = torch.einsum("i,ijk->ijk", w * self.thickness**3 * detJ / 12.0, DbCDb)
 
             # Element transverse stiffness
@@ -182,7 +190,7 @@ class Shell:
             h = sqrt(2) * A
             alpha = KAPPA / (2 * (1 + NU))
             psi = KAPPA * self.thickness**2 / (self.thickness**2 + alpha * h**2)
-            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, self.Cs, Ds)
+            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, Cs, Ds)
             ks = torch.einsum("i,ijk->ijk", w * A * psi * self.thickness * detJ, DsCsDs)
 
             # Element drilling stiffness
@@ -239,17 +247,21 @@ class Shell:
         # Compute B
         B = torch.linalg.inv(J) @ self.etype.B(xi)
 
+        # Material stiffness
+        C = stiffness2voigt(self.material.C)
+        Cs = self.material.Cs
+
         # Compute in-plane stresses in local coordinate system
         loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
-        sigma_m = torch.einsum("...ij,...jk,...k->...i", self.C, self._Dm(B), loc_disp)
-        sigma_b = torch.einsum("...ij,...jk,...k->...i", self.C, self._Db(B), loc_disp)
+        sigma_m = torch.einsum("...ij,...jk,...k->...i", C, self._Dm(B), loc_disp)
+        sigma_b = torch.einsum("...ij,...jk,...k->...i", C, self._Db(B), loc_disp)
         sigma = sigma_m + z * sigma_b
 
         # Compute transverse shear stresses in local coordinate system
         h = sqrt(2) * A
         alpha = KAPPA / (2 * (1 + NU))
         psi = KAPPA * self.thickness**2 / (self.thickness**2 + alpha * h**2)
-        Cs = torch.einsum("i,jk->ijk", psi, self.Cs)
+        Cs = torch.einsum("...,...jk->...jk", psi, Cs)
         sigma_s = torch.einsum("...ij,...jk,...k->...i", Cs, self._Ds(A), loc_disp)
 
         # Assemble stress tensor
