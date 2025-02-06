@@ -299,6 +299,147 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         return F_new, sigma_new, state_new, ddsdde
 
 
+class NeoHookean3D(Material):
+    """Neo-Hookean material.
+
+    This class implements a hyperelastic material model based on the Neo-Hooke
+    formulation, suitable for large deformations, e.g., for rubber-like materials.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        lbd (Tensor): First Lamé parameter.
+            Shape: `()` (scalar) or `(N,)` (batch).
+        G (Tensor): Shear modulus (second Lamé parameter).
+            Shape: `()` (scalar) or `(N,)` (batch).
+        C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
+            Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
+        Cs (Tensor): Shear stiffness tensor for shell elements.
+            Shape: `(N, 2, 2)` if vectorized, otherwise `(2, 2)`.
+    """
+
+    def __init__(self, lbd0: float | Tensor, mu0: float | Tensor):
+        # Convert float inputs to tensors
+        if isinstance(lbd0, float):
+            lbd0 = torch.tensor(lbd0)
+        if isinstance(mu0, float):
+            mu0 = torch.tensor(mu0)
+
+        # Store material properties
+        self.lbd0 = lbd0
+        self.mu0 = mu0
+
+        # There are no internal variables
+        self.n_state = 0
+
+        # Check if the material is vectorized
+        self.is_vectorized = lbd0.dim() > 0
+
+    def vectorize(self, n_elem: int):
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicKirchhoff3D: A new material instance with vectorized properties.
+        """
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            lbd0 = self.lbd0.repeat(n_elem)
+            mu0 = self.mu0.repeat(n_elem)
+            return NeoHookean3D(lbd0, mu0)
+
+    def step(
+        self,
+        F_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        ds0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Performs an incremental step for the Neo-Hookean hyperelastic material.
+
+        Args:
+            F_inc (Tensor): Incremental deformation gradient.
+                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                - Shape: `(..., 3, 3)`, same as `F_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                - Shape: `(..., 3, 3)`.
+            state (Tensor): Internal state variables (unused in linear elasticity).
+                - Shape: Arbitrary, remains unchanged.
+            de0 (Tensor): External deformation gradient increment (e.g., thermal).
+                - Shape: `(..., 3, 3)`.
+            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+                - Shape: `(..., 3, 3)`.
+
+        Returns:
+            tuple:
+                - **F_new (Tensor)**: Updated deformation gradient.
+                Shape: `(..., 3, 3)`.
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                Shape: `(..., 3, 3)`.
+                - **state_new (Tensor)**: Updated internal state (unchanged).
+                Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 3, 3, 3, 3)`.
+        """
+        # Identity tensors
+        I2 = torch.eye(F_inc.shape[-1])
+        I4 = torch.einsum("ij,kl->ijkl", I2, I2)
+        I4S = torch.einsum("ik,jl->ijkl", I2, I2) + torch.einsum("il,jk->ijkl", I2, I2)
+        # Update deformation gradient assuming large strains
+        F_new = F_inc @ F
+        # Compute right Cauchy-Green tensor
+        C_new = F_new.transpose(-1, -2) @ F_new
+        C_new_inv = torch.linalg.inv(C_new)
+        # Compute determinant of the deformation gradient
+        J_new = torch.det(F_new)[:, None, None]
+        # Compute second Piola-Kirchhoff stress
+        lbd0 = self.lbd0[:, None, None]
+        mu0 = self.mu0[:, None, None]
+        S_new = lbd0 * torch.log(J_new) * C_new_inv + mu0 * (I2 - C_new_inv)
+        # Compute Cauchy stress
+        sigma_new = F_new @ S_new @ F_new.transpose(-1, -2) / J_new - ds0
+        # Update internal state (this material does not change state)
+        state_new = state
+        # Algorithmic tangent
+        lbd = lbd0[:, None, None]
+        mu = mu0[:, None, None] - lbd * torch.log(J_new[:, None, None])
+        ddsdde = (lbd * I4 + mu * I4S) / J_new[:, None, None]
+        return F_new, sigma_new, state_new, ddsdde
+
+    def rotate(self, R: Tensor):
+        """Rotates the material using a given rotation matrix.
+
+        For isotropic materials, rotation has no effect, since their properties
+        remain unchanged under coordinate transformations. This function exists for API
+        consistency with anisotropic materials.
+
+        Args:
+            R (Tensor): Rotation matrix of shape `(3, 3)` or `(..., 3, 3)` for batched
+            rotations.
+
+        Returns:
+            NeoHookean3D: The same material instance (no effect).
+
+        """
+        print("Rotating an isotropic material has no effect.")
+        return self
+
+
 class IsotropicPlasticity3D(IsotropicElasticity3D):
     """Isotropic elastoplastic material model.
 
