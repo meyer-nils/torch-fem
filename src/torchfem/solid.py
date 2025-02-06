@@ -1,3 +1,4 @@
+import pyvista
 import torch
 from torch import Tensor
 
@@ -61,15 +62,11 @@ class Solid(FEM):
         show_edges: bool = True,
         show_undeformed: bool = False,
         contour: tuple[str, list[float]] | None = None,
+        plotter: pyvista.Plotter | None = None,
         **kwargs,
     ):
-        try:
-            import pyvista
-        except ImportError:
-            raise Exception("Plotting 3D requires pyvista.")
-
         pyvista.set_plot_theme("document")
-        pl = pyvista.Plotter()
+        pl = pyvista.Plotter() if plotter is None else plotter
         pl.enable_anti_aliasing("ssaa")
 
         # VTK cell types
@@ -146,4 +143,5 @@ class Solid(FEM):
             )
             pl.add_mesh(edges, style="wireframe", color="grey")
 
-        pl.show(jupyter_backend="html")
+        if plotter is None:
+            pl.show(jupyter_backend="html")
