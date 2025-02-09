@@ -238,10 +238,10 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         self,
         F_inc: Tensor,
         F: Tensor,
-        sigma: Tensor,
+        S: Tensor,
         state: Tensor,
-        de0: Tensor,
-        ds0: Tensor,
+        dE0: Tensor,
+        dS0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Kirchhoff elasticity model.
 
@@ -254,20 +254,20 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
                 - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
                 - Shape: `(..., 3, 3)`, same as `F_inc`.
-            sigma (Tensor): Current Cauchy stress tensor.
+            S (Tensor): Current 2nd Piola-Kirchhoff stress tensor.
                 - Shape: `(..., 3, 3)`.
             state (Tensor): Internal state variables (unused in linear elasticity).
                 - Shape: Arbitrary, remains unchanged.
-            de0 (Tensor): External Green-Lagrange strain increment (e.g., thermal).
+            dE0 (Tensor): External Green-Lagrange strain increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
-            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+            dS0 (Tensor): External 2nd Piola-Kirchhoff increment (e.g., residual).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
             tuple:
                 - **F_new (Tensor)**: Updated deformation gradient.
                 Shape: `(..., 3, 3)`.
-                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                - **S_new (Tensor)**: Updated 2nd Piola-Kirchhoff stress tensor.
                 Shape: `(..., 3, 3)`.
                 - **state_new (Tensor)**: Updated internal state (unchanged).
                 Shape: same as `state`.
@@ -281,15 +281,12 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         # Compute Green-Lagrange strain
         E_new = 0.5 * (F_new.transpose(-1, -2) @ F_new - I2)
         # Compute second Piola-Kirchhoff stress
-        S_new = torch.einsum("...ijkl,...kl->...ij", self.C, E_new - de0)
-        # Compute Cauchy stress
-        J_new = torch.det(F_new)[:, None, None]
-        sigma_new = F_new @ S_new @ F_new.transpose(-1, -2) / J_new - ds0
+        S_new = torch.einsum("...ijkl,...kl->...ij", self.C, E_new - dE0) - dS0
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
         ddsdde = self.C
-        return F_new, sigma_new, state_new, ddsdde
+        return F_new, S_new, state_new, ddsdde
 
 
 class NeoHookean3D(Material):
@@ -357,7 +354,7 @@ class NeoHookean3D(Material):
         self,
         F_inc: Tensor,
         F: Tensor,
-        sigma: Tensor,
+        S: Tensor,
         state: Tensor,
         de0: Tensor,
         ds0: Tensor,
@@ -369,20 +366,20 @@ class NeoHookean3D(Material):
                 - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
                 - Shape: `(..., 3, 3)`, same as `F_inc`.
-            sigma (Tensor): Current Cauchy stress tensor.
+            S (Tensor): Current 2nd Piola-Kirchhoff stress tensor.
                 - Shape: `(..., 3, 3)`.
             state (Tensor): Internal state variables (unused in linear elasticity).
                 - Shape: Arbitrary, remains unchanged.
-            de0 (Tensor): External deformation gradient increment (e.g., thermal).
+            dS0 (Tensor): External deformation gradient increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
-            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
+            dS0 (Tensor): External 2nd Piola-Kirchhoff increment (e.g., residual).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
             tuple:
                 - **F_new (Tensor)**: Updated deformation gradient.
                 Shape: `(..., 3, 3)`.
-                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                - **S_new (Tensor)**: Updated 2nd Piola-Kirchhoff stress tensor.
                 Shape: `(..., 3, 3)`.
                 - **state_new (Tensor)**: Updated internal state (unchanged).
                 Shape: same as `state`.
@@ -404,15 +401,13 @@ class NeoHookean3D(Material):
         lbd0 = self.lbd0[:, None, None]
         mu0 = self.mu0[:, None, None]
         S_new = lbd0 * torch.log(J_new) * C_new_inv + mu0 * (I2 - C_new_inv)
-        # Compute Cauchy stress
-        sigma_new = F_new @ S_new @ F_new.transpose(-1, -2) / J_new - ds0
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
         lbd = lbd0[:, None, None]
         mu = mu0[:, None, None] - lbd * torch.log(J_new[:, None, None])
         ddsdde = (lbd * I4 + mu * I4S) / J_new[:, None, None]
-        return F_new, sigma_new, state_new, ddsdde
+        return F_new, S_new, state_new, ddsdde
 
     def rotate(self, R: Tensor):
         """Rotates the material using a given rotation matrix.

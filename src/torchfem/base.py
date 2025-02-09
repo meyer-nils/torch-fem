@@ -92,8 +92,8 @@ class FEM(ABC):
     def integrate_material(
         self,
         F: Tensor,
-        sig: Tensor,
-        sta: Tensor,
+        stress: Tensor,
+        state: Tensor,
         n: int,
         du: Tensor,
         de0: Tensor,
@@ -121,12 +121,12 @@ class FEM(ABC):
             F_inc = torch.einsum("...ij,...jk->...ik", B, du)
 
             # Evaluate material response
-            F[n, i], sig[n, i], sta[n, i], ddsdde = self.material.step(
-                F_inc, F[n - 1, i], sig[n - 1, i], sta[n - 1, i], de0, ds0
+            F[n, i], stress[n, i], state[n, i], ddsdde = self.material.step(
+                F_inc, F[n - 1, i], stress[n - 1, i], state[n - 1, i], de0, ds0
             )
 
             # Compute element internal forces
-            force_contrib = self.compute_f(detJ, B, sig[n, i].clone())
+            force_contrib = self.compute_f(detJ, B, stress[n, i].clone())
             f += w * force_contrib.reshape(-1, self.n_dim * N_nod)
 
             # Compute element stiffness matrix
@@ -225,7 +225,7 @@ class FEM(ABC):
         # Initialize variables to be computed
         defgrad = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
-        sigma = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
+        stress = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
         f = torch.zeros(N, self.n_nod, self.n_dim)
         u = torch.zeros(N, self.n_nod, self.n_dim)
@@ -252,7 +252,9 @@ class FEM(ABC):
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_i = self.integrate_material(defgrad, sigma, state, n, du, de0, ds0)
+                k, f_i = self.integrate_material(
+                    defgrad, stress, state, n, du, de0, ds0
+                )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if self.K.numel() == 0 or not self.material.n_state == 0:
@@ -289,16 +291,16 @@ class FEM(ABC):
         # Aggregate integration points as mean
         if aggregate_integration_points:
             defgrad = defgrad.mean(dim=1)
-            sigma = sigma.mean(dim=1)
+            stress = stress.mean(dim=1)
             state = state.mean(dim=1)
 
         # Squeeze outputs
-        sigma = sigma.squeeze()
+        stress = stress.squeeze()
         defgrad = defgrad.squeeze()
 
         if return_intermediate:
             # Return all intermediate values
-            return u, f, sigma, defgrad, state
+            return u, f, stress, defgrad, state
         else:
             # Return only the final values
-            return u[-1], f[-1], sigma[-1], defgrad[-1], state[-1]
+            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
