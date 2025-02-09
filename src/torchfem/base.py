@@ -49,11 +49,11 @@ class FEM(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def compute_k(self, detJ: Tensor, DCD: Tensor) -> Tensor:
+    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
         raise NotImplementedError
 
     @abstractmethod
-    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor):
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         raise NotImplementedError
 
     def compute_B(self) -> Tensor:
