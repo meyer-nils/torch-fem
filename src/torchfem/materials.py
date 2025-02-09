@@ -159,12 +159,10 @@ class IsotropicElasticity3D(Material):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                 Shape: `(..., 3, 3, 3, 3)`.
         """
-        # Second order identity tensor
-        I2 = torch.eye(F_inc.shape[-1])
-        # Update deformation gradient assuming small strains
-        F_new = F + (F_inc - I2)
+        # Update deformation gradient
+        F_new = F + F_inc
         # Compute small strain tensor
-        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc)
         # Compute new stress
         sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
         # Update internal state (this material does not change state)
@@ -278,11 +276,8 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         """
         # Second order identity tensor
         I2 = torch.eye(F_inc.shape[-1])
-        # Update deformation gradient assuming large strains
-        F_new = F_inc @ F
-        # Compute polar decomposition
-        U, _, Vh = torch.linalg.svd(F_new)
-        R = U @ Vh
+        # Update deformation gradient
+        F_new = F + F_inc
         # Compute Green-Lagrange strain
         E_new = 0.5 * (F_new.transpose(-1, -2) @ F_new - I2)
         # Compute second Piola-Kirchhoff stress
@@ -292,10 +287,8 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         sigma_new = F_new @ S_new @ F_new.transpose(-1, -2) / J_new - ds0
         # Update internal state (this material does not change state)
         state_new = state
-        # Algorithmic tangent (rotated)
-        ddsdde = torch.einsum(
-            "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
-        )
+        # Algorithmic tangent
+        ddsdde = self.C
         return F_new, sigma_new, state_new, ddsdde
 
 
@@ -400,8 +393,8 @@ class NeoHookean3D(Material):
         I2 = torch.eye(F_inc.shape[-1])
         I4 = torch.einsum("ij,kl->ijkl", I2, I2)
         I4S = torch.einsum("ik,jl->ijkl", I2, I2) + torch.einsum("il,jk->ijkl", I2, I2)
-        # Update deformation gradient assuming large strains
-        F_new = F_inc @ F
+        # Update deformation gradient
+        F_new = F + F_inc
         # Compute right Cauchy-Green tensor
         C_new = F_new.transpose(-1, -2) @ F_new
         C_new_inv = torch.linalg.inv(C_new)
@@ -547,10 +540,10 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         """
         # Second order identity tensor
         I2 = torch.eye(F_inc.shape[-1])
-        # Compute new deformation gradient assuming small strains
-        F_new = F + (F_inc - I2)
+        # Compute new deformation gradient
+        F_new = F + F_inc
         # Compute small strain tensor
-        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc)
 
         # Initialize solution variables
         sigma_new = sigma.clone()
@@ -797,13 +790,11 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
 
         # Projection operator
         P = 1 / 3 * torch.tensor([[2, -1, 0], [-1, 2, 0], [0, 0, 6]])
-        # Second order identity tensor
-        I2 = torch.eye(2)
 
-        # Compute new deformation gradient assuming small strains
-        F_new = F + (F_inc - I2)
+        # Compute new deformation gradient
+        F_new = F + F_inc
         # Compute small strain tensor in Voigt notation
-        depsilon = strain2voigt(0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2 - de0)
+        depsilon = strain2voigt(0.5 * (F_inc.transpose(-1, -2) + F_inc) - de0)
         # Convert stress to Voigt notation
         sigma = stress2voigt(sigma)
 
@@ -1049,12 +1040,10 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                     Shape: `(..., 2, 2, 2, 2)`.
         """
-        # Second order identity tensor
-        I2 = torch.eye(2)
-        # Compute new deformation gradient assuming small strains
-        F_new = F + (F_inc - I2)
+        # Compute new deformation gradient
+        F_new = F + F_inc
         # Compute small strain tensor in Voigt notation
-        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc)
 
         # Solution variables
         sigma_new = sigma.clone()
@@ -1167,8 +1156,8 @@ class IsotropicElasticity1D(Material):
         ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
-        de = F_inc - 1.0
-        F_new = F + de
+        F_new = F + F_inc
+        de = F_inc
         sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
         state_new = state
         ddsdde = self.C
@@ -1219,8 +1208,8 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
-        F_new = F + (F_inc - 1.0)
-        de = F_inc - 1.0
+        F_new = F + F_inc
+        de = F_inc
 
         # Solution variables
         sigma_new = sigma.clone()
@@ -1392,12 +1381,10 @@ class OrthotropicElasticity3D(Material):
         ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
-        # Second order identity tensor
-        I2 = torch.eye(F_inc.shape[-1])
-        # Update deformation gradient assuming small strains
-        F_new = F + (F_inc - I2)
+        # Update deformation gradient
+        F_new = F + F_inc
         # Compute small strain tensor
-        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc) - I2
+        de = 0.5 * (F_inc.transpose(-1, -2) + F_inc)
         # Compute new stress
         sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
         # Update internal state (this material does not change state)

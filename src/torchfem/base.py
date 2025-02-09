@@ -115,10 +115,10 @@ class FEM(ABC):
 
         for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
             # Compute gradient operator
-            N, B, detJ = self.eval_shape_functions(xi)
+            _, B, detJ = self.eval_shape_functions(xi)
 
             # Compute deformation gradient
-            F_inc = torch.einsum("...ij,...jk->...ik", B, du) + torch.eye(self.n_stress)
+            F_inc = torch.einsum("...ij,...jk->...ik", B, du)
 
             # Evaluate material response
             F[n, i], sig[n, i], sta[n, i], ddsdde = self.material.step(
