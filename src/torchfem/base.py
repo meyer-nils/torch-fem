@@ -192,7 +192,7 @@ class FEM(ABC):
 
             K += torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
-        return K
+        return K.coalesce()
 
     def assemble_force(self, f: Tensor) -> Tensor:
         """Assemble global force vector."""
@@ -275,7 +275,9 @@ class FEM(ABC):
 
                 # Print iteration information
                 if verbose:
-                    print(f"Increment {n} | Iteration {i+1} | Residual: {res_norm:.5e}")
+                    print(
+                        f"Increment {n} | Iteration {i + 1} | Residual: {res_norm:.5e}"
+                    )
 
                 # Check convergence
                 if res_norm < rtol * res_norm0 or res_norm < atol:
