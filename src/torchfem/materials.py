@@ -266,14 +266,16 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                 Shape: `(..., 3, 3, 3, 3)`.
         """
-        # Second order identity tensor
-        I2 = torch.eye(F_inc.shape[-1])
         # Update deformation gradient
         F_new = F + F_inc
         # Compute Green-Lagrange strain
-        E_new = 0.5 * (F_new.transpose(-1, -2) @ F_new - I2)
+        E_inc = 0.5 * (
+            F_new.transpose(-1, -2) @ F_inc
+            + F_inc.transpose(-1, -2) @ F_new
+            + F_inc.transpose(-1, -2) @ F_inc
+        )
         # Compute second Piola-Kirchhoff stress
-        S_new = torch.einsum("...ijkl,...kl->...ij", self.C, E_new - dE0)
+        S_new = S + torch.einsum("...ijkl,...kl->...ij", self.C, E_inc - dE0)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
