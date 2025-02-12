@@ -27,7 +27,7 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(ctx, A, b, B=None, rtol=1e-10, device=None, direct=None, M=None):
+    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None):
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
@@ -78,22 +78,12 @@ class Solve(Function):
                     M = ml.aspreconditioner()
 
                 # Solve with minres
-                x_xp, exit_code = scipy_minres(A_np, b_np, M=M)#, rtol=rtol)
+                x_xp, exit_code = scipy_minres(A_np, b_np, M=M)  # , rtol=rtol)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
 
         # Convert back to torch
         x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=b.device)
-
-        # Save the variables
-        ctx.save_for_backward(A, x)
-
-        # Save the parameters for backward pass (including the preconditioner)
-        ctx.rtol = rtol
-        ctx.device = device
-        ctx.direct = direct
-        ctx.B = B
-        ctx.M = M
 
         return x
 
@@ -111,7 +101,20 @@ class Solve(Function):
         val = -gradb[row] * x[col]
         gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
 
-        return gradA, gradb, None, None, None, None
+        return gradA, gradb, None, None, None, None, None
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        A, b, B, rtol, device, direct, M = inputs
+        x = output
+        ctx.save_for_backward(A, x)
+
+        # Save the parameters for backward pass (including the preconditioner)
+        ctx.rtol = rtol
+        ctx.device = device
+        ctx.direct = direct
+        ctx.B = B
+        ctx.M = M
 
 
 sparse_solve = Solve.apply
