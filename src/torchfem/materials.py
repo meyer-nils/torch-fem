@@ -35,8 +35,6 @@ class Material(ABC):
         F: Tensor,
         sigma: Tensor,
         state: Tensor,
-        de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         pass
 
@@ -127,7 +125,6 @@ class IsotropicElasticity3D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Performs an incremental step in the small-strain isotropic elasticity model.
 
@@ -144,8 +141,6 @@ class IsotropicElasticity3D(Material):
             state (Tensor): Internal state variables (unused in linear elasticity).
                 - Shape: Arbitrary, remains unchanged.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
-            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
@@ -164,7 +159,7 @@ class IsotropicElasticity3D(Material):
         # Compute small strain tensor
         de = 0.5 * (F_inc.transpose(-1, -2) + F_inc)
         # Compute new stress
-        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
@@ -241,7 +236,6 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         S: Tensor,
         state: Tensor,
         dE0: Tensor,
-        dS0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Kirchhoff elasticity model.
 
@@ -259,8 +253,6 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
             state (Tensor): Internal state variables (unused in linear elasticity).
                 - Shape: Arbitrary, remains unchanged.
             dE0 (Tensor): External Green-Lagrange strain increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
-            dS0 (Tensor): External 2nd Piola-Kirchhoff increment (e.g., residual).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
@@ -281,7 +273,7 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         # Compute Green-Lagrange strain
         E_new = 0.5 * (F_new.transpose(-1, -2) @ F_new - I2)
         # Compute second Piola-Kirchhoff stress
-        S_new = torch.einsum("...ijkl,...kl->...ij", self.C, E_new - dE0) - dS0
+        S_new = torch.einsum("...ijkl,...kl->...ij", self.C, E_new - dE0)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
@@ -356,8 +348,7 @@ class NeoHookean3D(Material):
         F: Tensor,
         S: Tensor,
         state: Tensor,
-        de0: Tensor,
-        ds0: Tensor,
+        dE0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Performs an incremental step for the Neo-Hookean hyperelastic material.
 
@@ -370,9 +361,7 @@ class NeoHookean3D(Material):
                 - Shape: `(..., 3, 3)`.
             state (Tensor): Internal state variables (unused in linear elasticity).
                 - Shape: Arbitrary, remains unchanged.
-            dS0 (Tensor): External deformation gradient increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
-            dS0 (Tensor): External 2nd Piola-Kirchhoff increment (e.g., residual).
+            dE0 (Tensor): External deformation gradient increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
@@ -499,7 +488,6 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment with an elastoplastic model using small strains.
 
@@ -518,8 +506,6 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
             state (Tensor): Internal state variables, here: equivalent plastic strain.
                 - Shape: `(..., 1)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
-            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
@@ -547,7 +533,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
+        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0)
 
         # Compute the deviatoric trial stress
         s_trial_trace = s_trial[..., 0, 0] + s_trial[..., 1, 1] + s_trial[..., 2, 2]
@@ -748,7 +734,6 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains in Voigt notation.
 
@@ -767,8 +752,6 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             state (Tensor): Internal state variables, here: equivalent plastic strain.
                 Shape: `(..., 1)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                Shape: `(..., 2, 2)`.
-            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
                 Shape: `(..., 2, 2)`.
 
         Returns:
@@ -1005,7 +988,6 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains.
 
@@ -1020,8 +1002,6 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             state (Tensor): Internal state variables, here: equivalent plastic strain
                 and stress in the third direction. Shape: `(..., 2)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                Shape: `(..., 2, 2)`.
-            ds0 (Tensor): External Cauchy stress increment (e.g., residual).
                 Shape: `(..., 2, 2)`.
 
         Returns:
@@ -1048,7 +1028,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_2D = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
+        s_2D = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0)
         s_trial = torch.zeros(sigma.shape[0], 3, 3)
         s_trial[..., :2, :2] = s_2D
         s_trial[..., 2, 2] = self.nu * (s_2D[..., 0, 0] + s_2D[..., 1, 1]) - self.E * ez
@@ -1148,12 +1128,11 @@ class IsotropicElasticity1D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         F_new = F + F_inc
         de = F_inc
-        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0)
         state_new = state
         ddsdde = self.C
         return F_new, sigma_new, state_new, ddsdde
@@ -1200,7 +1179,6 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         F_new = F + F_inc
@@ -1213,7 +1191,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         ddsdde = self.C.clone()
 
         # Compute trial stress
-        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
+        s_trial = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0)
         s_norm = torch.abs(s_trial).squeeze()
 
         # Flow potential
@@ -1373,7 +1351,6 @@ class OrthotropicElasticity3D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-        ds0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Update deformation gradient
@@ -1381,7 +1358,7 @@ class OrthotropicElasticity3D(Material):
         # Compute small strain tensor
         de = 0.5 * (F_inc.transpose(-1, -2) + F_inc)
         # Compute new stress
-        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0) - ds0
+        sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent

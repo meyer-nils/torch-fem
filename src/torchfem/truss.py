@@ -28,8 +28,7 @@ class Truss(FEM):
         self.n_stress = 1
         self.n_int = len(self.etype.iweights())
 
-        # Initialize external stress and strain
-        self.ext_stress = torch.zeros(self.n_elem, 1, 1)
+        # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 1, 1)
 
     def eval_shape_functions(self, xi: Tensor) -> Tensor:

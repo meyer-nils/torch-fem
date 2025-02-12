@@ -33,8 +33,7 @@ class Planar(FEM):
         self.n_stress = 2
         self.n_int = len(self.etype.iweights())
 
-        # Initialize external stress and strain
-        self.ext_stress = torch.zeros(self.n_elem, 2, 2)
+        # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 2, 2)
 
     def eval_shape_functions(self, xi: Tensor) -> Tensor:
