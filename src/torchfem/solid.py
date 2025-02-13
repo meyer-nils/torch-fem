@@ -43,9 +43,9 @@ class Solid(FEM):
         B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
         return self.etype.N(xi), B, detJ
 
-    def compute_k(self, detJ: Tensor, DCD: Tensor) -> Tensor:
+    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
         """Element stiffness matrix"""
-        return torch.einsum("j,jkl->jkl", detJ, DCD)
+        return torch.einsum("j,jkl->jkl", detJ, BCB)
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
         """Element internal force vector."""
