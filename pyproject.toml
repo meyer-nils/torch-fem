@@ -27,7 +27,7 @@ dependencies = [
     "meshzoo",
     "pyamg",
     "pyvista",
-    "scipy",
+    "scipy~=1.15.0",
     "tqdm",
     "torch",
     "trame",
