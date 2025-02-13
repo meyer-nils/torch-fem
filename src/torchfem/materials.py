@@ -270,8 +270,8 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         F_new = F + F_inc
         # Compute Green-Lagrange strain
         E_inc = 0.5 * (
-            F_new.transpose(-1, -2) @ F_inc
-            + F_inc.transpose(-1, -2) @ F_new
+            F.transpose(-1, -2) @ F_inc
+            + F_inc.transpose(-1, -2) @ F
             + F_inc.transpose(-1, -2) @ F_inc
         )
         # Compute second Piola-Kirchhoff stress
