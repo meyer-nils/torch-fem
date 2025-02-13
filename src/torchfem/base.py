@@ -200,7 +200,7 @@ class FEM(ABC):
     def solve(
         self,
         increments: Tensor = torch.tensor([0.0, 1.0]),
-        max_iter: int = 10,
+        max_iter: int = 100,
         rtol: float = 1e-8,
         atol: float = 1e-6,
         stol: float = 1e-10,
