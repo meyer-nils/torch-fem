@@ -106,10 +106,7 @@ class FEM(ABC):
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
         f = torch.zeros(self.n_elem, self.n_dim * N_nod)
-        if self.K.numel() == 0 or not self.material.n_state == 0:
-            k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
-        else:
-            k = torch.empty(0)
+        k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
 
         for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
             # Compute gradient operator
@@ -129,9 +126,15 @@ class FEM(ABC):
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0:
+                # Material stiffness
                 BCB = torch.einsum("...ijpq,...qk,...il->...ljkp", ddsdde, B, B)
                 BCB = BCB.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
                 k += w * self.compute_k(detJ, BCB)
+            if not self.material.is_small_strain:
+                # Geometric stiffness
+                BSB = torch.einsum("...iq,...qk,...il->...lk", stress[n, i], B, B)
+                BSB = torch.kron(torch.eye(self.n_dim), BSB)
+                k += w * self.compute_k(detJ, BSB)
 
         return k, f
 
@@ -183,7 +186,7 @@ class FEM(ABC):
 
             K += torch.sparse_coo_tensor(indices, values, size=size).coalesce()
 
-        return K
+        return K.coalesce()
 
     def assemble_force(self, f: Tensor) -> Tensor:
         """Assemble global force vector."""

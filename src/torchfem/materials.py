@@ -21,6 +21,7 @@ class Material(ABC):
     def __init__(self):
         self.n_state: int
         self.is_vectorized: bool
+        self.is_small_strain: bool
         self.C: Tensor
         pass
 
@@ -56,6 +57,7 @@ class IsotropicElasticity3D(Material):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `True` as this is a small-strain constitutive model.
         lbd (Tensor): First Lamé parameter.
             Shape: `()` (scalar) or `(N,)` (batch).
         G (Tensor): Shear modulus (second Lamé parameter).
@@ -82,6 +84,9 @@ class IsotropicElasticity3D(Material):
 
         # Check if the material is vectorized
         self.is_vectorized = E.dim() > 0
+
+        # Small-strain assumption
+        self.is_small_strain = True
 
         # Lame parameters
         self.lbd = self.E * self.nu / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
@@ -198,6 +203,7 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `False` as this used Green-Lagrange strain.
         lbd (Tensor): First Lamé parameter.
             Shape: `()` (scalar) or `(N,)` (batch).
         G (Tensor): Shear modulus (second Lamé parameter).
@@ -207,6 +213,10 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
         Cs (Tensor): Shear stiffness tensor for shell elements.
             Shape: `(N, 2, 2)` if vectorized, otherwise `(2, 2)`.
     """
+
+    def __init__(self, E: float | Tensor, nu: float | Tensor):
+        super().__init__(E, nu)
+        self.is_small_strain = False
 
     def vectorize(self, n_elem: int):
         """Returns a vectorized copy of the material for `n_elem` elements.
@@ -296,6 +306,7 @@ class NeoHookean3D(Material):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `False` as this uses right Cauchy-Green strain.
         lbd (Tensor): First Lamé parameter.
             Shape: `()` (scalar) or `(N,)` (batch).
         G (Tensor): Shear modulus (second Lamé parameter).
@@ -322,6 +333,9 @@ class NeoHookean3D(Material):
 
         # Check if the material is vectorized
         self.is_vectorized = lbd0.dim() > 0
+
+        # Small-strain assumption
+        self.is_small_strain = False
 
     def vectorize(self, n_elem: int):
         """Returns a vectorized copy of the material for `n_elem` elements.
@@ -434,6 +448,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 1).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `True` as this is a small-strain constitutive model.
         sigma_f (Callable): Function that defines the yield stress as a function
             of the equivalent plastic strain.
         sigma_f_prime (Callable): Derivative of the yield function with respect to
@@ -607,6 +622,7 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `True` as this is a small-strain constitutive model.
         lbd (Tensor): First Lamé parameter.
             Shape: `()` (scalar) or `(N,)` (batch).
         G (Tensor): Shear modulus (second Lamé parameter).
@@ -677,6 +693,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 1).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `True` as this is a small-strain constitutive model.
         sigma_f (Callable): Function that defines the yield stress as a function
             of the equivalent plastic strain.
         sigma_f_prime (Callable): Derivative of the yield function with respect to
@@ -874,6 +891,7 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `True` as this is a small-strain constitutive model.
         lbd (Tensor): First Lamé parameter.
             Shape: `()` (scalar) or `(N,)` (batch).
         G (Tensor): Shear modulus (second Lamé parameter).
@@ -945,6 +963,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 2).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `True` as this is a small-strain constitutive model.
         sigma_f (Callable): Function that defines the yield stress as a function
             of the equivalent plastic strain.
         sigma_f_prime (Callable): Derivative of the yield function with respect to
@@ -1271,10 +1290,10 @@ class OrthotropicElasticity3D(Material):
             G_23 = torch.tensor(G_23)
 
         # Check if the material is vectorized
-        if E_1.dim() > 0:
-            self.is_vectorized = True
-        else:
-            self.is_vectorized = False
+        self.is_vectorized = E_1.dim() > 0
+
+        # Small-strain assumption
+        self.is_small_strain = True
 
         # Store material properties
         self.E_1 = E_1
@@ -1418,10 +1437,10 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
             G_23 = torch.tensor(G_23)
 
         # Check if the material is vectorized
-        if E_1.dim() > 0:
-            self.is_vectorized = True
-        else:
-            self.is_vectorized = False
+        self.is_vectorized = E_1.dim() > 0
+
+        # Small-strain assumption
+        self.is_small_strain = True
 
         # Store material properties
         self.E_1 = E_1
@@ -1530,10 +1549,10 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
             G_23 = torch.tensor(G_23)
 
         # Check if the material is vectorized
-        if E_1.dim() > 0:
-            self.is_vectorized = True
-        else:
-            self.is_vectorized = False
+        self.is_vectorized = E_1.dim() > 0
+
+        # Small-strain assumption
+        self.is_small_strain = True
 
         # Store material properties
         self.E_1 = E_1
