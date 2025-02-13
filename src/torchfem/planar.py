@@ -96,7 +96,7 @@ class Planar(FEM):
                     triangles.append([e[2], e[3], e[0]])
             else:
                 triangles = self.elements[:, :3].tolist()
-            ax.tricontourf(
+            tri = ax.tricontourf(
                 pos[:, 0],
                 pos[:, 1],
                 triangles,
@@ -108,7 +108,7 @@ class Planar(FEM):
                 vmax=vmax,
             )
             if colorbar:
-                plt.colorbar(ax=ax)
+                plt.colorbar(tri, ax=ax)
 
         # Color surface with element properties (if provided)
         if element_property is not None:
