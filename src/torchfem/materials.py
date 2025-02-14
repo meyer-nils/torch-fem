@@ -64,8 +64,6 @@ class IsotropicElasticity3D(Material):
             Shape: `()` (scalar) or `(N,)` (batch).
         C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
             Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
-        Cs (Tensor): Shear stiffness tensor for shell elements.
-            Shape: `(N, 2, 2)` if vectorized, otherwise `(2, 2)`.
     """
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
@@ -193,7 +191,7 @@ class IsotropicElasticity3D(Material):
 class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
     """Isotropic Saint Venant-Kirchhoff material.
 
-    This class implements a hyperelastic material model based on the Saint Venant-
+    This class implements a hyper-elastic material model based on the Saint Venant-
     Kirchhoff formulation, suitable for small strains and large rotations.
 
     Attributes:
@@ -203,15 +201,13 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-        is_small_strain (bool): `False` as this used Green-Lagrange strain.
+        is_small_strain (bool): `False` as this uses Green-Lagrange strain.
         lbd (Tensor): First Lamé parameter.
             Shape: `()` (scalar) or `(N,)` (batch).
         G (Tensor): Shear modulus (second Lamé parameter).
             Shape: `()` (scalar) or `(N,)` (batch).
         C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
             Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
-        Cs (Tensor): Shear stiffness tensor for shell elements.
-            Shape: `(N, 2, 2)` if vectorized, otherwise `(2, 2)`.
     """
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
@@ -251,7 +247,6 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
 
         This function updates the deformation gradient, computes the Green-Lagrange
         strain, and evaluates stress using the second Piola-Kirchhoff stress tensor.
-        The algorithmic tangent stiffness is computed in the rotated configuration.
 
         Args:
             F_inc (Tensor): Incremental deformation gradient.
@@ -296,7 +291,7 @@ class IsotropicSaintVenantKirchhoff3D(IsotropicElasticity3D):
 class NeoHookean3D(Material):
     """Neo-Hookean material.
 
-    This class implements a hyperelastic material model based on the Neo-Hooke
+    This class implements a hyper-elastic material model based on the Neo-Hooke
     formulation, suitable for large deformations, e.g., for rubber-like materials.
 
     Attributes:
@@ -676,6 +671,69 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
             return IsotropicElasticityPlaneStress(E, nu)
+
+
+class IsotropicSaintVenantKirchhoffPlaneStress(IsotropicSaintVenantKirchhoff3D):
+    """Isotropic Saint Venant-Kirchhoff material for planar stress problems.
+
+    This class implements a 2D hyper-elastic material model based on the Saint Venant-
+    Kirchhoff formulation, suitable for small strains and large rotations.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        is_small_strain (bool): `False` as this used Green-Lagrange strain.
+        lbd (Tensor): First Lamé parameter.
+            Shape: `()` (scalar) or `(N,)` (batch).
+        G (Tensor): Shear modulus (second Lamé parameter).
+            Shape: `()` (scalar) or `(N,)` (batch).
+        C (Tensor): Fourth-order elasticity tensor for 2D isotropic elasticity.
+            Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
+    """
+
+    def __init__(self, E: float | Tensor, nu: float | Tensor):
+        super().__init__(E, nu)
+
+        # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
+        fac = self.E / (1.0 - self.nu**2)
+        if self.E.dim() == 0:
+            self.C = torch.zeros(2, 2, 2, 2)
+        else:
+            self.C = torch.zeros(*E.shape, 2, 2, 2, 2)
+        self.C[..., 0, 0, 0, 0] = fac
+        self.C[..., 0, 0, 1, 1] = fac * self.nu
+        self.C[..., 1, 1, 0, 0] = fac * self.nu
+        self.C[..., 1, 1, 1, 1] = fac
+        self.C[..., 0, 1, 0, 1] = fac * 0.5 * (1.0 - self.nu)
+        self.C[..., 0, 1, 1, 0] = fac * 0.5 * (1.0 - self.nu)
+        self.C[..., 1, 0, 0, 1] = fac * 0.5 * (1.0 - self.nu)
+        self.C[..., 1, 0, 1, 0] = fac * 0.5 * (1.0 - self.nu)
+
+    def vectorize(self, n_elem: int):
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicSaintVenantKirchhoffPlaneStress: A new material instance with
+                vectorized properties.
+        """
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicSaintVenantKirchhoffPlaneStress(E, nu)
 
 
 class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
