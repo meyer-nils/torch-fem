@@ -63,8 +63,24 @@ class Solid(FEM):
         show_undeformed: bool = False,
         contour: tuple[str, list[float]] | None = None,
         plotter: pyvista.Plotter | None = None,
+        threshold_condition: torch.Tensor | None = None,
         **kwargs,
     ):
+        """Plot the mesh with optional node and element properties.
+        
+        Args:
+            u (float or torch.Tensor, optional): Displacement field. Defaults to 0.0.
+            node_property (dict[str, torch.Tensor], optional): Nodal property to plot. Defaults to None.
+            element_property (dict[str, torch.Tensor], optional): Element property to plot. Defaults to None.
+            orientations (torch.Tensor, optional): Element orientations. Defaults to None.
+            show_edges (bool, optional): Show edges. Defaults to True.
+            show_undeformed (bool, optional): Show undeformed mesh. Defaults to False.
+            contour (tuple[str, list[float]], optional): Contour plot. Defaults to None.
+            plotter (pyvista.Plotter, optional): PyVista plotter. Defaults to None.
+            threshold_condition (torch.Tensor, optional): Threshold condition to recover subshape. Defaults to None.
+            **kwargs: Additional keyword arguments passed to pyvista.Plotter.add_mesh.
+        """
+        
         pyvista.set_plot_theme("document")
         pl = pyvista.Plotter() if plotter is None else plotter
         pl.enable_anti_aliasing("ssaa")
@@ -98,6 +114,12 @@ class Solid(FEM):
         if element_property:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()
+                
+        if threshold_condition is None:
+            threshold_condition = torch.ones(self.n_elem, dtype=torch.bool)
+                
+        # Apply threshold to recover subshape
+        mesh = mesh.extract_cells(threshold_condition.numpy())
 
         # Plot orientations
         if orientations is not None:
@@ -105,9 +127,9 @@ class Solid(FEM):
             for j, color in enumerate(["red", "green", "blue"]):
                 directions = orientations[:, j, :]
                 pl.add_arrows(
-                    ecenters.numpy(),
-                    directions.numpy(),
-                    mag=0.1,
+                    ecenters.numpy()[threshold_condition],
+                    directions.numpy()[threshold_condition],
+                    mag=0.5,
                     color=color,
                     show_scalar_bar=False,
                 )
