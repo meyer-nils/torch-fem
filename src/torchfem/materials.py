@@ -842,6 +842,9 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         G: float | Tensor,
     ):
         # https://webpages.tuni.fi/rakmek/jmm/slides/jmm_lect_06.pdf
+        if G>E_L/(2*(1+nu_L)):
+            raise ValueError("G must be less than E_L/(2*(1+nu_L))")
+        
         E_1 = E_L
         E_2 = E_T
         E_3 = E_T
