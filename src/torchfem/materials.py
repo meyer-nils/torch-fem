@@ -831,7 +831,11 @@ class OrthotropicElasticity3D(Material):
         return self
 
 class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
-    """Transversely isotropic material."""
+    """Transversely isotropic material.
+    
+    See ABAQUS docs for more details:
+    https://classes.engineering.wustl.edu/2009/spring/mase5513/abaqus/docs/v6.6/books/usb/default.htm?startat=pt05ch17s02abm02.html
+    """ # noqa
     
     def __init__(
         self,
@@ -839,10 +843,10 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         E_T: float | Tensor,
         nu_L: float | Tensor,
         nu_T: float | Tensor,
-        G: float | Tensor,
+        G_L: float | Tensor,
     ):
         # https://webpages.tuni.fi/rakmek/jmm/slides/jmm_lect_06.pdf
-        if G>E_L/(2*(1+nu_L)):
+        if G_L>E_L/(2*(1+nu_L)):
             raise ValueError("G must be less than E_L/(2*(1+nu_L))")
         
         E_1 = E_L
@@ -851,9 +855,9 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         nu_12 = nu_L
         nu_13 = nu_L
         nu_23 = nu_T
-        G_12 = G
-        G_13 = G
-        G_23 = E_2 / (1 + nu_23)
+        G_12 = G_L
+        G_13 = G_L
+        G_23 = E_2 / (2*(1 + nu_23))
         
         super().__init__(
             E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
