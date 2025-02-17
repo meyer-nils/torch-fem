@@ -24,9 +24,9 @@ class FEM(ABC):
         self.n_elem = len(self.elements)
 
         # Initialize load variables
-        self.forces = torch.zeros_like(nodes)
-        self.displacements = torch.zeros_like(nodes)
-        self.constraints = torch.zeros_like(nodes, dtype=torch.bool)
+        self._forces = torch.zeros_like(nodes)
+        self._displacements = torch.zeros_like(nodes)
+        self._constraints = torch.zeros_like(nodes, dtype=torch.bool)
 
         # Compute mapping from local to global indices
         idx = (self.n_dim * self.elements).unsqueeze(-1) + torch.arange(self.n_dim)
@@ -43,6 +43,36 @@ class FEM(ABC):
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
+        
+    @property
+    def forces(self) -> Tensor:
+        return self._forces
+    
+    @forces.setter
+    def forces(self, value: Tensor):
+        if not value.shape == self.nodes.shape:
+            raise ValueError("Forces must have the same shape as nodes.")
+        self._forces = value.to(self.nodes.device)
+        
+    @property
+    def displacements(self) -> Tensor:
+        return self._displacements
+    
+    @displacements.setter
+    def displacements(self, value: Tensor):
+        if not value.shape == self.nodes.shape:
+            raise ValueError("Displacements must have the same shape as nodes.")
+        self._displacements = value.to(self.nodes.device)
+        
+    @property
+    def constraints(self) -> Tensor:
+        return self._constraints
+    
+    @constraints.setter
+    def constraints(self, value: Tensor):
+        if not value.shape == self.nodes.shape:
+            raise ValueError("Constraints must have the same shape as nodes.")
+        self._constraints = value.to(self.nodes.device)
 
     @abstractmethod
     def D(self, B: Tensor, nodes: Tensor) -> Tensor:
