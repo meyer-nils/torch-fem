@@ -52,6 +52,8 @@ class FEM(ABC):
     def forces(self, value: Tensor):
         if not value.shape == self.nodes.shape:
             raise ValueError("Forces must have the same shape as nodes.")
+        if not torch.is_floating_point(value):
+            raise TypeError("Forces must be a floating-point tensor.")
         self._forces = value.to(self.nodes.device)
         
     @property
@@ -62,6 +64,8 @@ class FEM(ABC):
     def displacements(self, value: Tensor):
         if not value.shape == self.nodes.shape:
             raise ValueError("Displacements must have the same shape as nodes.")
+        if not torch.is_floating_point(value):
+            raise TypeError("Displacements must be a floating-point tensor.")
         self._displacements = value.to(self.nodes.device)
         
     @property
@@ -72,6 +76,8 @@ class FEM(ABC):
     def constraints(self, value: Tensor):
         if not value.shape == self.nodes.shape:
             raise ValueError("Constraints must have the same shape as nodes.")
+        if value.dtype != torch.bool:
+            raise TypeError("Constraints must be a boolean tensor.")
         self._constraints = value.to(self.nodes.device)
 
     @abstractmethod
