@@ -5,6 +5,8 @@ from typing import Callable
 import torch
 from torch import Tensor
 
+from torchfem.rotations import voigt_stress_rotation
+
 
 class Material(ABC):
     """Base class for material models."""
@@ -24,6 +26,11 @@ class Material(ABC):
     @abstractmethod
     def step(self, depsilon: Tensor, epsilon: Tensor, sigma: Tensor, state: Tensor):
         """Perform a strain increment."""
+        pass
+
+    @abstractmethod
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
         pass
 
 
@@ -98,6 +105,11 @@ class IsotropicElasticity3D(Material):
         state_new = state
         ddsdde = self.C
         return epsilon_new, sigma_new, state_new, ddsdde
+
+    def rotate(self, R: Tensor):
+        """Rotate the material with rotation matrix R."""
+        print("Rotating an isotropic material has no effect.")
+        return self
 
 
 class IsotropicPlasticity3D(IsotropicElasticity3D):
@@ -546,6 +558,11 @@ class IsotropicElasticity1D(Material):
         ddsdde = self.C
         return epsilon_new, sigma_new, state_new, ddsdde
 
+    def rotate(self, R: Tensor):
+        """Rotate the material with rotation matrix R."""
+        print("Rotating an isotropic material has no effect.")
+        return self
+
 
 class IsotropicPlasticity1D(IsotropicElasticity1D):
     """Isotropic plasticity with isotropic hardening"""
@@ -757,9 +774,9 @@ class OrthotropicElasticity3D(Material):
                     ],
                     dim=-1,
                 ),
-                torch.stack([z, z, z, self._C[..., 0, 1, 0, 1], z, z], dim=-1),
+                torch.stack([z, z, z, self._C[..., 1, 2, 1, 2], z, z], dim=-1),
                 torch.stack([z, z, z, z, self._C[..., 0, 2, 0, 2], z], dim=-1),
-                torch.stack([z, z, z, z, z, self._C[..., 1, 2, 1, 2]], dim=-1),
+                torch.stack([z, z, z, z, z, self._C[..., 0, 1, 0, 1]], dim=-1),
             ],
             dim=-1,
         )
@@ -790,6 +807,28 @@ class OrthotropicElasticity3D(Material):
         state_new = state
         ddsdde = self.C
         return epsilon_new, sigma_new, state_new, ddsdde
+    
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        if R.shape[-2] != 3 or R.shape[-1] != 3:
+            raise ValueError("Rotation matrix must be a 3x3 tensor.")
+
+        # Compute rotated stiffness tensor
+        Q = voigt_stress_rotation(R)
+        self.C = Q @ self.C @ Q.transpose(-1, -2)
+
+        # Compute rotated internal variables
+        S = torch.linalg.inv(self.C)
+        self.E_1 = 1 / S[..., 0, 0]
+        self.E_2 = 1 / S[..., 1, 1]
+        self.E_3 = 1 / S[..., 2, 2]
+        self.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
+        self.nu_13 = -S[..., 0, 2] / S[..., 0, 0]
+        self.nu_23 = -S[..., 1, 2] / S[..., 1, 1]
+        self.G_23 = 1 / S[..., 3, 3]
+        self.G_13 = 1 / S[..., 4, 4]
+        self.G_12 = 1 / S[..., 5, 5]
+        return self
 
 class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
     """Transversely isotropic material."""
@@ -903,6 +942,23 @@ class OrthotropicElasticityPlaneStress(Material):
         ddsdde = self.C
         return epsilon_new, sigma_new, state_new, ddsdde
 
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        if R.shape[-2] != 2 or R.shape[-1] != 2:
+            raise ValueError("Rotation matrix must be a 2x2 tensor.")
+
+        # Compute rotated stiffness tensor
+        Q = voigt_stress_rotation(R)
+        self.C = Q @ self.C @ Q.transpose(-1, -2)
+
+        # Compute rotated internal variables
+        S = torch.linalg.inv(self.C)
+        self.E_1 = 1 / S[..., 0, 0]
+        self.E_2 = 1 / S[..., 1, 1]
+        self.nu_12 = -S[..., 0, 0] * S[..., 0, 1]
+        self.G_12 = 1 / S[..., 2, 2]
+        return self
+
 
 class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
     """Orthotropic 2D plane strain material."""
@@ -960,3 +1016,20 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
             return OrthotropicElasticityPlaneStrain(
                 E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
             )
+
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        if R.shape[-2] != 2 or R.shape[-1] != 2:
+            raise ValueError("Rotation matrix must be a 2x2 tensor.")
+
+        # Compute rotated stiffness tensor
+        Q = voigt_stress_rotation(R)
+        self.C = Q @ self.C @ Q.transpose(-1, -2)
+
+        # Compute rotated internal variables
+        S = torch.linalg.inv(self.C)
+        self.E_1 = 1 / S[..., 0, 0]
+        self.E_2 = 1 / S[..., 1, 1]
+        self.nu_12 = -S[..., 0, 0] * S[..., 0, 1]
+        self.G_12 = 1 / S[..., 2, 2]
+        return self

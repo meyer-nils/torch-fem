@@ -3,6 +3,8 @@ from abc import abstractmethod
 import torch
 from torch import Tensor
 
+from torchfem.rotations import axis_rotation
+
 EPS = 1e-10
 torch.set_default_dtype(torch.float64)
 
@@ -41,18 +43,7 @@ class SDF:
         return self
 
     def rotate(self, axis: Tensor, angle: Tensor):
-        axis = axis / torch.norm(axis)
-        x, y, z = axis
-        c = torch.cos(angle)
-        s = torch.sin(angle)
-        t = 1 - c
-        rotation = torch.tensor(
-            [
-                [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
-                [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
-                [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
-            ]
-        )
+        rotation = axis_rotation(axis, angle)
         self.transform = rotation @ self.transform
         return self
 
