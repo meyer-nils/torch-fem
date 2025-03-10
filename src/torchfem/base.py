@@ -43,11 +43,11 @@ class FEM(ABC):
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
-        
+
     @property
     def forces(self) -> Tensor:
         return self._forces
-    
+
     @forces.setter
     def forces(self, value: Tensor):
         if not value.shape == self.nodes.shape:
@@ -55,11 +55,11 @@ class FEM(ABC):
         if not torch.is_floating_point(value):
             raise TypeError("Forces must be a floating-point tensor.")
         self._forces = value.to(self.nodes.device)
-        
+
     @property
     def displacements(self) -> Tensor:
         return self._displacements
-    
+
     @displacements.setter
     def displacements(self, value: Tensor):
         if not value.shape == self.nodes.shape:
@@ -67,11 +67,11 @@ class FEM(ABC):
         if not torch.is_floating_point(value):
             raise TypeError("Displacements must be a floating-point tensor.")
         self._displacements = value.to(self.nodes.device)
-        
+
     @property
     def constraints(self) -> Tensor:
         return self._constraints
-    
+
     @constraints.setter
     def constraints(self, value: Tensor):
         if not value.shape == self.nodes.shape:
