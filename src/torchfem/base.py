@@ -8,9 +8,11 @@ from .elements import Element
 from .materials import Material
 from .sparse import sparse_solve
 
+from .preconditioner import ssor_preconditioner
+
 
 class FEM(ABC):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, preconditioner:str='jacobi'):
         """Initialize a general FEM problem."""
 
         # Store nodes and elements
@@ -43,6 +45,10 @@ class FEM(ABC):
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
+
+        # Preconditioenr May be calculated later
+        self.M = None
+        self.preconditioner = preconditioner
         
     @property
     def forces(self) -> Tensor:
@@ -320,6 +326,9 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
+                if(self.preconditioner == 'ssor'):
+                    self.M = ssor_preconditioner(self.K.detach(), omega=0.7, filter=1.e-5)
+
                 du -= sparse_solve(self.K, residual, B, stol, device, direct)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
