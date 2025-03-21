@@ -57,6 +57,7 @@ class Solve(Function):
                 # Jacobi preconditioner
                 if(M is None):
                     M = cupy_diags(1.0 / A_cp.diagonal())
+
                 # Solve with minres
                 x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol)
                 if exit_code != 0:

@@ -12,7 +12,8 @@ from .preconditioner import ssor_preconditioner
 
 
 class FEM(ABC):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, preconditioner:str='jacobi'):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material,
+                 preconditioner:dict={'name': 'jacobi'}):
         """Initialize a general FEM problem."""
 
         # Store nodes and elements
@@ -47,8 +48,8 @@ class FEM(ABC):
         self.etype: Element
 
         # Preconditioenr May be calculated later
-        self.M = None
-        self.preconditioner = preconditioner
+        self.M = None                         # Preconditioner operator or matrix
+        self.preconditioner = preconditioner  # Name of preconditioner
         
     @property
     def forces(self) -> Tensor:
@@ -326,10 +327,14 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                if(self.preconditioner == 'ssor'):
-                    self.M = ssor_preconditioner(self.K.detach(), omega=0.7, filter=1.e-5)
+                if(self.preconditioner['name'] == 'ssor'):
+                    self.M = ssor_preconditioner(
+                                  self.K.detach(),
+                                  omega=self.preconditioner['omega'],
+                                  filter=self.preconditioner['filter']
+                    )
 
-                du -= sparse_solve(self.K, residual, B, stol, device, direct)
+                du -= sparse_solve(self.K, residual, B, stol, device, direct, self.M)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
