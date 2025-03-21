@@ -8,7 +8,8 @@ from .materials import Material
 
 
 class Solid(FEM):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, preconditioner: dict = None):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material,
+                 preconditioner: dict = {"name": "jacobi"}):
         """Initialize the solid FEM problem."""
 
         super().__init__(nodes, elements, material, preconditioner)

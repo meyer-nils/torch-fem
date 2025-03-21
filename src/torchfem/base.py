@@ -328,11 +328,14 @@ class FEM(ABC):
 
                 # Solve for displacement increment
                 if(self.preconditioner['name'] == 'ssor'):
-                    self.M = ssor_preconditioner(
+                    if(self.K.is_cuda):
+                        self.M = ssor_preconditioner(
                                   self.K.detach(),
                                   omega=self.preconditioner['omega'],
                                   filter=self.preconditioner['filter']
-                    )
+                        )
+                    else:
+                        raise NotImplementedError("SSOR preconditioner is only supported on CUDA.")
 
                 du -= sparse_solve(self.K, residual, B, stol, device, direct, self.M)
 
