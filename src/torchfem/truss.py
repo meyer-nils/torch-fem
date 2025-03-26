@@ -31,9 +31,10 @@ class Truss(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 1, 1)
 
-    def eval_shape_functions(self, xi: Tensor) -> Tensor:
+    def eval_shape_functions(self, xi: Tensor, u: Tensor | float = 0.0) -> Tensor:
         """Gradient operator at integration points xi."""
-        nodes = self.nodes[self.elements, :]
+        nodes = self.nodes + u
+        nodes = nodes[self.elements, :]
         # Direction of the element
         dx = nodes[:, 1] - nodes[:, 0]
         # Length of the element
