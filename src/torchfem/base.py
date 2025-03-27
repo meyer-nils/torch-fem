@@ -90,15 +90,20 @@ class FEM(ABC):
 
     def integrate_material(
         self,
+        u: Tensor,
         F: Tensor,
         stress: Tensor,
         state: Tensor,
         n: int,
         du: Tensor,
         de0: Tensor,
+        nlgeom: bool,
     ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
-        # Reshape variables
+        # Compute updated configuration
+        u_trial = u[n - 1] + du.view((-1, self.n_dim))
+
+        # Reshape displacement increment
         du = du.view(-1, self.n_dim)[self.elements].reshape(
             self.n_elem, -1, self.n_stress
         )
@@ -109,15 +114,25 @@ class FEM(ABC):
         k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
 
         for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
-            # Compute gradient operator
-            _, B, detJ = self.eval_shape_functions(xi)
+            # Compute gradient operators
+            _, B0, detJ0 = self.eval_shape_functions(xi)
+            if nlgeom:
+                # Compute updated gradient operators in deformed configuration
+                _, B, detJ = self.eval_shape_functions(xi, u_trial)
+            else:
+                # Use initial gradient operators
+                B = B0
+                detJ = detJ0
 
-            # Compute deformation gradient
-            F_inc = torch.einsum("...ij,...jk->...ik", B, du)
+            # Compute displacement gradient increment
+            H_inc = torch.einsum("...ij,...jk->...ik", B0, du)
+
+            # Update deformation gradient
+            F[n, i] = F[n - 1, i] + H_inc
 
             # Evaluate material response
-            F[n, i], stress[n, i], state[n, i], ddsdde = self.material.step(
-                F_inc, F[n - 1, i], stress[n - 1, i], state[n - 1, i], de0
+            stress[n, i], state[n, i], ddsdde = self.material.step(
+                H_inc, F[n - 1, i], stress[n - 1, i], state[n - 1, i], de0
             )
 
             # Compute element internal forces
@@ -125,16 +140,18 @@ class FEM(ABC):
             f += w * force_contrib.reshape(-1, self.n_dim * N_nod)
 
             # Compute element stiffness matrix
-            if self.K.numel() == 0 or not self.material.n_state == 0:
+            if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
                 # Material stiffness
                 BCB = torch.einsum("...ijpq,...qk,...il->...ljkp", ddsdde, B, B)
                 BCB = BCB.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
                 k += w * self.compute_k(detJ, BCB)
-            if not self.material.is_small_strain:
-                # Geometric stiffness
-                BSB = torch.einsum("...iq,...qk,...il->...lk", stress[n, i], B, B)
-                BSB = torch.kron(torch.eye(self.n_dim), BSB)
-                k += w * self.compute_k(detJ, BSB)
+            # if nlgeom:
+            #     # Geometric stiffness
+            #     BSB = torch.einsum("...iq,...qk,...il->...lk", stress[n, i], B, B)
+            #     BSB = torch.kron(torch.eye(self.n_dim), BSB)
+            #     print(BSB.shape)
+            #     assert torch.allclose(BSB, BSB.transpose(1, 1))
+            #     k += w * self.compute_k(detJ, BSB)
 
         return k, f
 
@@ -212,6 +229,7 @@ class FEM(ABC):
         device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
+        nlgeom: bool = False,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method."""
         # Number of increments
@@ -224,12 +242,12 @@ class FEM(ABC):
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
+        u = torch.zeros(N, self.n_nod, self.n_dim)
+        f = torch.zeros(N, self.n_nod, self.n_dim)
+        stress = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         defgrad = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
-        stress = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
-        f = torch.zeros(N, self.n_nod, self.n_dim)
-        u = torch.zeros(N, self.n_nod, self.n_dim)
 
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
@@ -252,10 +270,12 @@ class FEM(ABC):
                 du[con] = DU[con]
 
                 # Element-wise integration
-                k, f_i = self.integrate_material(defgrad, stress, state, n, du, de0)
+                k, f_i = self.integrate_material(
+                    u, defgrad, stress, state, n, du, de0, nlgeom
+                )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
-                if self.K.numel() == 0 or not self.material.n_state == 0:
+                if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
                     self.K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_i)
 
