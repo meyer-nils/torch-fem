@@ -314,7 +314,7 @@ def compute_orientation_average(C: Tensor, A2: Tensor, A4: Tensor) -> Tensor:
     B5 = 0.5 * (C[..., 1, 1, 1, 1] - C[..., 1, 1, 2, 2])
 
     # Einstein summation to fill stiffness matrix
-    _C = (
+    C = (
         B1 * A4
         + B2
         * (
@@ -333,19 +333,6 @@ def compute_orientation_average(C: Tensor, A2: Tensor, A4: Tensor) -> Tensor:
         * (torch.einsum("ik,jl->ijkl", Id, Id) + torch.einsum("il,jk->ijkl", Id, Id))
     )
 
-    C = torch.zeros(_C.shape[0], 6, 6)
-    C[:, 0, 0] = _C[:, 0, 0, 0, 0]
-    C[:, 0, 1] = _C[:, 0, 0, 1, 1]
-    C[:, 0, 2] = _C[:, 0, 0, 2, 2]
-    C[:, 1, 0] = _C[:, 1, 1, 0, 0]
-    C[:, 1, 1] = _C[:, 1, 1, 1, 1]
-    C[:, 1, 2] = _C[:, 1, 1, 2, 2]
-    C[:, 2, 0] = _C[:, 2, 2, 0, 0]
-    C[:, 2, 1] = _C[:, 2, 2, 1, 1]
-    C[:, 2, 2] = _C[:, 2, 2, 2, 2]
-    C[:, 3, 3] = _C[:, 1, 2, 1, 2]
-    C[:, 4, 4] = _C[:, 0, 2, 0, 2]
-    C[:, 5, 5] = _C[:, 0, 1, 0, 1]
     return C
 
 
