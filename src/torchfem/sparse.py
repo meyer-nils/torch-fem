@@ -5,6 +5,7 @@ from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
 from torch.autograd import Function
+from .preconditioner import ssor_preconditioner
 
 try:
     import cupy
@@ -27,7 +28,7 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None):
+    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, preconditioner=None):
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
@@ -55,7 +56,11 @@ class Solve(Function):
                 x_xp = cupy_spsolve(A_cp, b_cp)
             else:
                 # Jacobi preconditioner
-                M = cupy_diags(1.0 / A_cp.diagonal())
+                if(preconditioner['name'] == 'jacobi'):
+                    M = cupy_diags(1.0 / A_cp.diagonal())
+                elif(preconditioner['name'] == 'ssor'):
+                    M = ssor_preconditioner(A, omega=preconditioner['omega'], filter=preconditioner['filter'])
+
                 # Solve with minres
                 x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol)
                 if exit_code != 0:
@@ -73,7 +78,9 @@ class Solve(Function):
                 x_xp = scipy_spsolve(A_np, b_np)
             else:
                 # AMG preconditioner with Jacobi smoother
-                if M is None:
+                if(preconditioner['name'] == 'ssor'):
+                    raise NotImplementedError("SSOR Preconditioner is only implemented on GPU.")
+                else: # Default on CPU is AMG preconditioner
                     ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
                     M = ml.aspreconditioner()
 
@@ -93,7 +100,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M)
+        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.preconditioner)
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A._indices()[0, :]
@@ -105,7 +112,7 @@ class Solve(Function):
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        A, b, B, rtol, device, direct, M = inputs
+        A, b, B, rtol, device, direct, preconditioner = inputs
         x = output
         ctx.save_for_backward(A, x)
 
@@ -114,7 +121,7 @@ class Solve(Function):
         ctx.device = device
         ctx.direct = direct
         ctx.B = B
-        ctx.M = M
+        ctx.preconditioner = preconditioner
 
 
 sparse_solve = Solve.apply
