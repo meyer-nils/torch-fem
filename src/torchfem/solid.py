@@ -8,11 +8,10 @@ from .materials import Material
 
 
 class Solid(FEM):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material,
-                 preconditioner: dict = {"name": "jacobi"}):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the solid FEM problem."""
 
-        super().__init__(nodes, elements, material, preconditioner)
+        super().__init__(nodes, elements, material)
 
         # Set element type depending on number of nodes per element
         if len(elements[0]) == 4:

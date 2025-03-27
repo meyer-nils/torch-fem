@@ -1,11 +1,16 @@
 import torch
 from torch import Tensor
 
-import cupy
-from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
-from cupyx.scipy.sparse import csr_matrix as cupy_csr_matrix
-from cupyx.scipy.sparse import eye as cupy_eye
-from cupyx.scipy.sparse.linalg import spsolve_triangular
+try:
+    import cupy
+    from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
+    from cupyx.scipy.sparse import csr_matrix as cupy_csr_matrix
+    from cupyx.scipy.sparse import eye as cupy_eye
+    from cupyx.scipy.sparse.linalg import spsolve_triangular
+
+    cupy_available = False
+except ImportError:
+    cupy_available = False
 
 import numpy as np
 
@@ -23,8 +28,8 @@ def ssor_preconditioner(A: Tensor, omega: int=1, filter: float=1.e-9, full_solve
     if(A.requires_grad):
         A = A.detach()
 
-    # Do numpy implementation just for checking
-    if(not A.is_cuda):
+    # Do numpy implementation just for checking (not actually useful)
+    if(not A.is_cuda and not cupy_available):
         D = np.diag(np.diag(A))/omega
         D_inv = np.diag(omega/np.diag(A))
         L = np.tril(A,k=-1)
@@ -47,7 +52,6 @@ def ssor_preconditioner(A: Tensor, omega: int=1, filter: float=1.e-9, full_solve
         diag_mask = idxs[0] == idxs[1]
         D = torch.sparse_coo_tensor(idxs[:,diag_mask], (1./omega) * values[diag_mask], A.shape)
 
-        full_solve = False
         if(full_solve):
             # Put A in CuPy sparse form
             A = cupy_coo_matrix(

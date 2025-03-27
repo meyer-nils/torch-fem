@@ -1,9 +1,16 @@
+import torch
 from testbook import testbook
 
 
 @testbook("examples/basic/planar/cantilever.ipynb", execute=True)
 def test_planar_cantilever_notebook(tb):
     tb.execute()
+
+
+if(torch.cuda.is_available):
+    @testbook("examples/basic/planar/gpu_cantilever.ipynb", execute=True)
+    def test_gpu_planar_cantilever_notebook(tb):
+        tb.execute()
 
 
 @testbook("examples/basic/planar/fillet.ipynb", execute=True)

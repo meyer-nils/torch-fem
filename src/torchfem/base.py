@@ -8,9 +8,6 @@ from .elements import Element
 from .materials import Material
 from .sparse import sparse_solve
 
-from .preconditioner import ssor_preconditioner
-
-
 class FEM(ABC):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material,
                  preconditioner:dict={'name': 'jacobi'}):
@@ -48,7 +45,6 @@ class FEM(ABC):
         self.etype: Element
 
         # Preconditioenr May be calculated later
-        self.M = None                         # Preconditioner operator or matrix
         self.preconditioner = preconditioner  # Name of preconditioner
         
     @property
@@ -261,6 +257,7 @@ class FEM(ABC):
         device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
+        preconditioner: dict = {'name': 'jacobi'}
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method."""
         # Number of increments
@@ -327,17 +324,7 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                if(self.preconditioner['name'] == 'ssor'):
-                    if(self.K.is_cuda):
-                        self.M = ssor_preconditioner(
-                                  self.K.detach(),
-                                  omega=self.preconditioner['omega'],
-                                  filter=self.preconditioner['filter']
-                        )
-                    else:
-                        raise NotImplementedError("SSOR preconditioner is only supported on CUDA.")
-
-                du -= sparse_solve(self.K, residual, B, stol, device, direct, self.M)
+                du -= sparse_solve(self.K, residual, B, stol, device, direct, preconditioner)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
