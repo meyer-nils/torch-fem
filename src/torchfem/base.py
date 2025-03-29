@@ -149,7 +149,7 @@ class FEM(ABC):
                 # Geometric stiffness
                 BSB = torch.einsum("...iq,...qk,...il->...lk", stress[n, i], B, B)
                 kg = torch.zeros(self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod)
-                kg[:, ::3, ::3] = BSB
+                kg[:, :: self.n_dim, :: self.n_dim] = BSB
                 k += w * self.compute_k(detJ, kg)
 
         return k, f
