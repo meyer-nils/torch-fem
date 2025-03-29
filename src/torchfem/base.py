@@ -145,13 +145,12 @@ class FEM(ABC):
                 BCB = torch.einsum("...ijpq,...qk,...il->...ljkp", ddsdde, B, B)
                 BCB = BCB.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
                 k += w * self.compute_k(detJ, BCB)
-            # if nlgeom:
-            #     # Geometric stiffness
-            #     BSB = torch.einsum("...iq,...qk,...il->...lk", stress[n, i], B, B)
-            #     BSB = torch.kron(torch.eye(self.n_dim), BSB)
-            #     print(BSB.shape)
-            #     assert torch.allclose(BSB, BSB.transpose(1, 1))
-            #     k += w * self.compute_k(detJ, BSB)
+            if nlgeom:
+                # Geometric stiffness
+                BSB = torch.einsum("...iq,...qk,...il->...lk", stress[n, i], B, B)
+                kg = torch.zeros(self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod)
+                kg[:, ::3, ::3] = BSB
+                k += w * self.compute_k(detJ, kg)
 
         return k, f
 
