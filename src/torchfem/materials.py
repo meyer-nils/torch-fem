@@ -664,11 +664,11 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
             return IsotropicElasticityPlaneStress(E, nu)
 
 
-class IsotropicHenckyPlaneStress(IsotropicHencky3D):
-    """Isotropic Hencky material for planar stress problems.
+class IsotropicHenckyPlaneStrain(IsotropicHencky3D):
+    """Isotropic Hencky material for planar strain problems.
 
-    This class implements a 2D hyper-elastic material model based on the logarithmic
-    Hencky strain, suitable for large deformations.
+    This class implements a 2D material model based on the logarithmic Hencky strain,
+    suitable for large deformations.
 
     Attributes:
         E (Tensor): Young's modulus. If a float is provided, it is converted.
@@ -689,19 +689,68 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         super().__init__(E, nu)
 
         # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
-        fac = self.E / (1.0 - self.nu**2)
         if self.E.dim() == 0:
-            self.C = torch.zeros(2, 2, 2, 2)
+            self.C = self.C[:2, :2, :2, :2]
         else:
-            self.C = torch.zeros(*E.shape, 2, 2, 2, 2)
-        self.C[..., 0, 0, 0, 0] = fac
-        self.C[..., 0, 0, 1, 1] = fac * self.nu
-        self.C[..., 1, 1, 0, 0] = fac * self.nu
-        self.C[..., 1, 1, 1, 1] = fac
-        self.C[..., 0, 1, 0, 1] = fac * 0.5 * (1.0 - self.nu)
-        self.C[..., 0, 1, 1, 0] = fac * 0.5 * (1.0 - self.nu)
-        self.C[..., 1, 0, 0, 1] = fac * 0.5 * (1.0 - self.nu)
-        self.C[..., 1, 0, 1, 0] = fac * 0.5 * (1.0 - self.nu)
+            self.C = self.C[..., :2, :2, :2, :2]
+
+    def vectorize(self, n_elem: int):
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicHenckyPlaneStress: A new material instance with
+                vectorized properties.
+        """
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicHenckyPlaneStrain(E, nu)
+
+
+class IsotropicHenckyPlaneStress(IsotropicHencky3D):
+    """Isotropic Hencky material for planar stress problems.
+
+    This class implements a 2D hyper-elastic material model based on the logarithmic
+    Hencky strain, suitable for large deformations.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 1).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        lbd (Tensor): First Lamé parameter.
+            Shape: `()` (scalar) or `(N,)` (batch).
+        G (Tensor): Shear modulus (second Lamé parameter).
+            Shape: `()` (scalar) or `(N,)` (batch).
+        C (Tensor): Fourth-order elasticity tensor for 2D isotropic elasticity.
+            Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
+    """
+
+    def __init__(
+        self,
+        E: float | Tensor,
+        nu: float | Tensor,
+        tolerance: float = 1e-5,
+        max_iter: int = 10,
+    ):
+        super().__init__(E, nu)
+        self.tolerance = tolerance
+        self.max_iter = max_iter
+
+        # State variable for out-of plane stretch
+        self.n_state = 1
 
     def vectorize(self, n_elem: int):
         """Returns a vectorized copy of the material for `n_elem` elements.
@@ -724,6 +773,75 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
             return IsotropicHenckyPlaneStress(E, nu)
+
+    def step(
+        self,
+        H_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        dLE0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Performs an incremental step in the large-strain Hencky elasticity model.
+
+        This function updates the deformation gradient, computes the logarithmic Hencky
+        strain, and evaluates the Cauchy stress tensor.
+
+        Args:
+            H_inc (Tensor): Incremental displacement gradient.
+                - Shape: `(..., 2, 2)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                - Shape: `(..., 2, 2)`, same as `H_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                - Shape: `(..., 2, 2)`.
+            state (Tensor): Internal state variables (out-of plane stretch).
+                - Shape: `(...,1)`
+            dLE0 (Tensor): External logarithmic strain increment (e.g., thermal).
+                - Shape: `(..., 2, 2)`.
+
+        Returns:
+            tuple:
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                Shape: `(..., 2, 2)`.
+                - **state_new (Tensor)**: Updated internal state (out-of plane stretch).
+                Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 2, 2, 2, 2)`.
+        """
+        # Extract out-of plane stretch
+        lbd_z = 1.0 + state[..., 0]
+
+        # Local Newton solver to find out-of-plane stretch with plane stress condition
+        for j in range(self.max_iter):
+            # Update deformation gradient
+            F_new = torch.zeros(F.shape[0], 3, 3)
+            F_new[..., 0:2, 0:2] = F + H_inc
+            F_new[..., 2, 2] = lbd_z
+            # Compute right Cauchy-Green tensor
+            C_new = F_new.transpose(-1, -2) @ F_new
+            # Compute squared principal stretches and stretch directions
+            ev, Q = torch.linalg.eigh(C_new)
+            # Compute Hencky strain
+            LE_new = 0.5 * Q @ torch.diag_embed(torch.log(ev)) @ Q.transpose(-1, -2)
+            # Compute Cauchy stress
+            sigma_trial = torch.einsum("...ijkl,...kl->...ij", self.C, LE_new)
+            # Evaluate plane stress condition
+            res = sigma_trial[..., 2, 2]
+            # Update out-of plane stretch
+            lbd_z -= res / self.C[..., 2, 2, 2, 2] * lbd_z
+            # Check convergence
+            if (torch.abs(res) < self.tolerance).all():
+                break
+        if (torch.abs(res) > self.tolerance).any():
+            print("Local Newton iteration did not converge.")
+
+        # Update stress
+        sigma_new = sigma_trial[..., 0:2, 0:2]
+        # Update internal state
+        state_new = lbd_z.unsqueeze(-1) - 1.0
+        # Algorithmic tangent
+        ddsdde = self.C[..., 0:2, 0:2, 0:2, 0:2]
+        return sigma_new, state_new, ddsdde
 
 
 class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
