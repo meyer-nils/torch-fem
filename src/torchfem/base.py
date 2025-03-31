@@ -147,9 +147,15 @@ class FEM(ABC):
                 k += w * self.compute_k(detJ, BCB)
             if nlgeom:
                 # Geometric stiffness
-                BSB = torch.einsum("...iq,...qk,...il->...lk", stress[n, i], B, B)
-                kg = torch.zeros(self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod)
-                kg[:, :: self.n_dim, :: self.n_dim] = BSB
+                BSB = torch.einsum(
+                    "...iq,...qk,...il->...lk", stress[n, i].clone(), B, B
+                )
+                zeros = torch.zeros_like(BSB)
+                kg = torch.stack((BSB, zeros, zeros), dim=-1)
+                kg = kg.reshape(-1, N_nod, self.n_dim * N_nod).unsqueeze(-2)
+                zeros = torch.zeros_like(kg)
+                kg = torch.stack((kg, zeros, zeros), dim=-2)
+                kg = kg.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
                 k += w * self.compute_k(detJ, kg)
 
         return k, f
