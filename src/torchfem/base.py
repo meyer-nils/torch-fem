@@ -151,10 +151,10 @@ class FEM(ABC):
                     "...iq,...qk,...il->...lk", stress[n, i].clone(), B, B
                 )
                 zeros = torch.zeros_like(BSB)
-                kg = torch.stack((BSB, zeros, zeros), dim=-1)
+                kg = torch.stack([BSB] + (self.n_dim - 1) * [zeros], dim=-1)
                 kg = kg.reshape(-1, N_nod, self.n_dim * N_nod).unsqueeze(-2)
                 zeros = torch.zeros_like(kg)
-                kg = torch.stack((kg, zeros, zeros), dim=-2)
+                kg = torch.stack([kg] + (self.n_dim - 1) * [zeros], dim=-2)
                 kg = kg.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
                 k += w * self.compute_k(detJ, kg)
 
