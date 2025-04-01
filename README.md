@@ -27,14 +27,15 @@ pip install cupy-cuda12x # v12.x
   - 2D: Quad1, Quad2, Tria1, Tria2
   - 3D: Hexa1, Hexa2, Tetra1, Tetra2
   - Shell: Flat-facet triangle (linear only)
-- Small-strain material models (3D, 2D plane stress, 2D plane strain, 1D)
+- Material models
   - Isotropic linear elasticity 
   - Orthotropic linear elasticity
-  - Isotropic plasticity
-- Finite-strain material models
-  - Kirchhoff elasticity (3D)
+  - Isotropic small strain plasticity
+  - Logarithmic finite strain elasticity
+  - Neo-Hookean hyperelasticity
+  - Custom user material interface
 - Utilities
-  - Homogenization of orthotropic stiffness
+  - Homogenization of orthotropic elasticity for composites
   - I/O to and from other mesh formats via meshio
 
 ## Basic examples
@@ -130,7 +131,7 @@ This creates a minimal planar FEM model:
 
 ```python
 # Solve
-u, f, σ, ε, α = cantilever.solve()
+u, f, σ, F, α = cantilever.solve()
 
 # Plot displacement magnitude on deformed state
 cantilever.plot(u, node_property=torch.norm(u, dim=1))
@@ -185,3 +186,12 @@ Python 3.12, CuPy 13.3.0, CUDA 11.8
 |  80 |  1536000 |     7.48s |    18.88s |   5105.6MB |
 
 
+## Alternatives
+There are many alternative FEM solvers in Python that you may also consider: 
+
+- Non-differentiable 
+  - [scikit-fem](https://github.com/kinnala/scikit-fem)
+  - [nutils](https://github.com/evalf/nutils) 
+  - [felupe](https://github.com/adtzlr/felupe)
+- Differentiable 
+  - [jaxfem](https://github.com/deepmodeling/jax-fem)
