@@ -79,13 +79,15 @@ class FEM(ABC):
 
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
-        f = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
+        u = torch.zeros_like(self.nodes)
+        F = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
+        F[:, :, :, :, :] = torch.eye(self.n_stress)
         s = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
         a = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros_like(self.nodes)
         de0 = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
         self.K = torch.empty(0)
-        k, _ = self.integrate_material(f, s, a, 1, du, de0)
+        k, _ = self.integrate_material(u, F, s, a, 1, du, de0, False)
         return k
 
     def integrate_material(
