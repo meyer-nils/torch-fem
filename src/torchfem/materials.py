@@ -720,8 +720,8 @@ class IsotropicHenckyPlaneStrain(IsotropicHencky3D):
 class IsotropicHenckyPlaneStress(IsotropicHencky3D):
     """Isotropic Hencky material for planar stress problems.
 
-    This class implements a 2D hyper-elastic material model based on the logarithmic
-    Hencky strain, suitable for large deformations.
+    This class implements a 2D material model based on the logarithmic Hencky strain,
+    suitable for large deformations.
 
     Attributes:
         E (Tensor): Young's modulus. If a float is provided, it is converted.
