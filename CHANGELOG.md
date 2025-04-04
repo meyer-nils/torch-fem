@@ -1,6 +1,8 @@
 # Changelog 
 
-## Unreleased 
+## Unreleased
+
+## Version 0.4.0 - April 04 2025 
 
 ### Added 
 - This CHANGELOG.md
