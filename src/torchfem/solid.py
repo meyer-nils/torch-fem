@@ -69,16 +69,26 @@ class Solid(FEM):
         """Plot the mesh with optional node and element properties.
 
         Args:
-            u (float or torch.Tensor, optional): Displacement field. Defaults to 0.0.
-            node_property (dict[str, torch.Tensor], optional): Nodal property to plot. Defaults to None.
-            element_property (dict[str, torch.Tensor], optional): Element property to plot. Defaults to None.
-            orientations (torch.Tensor, optional): Element orientations. Defaults to None.
-            show_edges (bool, optional): Show edges. Defaults to True.
-            show_undeformed (bool, optional): Show undeformed mesh. Defaults to False.
-            contour (tuple[str, list[float]], optional): Contour plot. Defaults to None.
-            plotter (pyvista.Plotter, optional): PyVista plotter. Defaults to None.
-            threshold_condition (torch.Tensor, optional): Threshold condition to recover subshape. Defaults to None.
-            **kwargs: Additional keyword arguments passed to pyvista.Plotter.add_mesh.
+            u (float or torch.Tensor, optional):
+                Displacement field. Defaults to 0.0.
+            node_property (dict[str, torch.Tensor], optional):
+                Nodal property to plot. Defaults to None.
+            element_property (dict[str, torch.Tensor], optional):
+                Element property to plot. Defaults to None.
+            orientations (torch.Tensor, optional):
+                Element orientations. Defaults to None.
+            show_edges (bool, optional):
+                Show edges. Defaults to True.
+            show_undeformed (bool, optional):
+                Show undeformed mesh. Defaults to False.
+            contour (tuple[str, list[float]], optional):
+                Contour plot. Defaults to None.
+            plotter (pyvista.Plotter, optional):
+                PyVista plotter. Defaults to None.
+            threshold_condition (torch.Tensor, optional):
+                Threshold condition to recover subshape. Defaults to None.
+            **kwargs:
+                Additional keyword arguments passed to pyvista.Plotter.add_mesh.
         """
 
         pyvista.set_plot_theme("document")
