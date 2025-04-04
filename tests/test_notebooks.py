@@ -21,6 +21,16 @@ def test_planar_plasticity_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/planar/finite_strain.ipynb", execute=True)
+def test_planar_finite_strain_notebook(tb):
+    tb.execute()
+
+
+@testbook("examples/basic/planar/large_stretch.ipynb", execute=True)
+def test_planar_large_stretch_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/shell/cantilever.ipynb", execute=True)
 def test_shell_cantilever_notebook(tb):
     tb.execute()
@@ -63,6 +73,11 @@ def test_solid_inelasticity_notebook(tb):
 
 @testbook("examples/basic/solid/finite_strain.ipynb", execute=True)
 def test_solid_finite_strain_notebook(tb):
+    tb.execute()
+
+
+@testbook("examples/basic/solid/large_stretch.ipynb", execute=True)
+def test_solid_large_stretch_notebook(tb):
     tb.execute()
 
 
