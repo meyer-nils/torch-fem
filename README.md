@@ -59,6 +59,12 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
         <tr>
             <td colspan="3" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
         </tr>
+        <tr>
+            <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_finite_strain.png"></a></td>
+        </tr>
+        <tr>
+            <td colspan="3" align="center"><b>Cantilever:</b> Logarithmic strains and geometric stiffness.</td>
+        </tr>
     </tbody>
 </table>
 
