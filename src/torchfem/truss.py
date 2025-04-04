@@ -25,15 +25,16 @@ class Truss(FEM):
             raise ValueError("Element type not supported.")
 
         # Set element type specific sizes
-        self.n_strains = 1
+        self.n_stress = 1
         self.n_int = len(self.etype.iweights())
 
         # Initialize external strain
-        self.ext_strain = torch.zeros(self.n_elem, self.n_strains)
+        self.ext_strain = torch.zeros(self.n_elem, 1, 1)
 
-    def D(self, B: Tensor, nodes: Tensor) -> Tensor:
-        """Element gradient operator."""
-
+    def eval_shape_functions(self, xi: Tensor, u: Tensor | float = 0.0) -> Tensor:
+        """Gradient operator at integration points xi."""
+        nodes = self.nodes + u
+        nodes = nodes[self.elements, :]
         # Direction of the element
         dx = nodes[:, 1] - nodes[:, 0]
         # Length of the element
@@ -41,15 +42,24 @@ class Truss(FEM):
         # Cosine and sine of the element
         cs = dx / l0[:, None]
 
-        return torch.einsum("ijk,il->ijkl", B, cs).reshape(self.n_elem, -1)[:, None, :]
+        J = 0.5 * torch.linalg.norm(dx, dim=1)[:, None, None]
+        detJ = torch.linalg.det(J)
+        if torch.any(detJ <= 0.0):
+            raise Exception("Negative Jacobian. Check element numbering.")
 
-    def compute_k(self, detJ: Tensor, DCD: Tensor) -> Tensor:
+        b = self.etype.B(xi)
+        B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
+        B = torch.einsum("ijk,il->ijkl", B, cs).reshape(self.n_elem, -1)[:, None, :]
+
+        return self.etype.N(xi), B, detJ
+
+    def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix."""
-        return torch.einsum("j,j,jkl->jkl", self.areas, detJ, DCD)
+        return torch.einsum("...,...,...kl->...kl", self.areas, detJ, BCB)
 
-    def compute_f(self, detJ: Tensor, D: Tensor, S: Tensor) -> Tensor:
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         """Element internal force vector."""
-        return torch.einsum("j,j,jkl,jk->jl", self.areas, detJ, D, S)
+        return torch.einsum("...,...,...ik,...ij->...kj", self.areas, detJ, B, S)
 
     def plot(self, **kwargs):
         if self.n_dim == 2:

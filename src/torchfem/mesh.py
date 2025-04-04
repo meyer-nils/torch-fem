@@ -24,3 +24,23 @@ def cube_hexa(
     elements = torch.vstack([n0, n1, n3, n2, n4, n5, n7, n6]).T
 
     return nodes, elements
+
+
+def rect_quad(
+    Nx: int, Ny: int, Lx: float = 1.0, Ly: float = 1.0
+) -> tuple[torch.Tensor, torch.Tensor]:
+    # Create nodes
+    X = torch.linspace(0, Lx, Nx)
+    Y = torch.linspace(0, Ly, Ny)
+    x, y = torch.meshgrid(X, Y, indexing="ij")
+    nodes = torch.vstack([x.ravel(), y.ravel()]).T
+
+    # Create elements
+    indices = torch.arange(Nx * Ny).reshape((Nx, Ny))
+    n0 = indices[:-1, :-1].ravel()
+    n1 = indices[1:, :-1].ravel()
+    n2 = indices[:-1, 1:].ravel()
+    n3 = indices[1:, 1:].ravel()
+    elements = torch.vstack([n0, n1, n3, n2]).T
+
+    return nodes, elements
