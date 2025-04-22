@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## Version 0.4.3 - April 04 2025 
+
+### Changed
+- Installation with CUDA is explained in more detail (Addressing #23).
+
+### Fixed
+- Solver option `device="cuda"` works properly now (Fixing #20).
+
+
 ## Version 0.4.0 - April 04 2025 
 
 ### Added 
