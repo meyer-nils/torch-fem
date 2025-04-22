@@ -42,7 +42,14 @@ class Solve(Function):
         if direct is not None:
             direct = shape[0] < 10000
 
-        if A.device.type == "cuda" and cupy_available:
+        if A.device.type == "cuda":
+            if not cupy_available:
+                raise RuntimeError(
+                    "CuPy is not available.\n\n"
+                    "Please install CuPy to use GPU acceleration:\n"
+                    "> pip install cupy-cuda11x # v11.2 - 11.8\n"
+                    "> pip install cupy-cuda12x # v12.x"
+                )
             A_cp = cupy_coo_matrix(
                 (
                     cupy.asarray(A._values()),
