@@ -32,6 +32,7 @@ class Solve(Function):
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
         shape = A.size()
+        out_device = b.device
 
         # Move to requested device, if available
         if device is not None:
@@ -90,7 +91,7 @@ class Solve(Function):
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
 
         # Convert back to torch
-        x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=b.device)
+        x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=out_device)
 
         return x
 
