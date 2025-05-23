@@ -6,7 +6,7 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import sparse_solve
+from .sparse import sparse_solve, GradStorage
 
 
 class FEM(ABC):
@@ -218,8 +218,25 @@ class FEM(ABC):
         device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
+        u0: Tensor = None,
+        gradb: Tensor = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Solve the FEM problem with the Newton-Raphson method."""
+        """Solve the FEM problem with the Newton-Raphson method.
+        
+        Args:
+            increments (Tensor): Load increments.
+            max_iter (int): Maximum number of iterations.
+            rtol (float): Relative tolerance for convergence.
+            atol (float): Absolute tolerance for convergence.
+            stol (float): Stopping tolerance for the solver.
+            verbose (bool): Print iteration information.
+            direct (bool): Use direct solver if True, otherwise use iterative solver.
+            device (str): Device to run the computation on.
+            return_intermediate (bool): Return intermediate values if True.
+            aggregate_integration_points (bool): Aggregate integration points if True.
+            u0 (Tensor): Initial displacement guess.
+            gradb (Tensor): Gradient storage for the solver.
+        """
         # Number of increments
         N = len(increments)
 
@@ -241,6 +258,10 @@ class FEM(ABC):
 
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
+        if u0 is not None:
+            u0 = -u0.flatten()
+        if "gradb" not in self.__dict__:
+            self.gradb = GradStorage()
 
         # Incremental loading
         for n in range(1, N):
@@ -284,7 +305,7 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, direct)
+                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, u0 if i==0 else None, self.gradb)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")

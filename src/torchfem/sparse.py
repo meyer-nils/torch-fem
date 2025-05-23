@@ -17,6 +17,12 @@ try:
 except ImportError:
     cupy_available = False
 
+class GradStorage:
+    def __init__(self):
+        self.previous_gradb = None
+    
+    def update(self, gradb):
+        self.previous_gradb = gradb.detach().clone() if gradb is not None else None
 
 class Solve(Function):
     """
@@ -27,7 +33,8 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None):
+    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None, x0=None, gradb_storage=None):
+        
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
@@ -51,13 +58,20 @@ class Solve(Function):
                 shape=shape,
             ).tocsr()
             b_cp = cupy.asarray(b.data)
+            if x0 is not None:
+                x0_cp = cupy.asarray(x0.data)
+            else:
+                x0_cp = None
             if direct:
                 x_xp = cupy_spsolve(A_cp, b_cp)
             else:
                 # Jacobi preconditioner
                 M = cupy_diags(1.0 / A_cp.diagonal())
                 # Solve with minres
-                x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol)
+                x_xp, exit_code, istop, itn = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
+                print(f"Warm: istop: {istop}, itn: {itn}")
+                x_xp, exit_code, istop, itn = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=None)
+                print(f"Cold: istop: {istop}, itn: {itn}")
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
         else:
@@ -65,6 +79,10 @@ class Solve(Function):
                 (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
             ).tocsr()
             b_np = b.data.numpy()
+            if x0 is not None:
+                x0_np = x0.data.numpy()
+            else:
+                x0_np = None
             if B is None:
                 B_np = None
             else:
@@ -78,7 +96,7 @@ class Solve(Function):
                     M = ml.aspreconditioner()
 
                 # Solve with minres
-                x_xp, exit_code = scipy_minres(A_np, b_np, M=M)  # , rtol=rtol)
+                x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=rtol, x0=x0_np)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
 
@@ -93,19 +111,22 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M)
+        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M, ctx.gradb_storage.previous_gradb)
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A._indices()[0, :]
         col = A._indices()[1, :]
         val = -gradb[row] * x[col]
         gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
+        
+        # Update storage for next iteration
+        ctx.gradb_storage.update(gradb)
 
-        return gradA, gradb, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        A, b, B, rtol, device, direct, M = inputs
+        A, b, B, rtol, device, direct, M, x0, gradb_storage = inputs
         x = output
         ctx.save_for_backward(A, x)
 
@@ -115,6 +136,8 @@ class Solve(Function):
         ctx.direct = direct
         ctx.B = B
         ctx.M = M
+        ctx.x0 = x0
+        ctx.gradb_storage = gradb_storage
 
 
 sparse_solve = Solve.apply
