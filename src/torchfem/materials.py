@@ -368,10 +368,35 @@ class NeoHookean3D(Material):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                 Shape: `(..., 3, 3, 3, 3)`.
         """
+
+        def psi(F: Tensor) -> Tensor:
+            """Compute the strain energy density function."""
+            # Compute determinant of the deformation gradient
+            J = torch.det(F)[:, None, None]
+            # Compute distortion gradient (deviatoric part of the deformation gradient)
+            F_bar = F * J ** (-1 / 3)
+            # Compute deviatoric left Cauchy-Green tensor
+            B_bar = F_bar @ F_bar.transpose(-1, -2)
+            # Compute strain energy density
+            G = self.G[:, None, None]
+            D = self.D[:, None, None]
+            trB = torch.einsum("...ii->...", B_bar)[:, None, None]
+            return G * (trB - 3) + 1 / D * (J - 1) ** 2
+
+        def sigma(F: Tensor) -> Tensor:
+            """Compute the Cauchy stress tensor."""
+            # Compute determinant of the deformation gradient
+            J = torch.det(F)[:, None, None]
+            # Compute first Piola-Kirchhoff stress by differentiating psi
+            P = torch.autograd.grad(psi(F).sum(), F)[0]
+            # Return Cauchy stress
+            return P @ F.transpose(-1, -2) / J
+
         # Identity tensors
         I2 = torch.eye(H_inc.shape[-1])
         # Compute deformation gradient
         F_new = F + H_inc
+        F_new = F_new.requires_grad_(True)
         # Compute determinant of the deformation gradient
         J_new = torch.det(F_new)[:, None, None]
         # Compute distortion gradient (deviatoric part of the deformation gradient)
@@ -381,8 +406,8 @@ class NeoHookean3D(Material):
         # Compute Cauchy stress
         G = self.G[:, None, None]
         D = self.D[:, None, None]
-        trB = torch.einsum("...ii->...", B_bar)[:, None, None]
-        sigma_new = 2 / J_new * G * (B_bar - trB / 3 * I2) + 2 / D * (J_new - 1) * I2
+        # Compute Cauchy stress
+        sigma_new = sigma(F_new)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
