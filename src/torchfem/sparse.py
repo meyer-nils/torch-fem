@@ -93,10 +93,7 @@ class Solve(Function):
                 # Jacobi preconditioner
                 M = cupy_diags(1.0 / A_cp.diagonal())
                 # Solve with minres
-                x_xp, exit_code, istop, itn = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
-                print(f"Warm: istop: {istop}, itn: {itn}")
-                x_xp, exit_code, istop, itn = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=None)
-                print(f"Cold: istop: {istop}, itn: {itn}")
+                x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
         else:
