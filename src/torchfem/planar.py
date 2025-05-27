@@ -9,10 +9,10 @@ from .materials import Material
 
 
 class Planar(FEM):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, **kwargs):
         """Initialize the planar FEM problem."""
 
-        super().__init__(nodes, elements, material)
+        super().__init__(nodes, elements, material, **kwargs)
 
         # Set up thickness
         self.thickness = torch.ones(self.n_elem)
