@@ -129,7 +129,7 @@ class Solid(FEM):
             threshold_condition = torch.ones(self.n_elem, dtype=torch.bool)
 
         # Apply threshold to recover subshape
-        mesh = mesh.extract_cells(threshold_condition.numpy())
+        mesh = mesh.extract_cells(threshold_condition.cpu().numpy())
 
         # Plot orientations
         if orientations is not None:
@@ -137,8 +137,8 @@ class Solid(FEM):
             for j, color in enumerate(["red", "green", "blue"]):
                 directions = orientations[:, j, :]
                 pl.add_arrows(
-                    ecenters.numpy()[threshold_condition],
-                    directions.numpy()[threshold_condition],
+                    ecenters.cpu().numpy()[threshold_condition],
+                    directions.cpu().numpy()[threshold_condition],
                     mag=0.5,
                     color=color,
                     show_scalar_bar=False,
