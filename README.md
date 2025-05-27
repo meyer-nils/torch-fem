@@ -6,7 +6,7 @@
 
 
 # torch-fem
-Simple GPU accelerated differentiable finite elements for small-deformation solid mechanics with PyTorch. 
+Simple GPU accelerated differentiable finite elements for solid mechanics with PyTorch. 
 PyTorch enables efficient computation of sensitivities via automatic differentiation and using them in optimization tasks.
 
 ## Installation
@@ -15,9 +15,17 @@ Your may install torch-fem via pip with
 pip install torch-fem
 ```
 
-*Optional*: For GPU support, install CUDA and the corresponding CuPy version with
+*Optional*: For GPU support, install CUDA, PyTorch for CUDA, and the corresponding CuPy version.
+
+For CUDA 11.8: 
 ```
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pip install cupy-cuda11x # v11.2 - 11.8
+```
+
+For CUDA 12.6:
+```
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 pip install cupy-cuda12x # v12.x
 ```
 
@@ -27,12 +35,15 @@ pip install cupy-cuda12x # v12.x
   - 2D: Quad1, Quad2, Tria1, Tria2
   - 3D: Hexa1, Hexa2, Tetra1, Tetra2
   - Shell: Flat-facet triangle (linear only)
-- Material models (3D, 2D plane stress, 2D plane strain, 1D)
+- Material models
   - Isotropic linear elasticity 
   - Orthotropic linear elasticity
-  - Isotropic plasticity
+  - Isotropic small strain plasticity
+  - Logarithmic finite strain elasticity
+  - Neo-Hookean hyperelasticity
+  - Custom user material interface
 - Utilities
-  - Homogenization of orthotropic stiffness
+  - Homogenization of orthotropic elasticity for composites
   - I/O to and from other mesh formats via meshio
 
 ## Basic examples
@@ -55,6 +66,12 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
         </tr>
         <tr>
             <td colspan="3" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
+        </tr>
+        <tr>
+            <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_finite_strain.png"></a></td>
+        </tr>
+        <tr>
+            <td colspan="3" align="center"><b>Cantilever:</b> Logarithmic strains and geometric stiffness.</td>
         </tr>
     </tbody>
 </table>
@@ -128,7 +145,7 @@ This creates a minimal planar FEM model:
 
 ```python
 # Solve
-u, f, σ, ε, α = cantilever.solve()
+u, f, σ, F, α = cantilever.solve()
 
 # Plot displacement magnitude on deformed state
 cantilever.plot(u, node_property=torch.norm(u, dim=1))
@@ -183,3 +200,12 @@ Python 3.12, CuPy 13.3.0, CUDA 11.8
 |  80 |  1536000 |     7.48s |    18.88s |   5105.6MB |
 
 
+## Alternatives
+There are many alternative FEM solvers in Python that you may also consider: 
+
+- Non-differentiable 
+  - [scikit-fem](https://github.com/kinnala/scikit-fem)
+  - [nutils](https://github.com/evalf/nutils) 
+  - [felupe](https://github.com/adtzlr/felupe)
+- Differentiable 
+  - [jaxfem](https://github.com/deepmodeling/jax-fem)

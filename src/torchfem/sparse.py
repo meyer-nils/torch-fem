@@ -39,6 +39,7 @@ class Solve(Function):
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
             raise ValueError("A should be a square 2D matrix.")
         shape = A.size()
+        out_device = b.device
 
         # Move to requested device, if available
         if device is not None:
@@ -49,7 +50,14 @@ class Solve(Function):
         if direct is not None:
             direct = shape[0] < 10000
 
-        if A.device.type == "cuda" and cupy_available:
+        if A.device.type == "cuda":
+            if not cupy_available:
+                raise RuntimeError(
+                    "CuPy is not available.\n\n"
+                    "Please install CuPy to use GPU acceleration:\n"
+                    "> pip install cupy-cuda11x # v11.2 - 11.8\n"
+                    "> pip install cupy-cuda12x # v12.x"
+                )
             A_cp = cupy_coo_matrix(
                 (
                     cupy.asarray(A._values()),
@@ -101,7 +109,7 @@ class Solve(Function):
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
 
         # Convert back to torch
-        x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=b.device)
+        x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=out_device)
 
         return x
 
