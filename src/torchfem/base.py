@@ -291,8 +291,7 @@ class FEM(ABC):
             device (str): Device to run the computation on.
             return_intermediate (bool): Return intermediate values if True.
             aggregate_integration_points (bool): Aggregate integration points if True.
-            u0 (Tensor): Initial displacement guess.
-            gradb (Tensor): Gradient storage for the solver.
+            nlgeom (bool): Use nonlinear geometry if True.
         """
         # Number of increments
         N = len(increments)
