@@ -363,8 +363,11 @@ class FEM(ABC):
                 else:
                     cached_solve = CachedSolve()
                     
+                # Only update cache on first iteration
+                update_cache=i==0
+                    
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, cached_solve, update_cache=i==0) 
+                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, cached_solve, update_cache) 
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
