@@ -17,12 +17,29 @@ try:
 except ImportError:
     cupy_available = False
 
-class GradStorage:
-    def __init__(self):
-        self.previous_gradb = None
+        
+class CachedSolve:
+    def __init__(self, previous_x=None, previous_grad=None):
+        """Cache for the previous solution and gradient.
+        
+        This is used to warm-start the solver in the next iteration.
+        previous_x is updated during the forward pass,
+        and previous_grad is updated during the backward pass.
+        
+        Args:
+            previous_x (Tensor, optional): Previous solution tensor.
+            previous_grad (Tensor, optional): Previous gradient tensor.
+        If None, the cache is empty.
+        """
+        
+        self.previous_x = previous_x
+        self.previous_grad = previous_grad
+
+    def update_grad(self, grad):
+        self.previous_grad = grad.detach().clone() if grad is not None else None
     
-    def update(self, gradb):
-        self.previous_gradb = gradb.detach().clone() if gradb is not None else None
+    def update_x(self, x):
+        self.previous_x = x.detach().clone() if x is not None else None
 
 class Solve(Function):
     """
@@ -33,7 +50,7 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None, x0=None, gradb_storage=None):
+    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None, cached_solve=CachedSolve()):
         
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
@@ -66,8 +83,8 @@ class Solve(Function):
                 shape=shape,
             ).tocsr()
             b_cp = cupy.asarray(b.data)
-            if x0 is not None:
-                x0_cp = cupy.asarray(x0.data)
+            if cached_solve.previous_x is not None:
+                x0_cp = cupy.asarray(cached_solve.previous_x.data) 
             else:
                 x0_cp = None
             if direct:
@@ -87,8 +104,8 @@ class Solve(Function):
                 (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
             ).tocsr()
             b_np = b.data.numpy()
-            if x0 is not None:
-                x0_np = x0.data.numpy()
+            if cached_solve.previous_x is not None:
+                x0_np = cached_solve.previous_x.data.numpy()
             else:
                 x0_np = None
             if B is None:
@@ -110,6 +127,9 @@ class Solve(Function):
 
         # Convert back to torch
         x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=out_device)
+        
+        # Update cached solve with the current solution
+        cached_solve.update_x(x.detach().clone())
 
         return x
 
@@ -119,7 +139,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M, ctx.gradb_storage.previous_gradb)
+        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M, CachedSolve(previous_x=ctx.cached_solve.previous_grad))
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A._indices()[0, :]
@@ -128,13 +148,13 @@ class Solve(Function):
         gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
         
         # Update storage for next iteration
-        ctx.gradb_storage.update(gradb)
+        ctx.cached_solve.update_grad(gradb.detach().clone())
 
-        return gradA, gradb, None, None, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        A, b, B, rtol, device, direct, M, x0, gradb_storage = inputs
+        A, b, B, rtol, device, direct, M, cached_solve = inputs
         x = output
         ctx.save_for_backward(A, x)
 
@@ -144,8 +164,7 @@ class Solve(Function):
         ctx.direct = direct
         ctx.B = B
         ctx.M = M
-        ctx.x0 = x0
-        ctx.gradb_storage = gradb_storage
+        ctx.cached_solve = cached_solve
 
 
 sparse_solve = Solve.apply

@@ -6,11 +6,11 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import sparse_solve, GradStorage
+from .sparse import sparse_solve, CachedSolve
 
 
 class FEM(ABC):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, use_cached_solve: bool = False):
         """Initialize a general FEM problem."""
 
         # Store nodes and elements
@@ -43,6 +43,10 @@ class FEM(ABC):
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
+        
+        # Cached solve for sparse linear systems
+        self.use_cached_solve = use_cached_solve
+        self.cached_solve = CachedSolve()
 
     @property
     def forces(self) -> Tensor:
@@ -273,8 +277,6 @@ class FEM(ABC):
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
         nlgeom: bool = False,
-        u0: Tensor = None,
-        gradb: Tensor = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method.
         
@@ -314,11 +316,7 @@ class FEM(ABC):
 
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
-        if u0 is not None:
-            u0 = -u0.flatten()
-        if "gradb" not in self.__dict__:
-            self.gradb = GradStorage()
-
+        
         # Incremental loading
         for n in range(1, N):
             # Increment size
@@ -360,8 +358,14 @@ class FEM(ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
+                # Use cached solve from previous iteration if available
+                if i==0 and self.use_cached_solve:
+                    cached_solve = self.cached_solve
+                else:
+                    cached_solve = CachedSolve()
+                    
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, u0 if i==0 else None, self.gradb)
+                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, cached_solve) 
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
