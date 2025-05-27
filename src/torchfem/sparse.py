@@ -50,7 +50,7 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None, cached_solve=CachedSolve()):
+    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None, cached_solve=CachedSolve(), update_cache=True):
         
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
@@ -126,7 +126,8 @@ class Solve(Function):
         x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=out_device)
         
         # Update cached solve with the current solution
-        cached_solve.update_x(x.detach().clone())
+        if update_cache:
+            cached_solve.update_x(x.detach().clone())
 
         return x
 
@@ -145,13 +146,14 @@ class Solve(Function):
         gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
         
         # Update storage for next iteration
-        ctx.cached_solve.update_grad(gradb.detach().clone())
+        if ctx.update_cache:
+            ctx.cached_solve.update_grad(gradb.detach().clone())
 
-        return gradA, gradb, None, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        A, b, B, rtol, device, direct, M, cached_solve = inputs
+        A, b, B, rtol, device, direct, M, cached_solve, update_cache = inputs
         x = output
         ctx.save_for_backward(A, x)
 
@@ -162,6 +164,7 @@ class Solve(Function):
         ctx.B = B
         ctx.M = M
         ctx.cached_solve = cached_solve
+        ctx.update_cache = update_cache
 
 
 sparse_solve = Solve.apply
