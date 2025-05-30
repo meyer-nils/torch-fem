@@ -4,6 +4,7 @@ from typing import Callable
 
 import torch
 from torch import Tensor
+from torch.func import jacrev, vmap
 
 from .utils import (
     stiffness2voigt,
@@ -272,6 +273,112 @@ class IsotropicHencky3D(IsotropicElasticity3D):
         return sigma_new, state_new, ddsdde
 
 
+class Hyperelastic3D(Material):
+    """Hyperelastic material.
+
+    This class implements a hyper-elastic material model suitable for large
+    deformations, e.g., for rubber-like materials.
+
+    Attributes:
+        psi (Callable): Function that computes the strain energy density.
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `psi` accepts batch dimensions.
+
+    """
+
+    def __init__(self, psi: Callable):
+
+        # Store the strain energy density function
+        self.psi = psi
+
+        # There are no internal variables
+        self.n_state = 0
+
+        # Check if the material is vectorized
+        self.is_vectorized = True
+
+    def vectorize(self, n_elem: int):
+        return self
+
+    def rotate(self, R: Tensor):
+        return self
+
+    def step(
+        self,
+        H_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        dE0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Performs an incremental step for the Neo-Hookean hyperelastic material.
+
+        Args:
+            H_inc (Tensor): Incremental displacement gradient.
+                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                - Shape: `(..., 3, 3)`, same as `H_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                - Shape: `(..., 3, 3)`.
+            state (Tensor): Internal state variables (unused in linear elasticity).
+                - Shape: Arbitrary, remains unchanged.
+            dE0 (Tensor): External deformation gradient increment (e.g., thermal).
+                - Shape: `(..., 3, 3)`.
+
+        Returns:
+            tuple:
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                Shape: `(..., 3, 3)`.
+                - **state_new (Tensor)**: Updated internal state (unchanged).
+                Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 3, 3, 3, 3)`.
+        """
+        # Compute deformation gradient
+        F_new = F + H_inc
+        # Compute determinant of the deformation gradient
+        J_new = torch.det(F_new)[:, None, None]
+        # Compute right Cauchy-Green tensor
+        C = F_new.transpose(-1, -2) @ F_new
+        C = C.requires_grad_(True)
+        # Compute second Piola-Kirchhoff stress
+        S_new = 2 * vmap(jacrev(self.psi))(C)
+        # Compute Cauchy stress
+        sigma_new = 1 / J_new * F_new @ S_new @ F_new.transpose(-1, -2)
+        # Update internal state (this material does not change state)
+        state_new = state
+        # Algorithmic tangent
+        C_SE = 4 * vmap(jacrev(jacrev(self.psi)))(C)
+        ddsdde = (
+            torch.einsum(
+                "...iI,...jJ,...kK,...lL,...IJKL->...ijkl",
+                F_new,
+                F_new,
+                F_new,
+                F_new,
+                C_SE,
+            )
+            / J_new[:, None, None]
+        )
+        # lbd = 384.615
+        # mu0 = 576.923
+        # mu = mu0 - lbd * torch.log(J_new)
+        # I2 = torch.eye(3)
+        # ddsdde = (
+        #     1
+        #     / J_new[:, None, None]
+        #     * (
+        #         lbd * torch.einsum("ij,kl->ijkl", I2, I2)
+        #         + mu[:, None, None]
+        #         * (
+        #             torch.einsum("ik,jl->ijkl", I2, I2)
+        #             + torch.einsum("il,jk->ijkl", I2, I2)
+        #         )
+        #     )
+        # )
+        return sigma_new, state_new, ddsdde
+
+
 class NeoHookean3D(Material):
     """Neo-Hookean material.
 
@@ -284,18 +391,15 @@ class NeoHookean3D(Material):
     '''
 
     Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        n_state (int): Number of internal state variables (here: 0).
-        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
         G (Tensor): Material parameter for shear modulus. Equal to 2 x the shear modulus
             or C10 in Abaqus.
             Shape: `()` (scalar) or `(N,)` (batch).
         D (Tensor): Material parameter for compressibility. Equal to 2 x the bulk
             modulus or D1 in Abaqus.
             Shape: `()` (scalar) or `(N,)` (batch).
+        n_state (int): Number of internal state variables (here: 0).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+
 
     """
 
@@ -368,35 +472,10 @@ class NeoHookean3D(Material):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                 Shape: `(..., 3, 3, 3, 3)`.
         """
-
-        def psi(F: Tensor) -> Tensor:
-            """Compute the strain energy density function."""
-            # Compute determinant of the deformation gradient
-            J = torch.det(F)[:, None, None]
-            # Compute distortion gradient (deviatoric part of the deformation gradient)
-            F_bar = F * J ** (-1 / 3)
-            # Compute deviatoric left Cauchy-Green tensor
-            B_bar = F_bar @ F_bar.transpose(-1, -2)
-            # Compute strain energy density
-            G = self.G[:, None, None]
-            D = self.D[:, None, None]
-            trB = torch.einsum("...ii->...", B_bar)[:, None, None]
-            return G * (trB - 3) + 1 / D * (J - 1) ** 2
-
-        def sigma(F: Tensor) -> Tensor:
-            """Compute the Cauchy stress tensor."""
-            # Compute determinant of the deformation gradient
-            J = torch.det(F)[:, None, None]
-            # Compute first Piola-Kirchhoff stress by differentiating psi
-            P = torch.autograd.grad(psi(F).sum(), F)[0]
-            # Return Cauchy stress
-            return P @ F.transpose(-1, -2) / J
-
         # Identity tensors
         I2 = torch.eye(H_inc.shape[-1])
         # Compute deformation gradient
         F_new = F + H_inc
-        F_new = F_new.requires_grad_(True)
         # Compute determinant of the deformation gradient
         J_new = torch.det(F_new)[:, None, None]
         # Compute distortion gradient (deviatoric part of the deformation gradient)
@@ -406,8 +485,8 @@ class NeoHookean3D(Material):
         # Compute Cauchy stress
         G = self.G[:, None, None]
         D = self.D[:, None, None]
-        # Compute Cauchy stress
-        sigma_new = sigma(F_new)
+        trB = torch.einsum("...ii->...", B_bar)[:, None, None]
+        sigma_new = 2 / J_new * G * (B_bar - trB / 3 * I2) + 2 / D * (J_new - 1) * I2
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
