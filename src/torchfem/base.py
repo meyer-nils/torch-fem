@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, Literal
 
 import torch
 from torch import Tensor
@@ -274,6 +274,7 @@ class FEM(ABC):
         verbose: bool = False,
         direct: bool = None,
         device: str = None,
+        method: Literal["MINRES", "CG"] = "MINRES",
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
         nlgeom: bool = False,
@@ -367,7 +368,7 @@ class FEM(ABC):
                 update_cache=i==0
                     
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, cached_solve, update_cache) 
+                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, method, cached_solve, update_cache) 
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")

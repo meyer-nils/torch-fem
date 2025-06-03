@@ -2,6 +2,7 @@ import pyamg
 import torch
 from scipy.sparse import coo_matrix as scipy_coo_matrix
 from scipy.sparse.linalg import minres as scipy_minres
+from scipy.sparse.linalg import cg as scipy_cg
 from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
 from torch.autograd import Function
@@ -11,6 +12,7 @@ try:
     from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
     from cupyx.scipy.sparse import diags as cupy_diags
     from cupyx.scipy.sparse.linalg import minres as cupy_minres
+    from cupyx.scipy.sparse.linalg import cg as cupy_cg
     from cupyx.scipy.sparse.linalg import spsolve as cupy_spsolve
 
     cupy_available = True
@@ -50,7 +52,7 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None, cached_solve=CachedSolve(), update_cache=True):
+    def forward(A, b, B=None, rtol=1e-10, device=None, direct=None, M=None, method="MINRES", cached_solve=CachedSolve(), update_cache=True):
         
         # Check the input shape
         if A.ndim != 2 or (A.shape[0] != A.shape[1]):
@@ -93,7 +95,10 @@ class Solve(Function):
                 # Jacobi preconditioner
                 M = cupy_diags(1.0 / A_cp.diagonal())
                 # Solve with minres
-                x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
+                if method == "MINRES":
+                    x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
+                elif method == "CG":
+                    x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
         else:
@@ -118,7 +123,10 @@ class Solve(Function):
                     M = ml.aspreconditioner()
 
                 # Solve with minres
-                x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=rtol, x0=x0_np)
+                if method == "MINRES":
+                    x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=rtol, x0=x0_np)
+                elif method == "CG":
+                    x_xp, exit_code = scipy_cg(A_np, b_np, M=M, rtol=rtol, x0=x0_np)
                 if exit_code != 0:
                     raise RuntimeError(f"minres failed with exit code {exit_code}")
 
@@ -137,7 +145,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M, CachedSolve(previous_x=ctx.cached_solve.previous_grad))
+        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.direct, ctx.M, ctx.method, CachedSolve(previous_x=ctx.cached_solve.previous_grad))
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A._indices()[0, :]
@@ -149,11 +157,11 @@ class Solve(Function):
         if ctx.update_cache:
             ctx.cached_solve.update_grad(gradb.detach().clone())
 
-        return gradA, gradb, None, None, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        A, b, B, rtol, device, direct, M, cached_solve, update_cache = inputs
+        A, b, B, rtol, device, direct, M, method, cached_solve, update_cache = inputs
         x = output
         ctx.save_for_backward(A, x)
 
@@ -165,6 +173,7 @@ class Solve(Function):
         ctx.M = M
         ctx.cached_solve = cached_solve
         ctx.update_cache = update_cache
+        ctx.method = method
 
 
 sparse_solve = Solve.apply
