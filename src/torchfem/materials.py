@@ -336,6 +336,8 @@ class Hyperelastic3D(Material):
         """
         # Compute deformation gradient
         F_new = F + H_inc
+        # Mask small values to avoid numerical issues
+        F_new = torch.where(F_new.abs() < 1e-6, torch.zeros_like(F_new), F_new)
         # Compute determinant of the deformation gradient
         J_new = torch.det(F_new)[:, None, None]
         # Compute right Cauchy-Green tensor
@@ -360,173 +362,10 @@ class Hyperelastic3D(Material):
             )
             / J_new[:, None, None]
         )
-        # lbd = 384.615
-        # mu0 = 576.923
-        # mu = mu0 - lbd * torch.log(J_new)
-        # I2 = torch.eye(3)
-        # ddsdde = (
-        #     1
-        #     / J_new[:, None, None]
-        #     * (
-        #         lbd * torch.einsum("ij,kl->ijkl", I2, I2)
-        #         + mu[:, None, None]
-        #         * (
-        #             torch.einsum("ik,jl->ijkl", I2, I2)
-        #             + torch.einsum("il,jk->ijkl", I2, I2)
-        #         )
-        #     )
-        # )
+        # Ensure symmetry of the tangent stiffness tensor
+        ddsdde = 0.5 * (ddsdde + ddsdde.transpose(-1, -2))
+        ddsdde = 0.5 * (ddsdde + ddsdde.transpose(-3, -4))
         return sigma_new, state_new, ddsdde
-
-
-class NeoHookean3D(Material):
-    """Neo-Hookean material.
-
-    This class implements a hyper-elastic material model based on the Neo-Hooke
-    formulation, suitable for large deformations, e.g., for rubber-like materials.
-
-    Strain energy density function:
-    '''
-        \\psi = G (tr(B) - 3) + \\frac{1}{D} (J-1)^2
-    '''
-
-    Attributes:
-        G (Tensor): Material parameter for shear modulus. Equal to 2 x the shear modulus
-            or C10 in Abaqus.
-            Shape: `()` (scalar) or `(N,)` (batch).
-        D (Tensor): Material parameter for compressibility. Equal to 2 x the bulk
-            modulus or D1 in Abaqus.
-            Shape: `()` (scalar) or `(N,)` (batch).
-        n_state (int): Number of internal state variables (here: 0).
-        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-
-
-    """
-
-    def __init__(self, G: float | Tensor, D: float | Tensor):
-        # Convert float inputs to tensors
-        if isinstance(G, float):
-            G = torch.tensor(G)
-        if isinstance(D, float):
-            D = torch.tensor(D)
-
-        # Store material properties
-        self.G = G
-        self.D = D
-
-        # There are no internal variables
-        self.n_state = 0
-
-        # Check if the material is vectorized
-        self.is_vectorized = G.dim() > 0
-
-    def vectorize(self, n_elem: int):
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            NeoHookean3D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            G = self.G.repeat(n_elem)
-            D = self.D.repeat(n_elem)
-            return NeoHookean3D(G, D)
-
-    def step(
-        self,
-        H_inc: Tensor,
-        F: Tensor,
-        sigma: Tensor,
-        state: Tensor,
-        dE0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        """Performs an incremental step for the Neo-Hookean hyperelastic material.
-
-        Args:
-            H_inc (Tensor): Incremental displacement gradient.
-                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
-            F (Tensor): Current deformation gradient.
-                - Shape: `(..., 3, 3)`, same as `H_inc`.
-            sigma (Tensor): Current Cauchy stress tensor.
-                - Shape: `(..., 3, 3)`.
-            state (Tensor): Internal state variables (unused in linear elasticity).
-                - Shape: Arbitrary, remains unchanged.
-            dE0 (Tensor): External deformation gradient increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
-
-        Returns:
-            tuple:
-                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
-                Shape: `(..., 3, 3)`.
-                - **state_new (Tensor)**: Updated internal state (unchanged).
-                Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                Shape: `(..., 3, 3, 3, 3)`.
-        """
-        # Identity tensors
-        I2 = torch.eye(H_inc.shape[-1])
-        # Compute deformation gradient
-        F_new = F + H_inc
-        # Compute determinant of the deformation gradient
-        J_new = torch.det(F_new)[:, None, None]
-        # Compute distortion gradient (deviatoric part of the deformation gradient)
-        F_bar = F_new * J_new ** (-1 / 3)
-        # Compute deviatoric left Cauchy-Green tensor
-        B_bar = F_bar @ F_bar.transpose(-1, -2)
-        # Compute Cauchy stress
-        G = self.G[:, None, None]
-        D = self.D[:, None, None]
-        trB = torch.einsum("...ii->...", B_bar)[:, None, None]
-        sigma_new = 2 / J_new * G * (B_bar - trB / 3 * I2) + 2 / D * (J_new - 1) * I2
-        # Update internal state (this material does not change state)
-        state_new = state
-        # Algorithmic tangent
-        ddsdde = 2 * G[:, None, None] / J_new[:, None, None] * (
-            0.5
-            * (
-                torch.einsum("...ik,...jl->...ijkl", I2, B_bar)
-                + torch.einsum("...ik,...jl->...ijkl", B_bar, I2)
-                + torch.einsum("...il,...jk->...ijkl", I2, B_bar)
-                + torch.einsum("...il,...jk->...ijkl", B_bar, I2)
-            )
-            - 2
-            / 3
-            * (
-                torch.einsum("...ij,...kl->...ijkl", I2, B_bar)
-                + torch.einsum("...ij,...kl->...ijkl", B_bar, I2)
-            )
-            + 2 / 9 * torch.einsum("...ij,...kl,...mm->...ijkl", I2, I2, B_bar)
-        ) + 2 / D[:, None, None] * (2 * J_new[:, None, None] - 1) * torch.einsum(
-            "...ij,...kl->...ijkl", I2, I2
-        )
-        return sigma_new, state_new, ddsdde
-
-    def rotate(self, R: Tensor):
-        """Rotates the material using a given rotation matrix.
-
-        For isotropic materials, rotation has no effect, since their properties
-        remain unchanged under coordinate transformations. This function exists for API
-        consistency with anisotropic materials.
-
-        Args:
-            R (Tensor): Rotation matrix of shape `(3, 3)` or `(..., 3, 3)` for batched
-            rotations.
-
-        Returns:
-            NeoHookean3D: The same material instance (no effect).
-
-        """
-        print("Rotating an isotropic material has no effect.")
-        return self
 
 
 class IsotropicPlasticity3D(IsotropicElasticity3D):
