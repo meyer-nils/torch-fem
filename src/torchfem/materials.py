@@ -336,8 +336,6 @@ class Hyperelastic3D(Material):
         """
         # Compute deformation gradient
         F_new = F + H_inc
-        # Mask small values to avoid numerical issues
-        F_new = torch.where(F_new.abs() < 1e-6, torch.zeros_like(F_new), F_new)
         # Compute determinant of the deformation gradient
         J_new = torch.det(F_new)[:, None, None]
         # Compute right Cauchy-Green tensor
@@ -349,8 +347,9 @@ class Hyperelastic3D(Material):
         sigma_new = 1 / J_new * F_new @ S_new @ F_new.transpose(-1, -2)
         # Update internal state (this material does not change state)
         state_new = state
-        # Algorithmic tangent
+        # Algorithmic material tangent stiffness tensor
         C_SE = 4 * vmap(jacrev(jacrev(self.psi)))(C)
+        # Algorithmic spatial tangent stiffness tensor (push forward + geo. stiffness)
         ddsdde = (
             torch.einsum(
                 "...iI,...jJ,...kK,...lL,...IJKL->...ijkl",
@@ -360,11 +359,14 @@ class Hyperelastic3D(Material):
                 F_new,
                 C_SE,
             )
-            / J_new[:, None, None]
-        )
-        # Ensure symmetry of the tangent stiffness tensor
-        ddsdde = 0.5 * (ddsdde + ddsdde.transpose(-1, -2))
-        ddsdde = 0.5 * (ddsdde + ddsdde.transpose(-3, -4))
+            + 0.5
+            * (
+                torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
+                + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
+                + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
+                + torch.einsum("...jl,...ik->...ijkl", sigma_new, torch.eye(3))
+            )
+        ) / J_new[:, None, None]
         return sigma_new, state_new, ddsdde
 
 
