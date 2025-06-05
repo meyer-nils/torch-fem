@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Literal, Tuple
 
 import torch
 from torch import Tensor
@@ -268,7 +268,7 @@ class FEM(ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         verbose: bool = False,
-        method: str = None,
+        method: Literal["spsolve", "minres", "cg", "pardiso"] = None,
         device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
