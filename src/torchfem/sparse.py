@@ -153,7 +153,9 @@ class Solve(Function):
             shape=shape,
         ).tocsr()
         b_cp = cupy.asarray(b.data)
-        if method == "spsolve":
+        if method == "pardiso":
+            raise RuntimeError("Pardiso backend is not available on GPU.")
+        elif method == "spsolve":
             x_xp = cupy_spsolve(A_cp, b_cp)
         elif method == "minres":
             # Jacobi preconditioner
