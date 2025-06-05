@@ -1,16 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, Literal
 
 import torch
 from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import sparse_solve
+from .sparse import sparse_solve, CachedSolve
 
 
 class FEM(ABC):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, use_cached_solve: bool = False):
         """Initialize a general FEM problem."""
 
         # Store nodes and elements
@@ -43,6 +43,10 @@ class FEM(ABC):
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
+        
+        # Cached solve for sparse linear systems
+        self.use_cached_solve = use_cached_solve
+        self.cached_solve = CachedSolve()
 
     @property
     def forces(self) -> Tensor:
@@ -270,11 +274,26 @@ class FEM(ABC):
         verbose: bool = False,
         direct: bool = None,
         device: str = None,
+        method: Literal["MINRES", "CG"] = "MINRES",
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
         nlgeom: bool = False,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Solve the FEM problem with the Newton-Raphson method."""
+        """Solve the FEM problem with the Newton-Raphson method.
+        
+        Args:
+            increments (Tensor): Load increments.
+            max_iter (int): Maximum number of iterations.
+            rtol (float): Relative tolerance for convergence.
+            atol (float): Absolute tolerance for convergence.
+            stol (float): Stopping tolerance for the solver.
+            verbose (bool): Print iteration information.
+            direct (bool): Use direct solver if True, otherwise use iterative solver.
+            device (str): Device to run the computation on.
+            return_intermediate (bool): Return intermediate values if True.
+            aggregate_integration_points (bool): Aggregate integration points if True.
+            nlgeom (bool): Use nonlinear geometry if True.
+        """
         # Number of increments
         N = len(increments)
 
@@ -297,7 +316,7 @@ class FEM(ABC):
 
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
-
+        
         # Incremental loading
         for n in range(1, N):
             # Increment size
@@ -339,8 +358,17 @@ class FEM(ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
+                # Use cached solve from previous iteration if available
+                if i==0 and self.use_cached_solve:
+                    cached_solve = self.cached_solve
+                else:
+                    cached_solve = CachedSolve()
+                    
+                # Only update cache on first iteration
+                update_cache=i==0
+                    
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, direct)
+                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, method, cached_solve, update_cache) 
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
