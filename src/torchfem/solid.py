@@ -8,10 +8,10 @@ from .materials import Material
 
 
 class Solid(FEM):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, **kwargs):
         """Initialize the solid FEM problem."""
 
-        super().__init__(nodes, elements, material)
+        super().__init__(nodes, elements, material, **kwargs)
 
         # Set element type depending on number of nodes per element
         if len(elements[0]) == 4:
@@ -129,7 +129,7 @@ class Solid(FEM):
             threshold_condition = torch.ones(self.n_elem, dtype=torch.bool)
 
         # Apply threshold to recover subshape
-        mesh = mesh.extract_cells(threshold_condition.numpy())
+        mesh = mesh.extract_cells(threshold_condition.cpu().numpy())
 
         # Plot orientations
         if orientations is not None:
@@ -137,8 +137,8 @@ class Solid(FEM):
             for j, color in enumerate(["red", "green", "blue"]):
                 directions = orientations[:, j, :]
                 pl.add_arrows(
-                    ecenters.numpy()[threshold_condition],
-                    directions.numpy()[threshold_condition],
+                    ecenters.cpu().numpy()[threshold_condition],
+                    directions.cpu().numpy()[threshold_condition],
                     mag=0.5,
                     color=color,
                     show_scalar_bar=False,
