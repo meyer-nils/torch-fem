@@ -40,7 +40,7 @@ pip install cupy-cuda12x # v12.x
   - Orthotropic linear elasticity
   - Isotropic small strain plasticity
   - Logarithmic finite strain elasticity
-  - Neo-Hookean hyperelasticity
+  - Hyperelasticity (via automatic differentiation of their energy function)
   - Custom user material interface
 - Utilities
   - Homogenization of orthotropic elasticity for composites
@@ -209,3 +209,4 @@ There are many alternative FEM solvers in Python that you may also consider:
   - [felupe](https://github.com/adtzlr/felupe)
 - Differentiable 
   - [jaxfem](https://github.com/deepmodeling/jax-fem)
+  - [PyTorch FEA](https://github.com/liangbright/pytorch_fea)

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Literal, Tuple
 
 import torch
 from torch import Tensor
@@ -268,13 +268,32 @@ class FEM(ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         verbose: bool = False,
-        direct: bool = None,
+        method: Literal["spsolve", "minres", "cg", "pardiso"] = None,
         device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
         nlgeom: bool = False,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Solve the FEM problem with the Newton-Raphson method."""
+        """Solve the FEM problem with the Newton-Raphson method.
+
+        Args:
+            increments (Tensor): Load increment stepping.
+            max_iter (int): Maximum number of iterations during Newton-Raphson.
+            rtol (float): Relative tolerance for Newton-Raphson convergence.
+            atol (float): Absolute tolerance for Newton-Raphson convergence.
+            stol (float): Solver tolerance for iterative methods.
+            verbose (bool): Print iteration information.
+            method (str): Method for linear solve ('spsolve','minres','cg','pardiso').
+            device (str): Device to run the linear solve on.
+            return_intermediate (bool): Return intermediate values if True.
+            aggregate_integration_points (bool): Aggregate integration points if True.
+            nlgeom (bool): Use nonlinear geometry if True.
+
+        Returns:
+                Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]: Final displacements,
+                internal forces, stress, deformation gradient, and material state.
+
+        """
         # Number of increments
         N = len(increments)
 
@@ -340,7 +359,7 @@ class FEM(ABC):
                     break
 
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, direct)
+                du -= sparse_solve(self.K, residual, B, stol, device, method)
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")

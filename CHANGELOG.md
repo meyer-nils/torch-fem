@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## Version 0.4.4 - June 04 2025 
+
+### Changed
+- The 'NeoHookean3D' material model has been replaced by a general 'Hyperelastic3D' model. This accepts an energy function depending on the right Cauchy Green tensor and computes Cauchy stress and the spatial material tangent using automatic differentiation.
+- Example 'basic/planar/large_stretch' is updated to use the new 'Hyperelastic3D' model.
+- Example 'basic/planar/rubber_stretch' is updated to use the new 'Hyperelastic3D' model.
+
+
 ## Version 0.4.3 - April 04 2025 
 
 ### Changed

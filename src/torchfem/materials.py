@@ -4,6 +4,7 @@ from typing import Callable
 
 import torch
 from torch import Tensor
+from torch.func import jacrev, vmap
 
 from .utils import (
     stiffness2voigt,
@@ -272,70 +273,35 @@ class IsotropicHencky3D(IsotropicElasticity3D):
         return sigma_new, state_new, ddsdde
 
 
-class NeoHookean3D(Material):
-    """Neo-Hookean material.
+class Hyperelastic3D(Material):
+    """Hyperelastic material.
 
-    This class implements a hyper-elastic material model based on the Neo-Hooke
-    formulation, suitable for large deformations, e.g., for rubber-like materials.
-
-    Strain energy density function:
-    '''
-        \\psi = G (tr(B) - 3) + \\frac{1}{D} (J-1)^2
-    '''
+    This class implements a hyper-elastic material model suitable for large
+    deformations, e.g., for rubber-like materials.
 
     Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        psi (Callable): Function that computes the strain energy density.
         n_state (int): Number of internal state variables (here: 0).
-        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-        G (Tensor): Material parameter for shear modulus. Equal to 2 x the shear modulus
-            or C10 in Abaqus.
-            Shape: `()` (scalar) or `(N,)` (batch).
-        D (Tensor): Material parameter for compressibility. Equal to 2 x the bulk
-            modulus or D1 in Abaqus.
-            Shape: `()` (scalar) or `(N,)` (batch).
+        is_vectorized (bool): `True` if `psi` accepts batch dimensions.
 
     """
 
-    def __init__(self, G: float | Tensor, D: float | Tensor):
-        # Convert float inputs to tensors
-        if isinstance(G, float):
-            G = torch.tensor(G)
-        if isinstance(D, float):
-            D = torch.tensor(D)
+    def __init__(self, psi: Callable):
 
-        # Store material properties
-        self.G = G
-        self.D = D
+        # Store the strain energy density function
+        self.psi = psi
 
         # There are no internal variables
         self.n_state = 0
 
         # Check if the material is vectorized
-        self.is_vectorized = G.dim() > 0
+        self.is_vectorized = True
 
     def vectorize(self, n_elem: int):
-        """Returns a vectorized copy of the material for `n_elem` elements.
+        return self
 
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            NeoHookean3D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            G = self.G.repeat(n_elem)
-            D = self.D.repeat(n_elem)
-            return NeoHookean3D(G, D)
+    def rotate(self, R: Tensor):
+        return self
 
     def step(
         self,
@@ -368,61 +334,40 @@ class NeoHookean3D(Material):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                 Shape: `(..., 3, 3, 3, 3)`.
         """
-        # Identity tensors
-        I2 = torch.eye(H_inc.shape[-1])
         # Compute deformation gradient
         F_new = F + H_inc
         # Compute determinant of the deformation gradient
         J_new = torch.det(F_new)[:, None, None]
-        # Compute distortion gradient (deviatoric part of the deformation gradient)
-        F_bar = F_new * J_new ** (-1 / 3)
-        # Compute deviatoric left Cauchy-Green tensor
-        B_bar = F_bar @ F_bar.transpose(-1, -2)
+        # Compute right Cauchy-Green tensor
+        C = F_new.transpose(-1, -2) @ F_new
+        C = C.requires_grad_(True)
+        # Compute second Piola-Kirchhoff stress
+        S_new = 2 * vmap(jacrev(self.psi))(C)
         # Compute Cauchy stress
-        G = self.G[:, None, None]
-        D = self.D[:, None, None]
-        trB = torch.einsum("...ii->...", B_bar)[:, None, None]
-        sigma_new = 2 / J_new * G * (B_bar - trB / 3 * I2) + 2 / D * (J_new - 1) * I2
+        sigma_new = 1 / J_new * F_new @ S_new @ F_new.transpose(-1, -2)
         # Update internal state (this material does not change state)
         state_new = state
-        # Algorithmic tangent
-        ddsdde = 2 * G[:, None, None] / J_new[:, None, None] * (
-            0.5
-            * (
-                torch.einsum("...ik,...jl->...ijkl", I2, B_bar)
-                + torch.einsum("...ik,...jl->...ijkl", B_bar, I2)
-                + torch.einsum("...il,...jk->...ijkl", I2, B_bar)
-                + torch.einsum("...il,...jk->...ijkl", B_bar, I2)
+        # Algorithmic material tangent stiffness tensor
+        C_SE = 4 * vmap(jacrev(jacrev(self.psi)))(C)
+        # Algorithmic spatial tangent stiffness tensor (push forward + geo. stiffness)
+        ddsdde = (
+            torch.einsum(
+                "...iI,...jJ,...kK,...lL,...IJKL->...ijkl",
+                F_new,
+                F_new,
+                F_new,
+                F_new,
+                C_SE,
             )
-            - 2
-            / 3
+            + 0.5
             * (
-                torch.einsum("...ij,...kl->...ijkl", I2, B_bar)
-                + torch.einsum("...ij,...kl->...ijkl", B_bar, I2)
+                torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
+                + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
+                + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
+                + torch.einsum("...jl,...ik->...ijkl", sigma_new, torch.eye(3))
             )
-            + 2 / 9 * torch.einsum("...ij,...kl,...mm->...ijkl", I2, I2, B_bar)
-        ) + 2 / D[:, None, None] * (2 * J_new[:, None, None] - 1) * torch.einsum(
-            "...ij,...kl->...ijkl", I2, I2
-        )
+        ) / J_new[:, None, None]
         return sigma_new, state_new, ddsdde
-
-    def rotate(self, R: Tensor):
-        """Rotates the material using a given rotation matrix.
-
-        For isotropic materials, rotation has no effect, since their properties
-        remain unchanged under coordinate transformations. This function exists for API
-        consistency with anisotropic materials.
-
-        Args:
-            R (Tensor): Rotation matrix of shape `(3, 3)` or `(..., 3, 3)` for batched
-            rotations.
-
-        Returns:
-            NeoHookean3D: The same material instance (no effect).
-
-        """
-        print("Rotating an isotropic material has no effect.")
-        return self
 
 
 class IsotropicPlasticity3D(IsotropicElasticity3D):
