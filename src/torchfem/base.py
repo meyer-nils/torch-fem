@@ -45,7 +45,6 @@ class FEM(ABC):
         self.etype: Element
         
         # Cached solve for sparse linear systems
-        self.use_cached_solve = use_cached_solve
         self.cached_solve = CachedSolve()
 
     @property
@@ -276,6 +275,7 @@ class FEM(ABC):
         device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
+        use_cached_solve: bool = False,
         nlgeom: bool = False,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method.
@@ -358,7 +358,7 @@ class FEM(ABC):
                     break
 
                 # Use cached solve from previous iteration if available
-                if i==0 and self.use_cached_solve:
+                if i==0 and use_cached_solve:
                     cached_solve = self.cached_solve
                 else:
                     cached_solve = CachedSolve()
