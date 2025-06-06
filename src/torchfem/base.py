@@ -10,7 +10,7 @@ from .sparse import sparse_solve, CachedSolve
 
 
 class FEM(ABC):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, use_cached_solve: bool = False):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a general FEM problem."""
 
         # Store nodes and elements
