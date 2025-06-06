@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Literal, Tuple
 
 import torch
 from torch import Tensor
@@ -271,7 +271,7 @@ class FEM(ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         verbose: bool = False,
-        direct: bool = None,
+        method: Literal["spsolve", "minres", "cg", "pardiso"] = None,
         device: str = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
@@ -279,19 +279,24 @@ class FEM(ABC):
         nlgeom: bool = False,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method.
-        
+
         Args:
-            increments (Tensor): Load increments.
-            max_iter (int): Maximum number of iterations.
-            rtol (float): Relative tolerance for convergence.
-            atol (float): Absolute tolerance for convergence.
-            stol (float): Stopping tolerance for the solver.
+            increments (Tensor): Load increment stepping.
+            max_iter (int): Maximum number of iterations during Newton-Raphson.
+            rtol (float): Relative tolerance for Newton-Raphson convergence.
+            atol (float): Absolute tolerance for Newton-Raphson convergence.
+            stol (float): Solver tolerance for iterative methods.
             verbose (bool): Print iteration information.
-            direct (bool): Use direct solver if True, otherwise use iterative solver.
-            device (str): Device to run the computation on.
+            method (str): Method for linear solve ('spsolve','minres','cg','pardiso').
+            device (str): Device to run the linear solve on.
             return_intermediate (bool): Return intermediate values if True.
             aggregate_integration_points (bool): Aggregate integration points if True.
             nlgeom (bool): Use nonlinear geometry if True.
+
+        Returns:
+                Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]: Final displacements,
+                internal forces, stress, deformation gradient, and material state.
+
         """
         # Number of increments
         N = len(increments)
@@ -367,7 +372,7 @@ class FEM(ABC):
                 update_cache=i==0
                     
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, direct, None, cached_solve, update_cache) 
+                du -= sparse_solve(self.K, residual, B, stol, device, method, None, cached_solve, update_cache) 
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
