@@ -30,29 +30,30 @@ try:
 except ImportError:
     pass
 
-        
+
 class CachedSolve:
     def __init__(self, previous_x=None, previous_grad=None):
         """Cache for the previous solution and gradient.
-        
+
         This is used to warm-start the solver in the next iteration.
         previous_x is updated during the forward pass,
         and previous_grad is updated during the backward pass.
-        
+
         Args:
             previous_x (Tensor, optional): Previous solution tensor.
             previous_grad (Tensor, optional): Previous gradient tensor.
         If None, the cache is empty.
         """
-        
+
         self.previous_x = previous_x
         self.previous_grad = previous_grad
 
     def update_grad(self, grad):
         self.previous_grad = grad.detach().clone() if grad is not None else None
-    
+
     def update_x(self, x):
         self.previous_x = x.detach().clone() if x is not None else None
+
 
 class Solve(Function):
     """
@@ -71,8 +72,8 @@ class Solve(Function):
         device: str = None,
         method: str = None,
         M: Tensor = None,
-        cached_solve=CachedSolve(), 
-        update_cache=True
+        cached_solve=CachedSolve(),
+        update_cache=False,
     ):
         """
         Solve the linear system Ax = b.
@@ -90,6 +91,10 @@ class Solve(Function):
                 input size and available backends.
             M (Tensor, optional): Preconditioner matrix for iterative methods.
                 Defaults to None.
+            cached_solve (CachedSolve, optional): Cache for the previous solution and
+                gradient. Defaults to an empty cache.
+            update_cache (bool, optional): Whether to update the cached solution
+                after the forward pass. Defaults to False.
         Returns:
             Tensor: Solution vector x.
         """
@@ -129,7 +134,7 @@ class Solve(Function):
 
         # Convert back to torch
         x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=out_device)
-        
+
         # Update cached solve with the current solution
         if update_cache:
             cached_solve.update_x(x.detach().clone())
@@ -142,14 +147,23 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(A.T, grad, ctx.B, ctx.rtol, ctx.device, ctx.method, ctx.M, CachedSolve(previous_x=ctx.cached_solve.previous_grad))
+        gradb = Solve.apply(
+            A.T,
+            grad,
+            ctx.B,
+            ctx.rtol,
+            ctx.device,
+            ctx.method,
+            ctx.M,
+            CachedSolve(previous_x=ctx.cached_solve.previous_grad),
+        )
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         row = A._indices()[0, :]
         col = A._indices()[1, :]
         val = -gradb[row] * x[col]
         gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
-        
+
         # Update storage for next iteration
         if ctx.update_cache:
             ctx.cached_solve.update_grad(gradb.detach().clone())
@@ -189,7 +203,7 @@ class Solve(Function):
         ).tocsr()
         b_cp = cupy.asarray(b.data)
         if cached_solve.previous_x is not None:
-            x0_cp = cupy.asarray(cached_solve.previous_x.data) 
+            x0_cp = cupy.asarray(cached_solve.previous_x.data)
         else:
             x0_cp = None
         if method == "pardiso":

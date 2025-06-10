@@ -8,10 +8,10 @@ from .materials import Material
 
 
 class Truss(FEM):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material, **kwargs):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem."""
 
-        super().__init__(nodes, elements, material, **kwargs)
+        super().__init__(nodes, elements, material)
 
         # Set up areas
         self.areas = torch.ones((len(elements)))

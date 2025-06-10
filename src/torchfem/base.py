@@ -6,7 +6,7 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import sparse_solve, CachedSolve
+from .sparse import CachedSolve, sparse_solve
 
 
 class FEM(ABC):
@@ -43,7 +43,7 @@ class FEM(ABC):
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
-        
+
         # Cached solve for sparse linear systems
         self.cached_solve = CachedSolve()
 
@@ -291,6 +291,7 @@ class FEM(ABC):
             device (str): Device to run the linear solve on.
             return_intermediate (bool): Return intermediate values if True.
             aggregate_integration_points (bool): Aggregate integration points if True.
+            use_cached_solve (bool): Use cached solve, e.g. in topology optimization.
             nlgeom (bool): Use nonlinear geometry if True.
 
         Returns:
@@ -320,7 +321,7 @@ class FEM(ABC):
 
         # Initialize displacement increment
         du = torch.zeros_like(self.nodes).ravel()
-        
+
         # Incremental loading
         for n in range(1, N):
             # Increment size
@@ -363,16 +364,26 @@ class FEM(ABC):
                     break
 
                 # Use cached solve from previous iteration if available
-                if i==0 and use_cached_solve:
+                if i == 0 and use_cached_solve:
                     cached_solve = self.cached_solve
                 else:
                     cached_solve = CachedSolve()
-                    
+
                 # Only update cache on first iteration
-                update_cache=i==0
-                    
+                update_cache = i == 0
+
                 # Solve for displacement increment
-                du -= sparse_solve(self.K, residual, B, stol, device, method, None, cached_solve, update_cache) 
+                du -= sparse_solve(
+                    self.K,
+                    residual,
+                    B,
+                    stol,
+                    device,
+                    method,
+                    None,
+                    cached_solve,
+                    update_cache,
+                )
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
