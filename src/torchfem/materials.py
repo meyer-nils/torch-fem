@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from math import sqrt
 from typing import Callable
@@ -26,7 +28,7 @@ class Material(ABC):
         pass
 
     @abstractmethod
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> Material:
         pass
 
     @abstractmethod
@@ -36,12 +38,12 @@ class Material(ABC):
         F: Tensor,
         sigma: Tensor,
         state: Tensor,
+        de0: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         pass
 
-    @abstractmethod
-    def rotate(self, R: Tensor):
-        pass
+    def rotate(self, R: Tensor) -> Material:
+        return self
 
 
 class IsotropicElasticity3D(Material):
@@ -51,9 +53,9 @@ class IsotropicElasticity3D(Material):
     assumptions, defined by Young's modulus E and Poisson's ratio ν.
 
     Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
+        E (Tensor | float): Young's modulus. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+        nu (Tensor | float): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
@@ -65,22 +67,16 @@ class IsotropicElasticity3D(Material):
             Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
     """
 
-    def __init__(self, E: float | Tensor, nu: float | Tensor):
+    def __init__(self, E: Tensor | float, nu: Tensor | float):
         # Convert float inputs to tensors
-        if isinstance(E, float):
-            E = torch.tensor(E)
-        if isinstance(nu, float):
-            nu = torch.tensor(nu)
-
-        # Store material properties
-        self.E = E
-        self.nu = nu
+        self.E = torch.as_tensor(E)
+        self.nu = torch.as_tensor(nu)
 
         # There are no internal variables
         self.n_state = 0
 
         # Check if the material is vectorized
-        self.is_vectorized = E.dim() > 0
+        self.is_vectorized = self.E.dim() > 0
 
         # Lame parameters
         self.lbd = self.E * self.nu / ((1.0 + self.nu) * (1.0 - 2.0 * self.nu))
@@ -96,7 +92,7 @@ class IsotropicElasticity3D(Material):
         G = self.G[..., None, None, None, None]
         self.C = lbd * I4 + G * I4S
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicElasticity3D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         This function creates a batched version of the material properties. If the
@@ -124,7 +120,7 @@ class IsotropicElasticity3D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the small-strain isotropic elasticity model.
 
         This function updates the deformation gradient, stress, and internal state
@@ -161,24 +157,6 @@ class IsotropicElasticity3D(Material):
         ddsdde = self.C
         return sigma_new, state_new, ddsdde
 
-    def rotate(self, R: Tensor):
-        """Rotates the material using a given rotation matrix.
-
-        For isotropic materials, rotation has no effect, since their properties
-        remain unchanged under coordinate transformations. This function exists for API
-        consistency with anisotropic materials.
-
-        Args:
-            R (Tensor): Rotation matrix of shape `(3, 3)` or `(..., 3, 3)` for batched
-            rotations.
-
-        Returns:
-            IsotropicElasticity3D: The same material instance (no effect).
-
-        """
-        print("Rotating an isotropic material has no effect.")
-        return self
-
 
 class IsotropicHencky3D(IsotropicElasticity3D):
     """Isotropic Hencky material.
@@ -201,7 +179,7 @@ class IsotropicHencky3D(IsotropicElasticity3D):
             Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
     """
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicHencky3D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         This function creates a batched version of the material properties. If the
@@ -228,8 +206,8 @@ class IsotropicHencky3D(IsotropicElasticity3D):
         F: Tensor,
         sigma: Tensor,
         state: Tensor,
-        dLE0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        de0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Hencky elasticity model.
 
         This function updates the deformation gradient, computes the logarithmic Hencky
@@ -244,7 +222,7 @@ class IsotropicHencky3D(IsotropicElasticity3D):
                 - Shape: `(..., 3, 3)`.
             state (Tensor): Internal state variables (unused in linear elasticity).
                 - Shape: Arbitrary, remains unchanged.
-            dLE0 (Tensor): External logarithmic strain increment (e.g., thermal).
+            de0 (Tensor): External logarithmic strain increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
@@ -265,7 +243,7 @@ class IsotropicHencky3D(IsotropicElasticity3D):
         # Compute Hencky strain
         LE_new = 0.5 * Q @ torch.diag_embed(torch.log(ev)) @ Q.transpose(-1, -2)
         # Compute Cauchy stress
-        sigma_new = torch.einsum("...ijkl,...kl->...ij", self.C, LE_new - dLE0)
+        sigma_new = torch.einsum("...ijkl,...kl->...ij", self.C, LE_new - de0)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
@@ -300,18 +278,15 @@ class Hyperelastic3D(Material):
     def vectorize(self, n_elem: int):
         return self
 
-    def rotate(self, R: Tensor):
-        return self
-
     def step(
         self,
         H_inc: Tensor,
         F: Tensor,
         sigma: Tensor,
         state: Tensor,
-        dE0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        """Performs an incremental step for the Neo-Hookean hyperelastic material.
+        de0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Performs an incremental step for a hyperelastic material.
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
@@ -322,7 +297,7 @@ class Hyperelastic3D(Material):
                 - Shape: `(..., 3, 3)`.
             state (Tensor): Internal state variables (unused in linear elasticity).
                 - Shape: Arbitrary, remains unchanged.
-            dE0 (Tensor): External deformation gradient increment (e.g., thermal).
+            de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
 
         Returns:
@@ -441,7 +416,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment with an elastoplastic model using small strains.
 
         This function updates the deformation gradient, computes the small strain
@@ -570,7 +545,7 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         if self.E.dim() == 0:
             self.C = torch.zeros(2, 2, 2, 2)
         else:
-            self.C = torch.zeros(*E.shape, 2, 2, 2, 2)
+            self.C = torch.zeros(*self.E.shape, 2, 2, 2, 2)
         self.C[..., 0, 0, 0, 0] = fac
         self.C[..., 0, 0, 1, 1] = fac * self.nu
         self.C[..., 1, 1, 0, 0] = fac * self.nu
@@ -725,8 +700,8 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         F: Tensor,
         sigma: Tensor,
         state: Tensor,
-        dLE0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        de0: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Hencky elasticity model.
 
         This function updates the deformation gradient, computes the logarithmic Hencky
@@ -741,7 +716,7 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
                 - Shape: `(..., 2, 2)`.
             state (Tensor): Internal state variables (out-of plane stretch).
                 - Shape: `(...,1)`
-            dLE0 (Tensor): External logarithmic strain increment (e.g., thermal).
+            de0 (Tensor): External logarithmic strain increment (e.g., thermal).
                 - Shape: `(..., 2, 2)`.
 
         Returns:
@@ -757,7 +732,7 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         lbd_z = 1.0 + state[..., 0]
 
         # Local Newton solver to find out-of-plane stretch with plane stress condition
-        for j in range(self.max_iter):
+        for _ in range(self.max_iter):
             # Update deformation gradient
             F_new = torch.zeros(F.shape[0], 3, 3)
             F_new[..., 0:2, 0:2] = F + H_inc
@@ -863,7 +838,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains in Voigt notation.
 
         See: de Souza Neto, E. A., Peri, D., Owen, D. R. J. *Computational Methods for
@@ -991,9 +966,9 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
     under small-strain assumptions, defined by Young's modulus E and Poisson's ratio ν.
 
     Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
+        E (Tensor | float): Young's modulus. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+        nu (Tensor | float): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
@@ -1005,7 +980,7 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
             Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
     """
 
-    def __init__(self, E: float | Tensor, nu: float | Tensor):
+    def __init__(self, E: Tensor | float, nu: Tensor | float):
         super().__init__(E, nu)
 
         # Overwrite the 3D stiffness tensor with a 2D plane strain tensor
@@ -1014,7 +989,7 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         if self.E.dim() == 0:
             self.C = torch.zeros(2, 2, 2, 2)
         else:
-            self.C = torch.zeros(*E.shape, 2, 2, 2, 2)
+            self.C = torch.zeros(*self.E.shape, 2, 2, 2, 2)
         self.C[..., 0, 0, 0, 0] = 2.0 * G + lbd
         self.C[..., 0, 0, 1, 1] = lbd
         self.C[..., 1, 1, 0, 0] = lbd
@@ -1113,7 +1088,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains.
 
 
@@ -1218,14 +1193,10 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 class IsotropicElasticity1D(Material):
     def __init__(self, E: float | Tensor):
         # Convert float inputs to tensors
-        if isinstance(E, float):
-            E = torch.tensor(E)
+        self.E = torch.as_tensor(E)
 
         # Check if the material is vectorized
-        self.is_vectorized = E.dim() > 0
-
-        # Store material properties
-        self.E = E
+        self.is_vectorized = self.E.dim() > 0
 
         # There are no internal variables
         self.n_state = 0
@@ -1249,17 +1220,12 @@ class IsotropicElasticity1D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, H_inc - de0)
         state_new = state
         ddsdde = self.C
         return sigma_new, state_new, ddsdde
-
-    def rotate(self, R: Tensor):
-        """Rotate the material with rotation matrix R."""
-        print("Rotating an isotropic material has no effect.")
-        return self
 
 
 class IsotropicPlasticity1D(IsotropicElasticity1D):
@@ -1298,7 +1264,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Solution variables
         sigma_new = sigma.clone()
@@ -1365,41 +1331,21 @@ class OrthotropicElasticity3D(Material):
         G_23: float | Tensor,
     ):
         # Convert float inputs to tensors
-        if isinstance(E_1, float):
-            E_1 = torch.tensor(E_1)
-        if isinstance(E_2, float):
-            E_2 = torch.tensor(E_2)
-        if isinstance(E_3, float):
-            E_3 = torch.tensor(E_3)
-        if isinstance(nu_12, float):
-            nu_12 = torch.tensor(nu_12)
-        if isinstance(nu_13, float):
-            nu_13 = torch.tensor(nu_13)
-        if isinstance(nu_23, float):
-            nu_23 = torch.tensor(nu_23)
-        if isinstance(G_12, float):
-            G_12 = torch.tensor(G_12)
-        if isinstance(G_13, float):
-            G_13 = torch.tensor(G_13)
-        if isinstance(G_23, float):
-            G_23 = torch.tensor(G_23)
+        self.E_1 = torch.as_tensor(E_1)
+        self.E_2 = torch.as_tensor(E_2)
+        self.E_3 = torch.as_tensor(E_3)
+        self.nu_12 = torch.as_tensor(nu_12)
+        self.nu_21 = self.E_2 / self.E_1 * self.nu_12
+        self.nu_13 = torch.as_tensor(nu_13)
+        self.nu_31 = self.E_3 / self.E_1 * self.nu_13
+        self.nu_23 = torch.as_tensor(nu_23)
+        self.nu_32 = self.E_3 / self.E_2 * self.nu_23
+        self.G_12 = torch.as_tensor(G_12)
+        self.G_13 = torch.as_tensor(G_13)
+        self.G_23 = torch.as_tensor(G_23)
 
         # Check if the material is vectorized
-        self.is_vectorized = E_1.dim() > 0
-
-        # Store material properties
-        self.E_1 = E_1
-        self.E_2 = E_2
-        self.E_3 = E_3
-        self.nu_12 = nu_12
-        self.nu_21 = E_2 / E_1 * nu_12
-        self.nu_13 = nu_13
-        self.nu_31 = E_3 / E_1 * nu_13
-        self.nu_23 = nu_23
-        self.nu_32 = E_3 / E_2 * nu_23
-        self.G_12 = G_12
-        self.G_13 = G_13
-        self.G_23 = G_23
+        self.is_vectorized = self.E_1.dim() > 0
 
         # There are no internal variables
         self.n_state = 0
@@ -1408,7 +1354,7 @@ class OrthotropicElasticity3D(Material):
         if self.E_1.dim() == 0:
             self.C = torch.zeros(3, 3, 3, 3)
         else:
-            self.C = torch.zeros(*E_1.shape, 3, 3, 3, 3)
+            self.C = torch.zeros(*self.E_1.shape, 3, 3, 3, 3)
         F = 1 / (
             1
             - self.nu_12 * self.nu_21
@@ -1464,7 +1410,7 @@ class OrthotropicElasticity3D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Compute small strain tensor
         de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
@@ -1541,40 +1487,25 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         G_23: float | Tensor = 0.0,
     ):
         # Convert float inputs to tensors
-        if isinstance(E_1, float):
-            E_1 = torch.tensor(E_1)
-        if isinstance(E_2, float):
-            E_2 = torch.tensor(E_2)
-        if isinstance(nu_12, float):
-            nu_12 = torch.tensor(nu_12)
-        if isinstance(G_12, float):
-            G_12 = torch.tensor(G_12)
-        if isinstance(G_13, float):
-            G_13 = torch.tensor(G_13)
-        if isinstance(G_23, float):
-            G_23 = torch.tensor(G_23)
+        self.E_1 = torch.as_tensor(E_1)
+        self.E_2 = torch.as_tensor(E_2)
+        self.nu_12 = torch.as_tensor(nu_12)
+        self.nu_21 = self.E_2 / self.E_1 * self.nu_12
+        self.G_12 = torch.as_tensor(G_12)
+        self.G_13 = torch.as_tensor(G_13)
+        self.G_23 = torch.as_tensor(G_23)
 
         # Check if the material is vectorized
-        self.is_vectorized = E_1.dim() > 0
-
-        # Store material properties
-        self.E_1 = E_1
-        self.E_2 = E_2
-        self.nu_12 = nu_12
-        nu_21 = E_2 / E_1 * nu_12
-        self.nu_21 = nu_21
-        self.G_12 = G_12
-        self.G_13 = G_13
-        self.G_23 = G_23
+        self.is_vectorized = self.E_1.dim() > 0
 
         # There are no internal variables
         self.n_state = 0
 
         # Stiffness tensor
-        if E_1.dim() == 0:
+        if self.E_1.dim() == 0:
             self.C = torch.zeros(2, 2, 2, 2)
         else:
-            self.C = torch.zeros(*E_1.shape, 2, 2, 2, 2)
+            self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)
         nu2 = self.nu_12 * self.nu_21
         self.C[..., 0, 0, 0, 0] = E_1 / (1 - nu2)
         self.C[..., 0, 0, 1, 1] = nu_12 * E_2 / (1 - nu2)
@@ -1586,7 +1517,7 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.C[..., 1, 0, 1, 0] = G_12
 
         # Transverse shear stiffness matrix for shells
-        z = torch.zeros_like(E_1)
+        z = torch.zeros_like(self.E_1)
         self.Cs = torch.stack(
             [torch.stack([self.G_13, z], dim=-1), torch.stack([z, self.G_23], dim=-1)],
             dim=-1,
@@ -1644,41 +1575,21 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         G_23: float | Tensor = 0.0,
     ):
         # Convert float inputs to tensors
-        if isinstance(E_1, float):
-            E_1 = torch.tensor(E_1)
-        if isinstance(E_2, float):
-            E_2 = torch.tensor(E_2)
-        if isinstance(E_3, float):
-            E_3 = torch.tensor(E_3)
-        if isinstance(nu_12, float):
-            nu_12 = torch.tensor(nu_12)
-        if isinstance(nu_13, float):
-            nu_13 = torch.tensor(nu_13)
-        if isinstance(nu_23, float):
-            nu_23 = torch.tensor(nu_23)
-        if isinstance(G_12, float):
-            G_12 = torch.tensor(G_12)
-        if isinstance(G_13, float):
-            G_13 = torch.tensor(G_13)
-        if isinstance(G_23, float):
-            G_23 = torch.tensor(G_23)
+        self.E_1 = torch.as_tensor(E_1)
+        self.E_2 = torch.as_tensor(E_2)
+        self.E_3 = torch.as_tensor(E_3)
+        self.nu_12 = torch.as_tensor(nu_12)
+        self.nu_21 = self.E_2 / self.E_1 * self.nu_12
+        self.nu_13 = torch.as_tensor(nu_13)
+        self.nu_31 = self.E_3 / self.E_1 * self.nu_13
+        self.nu_23 = torch.as_tensor(nu_23)
+        self.nu_32 = self.E_3 / self.E_2 * self.nu_23
+        self.G_12 = torch.as_tensor(G_12)
+        self.G_13 = torch.as_tensor(G_13)
+        self.G_23 = torch.as_tensor(G_23)
 
         # Check if the material is vectorized
-        self.is_vectorized = E_1.dim() > 0
-
-        # Store material properties
-        self.E_1 = E_1
-        self.E_2 = E_2
-        self.E_3 = E_3
-        self.nu_12 = nu_12
-        self.nu_21 = E_2 / E_1 * nu_12
-        self.nu_13 = nu_13
-        self.nu_31 = E_3 / E_1 * nu_13
-        self.nu_23 = nu_23
-        self.nu_32 = E_3 / E_2 * nu_23
-        self.G_12 = G_12
-        self.G_13 = G_13
-        self.G_23 = G_23
+        self.is_vectorized = self.E_1.dim() > 0
 
         # There are no internal variables
         self.n_state = 0
@@ -1687,7 +1598,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         if self.E_1.dim() == 0:
             self.C = torch.zeros(3, 3, 3, 3)
         else:
-            self.C = torch.zeros(*E_1.shape, 3, 3, 3, 3)
+            self.C = torch.zeros(*self.E_1.shape, 3, 3, 3, 3)
         F = 1 / (
             1
             - self.nu_12 * self.nu_21
