@@ -80,6 +80,7 @@ class Planar(FEM):
         vmax: float | None = None,
         title: str | None = None,
         ax: Axes | None = None,
+        **kwargs,
     ):
         # Compute deformed positions
         pos = self.nodes + u
