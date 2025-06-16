@@ -32,7 +32,9 @@ class Solid(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 3, 3)
 
-    def eval_shape_functions(self, xi: Tensor, u: Tensor | float = 0.0) -> Tensor:
+    def eval_shape_functions(
+        self, xi: Tensor, u: Tensor | float = 0.0
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
         nodes = self.nodes + u
         nodes = nodes[self.elements, :]
@@ -139,7 +141,7 @@ class Solid(FEM):
                 pl.add_arrows(
                     ecenters.cpu().numpy()[threshold_condition],
                     directions.cpu().numpy()[threshold_condition],
-                    mag=0.5,
+                    mag=1,
                     color=color,
                     show_scalar_bar=False,
                 )

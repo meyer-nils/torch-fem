@@ -1,5 +1,8 @@
 import matplotlib.pyplot as plt
+import pyvista
 import torch
+from matplotlib.axes import Axes
+from matplotlib.colors import Normalize
 from torch import Tensor
 
 from .base import FEM
@@ -31,7 +34,9 @@ class Truss(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 1, 1)
 
-    def eval_shape_functions(self, xi: Tensor, u: Tensor | float = 0.0) -> Tensor:
+    def eval_shape_functions(
+        self, xi: Tensor, u: Tensor | float = 0.0
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
         nodes = self.nodes + u
         nodes = nodes[self.elements, :]
@@ -81,7 +86,7 @@ class Truss(FEM):
         axes: bool = False,
         vmin: float | None = None,
         vmax: float | None = None,
-        ax: plt.Axes | None = None,
+        ax: Axes | None = None,
     ):
         # Set figure size
         if ax is None:
@@ -103,9 +108,7 @@ class Truss(FEM):
             if vmax is None:
                 vmax = max(float(element_property.max()), 0.0)
             color = cm((element_property - vmin) / (vmax - vmin))
-            sm = plt.cm.ScalarMappable(
-                cmap=cm, norm=plt.Normalize(vmin=vmin, vmax=vmax)
-            )
+            sm = plt.cm.ScalarMappable(cmap=cm, norm=Normalize(vmin=vmin, vmax=vmax))
             plt.colorbar(sm, ax=ax, shrink=0.5)
         else:
             color = self.n_elem * [default_color]
@@ -116,7 +119,9 @@ class Truss(FEM):
         if node_labels:
             for i, node in enumerate(pos):
                 ax.annotate(
-                    str(i), (node[0] + 0.01, node[1] + 0.1), color=default_color
+                    str(i),
+                    (node[0].item() + 0.01, node[1].item() + 0.1),
+                    color=default_color,
                 )
 
         # Bounding box
@@ -174,10 +179,6 @@ class Truss(FEM):
         constraint_size_factor: float = 0.1,
         cmap: str = "viridis",
     ):
-        try:
-            import pyvista
-        except ImportError:
-            raise Exception("Plotting 3D requires pyvista.")
 
         pyvista.set_plot_theme("document")
         pyvista.set_jupyter_backend("client")
@@ -191,13 +192,13 @@ class Truss(FEM):
         size = torch.linalg.norm(pos.max() - pos.min()).item()
 
         # Radii
-        radii = torch.sqrt(self.areas / torch.pi)
+        radii = torch.sqrt(self.areas / torch.pi).numpy()
 
         # Elements
         for j, element in enumerate(self.elements):
             n1 = element[0]
             n2 = element[1]
-            tube = pyvista.Tube(pos[n1], pos[n2], radius=radii[j])
+            tube = pyvista.Tube(pos[n1].numpy(), pos[n2].numpy(), radius=radii[j])
             if element_property is not None:
                 for key, value in element_property.items():
                     value = element_property[key].squeeze()

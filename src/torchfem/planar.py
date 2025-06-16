@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import torch
+from matplotlib.axes import Axes
 from matplotlib.collections import PolyCollection
 from torch import Tensor
 
@@ -36,7 +37,9 @@ class Planar(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 2, 2)
 
-    def eval_shape_functions(self, xi: Tensor, u: Tensor | float = 0.0) -> Tensor:
+    def eval_shape_functions(
+        self, xi: Tensor, u: Tensor | float = 0.0
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
         nodes = self.nodes + u
         nodes = nodes[self.elements, :]
@@ -76,7 +79,7 @@ class Planar(FEM):
         vmin: float | None = None,
         vmax: float | None = None,
         title: str | None = None,
-        ax: plt.Axes | None = None,
+        ax: Axes | None = None,
     ):
         # Compute deformed positions
         pos = self.nodes + u
@@ -119,7 +122,7 @@ class Planar(FEM):
                 verts = pos[self.elements[:, :4]]
             else:
                 verts = pos[self.elements]
-            pc = PolyCollection(verts.numpy(), cmap=cmap)
+            pc = PolyCollection([v for v in verts.numpy()], cmap=cmap)
             pc.set_array(element_property)
             ax.add_collection(pc)
             if colorbar:
@@ -131,7 +134,11 @@ class Planar(FEM):
             ax.scatter(pos[:, 0], pos[:, 1], color=color, marker="o")
             if node_labels:
                 for i, node in enumerate(pos):
-                    ax.annotate(str(i), (node[0] + 0.01, node[1] + 0.01), color=color)
+                    ax.annotate(
+                        str(i),
+                        (node[0].item() + 0.01, node[1].item() + 0.01),
+                        color=color,
+                    )
 
         # Elements
         for element in self.elements:

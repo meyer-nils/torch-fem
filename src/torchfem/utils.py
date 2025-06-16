@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -149,6 +149,8 @@ def stiffness2voigt(C: Tensor) -> Tensor:
             ],
             dim=-1,
         )
+    else:
+        raise ValueError("Invalid shape for stiffness tensor.")
 
 
 def voigt2stress(voigt: Tensor) -> Tensor:
@@ -324,16 +326,18 @@ def voigt2stiffness(voigt: Tensor) -> Tensor:
         C[..., 1, 0, 2, 0] = voigt[..., 5, 4]
 
         return C
+    else:
+        raise ValueError("Invalid shape for Voigt notation.")
 
 
 def plot_contours(
     x: Tensor,
     f: Tensor,
-    opti: Tensor = [],
-    figsize: Tuple[int, int] = (8, 6),
+    opti: Tensor | List = [],
+    figsize: Tuple[float, float] = (8, 6),
     levels: int = 25,
-    title: str = None,
-    box: Tuple[float, float, float, float] = None,
+    title: str = "",
+    box: List[Tensor] | None = None,
     paths: dict[str, list] = {},
     colorbar: bool = False,
 ):
@@ -361,9 +365,9 @@ def plot_contours(
                 & (x[..., 1] < box[1][1])
             )
             rect = patches.Rectangle(
-                (box[0][0], box[0][1]),
-                box[1][0] - box[0][0],
-                box[1][1] - box[0][1],
+                (box[0][0].item(), box[0][1].item()),
+                box[1][0].item() - box[0][0].item(),
+                box[1][1].item() - box[0][1].item(),
                 edgecolor="k",
                 facecolor="none",
                 zorder=2,

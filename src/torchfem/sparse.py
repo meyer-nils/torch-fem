@@ -6,7 +6,7 @@ from scipy.sparse import csgraph
 from scipy.sparse.linalg import cg as scipy_cg
 from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
-from torch import Tensor, sparse_coo_tensor
+from torch import Tensor
 from torch.autograd import Function
 
 available_backends = ["scipy"]
@@ -65,16 +65,16 @@ class Solve(Function):
 
     @staticmethod
     def forward(
-        A: sparse_coo_tensor,
+        A: Tensor,
         b: Tensor,
-        B: Tensor = None,
+        B: Tensor | None = None,
         rtol: float = 1e-10,
-        device: str = None,
-        method: str = None,
-        M: Tensor = None,
+        device: str | None = None,
+        method: str | None = None,
+        M: Tensor | None = None,
         cached_solve=CachedSolve(),
         update_cache=False,
-    ):
+    ) -> Tensor:
         """
         Solve the linear system Ax = b.
 
@@ -142,14 +142,14 @@ class Solve(Function):
         return x
 
     @staticmethod
-    def backward(ctx, grad):
+    def backward(ctx, *grad_outputs):
         # Access the saved variables
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
         gradb = Solve.apply(
             A.T,
-            grad,
+            grad_outputs[0],
             ctx.B,
             ctx.rtol,
             ctx.device,
@@ -251,7 +251,7 @@ class Solve(Function):
                 )
             # Reorder the matrix using reverse Cuthill-McKee algorithm
             rcm_order = csgraph.reverse_cuthill_mckee(A_np)
-            A_rcm = A_np[rcm_order, :][:, rcm_order]
+            A_rcm = A_np[rcm_order][:, rcm_order]
             b_rcm = b_np[rcm_order]
             # Solve with pypardiso
             x_rcm = pypardiso.spsolve(A_rcm, b_rcm)

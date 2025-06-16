@@ -1,3 +1,4 @@
+from os import PathLike
 from typing import Dict
 
 import torch
@@ -14,7 +15,7 @@ from .materials import Material
 @torch.no_grad()
 def export_mesh(
     mesh: FEM,
-    filename: str,
+    filename: PathLike,
     nodal_data: Dict[str, Tensor] = {},
     elem_data: Dict[str, Tensor] = {},
 ):
@@ -50,7 +51,7 @@ def export_mesh(
     msh.write(filename)
 
 
-def import_mesh(filename: str, material: Material):
+def import_mesh(filename: PathLike, material: Material):
     import meshio
     import numpy as np
 

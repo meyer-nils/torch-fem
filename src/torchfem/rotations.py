@@ -4,8 +4,7 @@ from torch import Tensor
 
 def planar_rotation(phi: float | Tensor) -> Tensor:
     """Create a planar rotation matrix with an angle phi."""
-    if isinstance(phi, float):
-        phi = torch.tensor(phi)
+    phi = torch.as_tensor(phi)
     c = torch.cos(phi)
     s = torch.sin(phi)
     return torch.stack(
@@ -19,8 +18,7 @@ def planar_rotation(phi: float | Tensor) -> Tensor:
 
 def axis_rotation(axis: Tensor, phi: float | Tensor) -> Tensor:
     """Create a rotation matrix with an angle phi around an axis."""
-    if isinstance(phi, float):
-        phi = torch.tensor(phi)
+    phi = torch.as_tensor(phi)
     axis = axis / torch.norm(axis)
     x, y, z = axis
     c = torch.cos(phi)

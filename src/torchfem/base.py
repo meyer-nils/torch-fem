@@ -84,7 +84,9 @@ class FEM(ABC):
         self._constraints = value.to(self.nodes.device)
 
     @abstractmethod
-    def eval_shape_functions(self, xi: Tensor) -> Tensor:
+    def eval_shape_functions(
+        self, xi: Tensor, u: Tensor | float = 0.0
+    ) -> tuple[Tensor, Tensor, Tensor]:
         raise NotImplementedError
 
     @abstractmethod
@@ -216,7 +218,7 @@ class FEM(ABC):
             res += w * f * detJ
         return res
 
-    def assemble_stiffness(self, k: Tensor, con: Tensor) -> torch.sparse.Tensor:
+    def assemble_stiffness(self, k: Tensor, con: Tensor) -> Tensor:
         """Assemble global stiffness matrix."""
 
         # Initialize sparse matrix
@@ -271,8 +273,8 @@ class FEM(ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         verbose: bool = False,
-        method: Literal["spsolve", "minres", "cg", "pardiso"] = None,
-        device: str = None,
+        method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
+        device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
         use_cached_solve: bool = False,
