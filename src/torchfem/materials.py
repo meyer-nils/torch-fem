@@ -318,30 +318,22 @@ class Hyperelastic3D(Material):
         C = C.requires_grad_(True)
         # Compute second Piola-Kirchhoff stress
         S_new = 2 * vmap(jacrev(self.psi))(C)
-        # Compute Cauchy stress
+        # Compute Cauchy stress via push forward
         sigma_new = 1 / J_new * F_new @ S_new @ F_new.transpose(-1, -2)
         # Update internal state (this material does not change state)
         state_new = state
-        # Algorithmic material tangent stiffness tensor
-        C_SE = 4 * vmap(jacrev(jacrev(self.psi)))(C)
-        # Algorithmic spatial tangent stiffness tensor (push forward + geo. stiffness)
-        ddsdde = (
-            torch.einsum(
-                "...iI,...jJ,...kK,...lL,...IJKL->...ijkl",
-                F_new,
-                F_new,
-                F_new,
-                F_new,
-                C_SE,
-            )
-            + 0.5
-            * (
-                torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
-                + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
-                + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
-                + torch.einsum("...jl,...ik->...ijkl", sigma_new, torch.eye(3))
-            )
-        ) / J_new[:, None, None]
+        # Material tangent stiffness tensor (second elasticity tensor)
+        A_2 = 4 * vmap(jacrev(jacrev(self.psi)))(C)
+        # Spatial tangent stiffness tensor via push forward (fourth elasticity tensor)
+        path = "...iI,...jJ,...kK,...lL,...IJKL->...ijkl"
+        A_4 = torch.einsum(path, F_new, F_new, F_new, F_new, A_2)
+        # Complete algorithmic tangent stiffness tensor (incl. geometric terms)
+        ddsdde = A_4 / J_new[:, None, None] + 0.5 * (
+            torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
+            + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
+            + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
+            + torch.einsum("...jl,...ik->...ijkl", sigma_new, torch.eye(3))
+        )
         return sigma_new, state_new, ddsdde
 
 
