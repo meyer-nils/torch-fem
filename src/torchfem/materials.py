@@ -278,6 +278,12 @@ class Hyperelastic3D(Material):
     def vectorize(self, n_elem: int):
         return self
 
+    def _sigma(self, F: Tensor) -> Tensor:
+        """Compute the Cauchy stress tensor from the deformation gradient."""
+        J = torch.det(F)
+        P = jacrev(self.psi)(F)
+        return 1 / J * P @ F.transpose(-1, -2)
+
     def step(
         self,
         H_inc: Tensor,
@@ -311,37 +317,18 @@ class Hyperelastic3D(Material):
         """
         # Compute deformation gradient
         F_new = F + H_inc
-        # Compute determinant of the deformation gradient
-        J_new = torch.det(F_new)[:, None, None]
-        # Compute right Cauchy-Green tensor
-        C = F_new.transpose(-1, -2) @ F_new
-        C = C.requires_grad_(True)
-        # Compute second Piola-Kirchhoff stress
-        S_new = 2 * vmap(jacrev(self.psi))(C)
+        F_new.requires_grad_(True)
         # Compute Cauchy stress
-        sigma_new = 1 / J_new * F_new @ S_new @ F_new.transpose(-1, -2)
+        sigma_new = vmap(self._sigma)(F_new)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic material tangent stiffness tensor
-        C_SE = 4 * vmap(jacrev(jacrev(self.psi)))(C)
-        # Algorithmic spatial tangent stiffness tensor (push forward + geo. stiffness)
-        ddsdde = (
-            torch.einsum(
-                "...iI,...jJ,...kK,...lL,...IJKL->...ijkl",
-                F_new,
-                F_new,
-                F_new,
-                F_new,
-                C_SE,
-            )
-            + 0.5
-            * (
-                torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
-                + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
-                + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
-                + torch.einsum("...jl,...ik->...ijkl", sigma_new, torch.eye(3))
-            )
-        ) / J_new[:, None, None]
+        ddsdde = vmap(jacrev(self._sigma))(F_new) + 0.5 * (
+            torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
+            + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
+            + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
+            + torch.einsum("...jl,...ik->...ijkl", sigma_new, torch.eye(3))
+        )
         return sigma_new, state_new, ddsdde
 
 
