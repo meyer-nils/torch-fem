@@ -278,12 +278,6 @@ class Hyperelastic3D(Material):
     def vectorize(self, n_elem: int):
         return self
 
-    def _sigma(self, F: Tensor) -> Tensor:
-        """Compute the Cauchy stress tensor from the deformation gradient."""
-        J = torch.det(F)
-        P = jacrev(self.psi)(F)
-        return 1 / J * P @ F.transpose(-1, -2)
-
     def step(
         self,
         H_inc: Tensor,
@@ -317,13 +311,23 @@ class Hyperelastic3D(Material):
         """
         # Compute deformation gradient
         F_new = F + H_inc
+        J_new = torch.det(F)[:, None, None]
         F_new.requires_grad_(True)
+        # Compute first Piolar-Kirchhoff stress tensor
+        P = vmap(jacrev(self.psi))(F_new)
         # Compute Cauchy stress
-        sigma_new = vmap(self._sigma)(F_new)
+        sigma_new = 1 / J_new * P @ F_new.transpose(-1, -2)
         # Update internal state (this material does not change state)
         state_new = state
+        # First elasticity tensor
+        A_1 = vmap(jacrev(jacrev(self.psi)))(F_new)
+        # Fourth elasticity tensor
+        A_4 = (
+            torch.einsum("...ijkl,...ai,...bk->...ajlb", A_1, F_new, F_new)
+            / J_new[:, None, None]
+        ) - torch.einsum("...ab,lj->...ajlb", sigma_new, torch.eye(3))
         # Algorithmic material tangent stiffness tensor
-        ddsdde = vmap(jacrev(self._sigma))(F_new) + 0.5 * (
+        ddsdde = A_4 + 0.5 * (
             torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
             + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
             + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
