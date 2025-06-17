@@ -311,7 +311,7 @@ class Hyperelastic3D(Material):
         """
         # Compute deformation gradient
         F_new = F + H_inc
-        J_new = torch.det(F)[:, None, None]
+        J_new = torch.det(F_new)[:, None, None]
         F_new.requires_grad_(True)
         # Compute first Piolar-Kirchhoff stress tensor
         P = vmap(jacrev(self.psi))(F_new)
