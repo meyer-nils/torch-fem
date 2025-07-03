@@ -311,24 +311,23 @@ class Hyperelastic3D(Material):
         """
         # Compute deformation gradient
         F_new = F + H_inc
-        # Compute determinant of the deformation gradient
         J_new = torch.det(F_new)[:, None, None]
-        # Compute right Cauchy-Green tensor
-        C = F_new.transpose(-1, -2) @ F_new
-        C = C.requires_grad_(True)
-        # Compute second Piola-Kirchhoff stress
-        S_new = 2 * vmap(jacrev(self.psi))(C)
-        # Compute Cauchy stress via push forward
-        sigma_new = 1 / J_new * F_new @ S_new @ F_new.transpose(-1, -2)
+        F_new.requires_grad_(True)
+        # Compute first Piolar-Kirchhoff stress tensor
+        P = vmap(jacrev(self.psi))(F_new)
+        # Compute Cauchy stress
+        sigma_new = 1 / J_new * P @ F_new.transpose(-1, -2)
         # Update internal state (this material does not change state)
         state_new = state
-        # Material tangent stiffness tensor (second elasticity tensor)
-        A_2 = 4 * vmap(jacrev(jacrev(self.psi)))(C)
-        # Spatial tangent stiffness tensor via push forward (fourth elasticity tensor)
-        path = "...iI,...jJ,...kK,...lL,...IJKL->...ijkl"
-        A_4 = torch.einsum(path, F_new, F_new, F_new, F_new, A_2)
-        # Complete algorithmic tangent stiffness tensor (incl. geometric terms)
-        ddsdde = A_4 / J_new[:, None, None] + 0.5 * (
+        # First elasticity tensor
+        A_1 = vmap(jacrev(jacrev(self.psi)))(F_new)
+        # Fourth elasticity tensor
+        A_4 = (
+            torch.einsum("...ijkl,...ai,...bk->...ajlb", A_1, F_new, F_new)
+            / J_new[:, None, None]
+        ) - torch.einsum("...ab,lj->...ajlb", sigma_new, torch.eye(3))
+        # Algorithmic material tangent stiffness tensor
+        ddsdde = A_4 + 0.5 * (
             torch.einsum("...ik,...jl->...ijkl", sigma_new, torch.eye(3))
             + torch.einsum("...il,...jk->...ijkl", sigma_new, torch.eye(3))
             + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
