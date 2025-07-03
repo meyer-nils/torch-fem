@@ -97,6 +97,10 @@ class FEM(ABC):
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         raise NotImplementedError
 
+    @abstractmethod
+    def plot(self, u: float | Tensor = 0.0, **kwargs):
+        raise NotImplementedError
+
     def compute_B(self) -> Tensor:
         """Null space representing rigid body modes."""
         if self.n_dim == 3:
