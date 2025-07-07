@@ -110,8 +110,8 @@ class Planar(FEM):
             tri = ax.tricontourf(
                 pos[:, 0],
                 pos[:, 1],
-                triangles,
                 node_property,
+                triangles=triangles,
                 cmap=cmap,
                 levels=100,
                 alpha=alpha,
