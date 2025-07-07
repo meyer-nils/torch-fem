@@ -70,11 +70,11 @@ class Truss(FEM):
         """Element internal force vector."""
         return torch.einsum("...,...,...ik,...ij->...kj", self.areas, detJ, B, S)
 
-    def plot(self, **kwargs):
+    def plot(self, u: float | Tensor = 0.0, **kwargs):
         if self.n_dim == 2:
-            self.plot2d(**kwargs)
+            self.plot2d(u=u, **kwargs)
         elif self.n_dim == 3:
-            self.plot3d(**kwargs)
+            self.plot3d(u=u, **kwargs)
 
     @torch.no_grad()
     def plot2d(
