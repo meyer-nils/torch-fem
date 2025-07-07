@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 from matplotlib.axes import Axes
 from matplotlib.collections import PolyCollection
+from matplotlib.tri import Triangulation
 from torch import Tensor
 
 from .base import FEM
@@ -107,11 +108,10 @@ class Planar(FEM):
                     triangles.append([e[2], e[3], e[0]])
             else:
                 triangles = self.elements[:, :3].tolist()
+            triangulation = Triangulation(pos[:, 0], pos[:, 1], triangles)
             tri = ax.tricontourf(
-                pos[:, 0],
-                pos[:, 1],
+                triangulation,
                 node_property,
-                triangles=triangles,
                 cmap=cmap,
                 levels=100,
                 alpha=alpha,
