@@ -147,7 +147,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # Backprop rule: gradb = A^T @ grad
-        gradb = Solve.apply(
+        gradb = sparse_solve(
             A.T,
             grad_outputs[0],
             ctx.B,
@@ -251,7 +251,7 @@ class Solve(Function):
                 )
             # Reorder the matrix using reverse Cuthill-McKee algorithm
             rcm_order = csgraph.reverse_cuthill_mckee(A_np)
-            A_rcm = A_np[rcm_order][:, rcm_order]
+            A_rcm = A_np[np.ix_(rcm_order, rcm_order)]
             b_rcm = b_np[rcm_order]
             # Solve with pypardiso
             x_rcm = pypardiso.spsolve(A_rcm, b_rcm)
@@ -284,7 +284,21 @@ class Solve(Function):
         return x_xp
 
 
-sparse_solve = Solve.apply
+def sparse_solve(
+    A: Tensor,
+    b: Tensor,
+    B: Tensor | None = None,
+    rtol: float = 1e-10,
+    device: str | None = None,
+    method: str | None = None,
+    M: Tensor | None = None,
+    cached_solve=CachedSolve(),
+    update_cache=False,
+) -> Tensor:
+    result = Solve.apply(A, b, B, rtol, device, method, M, cached_solve, update_cache)
+    if result is None:
+        raise RuntimeError("Solve.apply returned None, expected a Tensor.")
+    return result
 
 
 def sparse_index_select(t: Tensor, slices: list[Tensor | None]) -> Tensor:
