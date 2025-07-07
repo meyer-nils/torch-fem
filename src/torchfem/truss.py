@@ -34,6 +34,10 @@ class Truss(FEM):
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 1, 1)
 
+    def __repr__(self) -> str:
+        etype = self.etype.__class__.__name__
+        return f"<torch-fem truss ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
+
     def eval_shape_functions(
         self, xi: Tensor, u: Tensor | float = 0.0
     ) -> tuple[Tensor, Tensor, Tensor]:

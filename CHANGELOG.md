@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added 
+- \_\_repr\_\_ functions to print torch-fem objects.
+
 ## Version 0.4.4 - June 04 2025 
 
 ### Changed
