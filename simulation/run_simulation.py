@@ -155,7 +155,7 @@ for node_label in matpatch['mesh_boundary_nodes_disps'].keys():
 
 #%% --------------------------- Boundary conditions ---------------------------
 
-def apply_displacements_by_coordinates(domain, data, dim):
+def prescribe_disps_by_coords(domain, data, dim):
     """
     Apply displacements by matching mesh coordinates with 
     reference coordinates read from material patch file.
@@ -223,34 +223,50 @@ def apply_displacements_by_coordinates(domain, data, dim):
         raise RuntimeError("Wrong number of boundary displacements!")
 
 
-num_applied_disps, nodes_constrained = apply_displacements_by_coordinates(
+num_applied_disps, nodes_constrained = prescribe_disps_by_coords(
     domain=domain, data=matpatch, dim=dim)
 
 #%% ---------------------------- Solve the system -----------------------------
 increments = torch.tensor(matpatch['load_factor_time_series'])
-# increments = torch.linspace(0.0, 1.0, 2) #
-                    # torch.cat((torch.linspace(0.0, 1.0, 20),
-                    #     torch.linspace(1.0, 0.0, 20)))
-u_disp, f_int, sigma_out, def_grad, alpha_out = domain.solve(
-    increments=increments, return_intermediate=True)
+# increments = # torch.cat((torch.linspace(0.0, 1.0, 20),
+#     torch.linspace(1.0, 0.0, 20)))
+u_disp, f_int, sigma_out, def_grad, alpha_out, vol_elem = domain.solve(
+    increments=increments, return_intermediate=True,
+    aggregate_integration_points=True, return_volumes=True)
 
-#stress shape: 
-#    [time_increments, num_elem, num_stress, num_stress] mean over integ. points
-#     num_stress = 3 for 3D
+# Volume-weighted averaging instead of simple mean
+# Shape: (num_increments, 1)
+total_volume = vol_elem.sum(dim=1, keepdim=True) 
+# Shape: (num_increments, num_elem)
+vol_weights = vol_elem / total_volume  
+
+# Volume-weighted average for sigma_out
+# sigma_out shape: (num_increments, num_elem, num_stress, num_stress) 
+# averaged over an element's integ. points;
+# num_stress = 3 for 3D
+# vol_weights shape: (num_increments, num_elem)
+vol_weights_expanded = vol_weights.unsqueeze(-1).unsqueeze(-1) 
+sigma_out = (sigma_out * vol_weights_expanded).sum(dim=1)
+# def_grad shape: (num_increments, num_elem, num_stress, num_stress)
+def_grad = (def_grad * vol_weights_expanded).sum(dim=1)
 #%% ------------------------------- Save output -------------------------------
-for idx_time in range(len(increments)):
-    for idx_node in range(u_disp[-1,:,:].shape[0]):
-        if idx_node in nodes_constrained:
-            simulation_data['boundary_nodes_disps_time_series'][idx_node] = [
-                u_disp[idx_time, idx_node,:]]
-            simulation_data['boundary_nodes_forces_time_series'][idx_node] = [
-                f_int[idx_time, idx_node,:]]
-            # Print for user validation at last time step
-            if idx_time == len(increments) - 1:
-                print(f'Node: {idx_node}: u {u_disp[-1,idx_node,:]}')
-                print(f'          force {f_int[-1, idx_node, :]}')
+# Save displacements and internal forces of the boundary nodes (the ones 
+# constrained). Also save average stress and strain
+for idx_node in range(u_disp[-1,:,:].shape[0]):
+    if idx_node in nodes_constrained:
+        simulation_data['boundary_nodes_disps_time_series'][idx_node] = [
+            u_disp[:, idx_node, :]]
+        simulation_data['boundary_nodes_forces_time_series'][idx_node] = [
+            f_int[:, idx_node, :]]
+        
+        # Print for user validation at last time step
+        print(f'Node: {idx_node}: u {u_disp[-1,idx_node,:]}')
+        print(f'          force {f_int[-1, idx_node, :]}')
 
 
-        # Extract and save: avg matpatch def_grad (volume average for the patch)
-        # to avg matpatch sigma_out (volume average for the patch)
-
+# Save the complete simulation data to a pickle file
+# try:
+#     with open(output_filename, 'wb') as f:
+#         pkl.dump(simulation_data, f, protocol=pkl.HIGHEST_PROTOCOL)
+# except Exception as excp:
+#     print(f"Error saving simulation data: {excp}")

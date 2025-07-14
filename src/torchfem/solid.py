@@ -35,7 +35,9 @@ class Solid(FEM):
     def eval_shape_functions(
         self, xi: Tensor, u: Tensor | float = 0.0
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Gradient operator at integration points xi."""
+        """
+        Gradient operator at integration points xi.
+        """
         nodes = self.nodes + u
         nodes = nodes[self.elements, :]
         b = self.etype.B(xi)
@@ -44,6 +46,7 @@ class Solid(FEM):
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
         B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
+        
         return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
@@ -169,7 +172,8 @@ class Solid(FEM):
                 pl.add_mesh(mesh, **kwargs)
 
         if show_undeformed:
-            undefo = pyvista.UnstructuredGrid(elements, cell_types, self.nodes.tolist())
+            undefo = pyvista.UnstructuredGrid(elements, cell_types,
+                                              self.nodes.tolist())
             edges = (
                 undefo.separate_cells()
                 .extract_surface(nonlinear_subdivision=4)

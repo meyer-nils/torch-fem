@@ -207,6 +207,48 @@ class FEM(ABC):
 
         return k, f
 
+    def surrogate_integrate_material(
+        self,
+        u: Tensor,
+    ) -> Tuple[Tensor, Tensor]:
+        """Perform numerical integrations for element stiffness matrix."""
+        # Compute updated configuration
+        u_trial = u[n - 1] + du.view((-1, self.n_dim))
+
+        # Reshape displacement increment
+        du = du.view(-1, self.n_dim)[self.elements].reshape(
+            self.n_elem, -1, self.n_stress
+        )
+
+        # Initialize nodal force and stiffness
+        N_nod = self.etype.nodes
+        f = torch.zeros(self.n_elem, self.n_dim * N_nod)
+        k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
+        
+        # Retrieve coordinates, not just displacements:
+        # # Shape: [1, num_nodes, num_coords]
+        # reference_nodes = self.nodes.unsqueeze(0)  
+        # # Shape: [seq_length, num_nodes, num_coords]
+        # reference_nodes_expanded = reference_nodes.expand(u.shape[0], -1, -1) 
+        # coords_time_series = reference_nodes_expanded + u
+        # More efficient:
+        # Broadcasts [num_nodes, num_coords] + \
+        # [time_increments so far, num_nodes, num_coords]
+        coords_time_series = self.nodes[None, :, :] + u[:n]
+        # Displacements time series:
+        u = u[n - 1]
+        
+        # Concat coords_time_series and u
+        # node_features_in = torch.cat((coords_time_series, u[:n]))
+        # Scale it
+        # 
+        # Call surrogate model:
+        # f_int_mat_patch, stiffness_matrix = model(
+        #   node_features_in = u_trial, edge_features_in = ,
+        #   global_features_in = , is_required_grad = True)
+
+        return k, f
+    
     def integrate_field(self, field: Tensor | None = None) -> Tensor:
         """Integrate scalar field over elements."""
 
@@ -279,11 +321,13 @@ class FEM(ABC):
         verbose: bool = False,
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         device: str | None = None,
-        return_intermediate: bool = False,
+        return_intermediate: bool = True,
         aggregate_integration_points: bool = True,
         use_cached_solve: bool = False,
         nlgeom: bool = False,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        return_volumes: bool = False,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor] | Tuple[
+        Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method.
 
         Args:
@@ -299,10 +343,13 @@ class FEM(ABC):
             aggregate_integration_points (bool): Aggregate integration points if True.
             use_cached_solve (bool): Use cached solve, e.g. in topology optimization.
             nlgeom (bool): Use nonlinear geometry if True.
+            return_volumes (bool): Return element volumes for each increment if True.
 
         Returns:
                 Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]: Final displacements,
                 internal forces, stress, deformation gradient, and material state.
+                If return_volumes=True, also returns element volumes with shape
+                (num_increments, num_elem, 1).
 
         """
         # Number of increments
@@ -317,10 +364,19 @@ class FEM(ABC):
         # Initialize variables to be computed
         u = torch.zeros(N, self.n_nod, self.n_dim)
         f = torch.zeros(N, self.n_nod, self.n_dim)
-        stress = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
-        defgrad = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
+        stress = torch.zeros(N, self.n_int, self.n_elem,
+                             self.n_stress, self.n_stress)
+        defgrad = torch.zeros(N, self.n_int, self.n_elem,
+                              self.n_stress, self.n_stress)
         defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
+        
+        # Initialize volumes if requested
+        if return_volumes:
+            volumes = torch.zeros(N, self.n_elem)
+            # Compute initial volume for increment 0
+            # Default field is ones to integrate volume
+            volumes[0] = self.integrate_field()
 
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
@@ -346,9 +402,17 @@ class FEM(ABC):
                 k, f_i = self.integrate_material(
                     u, defgrad, stress, state, n, du, de0, nlgeom
                 )
+                # is_mat_patch: flag similar to element_property in 
+                # solid.plot(): 
+                # indicator = torch.zeros(len(plate.elements))            
+                # indicator[idk_element] = 1.0
+                # if is_mat_patch:
+                #     k, f_i = self.surrogate_integrate_material(u)
 
-                # Assemble global stiffness matrix and internal force vector (if needed)
-                if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
+                # Assemble global stiffness matrix and internal force vector (
+                # if needed)
+                if self.K.numel() == 0 or not self.material.n_state == 0 or \
+                    nlgeom:
                     self.K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_i)
 
@@ -397,6 +461,10 @@ class FEM(ABC):
             # Update increment
             f[n] = F_int.reshape((-1, self.n_dim))
             u[n] = u[n - 1] + du.reshape((-1, self.n_dim))
+            
+            # Compute element volumes if requested
+            if return_volumes:
+                volumes[n] = self.integrate_field()
 
         # Aggregate integration points as mean
         if aggregate_integration_points:
@@ -410,7 +478,14 @@ class FEM(ABC):
 
         if return_intermediate:
             # Return all intermediate values
-            return u, f, stress, defgrad, state
+            if return_volumes:
+                return u, f, stress, defgrad, state, volumes
+            else:
+                return u, f, stress, defgrad, state
         else:
             # Return only the final values
-            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
+            if return_volumes:
+                return u[-1], f[-1], stress[-1], defgrad[-1], state[-1], \
+                    volumes[-1]
+            else:
+                return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
