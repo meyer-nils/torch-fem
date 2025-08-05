@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from math import sqrt
 
+import numpy as np
 import torch
 from torch import Tensor
 
@@ -734,7 +735,21 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
     edge_vector, _ = torch.sort(edge_vector, dim=1)
 
     # Find unique edges and get the inverse mapping
-    unique_edges, inv_indices = torch.unique(edge_vector, dim=0, return_inverse=True)
+    if edge_vector.device.type == "cuda":
+        # Default torch implementation for CUDA
+        unique_edges, inv_indices = torch.unique(
+            edge_vector, dim=0, return_inverse=True
+        )
+    else:
+        # Numpy implementation for CPU (breaks gradient flow, but should not be needed)
+        edge_vector_np = edge_vector.numpy()
+        dt = np.dtype((np.void, edge_vector_np.dtype.itemsize * edge_vector.shape[1]))
+        b = np.ascontiguousarray(edge_vector).view(dt)
+        _, unique_indices, inv_indices_np = np.unique(
+            b, return_index=True, return_inverse=True
+        )
+        unique_edges = edge_vector[unique_indices]
+        inv_indices = torch.as_tensor(inv_indices_np)
 
     # Compute nodes
     mid_node_coords = (nodes[unique_edges[:, 0]] + nodes[unique_edges[:, 1]]) / 2.0
