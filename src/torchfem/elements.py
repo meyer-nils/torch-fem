@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from math import sqrt
-from typing import Dict, Tuple
 
 import torch
 from torch import Tensor
@@ -694,97 +693,55 @@ class Hexa2(Element):
 
 
 def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor]:
-    dvc = nodes.device
-    if "cuda" in dvc.type:
-        nodes = nodes.cpu()
-        elements = elements.cpu()
-    new_nodes = nodes.tolist()
-    midpoints: Dict[Tuple, int] = {}
+    if elements.shape[1] == 2:
+        # Bar1 element
+        edges = torch.tensor([[0, 1]])
+    elif elements.shape[1] == 3 and nodes.shape[1] == 2:
+        # Tri1 element
+        edges = torch.tensor([[0, 1], [1, 2], [2, 0]])
+    elif elements.shape[1] == 4 and nodes.shape[1] == 2:
+        # Quad1 element
+        edges = torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0]])
+    elif elements.shape[1] == 4 and nodes.shape[1] == 3:
+        # Tetra1 element
+        edges = torch.tensor([[0, 1], [1, 2], [0, 2], [3, 0], [1, 3], [2, 3]])
+    elif elements.shape[1] == 8 and nodes.shape[1] == 3:
+        # Hexa1 element
+        edges = torch.tensor(
+            [
+                [0, 1],
+                [1, 2],
+                [2, 3],
+                [3, 0],
+                [4, 5],
+                [5, 6],
+                [6, 7],
+                [7, 4],
+                [0, 4],
+                [1, 5],
+                [2, 6],
+                [3, 7],
+            ]
+        )
+    else:
+        raise Exception(
+            "The element type is not supported for conversion to quadratic."
+            "Maybe the element is already quadratic?"
+        )
 
-    def get_midpoint_index(n1: Tensor, n2: Tensor) -> int:
-        if (n1, n2) in midpoints:
-            return midpoints[(n1, n2)]
-        if (n2, n1) in midpoints:
-            return midpoints[(n2, n1)]
+    # Vectorize edges for all elements and sort each pair with increasing node IDs
+    edge_vector = elements[:, edges].reshape(-1, 2)
+    edge_vector, _ = torch.sort(edge_vector, dim=1)
 
-        midpoint = (nodes[n1] + nodes[n2]) / 2
-        mid_index = len(new_nodes)
-        new_nodes.append(midpoint)
-        midpoints[(n1, n2)] = mid_index
-        return mid_index
+    # Find unique edges and get the inverse mapping
+    unique_edges, inv_indices = torch.unique(edge_vector, dim=0, return_inverse=True)
 
-    new_elements = []
-    for element in elements:
-        if len(element) == 2:
-            n1, n2 = element.numpy()
-            m12 = get_midpoint_index(n1, n2)
-            new_elements.append([n1, n2, m12])
-        elif len(element) == 3 and nodes.shape[1] == 2:
-            n1, n2, n3 = element.numpy()
-            m12 = get_midpoint_index(n1, n2)
-            m23 = get_midpoint_index(n2, n3)
-            m31 = get_midpoint_index(n3, n1)
-            new_elements.append([n1, n2, n3, m12, m23, m31])
-        elif len(element) == 4 and nodes.shape[1] == 2:
-            n1, n2, n3, n4 = element.numpy()
-            m12 = get_midpoint_index(n1, n2)
-            m23 = get_midpoint_index(n2, n3)
-            m34 = get_midpoint_index(n3, n4)
-            m41 = get_midpoint_index(n4, n1)
-            new_elements.append([n1, n2, n3, n4, m12, m23, m34, m41])
-        elif len(element) == 4 and nodes.shape[1] == 3:
-            n1, n2, n3, n4 = element.numpy()
-            m12 = get_midpoint_index(n1, n2)
-            m23 = get_midpoint_index(n2, n3)
-            m13 = get_midpoint_index(n1, n3)
-            m41 = get_midpoint_index(n4, n1)
-            m24 = get_midpoint_index(n2, n4)
-            m34 = get_midpoint_index(n3, n4)
-            new_elements.append([n1, n2, n3, n4, m12, m23, m13, m41, m24, m34])
-        elif len(element) == 8 and nodes.shape[1] == 3:
-            n1, n2, n3, n4, n5, n6, n7, n8 = element.numpy()
-            m12 = get_midpoint_index(n1, n2)
-            m23 = get_midpoint_index(n2, n3)
-            m34 = get_midpoint_index(n3, n4)
-            m41 = get_midpoint_index(n4, n1)
-            m56 = get_midpoint_index(n5, n6)
-            m67 = get_midpoint_index(n6, n7)
-            m78 = get_midpoint_index(n7, n8)
-            m85 = get_midpoint_index(n8, n5)
-            m15 = get_midpoint_index(n1, n5)
-            m26 = get_midpoint_index(n2, n6)
-            m37 = get_midpoint_index(n3, n7)
-            m48 = get_midpoint_index(n4, n8)
-            new_elements.append(
-                [
-                    n1,
-                    n2,
-                    n3,
-                    n4,
-                    n5,
-                    n6,
-                    n7,
-                    n8,
-                    m12,
-                    m23,
-                    m34,
-                    m41,
-                    m56,
-                    m67,
-                    m78,
-                    m85,
-                    m15,
-                    m26,
-                    m37,
-                    m48,
-                ]
-            )
-        else:
-            print(
-                "The element type is not supported for conversion to quadratic."
-                "Maybe the element is already quadratic? Anyway, returning the "
-                "original elements."
-            )
-            new_elements.append(elements.numpy())
+    # Compute nodes
+    mid_node_coords = (nodes[unique_edges[:, 0]] + nodes[unique_edges[:, 1]]) / 2.0
+    new_nodes = torch.cat([nodes, mid_node_coords], dim=0)
 
-    return torch.tensor(new_nodes, device=dvc), torch.tensor(new_elements, device=dvc)
+    # Compute elements
+    mid_node_map = inv_indices.view(elements.shape[0], -1) + nodes.shape[0]
+    new_elements = torch.cat([elements, mid_node_map], dim=1)
+
+    return new_nodes, new_elements
