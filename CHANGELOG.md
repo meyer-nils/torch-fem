@@ -6,6 +6,7 @@
 - \_\_repr\_\_ functions to print torch-fem objects.
 
 ### Changed 
+- Accelerate 'linear_to_quadratic()' function for elements.
 - Planar plot uses explicit triangulation objects.
 - Truss plot accepts u as positional argument to match base class.
 
