@@ -215,31 +215,61 @@ def run_simulation(
     for key, value in matpatch.items():
         if key not in excluded_fields:
             if key == 'mesh_nodes_matrix':
+                # Create proper mesh nodes matrix based on mesh structure
+                # 2D: Rows = vertical (i-direction),
+                # Columns = horizontal (j-direction)
+                # 3D: First dimension = i-direction,
+                # Second = j-direction,
+                # Third = k-direction
                 if dim == 2:
-                # Map material patch node labels to torch-fem indices
-                    original_matrix = np.array(value)
-                    corrected_matrix = np.zeros_like(original_matrix)
-                    for i in range(original_matrix.shape[0]):
-                        for j in range(original_matrix.shape[1]):
-                            matpatch_label = original_matrix[i, j]
-                            corrected_matrix[i, j] = node_label_to_torchfem_idx[
-                                matpatch_label]
+                    if elem_order == 1:
+                        # Linear elements:
+                        # (mesh_nx+1)x(mesh_ny+1) nodes
+                        mesh_nodes_matrix = np.zeros(
+                            (mesh_nx + 1, mesh_ny + 1), dtype=int)
+                        node_idx = 0
+                        for i in range(mesh_nx + 1):
+                            for j in range(mesh_ny + 1):
+                                mesh_nodes_matrix[i, j] = node_idx
+                                node_idx += 1
+                    else:  # elem_order == 2
+                        # Quadratic elements:
+                        # (2*mesh_nx+1)x(2*mesh_ny+1) nodes
+                        mesh_nodes_matrix = np.zeros(
+                            (2*mesh_nx + 1, 2*mesh_ny + 1), dtype=int)
+                        node_idx = 0
+                        for i in range(2*mesh_nx + 1):
+                            for j in range(2*mesh_ny + 1):
+                                mesh_nodes_matrix[i, j] = node_idx
+                                node_idx += 1               
                 elif dim == 3:
-                # Map material patch node labels to torch-fem indices for 3D
-                    original_matrix = np.array(value)
-                    corrected_matrix = np.zeros_like(original_matrix)
-                    for i in range(original_matrix.shape[0]):
-                        for j in range(original_matrix.shape[1]):
-                            for k in range(original_matrix.shape[2]):
-                                matpatch_label = original_matrix[i, j, k]
-                                corrected_matrix[i, j, k] = \
-                                    node_label_to_torchfem_idx[
-                                    matpatch_label]
-                            
-                simulation_data[key] = torch.tensor(corrected_matrix)
+                    if elem_order == 1:
+                        # Linear elements:
+                        # (mesh_nx+1)x(mesh_ny+1)x(mesh_nz+1) nodes
+                        mesh_nodes_matrix = np.zeros(
+                            (mesh_nx + 1, mesh_ny + 1, mesh_nz + 1), dtype=int)
+                        node_idx = 0
+                        for i in range(mesh_nx + 1):
+                            for j in range(mesh_ny + 1):
+                                for k in range(mesh_nz + 1):
+                                    mesh_nodes_matrix[i, j, k] = node_idx
+                                    node_idx += 1
+                    else:  # elem_order == 2
+                        # Quadratic elements:
+                        # (2*mesh_nx+1)x(2*mesh_ny+1)x(2*mesh_nz+1) nodes
+                        mesh_nodes_matrix = np.zeros(
+                            (2*mesh_nx + 1, 2*mesh_ny + 1, 2*mesh_nz + 1),
+                            dtype=int)
+                        node_idx = 0
+                        for i in range(2*mesh_nx + 1):
+                            for j in range(2*mesh_ny + 1):
+                                for k in range(2*mesh_nz + 1):
+                                    mesh_nodes_matrix[i, j, k] = node_idx
+                                    node_idx += 1
+                simulation_data['mesh_nodes_matrix'] = torch.tensor(
+                    mesh_nodes_matrix)
             else:
                 simulation_data[key] = value
-
     #%% ------------------------- Boundary conditions -------------------------
     num_applied_disps, nodes_constrained = prescribe_disps_by_coords(
         domain=domain, data=matpatch, dim=dim)
