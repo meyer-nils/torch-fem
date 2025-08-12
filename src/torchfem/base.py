@@ -43,6 +43,7 @@ class FEM(ABC):
         self.n_int: int
         self.ext_strain: Tensor
         self.etype: Element
+        self.char_lengths: Tensor
 
         # Cached solve for sparse linear systems
         self.cached_solve = CachedSolve()
@@ -179,7 +180,12 @@ class FEM(ABC):
 
             # Evaluate material response
             stress[n, i], state[n, i], ddsdde = self.material.step(
-                H_inc, F[n - 1, i], stress[n - 1, i], state[n - 1, i], de0
+                H_inc,
+                F[n - 1, i],
+                stress[n - 1, i],
+                state[n - 1, i],
+                de0,
+                self.char_lengths,
             )
 
             # Compute element internal forces

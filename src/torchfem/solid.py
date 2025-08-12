@@ -25,6 +25,10 @@ class Solid(FEM):
         else:
             raise ValueError("Element type not supported.")
 
+        # Initialize characteristic lengths
+        vols = self.integrate_field()
+        self.char_lengths = vols ** (1 / 3)
+
         # Set element type specific sizes
         self.n_stress = 3
         self.n_int = len(self.etype.iweights())

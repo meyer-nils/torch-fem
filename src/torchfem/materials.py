@@ -39,6 +39,7 @@ class Material(ABC):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         pass
 
@@ -120,6 +121,7 @@ class IsotropicElasticity3D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the small-strain isotropic elasticity model.
 
@@ -137,6 +139,8 @@ class IsotropicElasticity3D(Material):
                 - Shape: Arbitrary, remains unchanged.
             de0 (Tensor): External small strain increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
 
         Returns:
             tuple:
@@ -207,6 +211,7 @@ class IsotropicHencky3D(IsotropicElasticity3D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Hencky elasticity model.
 
@@ -224,6 +229,8 @@ class IsotropicHencky3D(IsotropicElasticity3D):
                 - Shape: Arbitrary, remains unchanged.
             de0 (Tensor): External logarithmic strain increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
 
         Returns:
             tuple:
@@ -285,6 +292,7 @@ class Hyperelastic3D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step for a hyperelastic material.
 
@@ -299,6 +307,8 @@ class Hyperelastic3D(Material):
                 - Shape: Arbitrary, remains unchanged.
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
 
         Returns:
             tuple:
@@ -407,6 +417,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment with an elastoplastic model using small strains.
 
@@ -426,6 +437,8 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
                 - Shape: `(..., 1)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
 
         Returns:
             tuple:
@@ -692,6 +705,7 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Hencky elasticity model.
 
@@ -709,6 +723,8 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
                 - Shape: `(...,1)`
             de0 (Tensor): External logarithmic strain increment (e.g., thermal).
                 - Shape: `(..., 2, 2)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
 
         Returns:
             tuple:
@@ -829,6 +845,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains in Voigt notation.
 
@@ -848,6 +865,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
                 Shape: `(..., 1)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
                 Shape: `(..., 2, 2)`.
+            cl (Tensor): Characteristic lengths.
+                Shape: `(..., 1)`.
 
         Returns:
             tuple:
@@ -1079,6 +1098,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains.
 
@@ -1094,6 +1114,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
                 and stress in the third direction. Shape: `(..., 2)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
                 Shape: `(..., 2, 2)`.
+            cl (Tensor): Characteristic lengths.
+                Shape: `(..., 1)`.
 
         Returns:
             tuple:
@@ -1211,6 +1233,7 @@ class IsotropicElasticity1D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, H_inc - de0)
@@ -1255,6 +1278,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Solution variables
@@ -1401,6 +1425,7 @@ class OrthotropicElasticity3D(Material):
         sigma: Tensor,
         state: Tensor,
         de0: Tensor,
+        cl: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Compute small strain tensor

@@ -27,6 +27,11 @@ class Truss(FEM):
         else:
             raise ValueError("Element type not supported.")
 
+        # Initialize characteristic lengths
+        start_nodes = self.nodes[self.elements[:, 0]]
+        end_nodes = self.nodes[self.elements[:, 1]]
+        self.char_lengths = torch.linalg.norm(end_nodes - start_nodes, dim=-1)
+
         # Set element type specific sizes
         self.n_stress = 1
         self.n_int = len(self.etype.iweights())

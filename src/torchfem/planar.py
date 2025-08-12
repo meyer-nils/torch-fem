@@ -31,6 +31,10 @@ class Planar(FEM):
         else:
             raise ValueError("Element type not supported.")
 
+        # Initialize characteristic lengths
+        areas = self.integrate_field()
+        self.char_lengths = areas**0.5
+
         # Set element type specific sizes
         self.n_stress = 2
         self.n_int = len(self.etype.iweights())
