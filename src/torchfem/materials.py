@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from math import sqrt
-from typing import Callable
+from typing import Callable, Literal
 
 import torch
 from torch import Tensor
@@ -343,6 +343,136 @@ class Hyperelastic3D(Material):
             + torch.einsum("...jk,...il->...ijkl", sigma_new, torch.eye(3))
             + torch.einsum("...jl,...ik->...ijkl", sigma_new, torch.eye(3))
         )
+        return sigma_new, state_new, ddsdde
+
+
+class IsotropicDamage3D(IsotropicElasticity3D):
+    """Isotropic damage material model.
+
+    This class extends `IsotropicElasticity3D` to incorporate isotropic damage with a
+    single damage variable.
+
+    Attributes:
+        E (Tensor): Young's modulus. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        n_state (int): Number of internal state variables (here: 1).
+        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
+        d_kappa (Callable): Function that defines the damage evolution.
+        eq_strain (Literal["rankine", "mises"]): Type of equivalent strain used for
+            damage.
+    """
+
+    def __init__(
+        self,
+        E: float | Tensor,
+        nu: float | Tensor,
+        d_kappa: Callable,
+        eq_strain: Literal["rankine", "mises"],
+    ):
+        super().__init__(E, nu)
+        self.d_kappa = d_kappa
+        self.n_state = 1
+        self.eq_strain: Literal["rankine", "mises"] = eq_strain
+
+    def vectorize(self, n_elem: int):
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicDamage3D: A new material instance with vectorized properties.
+        """
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            E = self.E.repeat(n_elem)
+            nu = self.nu.repeat(n_elem)
+            return IsotropicDamage3D(E, nu, self.d_kappa, self.eq_strain)
+
+    def step(
+        self,
+        H_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
+        state: Tensor,
+        de0: Tensor,
+        cl: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Perform a strain increment with an isotropic damage model for small strains.
+
+        Args:
+            H_inc (Tensor): Incremental displacement gradient.
+                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+            F (Tensor): Current deformation gradient.
+                - Shape: `(..., 3, 3)`, same as `H_inc`.
+            sigma (Tensor): Current Cauchy stress tensor.
+                - Shape: `(..., 3, 3)`.
+            state (Tensor): Internal state variables, here: equivalent plastic strain.
+                - Shape: `(..., 1)`.
+            de0 (Tensor): External small strain increment (e.g., thermal).
+                - Shape: `(..., 3, 3)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
+
+        Returns:
+            tuple:
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor after plastic
+                    update. Shape: `(..., 3, 3)`.
+                - **state_new (Tensor)**: Updated internal state with updated plastic
+                    strain. Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                    Shape: `(..., 3, 3, 3, 3)`.
+        """
+        # Second order identity tensor
+        I2 = torch.eye(H_inc.shape[-1])
+        # Compute total strain
+        H_new = (F - I2) + H_inc
+        eps_new = 0.5 * (H_new.transpose(-1, -2) + H_new)
+
+        # Initialize solution variables
+        sigma_new = sigma.clone()
+        state_new = state.clone()
+        kappa = state_new[..., 0]
+
+        # Calculate equivalent strain
+        if self.eq_strain == "rankine":
+            ev = torch.linalg.eigvals(eps_new)
+            first_principal, _ = torch.max(ev.real, dim=-1)
+            eps_eq = torch.clamp(first_principal, min=0)
+        elif self.eq_strain == "mises":
+            eps_trace = eps_new[..., 0, 0] + eps_new[..., 1, 1] + eps_new[..., 2, 2]
+            dev_eps = eps_new - (1 / 3) * eps_trace[..., None, None] * I2
+            eps_eq = torch.sqrt(2 / 3 * torch.sum(dev_eps * dev_eps, dim=(-1, -2)))
+        else:
+            raise NotImplementedError(
+                f"Equivalent strain type '{self.eq_strain}' is not implemented."
+            )
+
+        # Update kappa
+        kappa = torch.maximum(kappa, eps_eq)
+
+        # Calculate damage
+        D = self.d_kappa(kappa, cl)
+
+        # Update stress
+        sigma_new = (1 - D)[:, None, None] * torch.einsum(
+            "...ijkl,...kl->...ij", self.C, eps_new - de0
+        )
+
+        # Update state
+        state_new[..., 0] = kappa
+
+        # Update tangent stiffness
+        ddsdde = (1.0 - D)[:, None, None, None, None] * self.C.clone()
+
         return sigma_new, state_new, ddsdde
 
 
