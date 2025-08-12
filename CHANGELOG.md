@@ -3,9 +3,11 @@
 ## Unreleased
 
 ### Added 
+- Add simple damage model 'IsotropicDamage3D'.
 - \_\_repr\_\_ functions to print torch-fem objects.
 
 ### Changed 
+- Material 'step' functions get an additional input 'cl' for the characteristic length of each element. This can be used for regularization in damage models.
 - Accelerate 'linear_to_quadratic()' function for elements.
 - Planar plot uses explicit triangulation objects.
 - Truss plot accepts u as positional argument to match base class.
