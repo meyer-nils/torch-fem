@@ -40,6 +40,7 @@ class Material(ABC):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         pass
 
@@ -122,6 +123,7 @@ class IsotropicElasticity3D(Material):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the small-strain isotropic elasticity model.
 
@@ -141,6 +143,7 @@ class IsotropicElasticity3D(Material):
                 - Shape: `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
                 - Shape: `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
             tuple:
@@ -212,6 +215,7 @@ class IsotropicHencky3D(IsotropicElasticity3D):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Hencky elasticity model.
 
@@ -231,6 +235,7 @@ class IsotropicHencky3D(IsotropicElasticity3D):
                 - Shape: `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
                 - Shape: `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
             tuple:
@@ -293,6 +298,7 @@ class Hyperelastic3D(Material):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step for a hyperelastic material.
 
@@ -309,6 +315,7 @@ class Hyperelastic3D(Material):
                 - Shape: `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
                 - Shape: `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
             tuple:
@@ -357,9 +364,10 @@ class IsotropicDamage3D(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        n_state (int): Number of internal state variables (here: 1).
+        n_state (int): Number of internal state variables (here: 2).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-        d_kappa (Callable): Function that defines the damage evolution.
+        d (Callable): Function that defines the damage evolution.
+        d_prime (Callable): Function that defines the derivative of damage evolution.
         eq_strain (Literal["rankine", "mises"]): Type of equivalent strain used for
             damage.
     """
@@ -368,12 +376,14 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         self,
         E: float | Tensor,
         nu: float | Tensor,
-        d_kappa: Callable,
+        d: Callable,
+        d_prime: Callable,
         eq_strain: Literal["rankine", "mises"],
     ):
         super().__init__(E, nu)
-        self.d_kappa = d_kappa
-        self.n_state = 1
+        self.d = d
+        self.d_prime = d_prime
+        self.n_state = 2
         self.eq_strain: Literal["rankine", "mises"] = eq_strain
 
     def vectorize(self, n_elem: int):
@@ -395,7 +405,7 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicDamage3D(E, nu, self.d_kappa, self.eq_strain)
+            return IsotropicDamage3D(E, nu, self.d, self.d_prime, self.eq_strain)
 
     def step(
         self,
@@ -405,6 +415,7 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment with an isotropic damage model for small strains.
 
@@ -421,6 +432,7 @@ class IsotropicDamage3D(IsotropicElasticity3D):
                 - Shape: `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
                 - Shape: `(..., 1)`.
+            iter (int): Newton iteration.
 
         Returns:
             tuple:
@@ -431,48 +443,50 @@ class IsotropicDamage3D(IsotropicElasticity3D):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                     Shape: `(..., 3, 3, 3, 3)`.
         """
-        # Second order identity tensor
-        I2 = torch.eye(H_inc.shape[-1])
         # Compute total strain
-        H_new = (F - I2) + H_inc
+        H_new = (F - torch.eye(H_inc.shape[-1])) + H_inc
         eps_new = 0.5 * (H_new.transpose(-1, -2) + H_new)
+
+        # Extract state variables
+        kappa = state[..., 0]
+        D = state[..., 1]
 
         # Initialize solution variables
         sigma_new = sigma.clone()
         state_new = state.clone()
-        kappa = state_new[..., 0]
 
         # Calculate equivalent strain
         if self.eq_strain == "rankine":
-            ev = torch.linalg.eigvals(eps_new)
-            first_principal, _ = torch.max(ev.real, dim=-1)
-            eps_eq = torch.clamp(first_principal, min=0)
-        elif self.eq_strain == "mises":
-            eps_trace = eps_new[..., 0, 0] + eps_new[..., 1, 1] + eps_new[..., 2, 2]
-            dev_eps = eps_new - (1 / 3) * eps_trace[..., None, None] * I2
-            eps_eq = torch.sqrt(2 / 3 * torch.sum(dev_eps * dev_eps, dim=(-1, -2)))
+            L, Q = torch.linalg.eigh(eps_new)
+            # Find largest eigenvalue by magnitude
+            idx = L.abs().argmax(dim=-1, keepdim=True)
+            eps_eq = torch.take_along_dim(L, idx, dim=-1).squeeze(-1)
+            n = torch.take_along_dim(Q, idx.unsqueeze(-2), dim=-1).squeeze(-1)
         else:
             raise NotImplementedError(
                 f"Equivalent strain type '{self.eq_strain}' is not implemented."
             )
 
-        # Update kappa
-        kappa = torch.maximum(kappa, eps_eq)
-
-        # Calculate damage
-        D = self.d_kappa(kappa, cl)
+        # Update kappa and damage
+        kappa_new = torch.maximum(kappa, eps_eq)
+        D_new = self.d(kappa_new, cl)
+        D_prime = self.d_prime(kappa_new, cl)
 
         # Update stress
-        sigma_new = (1 - D)[:, None, None] * torch.einsum(
-            "...ijkl,...kl->...ij", self.C, eps_new - de0
-        )
+        sigma_trial = torch.einsum("...ijkl,...kl->...ij", self.C, eps_new - de0)
+        sigma_new = (1 - D_new)[:, None, None] * sigma_trial
 
-        # Update state
-        state_new[..., 0] = kappa
+        # Update state variables
+        state_new[..., 0] = kappa_new
+        state_new[..., 1] = D_new
 
         # Update tangent stiffness
-        ddsdde = (1.0 - D)[:, None, None, None, None] * self.C.clone()
-
+        ddsdde = (1.0 - D_new)[..., None, None, None, None] * self.C
+        if iter > 0:
+            active = D_new > D
+            ddsdde[active] -= D_prime[active, None, None, None, None] * torch.einsum(
+                "...ij,...k,...l->...ijkl", sigma_trial[active], n[active], n[active]
+            )
         return sigma_new, state_new, ddsdde
 
 
@@ -548,6 +562,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment with an elastoplastic model using small strains.
 
@@ -569,6 +584,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
                 - Shape: `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
                 - Shape: `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
             tuple:
@@ -836,6 +852,7 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the large-strain Hencky elasticity model.
 
@@ -855,6 +872,7 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
                 - Shape: `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
                 - Shape: `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
             tuple:
@@ -976,6 +994,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains in Voigt notation.
 
@@ -997,6 +1016,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
                 Shape: `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
                 Shape: `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
             tuple:
@@ -1229,6 +1249,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment assuming small strains.
 
@@ -1246,6 +1267,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
                 Shape: `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
                 Shape: `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
             tuple:
@@ -1364,6 +1386,7 @@ class IsotropicElasticity1D(Material):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         sigma_new = sigma + torch.einsum("...ijkl,...kl->...ij", self.C, H_inc - de0)
@@ -1409,6 +1432,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Solution variables
@@ -1556,6 +1580,7 @@ class OrthotropicElasticity3D(Material):
         state: Tensor,
         de0: Tensor,
         cl: Tensor,
+        iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Perform a strain increment."""
         # Compute small strain tensor

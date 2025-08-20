@@ -133,7 +133,7 @@ class FEM(ABC):
         du = torch.zeros_like(self.nodes)
         de0 = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
         self.K = torch.empty(0)
-        k, _ = self.integrate_material(u, F, s, a, 1, du, de0, False)
+        k, _ = self.integrate_material(u, F, s, a, 1, 0, du, de0, False)
         return k
 
     def integrate_material(
@@ -143,6 +143,7 @@ class FEM(ABC):
         stress: Tensor,
         state: Tensor,
         n: int,
+        iter: int,
         du: Tensor,
         de0: Tensor,
         nlgeom: bool,
@@ -186,6 +187,7 @@ class FEM(ABC):
                 state[n - 1, i],
                 de0,
                 self.char_lengths,
+                iter,
             )
 
             # Compute element internal forces
@@ -350,7 +352,7 @@ class FEM(ABC):
 
                 # Element-wise integration
                 k, f_i = self.integrate_material(
-                    u, defgrad, stress, state, n, du, de0, nlgeom
+                    u, defgrad, stress, state, n, i, du, de0, nlgeom
                 )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
