@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added 
+- Added new example geometry (*.vtu) of a quarter symmetric plate.
+- Added two new solid examples "isotropic_damage.ipynb" and "plate_damage.ipynb"
 - Add simple damage model 'IsotropicDamage3D'.
 - \_\_repr\_\_ functions to print torch-fem objects.
 

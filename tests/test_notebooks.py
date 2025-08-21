@@ -71,6 +71,11 @@ def test_solid_inelasticity_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/solid/isotropic_damage.ipynb", execute=True)
+def test_solid_isotropic_damage_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/solid/finite_strain.ipynb", execute=True)
 def test_solid_finite_strain_notebook(tb):
     tb.execute()
