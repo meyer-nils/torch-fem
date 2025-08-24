@@ -39,6 +39,7 @@ pip install cupy-cuda12x # v12.x
   - Isotropic linear elasticity 
   - Orthotropic linear elasticity
   - Isotropic small strain plasticity
+  - Isotropic small strain damage
   - Logarithmic finite strain elasticity
   - Hyperelasticity (via automatic differentiation of their energy function)
   - Custom user material interface
