@@ -330,6 +330,13 @@ class FEM(ABC):
         defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
 
+        if u.dtype != torch.float64:
+            print(
+                "WARNING: Detected single precision floating points. It is highly "
+                "recommended to use torch-fem with double precision by setting "
+                "'torch.set_default_dtype(torch.float64)'."
+            )
+
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
 
