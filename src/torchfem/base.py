@@ -330,7 +330,7 @@ class FEM(ABC):
         defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
 
-        if u.dtype != torch.float64:
+        if verbose and u.dtype != torch.float64:
             print(
                 "WARNING: Detected single precision floating points. It is highly "
                 "recommended to use torch-fem with double precision by setting "
