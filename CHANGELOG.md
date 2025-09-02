@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added 
+- Warning message for single precision solves.
 - Added new example geometry (*.vtu) of a quarter symmetric plate.
 - Added two new solid examples "isotropic_damage.ipynb" and "plate_damage.ipynb"
 - Add simple damage model 'IsotropicDamage3D'.
@@ -13,6 +14,9 @@
 - Accelerate 'linear_to_quadratic()' function for elements.
 - Planar plot uses explicit triangulation objects.
 - Truss plot accepts u as positional argument to match base class.
+
+### Fixed
+- Corrected type hints in `export_mesh` for elem_data.
 
 ## Version 0.4.4 - June 04 2025 
 
