@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Dict
+from typing import Dict, List
 
 import torch
 from meshio import Mesh
@@ -15,9 +15,9 @@ from .materials import Material
 @torch.no_grad()
 def export_mesh(
     mesh: FEM,
-    filename: PathLike,
+    filename: str | PathLike,
     nodal_data: Dict[str, Tensor] = {},
-    elem_data: Dict[str, Tensor] = {},
+    elem_data: Dict[str, List[Tensor]] = {},
 ):
     if isinstance(mesh, Truss):
         etype = "line"
