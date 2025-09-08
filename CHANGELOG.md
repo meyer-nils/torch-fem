@@ -18,6 +18,11 @@
 ### Fixed
 - Corrected type hints in `export_mesh` for elem_data.
 
+## Version 0.4.5 - June 05 2025 
+
+### Changed
+- Instead of specifying 'direct=True in the 'fem.solve' function, you can now specify 'method=["cg", "minres", "spsolve", "pardiso"]' for more fine-grained control over the solver selection. 
+
 ## Version 0.4.4 - June 04 2025 
 
 ### Changed
