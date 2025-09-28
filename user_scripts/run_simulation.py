@@ -8,8 +8,8 @@ import pathlib
 import pickle as pkl
 
 # Add graphorge to sys.path
-graphorge_path = str(pathlib.Path(__file__).parents[2] / "graphorge_material_patches" / 
-    "src")
+graphorge_path = str(
+    pathlib.Path(__file__).parents[2] / "graphorge_material_patches" / "src")
 if graphorge_path not in sys.path:
     sys.path.insert(0, graphorge_path) 
 
@@ -29,7 +29,9 @@ from torchfem.mesh import cube_hexa, rect_quad
 from torchfem.elements import linear_to_quadratic
 
 
-from utils import prescribe_disps_by_coords, plot_displacement_field
+from utils import prescribe_disps_by_coords, plot_displacement_field, \
+    compute_strain_energy_density
+
 torch.set_default_dtype(torch.float64)
 
 def run_simulation(
@@ -56,7 +58,7 @@ def run_simulation(
         f'material_patches/'
     if dim == 2:
         dir_path = out_filepath + f'_data/{material_behavior}/{dim}d/' + \
-            f'{element_type}/mesh{mesh_nx}x{mesh_ny}/ninc{num_increments}/'
+            f'{element_type}/mesh_{mesh_nx}x{mesh_ny}/ninc{num_increments}/'
     elif dim == 3:
         dir_path = out_filepath + f'_data/{material_behavior}/{dim}d/' + \
             f'{element_type}/mesh{mesh_nx}x{mesh_ny}x{mesh_nz}/' + \
@@ -171,6 +173,7 @@ def run_simulation(
         'bd_nodes_disps_time_series': {},
         'bd_nodes_forces_time_series': {},
         'stress_avg': {},
+        'strain_energy_density': {},
     }
 
     # Save interpolated coordinates and displacements
@@ -293,7 +296,6 @@ def run_simulation(
     total_volume = vol_elem.sum(dim=1, keepdim=True) 
     # Shape: (num_increments, num_elem)
     vol_weights = vol_elem / total_volume
-    
     # Volume-weighted average for sigma_out
     # sigma_out shape: (num_increments, num_elem, num_stress, num_stress) 
     # averaged over an element's integ. points;
@@ -317,12 +319,13 @@ def run_simulation(
         # num_state = 2 for plane strain, 1 for pure plasticity
         alpha_out_avg = (alpha_out[:,:,0] * vol_weights).sum(dim=1)
 
-    # print(f'sigma_out: {sigma_out}')
-    # print(f'sigma_out.shape: {sigma_out.shape}')
-    # print(f'sigma_out_avg.shape: {sigma_out_avg.shape}')
-    # print(f'sigma_out_avg: {sigma_out_avg}')
-
+    #%% -------------------- Strain Energy Density Calculation ----------------
+    # Compute strain energy density for each element at each time step
+    strain_energy_density = compute_strain_energy_density(
+        sigma_out, def_grad, material_behavior, dim)
     
+    # Volume-weighted total strain energy
+    total_strain_energy = (strain_energy_density * vol_weights).sum(dim=1)
     #%% ------------------- Interpolate displacement field --------------------
     # For 1x1 quad4 mesh, interpolate displacement field at 50x50 grid points
     # if material_behavior == 'elastic' and \
@@ -543,6 +546,8 @@ def run_simulation(
     if num_increments == 1:
         simulation_data['stress_avg'] = sigma_out_avg[
             -1, 0]
+        simulation_data['strain_energy_density'] = \
+            total_strain_energy[-1]
         # simulation_data['def_grad_avg'] = def_grad_avg[
         #     -1, :, :]
         if material_behavior == 'elastoplastic':
@@ -554,6 +559,8 @@ def run_simulation(
             #     idx_time, :, :]
             # simulation_data['def_grad_avg'][idx_time] = def_grad_avg[
             #     idx_time, :, :]
+            simulation_data['strain_energy_density'][idx_time] = \
+                total_strain_energy[idx_time]
             if material_behavior == 'elastoplastic':
                 simulation_data['epsilon_pl_eq'][idx_time] = (alpha_out_avg[
                 idx_time])

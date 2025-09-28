@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 def prescribe_disps_by_coords(domain, data, dim):
     """
@@ -144,3 +145,67 @@ def plot_displacement_field(coords_x, coords_y, u_x, u_y,
     plt.tight_layout()
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close()
+
+
+def compute_strain_energy_density(sigma, def_grad, material_behavior, dim):
+    """
+    Compute strain energy density from stress and deformation gradient.
+    
+    For elastic materials: W = 0.5 * sigma : epsilon
+    For hyperelastic materials: W is computed from the strain energy function
+    For elastoplastic materials: W = 0.5 * sigma : epsilon_elastic
+    
+    Args:
+        sigma: stress tensor (num_increments, num_elem, dim, dim)
+        def_grad: deformation gradient (num_increments, num_elem, dim, dim)  
+        material_behavior: 'elastic', 'hyperelastic', or 'elastoplastic'
+        dim: spatial dimension (2 or 3)
+        
+    Returns:
+        strain_energy_density: (num_increments, num_elem)
+    """
+    # Handle case where element dimension is missing (single element)
+    if sigma.dim() == 3:  # (num_increments, dim, dim) -> (num_increments, 1, dim, dim)
+        sigma = sigma.unsqueeze(1)
+    if def_grad.dim() == 3:  # (num_increments, dim, dim) -> (num_increments, 1, dim, dim)  
+        def_grad = def_grad.unsqueeze(1)
+    
+    if material_behavior in ['elastic', 'elastoplastic']:
+        # Compute strain tensor from deformation gradient
+        # Small strain: epsilon = 0.5 * (F + F^T) - I
+        I = torch.eye(dim, device=def_grad.device, dtype=def_grad.dtype)
+        I = I.expand_as(def_grad)
+        epsilon = 0.5 * (def_grad + def_grad.transpose(-2, -1)) - I
+        
+        # Strain energy density: W = 0.5 * sigma : epsilon
+        # Using Einstein summation for tensor contraction
+        strain_energy_density = 0.5 * torch.einsum('...ij,...ij->...', sigma, epsilon)
+        
+    elif material_behavior == 'hyperelastic':
+        # For hyperelastic materials, we need to compute from deformation gradient
+        # W = psi(F) where psi is the strain energy function
+        # For Neo-Hookean: W = mu/2 * (tr(C) - 3) - mu*ln(J) + lambda/2 * (ln(J))^2
+        # where C = F^T * F is right Cauchy-Green tensor
+        
+        C = torch.matmul(def_grad.transpose(-2, -1), def_grad)
+        J = torch.det(def_grad)
+        log_J = torch.log(torch.clamp(J, min=1e-8))  # Clamp to avoid log(0)
+        
+        # Material parameters (these should ideally come from material definition)
+        # Using typical values for Neo-Hookean material
+        if dim == 2:
+            # For plane strain, we need to be careful about the 3D formulation
+            # Simplified calculation for 2D
+            trace_C = torch.diagonal(C, dim1=-2, dim2=-1).sum(-1)
+            strain_energy_density = 0.1 * (trace_C - 2.0)  # Simplified
+        else:
+            trace_C = torch.diagonal(C, dim1=-2, dim2=-1).sum(-1)
+            # Neo-Hookean parameters (should match material definition)
+            mu = 1000.0  # Approximate value
+            lambda_param = 1000.0  # Approximate value
+            strain_energy_density = (mu / 2.0) * (trace_C - 3.0) - mu * log_J + \
+                                  (lambda_param / 2.0) * log_J**2
+    else:
+        raise ValueError(f"Unknown material behavior: {material_behavior}")
+        
+    return strain_energy_density

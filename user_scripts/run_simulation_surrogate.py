@@ -7,6 +7,11 @@ import os
 import sys
 import pathlib
 import pickle as pkl
+import psutil
+import time
+import signal
+import cProfile
+import pstats
 
 # Add graphorge to sys.path
 graphorge_path = str(pathlib.Path(__file__).parents[2] \
@@ -18,6 +23,7 @@ if graphorge_path not in sys.path:
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+
 # Local
 from torchfem import Solid, Planar
 from torchfem.materials import (
@@ -32,6 +38,21 @@ from torchfem.mesh import cube_hexa, rect_quad
 from torchfem.elements import linear_to_quadratic
 
 from utils import prescribe_disps_by_coords
+
+plt.rcParams.update({
+    "text.usetex": True,
+    "font.family": "serif",
+    "font.serif": ["Computer Modern Roman"],
+    "font.size": 12,
+    "axes.titlesize": 16,
+    "figure.dpi": 360,
+    "axes.labelsize": 18,
+    "xtick.labelsize": 16,
+    "ytick.labelsize": 16,
+    "legend.fontsize": 14,
+    "figure.figsize": (6, 6),
+    "lines.linewidth": 1.5
+})
 #
 #                                                          Authorship & Credits
 # =============================================================================
@@ -49,8 +70,30 @@ def run_simulation_surrogate(
     mesh_nx=1, mesh_ny=1, mesh_nz=1,
     model_path=None):
     """
-    Run simulation using solve_matpatch function with GraphOrge surrogate model
+    Run simulation using solve_matpatch function with Graphorge surrogate model
     """
+    
+    # Monitor memory and time
+    process = psutil.Process(os.getpid())
+    start_time = time.time()
+    
+    def print_status(location):
+        current_time = time.time()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        print(f"[{location}] Time: {current_time - start_time:.2f}s, "
+              f"Memory: {memory_mb:.1f}MB")
+    
+    print_status("START")
+    
+    # Set up signal handler to catch termination
+    def signal_handler(signum, frame):
+        print(f"\n[SIGNAL] Caught signal {signum}")
+        print_status("SIGNAL_CAUGHT")
+        sys.exit(1)
+    
+    signal.signal(signal.SIGTERM, signal_handler)
+    # Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)  
     
     # Determine element order and dimension
     if element_type in ['quad4', 'tri3', 'tetra4', 'hex8']:
@@ -65,13 +108,34 @@ def run_simulation_surrogate(
     
     # Default model path if not provided
     if model_path is None:
-        model_path = (
-            "/Users/rbarreira/Desktop/machine_learning/material_patches/"
-            "graphorge_material_patches/src/graphorge/projects/"
-            "material_patches/elastic/2d/quad4/mesh1x1/ninc1/"
-            "26.1_force_equilibrium_npath10000/reference/3_model/"
-            "material_patch_model-199-best.pt"
-        )
+        if material_behavior == 'elastoplastic':
+            model_path = (
+                "/Users/rbarreira/Desktop/machine_learning/material_patches/"
+                "graphorge_material_patches/src/graphorge/projects/"
+                "material_patches/elastoplastic/2d/quad4/mesh1x1/ninc100/"
+                "scaler_minmax/reference/3_model"
+                # "/Users/rbarreira/Desktop/machine_learning/material_patches/"
+                # "graphorge_material_patches/src/graphorge/projects/"
+                # "material_patches/elastic/2d/quad4/mesh1x1/ninc1/"
+                # "long_training_rnn/reference/3_model"
+                # '/Users/rbarreira/Desktop/machine_learning/'
+                #     'material_patches/graphorge_material_patches/src/'
+                #     'graphorge/projects/material_patches/elastic/'
+                #     '2d/quad4/mesh1x1/ninc100/27_force_equilibrium_rnn/'
+                #     'reference/3_model'
+            )
+        elif material_behavior == 'elastic':
+            model_path = (
+                "/Users/rbarreira/Desktop/machine_learning/material_patches/"
+                "graphorge_material_patches/src/graphorge/projects/"
+                "material_patches/elastic/2d/quad4/mesh1x1/ninc1/"
+                "long_training_rnn/reference/3_model"
+                # '/Users/rbarreira/Desktop/machine_learning/'
+                #     'material_patches/graphorge_material_patches/src/'
+                #     'graphorge/projects/material_patches/elastic/'
+                #     '2d/quad4/mesh1x1/ninc100/27_force_equilibrium_rnn/'
+                #     'reference/3_model'
+            )
     
     #%% -------------------------- Constitutive law ---------------------------
     if material_behavior == 'elastic':
@@ -156,8 +220,8 @@ def run_simulation_surrogate(
     
     # Define material patch flag - use surrogate for all elements
     num_elements = elements.shape[0]
-    # All elements use material patch ID 1
-    is_mat_patch = torch.ones(num_elements, dtype=torch.int)
+    # Each element gets its own unique material patch ID (0, 1, 2, ...)
+    is_mat_patch = torch.arange(num_elements, dtype=torch.int)
     
     #%% ----------------------- Boundary conditions ---------------------------
     nodes_constrained = []
@@ -179,7 +243,7 @@ def run_simulation_surrogate(
             # Apply displacement to top edge (y=1)
             elif torch.abs(node_coord[1] - 1.0) < 1e-6:
                 domain.displacements[i, 0] = 0.0
-                domain.displacements[i, 1] = 0.1
+                domain.displacements[i, 1] = 0.01
                 domain.constraints[i, 0] = True
                 domain.constraints[i, 1] = True
                 nodes_constrained.append(i)
@@ -212,29 +276,64 @@ def run_simulation_surrogate(
     
     print(f"Applied boundary conditions to {num_applied_disps} nodes")
     #%% ------------------------------- Solver --------------------------------
+    # Create more increments for elastoplastic simulation
+    if material_behavior == 'elastoplastic':
+        # Use 50 loading steps for elastoplastic simulation
+        increments = torch.linspace(0.0, 1.0, 5)
+        # RNN-like behavior
+        is_stepwise = True 
+    else:
+        # One step for elastic sim
+        # increments = torch.tensor([0.0, 1.0])
+        # is_stepwise = False
+        increments = torch.linspace(0.0, 1.0, 5)
+        # RNN-like behavior
+        is_stepwise = False 
+    
+    print_status("BEFORE_SOLVE")
+    
+    # Start profiling
+    profiler = cProfile.Profile()
+    profiler.enable()
+    
+    u_ref, f_ref, _, _, _ = domain.solve(increments=increments, rtol=1e-8)
+
+
     u, f, _, _, _ = domain.solve_matpatch(
         is_mat_patch=is_mat_patch,
-        increments=torch.tensor([0.0, 1.0]),
+        increments=increments,
         max_iter=100,
         rtol=1e-8,
         verbose=True,
         return_intermediate=True,
-        return_volumes=False
+        return_volumes=False,
+        is_stepwise=is_stepwise,
+        model_directory=model_path
     )
     
-    print("Simulation completed successfully!")
-    print(f"Final displacements:\n{u[-1]}")
-    print(f"Final forces:\n{f[-1]}")
+    # Stop profiling and print results
+    profiler.disable()
+    print_status("AFTER_SOLVE")
     
+    print("\n" + "="*60)
+    print("PROFILING RESULTS - TOP 15 BOTTLENECKS")
+    print("="*60)
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumulative').print_stats(15)
+
     #%% ------------------------------- Outputs -------------------------------
     # Create directory structure for outputs
     mesh_str = f"{mesh_nx}x{mesh_ny}"
     if dim == 3:
         mesh_str += f"x{mesh_nz}"
     
+    # Determine number of increments for output directory
+    # WHY: # Subtract 1 for initial condition
+    n_increments = len(increments) - 1  
+    
     output_dir = (
         f"results/{material_behavior}/{dim}d/{element_type}/"
-        f"mesh_{mesh_str}/n_time_inc_1")
+        f"mesh_{mesh_str}/n_time_inc_{n_increments}")
     os.makedirs(output_dir, exist_ok=True)
     
     # Save results
@@ -245,11 +344,19 @@ def run_simulation_surrogate(
         'material_patch_ids': is_mat_patch.detach().cpu().numpy()}
     
     output_file = os.path.join(output_dir, "results.pkl")
-    with open(output_file, 'wb') as f:
-        pkl.dump(results, f)
+    with open(output_file, 'wb') as file_handle:
+        pkl.dump(results, file_handle)
     
     print(f"Results saved to {output_file}")
     
+
+    # ----------------------- Plot boundary conditions ------------------------
+    domain.plot()
+
+    plot_path = os.path.join(output_dir, "reference_configuration.png")
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
     # ----------------------- Plot displacement field -------------------------
     # Get final displacement field
     # Shape: (n_nodes, n_dim)
@@ -257,13 +364,59 @@ def run_simulation_surrogate(
 
     domain.plot(
         u=u_final,
-        node_property=torch.sqrt(u_final[:, 0]**2 + u_final[:, 1]**2),
-        title='Displacement Magnitude',
+        node_property=torch.norm(u_final, dim=1),
+        title=r'Displacement Magnitude $||\mathbf{u}||_{2}$',
         colorbar=True,
-        figsize=(8, 6),
+        cmap='viridis', vmin=0.0, vmax=0.01
+    )
+
+    plot_path = os.path.join(output_dir, "displacement_field.png")
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+
+    u_diff = torch.abs(u[-1] - u_ref[-1]) 
+
+    domain.plot(
+        u=u_diff,
+        node_property=torch.norm(u_diff, dim=1),
+        title=r'$||\mathbf{u}_{pred} - \mathbf{u}_{ref}||_{2}$',
+        colorbar=True,
+        cmap='viridis', vmin=0.0, vmax=0.01
+    )
+
+    plot_path = os.path.join(output_dir, "displacement_field_difference.png")
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # ------------------------- Plot force field ------------------------------
+    # Get final force field
+    # Shape: (n_nodes, n_dim)
+    f_final = f[-1]
+    
+    domain.plot(
+        u=u_final,
+        node_property=torch.norm(f_final, dim=1),
+        title=r'Force Magnitude $||\mathbf{f}||_{2}$',
+        colorbar=True,
+        cmap='plasma'
+    )
+    
+    force_plot_path = os.path.join(output_dir, "force_field.png")
+    plt.savefig(force_plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    f_diff = torch.abs(f[-1] - f_ref[-1]) 
+
+    domain.plot(
+        u=u_diff,
+        node_property=torch.norm(f_diff, dim=1),
+        title=r'$||\mathbf{f}_{pred} - \mathbf{f}_{ref}||_{2}$',
+        colorbar=True,
         cmap='viridis'
     )
-    plot_path = os.path.join(output_dir, "displacement_field.png")
+
+    plot_path = os.path.join(output_dir, "force_field_difference.png")
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -271,7 +424,7 @@ def run_simulation_surrogate(
 if __name__ == '__main__':
     run_simulation_surrogate(
         element_type='quad4',
-        material_behavior='elastic',
+        material_behavior='elastoplastic',
         mesh_nx=1,
         mesh_ny=1,
         mesh_nz=1)
