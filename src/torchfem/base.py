@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from torch import Tensor
 import copy
+import cProfile
+import pstats
 
 from .elements import Element, Quad1, Quad2, Hexa1, Hexa2
 from .materials import Material
@@ -17,7 +19,9 @@ from graphorge.projects.material_patches.gnn_model_tools.gen_graphs_files \
 from graphorge.projects.material_patches.gnn_model_tools.features import (
     GNNPatchFeaturesGenerator)
 from graphorge.gnn_base_model.model.custom_layers import (
-    compute_stiffness_matrix)
+    compute_stiffness_matrix, forward_reconstructed_graph, extract_forces,
+    extract_displacements)
+import torch.func as torch_func
 
 
 class FEM(ABC):
@@ -488,9 +492,15 @@ class FEM(ABC):
                 du[con] = DU[con]
                 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                 # Element-wise integration
+                # profiler = cProfile.Profile()
+                # profiler.enable()
                 k, f_i = self.integrate_material(
                     u, defgrad, stress, state, n, du, de0, nlgeom
                 )
+                # profiler.disable()
+                # print(f"\n=== integrate_material PROFILE (increment {n}) ===")
+                # stats = pstats.Stats(profiler)
+                # stats.sort_stats('cumulative').print_stats(10)
                 if self.K.numel() == 0 or not self.material.n_state == 0 or \
                     nlgeom:
                     self.K = self.assemble_stiffness(k, con)
@@ -1042,10 +1052,36 @@ class FEM(ABC):
             elem_u_current = u[n, elem_nodes, :].clone().requires_grad_(True)
             # Convert to numpy for GraphData (reference coordinates)
             node_coords_init = elem_coords_ref.detach().numpy()
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Nodal coordinates
-            nodes_coords_hist = (elem_coords_ref + elem_u_current).detach(
-                ).numpy()[:, :, np.newaxis]
+            
+            #
+            # scaler_type = 'minmax'
+            
+            # # Unit elements: normalize coordinates to [0, 1] for minmax 
+            # # scaler compatibility
+            # if scaler_type == 'minmax':
+            #     coords_min = node_coords_init.min(axis=0, keepdims=True)
+            #     coords_max = node_coords_init.max(axis=0, keepdims=True)
+            #     coords_range = coords_max - coords_min
+            #     node_coords_init_norm = (node_coords_init - coords_min
+            #                                    ) / coords_range
+            #     breakpoint()
+            #     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            #     # Nodal coordinates (also normalize current coordinates)
+            #     nodes_coords_current = (elem_coords_ref + elem_u_current
+            #                             ).detach().numpy()
+            #     nodes_coords_current_norm = (nodes_coords_current - \
+            #                                        coords_min) / coords_range
+            #     nodes_coords_hist = nodes_coords_current_norm[:, :, np.newaxis]
+            #     # Use normalized coordinates for GraphData
+            #     graph_coords = node_coords_init_norm
+            # else:
+
+            # Use original coordinates for other scalers
+            nodes_coords_current = (elem_coords_ref + elem_u_current
+                                    ).detach().numpy()
+            nodes_coords_hist = nodes_coords_current[:, :, np.newaxis]
+            graph_coords = node_coords_init
+
             # Nodal displacements
             nodes_disps_hist = elem_u_current.detach().numpy(
                 )[:, :, np.newaxis]
@@ -1062,62 +1098,65 @@ class FEM(ABC):
                 patch_dim = [1.0, 1.0, 1.0]
                 n_elem_per_dim = [1, 1, 1]
 
-            # Create mesh matrix for single element
+            # Create mesh matrix for single-element material patch
             if isinstance(self.etype, Quad1):
-                mesh_nodes_matrix = np.array([[0, 1], [2, 3]])
-            else:
-                # For other elements, create connectivity based on nodes
-                mesh_nodes_matrix = np.arange(n_nod).reshape(-1, 1)
+                elem_order = 1
+                # mesh_nodes_matrix = np.array([[0, 1], [2, 3]])
+            elif isinstance(self.etype, Quad2):
+                elem_order = 2
             # Correct way of initializing mesh_nodes_matrix
-            # if dim == 2:
-            #     if elem_order == 1:
-            #         # Linear elements:
-            #         # (mesh_nx+1)x(mesh_ny+1) nodes
-            #         mesh_nodes_matrix = np.zeros(
-            #             (mesh_nx + 1, mesh_ny + 1), dtype=int)
-            #         node_idx = 0
-            #         for i in range(mesh_nx + 1):
-            #             for j in range(mesh_ny + 1):
-            #                 mesh_nodes_matrix[i, j] = node_idx
-            #                 node_idx += 1
-            #     else:  # elem_order == 2
-            #         # Quadratic elements:
-            #         # (2*mesh_nx+1)x(2*mesh_ny+1) nodes
-            #         mesh_nodes_matrix = np.zeros(
-            #             (2*mesh_nx + 1, 2*mesh_ny + 1), dtype=int)
-            #         node_idx = 0
-            #         for i in range(2*mesh_nx + 1):
-            #             for j in range(2*mesh_ny + 1):
-            #                 mesh_nodes_matrix[i, j] = node_idx
-            #                 node_idx += 1               
-            # elif dim == 3:
-            #     if elem_order == 1:
-            #         # Linear elements:
-            #         # (mesh_nx+1)x(mesh_ny+1)x(mesh_nz+1) nodes
-            #         mesh_nodes_matrix = np.zeros(
-            #             (mesh_nx + 1, mesh_ny + 1, mesh_nz + 1), dtype=int)
-            #         node_idx = 0
-            #         for i in range(mesh_nx + 1):
-            #             for j in range(mesh_ny + 1):
-            #                 for k in range(mesh_nz + 1):
-            #                     mesh_nodes_matrix[i, j, k] = node_idx
-            #                     node_idx += 1
-            #     else:  # elem_order == 2
-            #         # Quadratic elements:
-            #         # (2*mesh_nx+1)x(2*mesh_ny+1)x(2*mesh_nz+1) nodes
-            #         mesh_nodes_matrix = np.zeros(
-            #             (2*mesh_nx + 1, 2*mesh_ny + 1, 2*mesh_nz + 1),
-            #             dtype=int)
-            #         node_idx = 0
-            #         for i in range(2*mesh_nx + 1):
-            #             for j in range(2*mesh_ny + 1):
-            #                 for k in range(2*mesh_nz + 1):
-            #                     mesh_nodes_matrix[i, j, k] = node_idx
-            #                     node_idx += 1
+            mesh_nx = 1
+            mesh_ny = 1
+            mesh_nz = 1
+            if dim == 2:
+                if elem_order == 1:
+                    # Linear elements:
+                    # (mesh_nx+1)x(mesh_ny+1) nodes
+                    mesh_nodes_matrix = np.zeros(
+                        (mesh_nx + 1, mesh_ny + 1), dtype=int)
+                    node_idx = 0
+                    for i in range(mesh_nx + 1):
+                        for j in range(mesh_ny + 1):
+                            mesh_nodes_matrix[i, j] = node_idx
+                            node_idx += 1
+                else:  # elem_order == 2
+                    # Quadratic elements:
+                    # (2*mesh_nx+1)x(2*mesh_ny+1) nodes
+                    mesh_nodes_matrix = np.zeros(
+                        (2*mesh_nx + 1, 2*mesh_ny + 1), dtype=int)
+                    node_idx = 0
+                    for i in range(2*mesh_nx + 1):
+                        for j in range(2*mesh_ny + 1):
+                            mesh_nodes_matrix[i, j] = node_idx
+                            node_idx += 1     
+            elif dim == 3:
+                if elem_order == 1:
+                    # Linear elements:
+                    # (mesh_nx+1)x(mesh_ny+1)x(mesh_nz+1) nodes
+                    mesh_nodes_matrix = np.zeros(
+                        (mesh_nx + 1, mesh_ny + 1, mesh_nz + 1), dtype=int)
+                    node_idx = 0
+                    for i in range(mesh_nx + 1):
+                        for j in range(mesh_ny + 1):
+                            for k in range(mesh_nz + 1):
+                                mesh_nodes_matrix[i, j, k] = node_idx
+                                node_idx += 1
+                else:  # elem_order == 2
+                    # Quadratic elements:
+                    # (2*mesh_nx+1)x(2*mesh_ny+1)x(2*mesh_nz+1) nodes
+                    mesh_nodes_matrix = np.zeros(
+                        (2*mesh_nx + 1, 2*mesh_ny + 1, 2*mesh_nz + 1),
+                        dtype=int)
+                    node_idx = 0
+                    for i in range(2*mesh_nx + 1):
+                        for j in range(2*mesh_ny + 1):
+                            for k in range(2*mesh_nz + 1):
+                                mesh_nodes_matrix[i, j, k] = node_idx
+                                node_idx += 1
         
             # Instantiate GNN-based material patch graph data
             gnn_patch_data = GraphData(
-                n_dim=dim, nodes_coords=node_coords_init)
+                n_dim=dim, nodes_coords=graph_coords)
             
             # Set connectivity radius based on finite element size
             connect_radius = 4 * np.sqrt(np.sum([x**2 for x in 
@@ -1216,6 +1255,12 @@ class FEM(ABC):
                 if 'processor' in patch_hidden:
                     model._gnn_epd_model._processor._hidden_states = \
                         patch_hidden['processor']
+                    for i, layer in enumerate(
+                        model._gnn_epd_model._processor._processor):
+                        layer_key = f'layer_{i}'
+                        if layer_key in patch_hidden['processor']:
+                            layer._hidden_states = \
+                                patch_hidden['processor'][layer_key]
                 if 'decoder' in patch_hidden:
                     model._gnn_epd_model._decoder._hidden_states = \
                         patch_hidden['decoder']
@@ -1304,8 +1349,8 @@ class FEM(ABC):
             # breakpoint()
             # Store stiffness matrix
             k[idx_patch] = stiffness_matrix
-            print(f'stiffness matrix: {k[idx_patch]}')
-            breakpoint()
+            # print(f'stiffness matrix: {k[idx_patch]}')
+            # breakpoint()
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  
         if is_stepwise:
             return k, f, hidden_states_output
@@ -1533,6 +1578,8 @@ class FEM(ABC):
                     # Get unique patch IDs and process all at once
                     patch_ids = torch.unique(is_mat_patch[patch_mask])
                     # Call surrogate integration
+                    # profiler_surr = cProfile.Profile()
+                    # profiler_surr.enable()
                     if is_stepwise:
                         k_surr, f_surr, hidden_state_out = \
                             self.surrogate_integrate_material(
@@ -1548,6 +1595,10 @@ class FEM(ABC):
                             is_stepwise=is_stepwise,
                             is_converged=False,
                             patch_ids=patch_ids)
+                    # profiler_surr.disable()
+                    # print(f"\n=== surrogate_integrate_material PROFILE (increment {n}) ===")
+                    # stats_surr = pstats.Stats(profiler_surr)
+                    # stats_surr.sort_stats('cumulative').print_stats(10)
                     # Assemble results for all patches
                     k[patch_mask] = k_surr[patch_mask]
                     f_i[patch_mask] = f_surr[patch_mask]
@@ -1556,8 +1607,6 @@ class FEM(ABC):
                 if self.K.numel() == 0 or not self.material.n_state == 0 or \
                     nlgeom:
                     self.K = self.assemble_stiffness(k, con)
-                
-
                 F_int = self.assemble_force(f_i)
                 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                 # Compute residual
@@ -1580,14 +1629,15 @@ class FEM(ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     # Update patch-specific hidden states with converged values
                     if is_stepwise:
-                        # Update patch-specific hidden states with converged values
-                        # hidden_state_out contains the updated states for processed patches
+                        # Update patch-specific hidden states 
+                        # with converged values
+                        # hidden_state_out contains the updated states for 
+                        # processed patches
                         for pid in patch_ids:
                             patch_key = f"patch_{pid.item()}"
-                            if patch_key in hidden_state_out:
-                                # Update the patch-specific hidden states
-                                if patch_key in hidden_states_dict:
-                                    hidden_states_dict[patch_key] = hidden_state_out[patch_key]
+                            # Update the patch-specific hidden states
+                            hidden_states_dict[patch_key] = hidden_state_out[
+                                patch_key]
                     break
                 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                 # Use cached solve from previous iteration if available

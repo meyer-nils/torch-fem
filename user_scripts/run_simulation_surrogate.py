@@ -12,6 +12,7 @@ import time
 import signal
 import cProfile
 import pstats
+import scalene
 
 # Add graphorge to sys.path
 graphorge_path = str(pathlib.Path(__file__).parents[2] \
@@ -274,7 +275,7 @@ def run_simulation_surrogate(
                 nodes_constrained.append(i)
                 num_applied_disps += 1
     
-    print(f"Applied boundary conditions to {num_applied_disps} nodes")
+    # print(f"Applied boundary conditions to {num_applied_disps} nodes")
     #%% ------------------------------- Solver --------------------------------
     # Create more increments for elastoplastic simulation
     if material_behavior == 'elastoplastic':
@@ -291,14 +292,24 @@ def run_simulation_surrogate(
         is_stepwise = False 
     
     print_status("BEFORE_SOLVE")
-    
     # Start profiling
-    profiler = cProfile.Profile()
-    profiler.enable()
+    # profiler = cProfile.Profile()
+    # profiler.enable()
     
+    # Profile solve method
+    profiler_solve = cProfile.Profile()
+    profiler_solve.enable()
     u_ref, f_ref, _, _, _ = domain.solve(increments=increments, rtol=1e-8)
+    profiler_solve.disable()
+    print("\n=== SOLVE METHOD PROFILE ===")
+    stats_solve = pstats.Stats(profiler_solve)
+    stats_solve.sort_stats('cumulative').print_stats(15)
+    print_status("AFTER_SOLVE")
 
-
+    print_status("BEFORE_SOLVE_MATPATCH")
+    # Profile solve_matpatch method
+    profiler_matpatch = cProfile.Profile()
+    profiler_matpatch.enable()
     u, f, _, _, _ = domain.solve_matpatch(
         is_mat_patch=is_mat_patch,
         increments=increments,
@@ -310,16 +321,19 @@ def run_simulation_surrogate(
         is_stepwise=is_stepwise,
         model_directory=model_path
     )
-    
+    profiler_matpatch.disable()
+    print("\n=== SOLVE_MATPATCH METHOD PROFILE ===")
+    stats_matpatch = pstats.Stats(profiler_matpatch)
+    stats_matpatch.sort_stats('cumulative').print_stats(15)
     # Stop profiling and print results
-    profiler.disable()
-    print_status("AFTER_SOLVE")
+    # profiler.disable()
+    print_status("AFTER_SOLVE_MATPATCH")
     
-    print("\n" + "="*60)
-    print("PROFILING RESULTS - TOP 15 BOTTLENECKS")
-    print("="*60)
-    stats = pstats.Stats(profiler)
-    stats.sort_stats('cumulative').print_stats(15)
+    # print("\n" + "="*60)
+    # print("PROFILING RESULTS - TOP 15 BOTTLENECKS")
+    # print("="*60)
+    # stats = pstats.Stats(profiler)
+    # stats.sort_stats('cumulative').print_stats(15)
 
     #%% ------------------------------- Outputs -------------------------------
     # Create directory structure for outputs
