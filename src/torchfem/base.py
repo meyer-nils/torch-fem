@@ -19,14 +19,27 @@ from graphorge.projects.material_patches.gnn_model_tools.gen_graphs_files \
 from graphorge.projects.material_patches.gnn_model_tools.features import (
     GNNPatchFeaturesGenerator)
 from graphorge.gnn_base_model.model.custom_layers import (
-    compute_stiffness_matrix, forward_reconstructed_graph, extract_forces,
-    extract_displacements)
+    compute_stiffness_matrix, extract_forces,
+    extract_displacements, compute_edge_features,
+    reconstruct_graph_with_displacements)
 import torch.func as torch_func
+import functools
 
 
 class FEM(ABC):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
-        """Initialize a general FEM problem."""
+        """Initialize a general finite element problem.
+
+        Args:
+            nodes (Tensor): Nodal coordinates of shape (n_nodes, n_dim).
+            elements (Tensor): Element connectivity of shape
+                (n_elements, n_nodes_per_element).
+            material (Material): Material model instance.
+
+        Note:
+            Automatically vectorizes non-vectorized materials for efficient
+            computation across all elements.
+        """
         # Store nodes and elements
         self.nodes = nodes
         self.elements = elements
@@ -64,10 +77,25 @@ class FEM(ABC):
     # -------------------------------------------------------------------------
     @property
     def forces(self) -> Tensor:
+        """Get nodal forces.
+
+        Returns:
+            Tensor: Nodal forces of shape (n_nodes, n_dim).
+        """
         return self._forces
     # -------------------------------------------------------------------------
     @forces.setter
     def forces(self, value: Tensor):
+        """Set nodal forces with validation.
+
+        Args:
+            value (Tensor): Nodal forces tensor of shape (n_nodes, n_dim).
+                Must be floating-point type.
+
+        Raises:
+            ValueError: If shape doesn't match nodes.
+            TypeError: If not floating-point type.
+        """
         if not value.shape == self.nodes.shape:
             raise ValueError("Forces must have the same shape as nodes.")
         if not torch.is_floating_point(value):
@@ -76,10 +104,25 @@ class FEM(ABC):
     # -------------------------------------------------------------------------
     @property
     def displacements(self) -> Tensor:
+        """Get nodal displacements.
+
+        Returns:
+            Tensor: Nodal displacements of shape (n_nodes, n_dim).
+        """
         return self._displacements
     # -------------------------------------------------------------------------
     @displacements.setter
     def displacements(self, value: Tensor):
+        """Set nodal displacements with validation.
+
+        Args:
+            value (Tensor): Nodal displacements tensor of shape
+                (n_nodes, n_dim). Must be floating-point type.
+
+        Raises:
+            ValueError: If shape doesn't match nodes.
+            TypeError: If not floating-point type.
+        """
         if not value.shape == self.nodes.shape:
             raise ValueError("Displacements must have the same shape as nodes.")
         if not torch.is_floating_point(value):
@@ -88,10 +131,26 @@ class FEM(ABC):
     # -------------------------------------------------------------------------
     @property
     def constraints(self) -> Tensor:
+        """Get boundary condition constraints.
+
+        Returns:
+            Tensor: Boolean tensor of shape (n_nodes, n_dim) where True
+                indicates constrained degrees of freedom.
+        """
         return self._constraints
     # -------------------------------------------------------------------------
     @constraints.setter
     def constraints(self, value: Tensor):
+        """Set boundary condition constraints with validation.
+
+        Args:
+            value (Tensor): Boolean tensor of shape (n_nodes, n_dim) where
+                True indicates constrained degrees of freedom.
+
+        Raises:
+            ValueError: If shape doesn't match nodes.
+            TypeError: If not boolean type.
+        """
         if not value.shape == self.nodes.shape:
             raise ValueError("Constraints must have the same shape as nodes.")
         if value.dtype != torch.bool:
@@ -102,22 +161,57 @@ class FEM(ABC):
     def eval_shape_functions(
         self, xi: Tensor, u: Tensor | float = 0.0
     ) -> tuple[Tensor, Tensor, Tensor]:
+        """Evaluate element shape functions and derivatives.
+
+        Args:
+            xi (Tensor): Natural coordinates for evaluation points.
+            u (Tensor | float): Displacement field. Defaults to 0.0.
+
+        Returns:
+            tuple[Tensor, Tensor, Tensor]: Shape functions, derivatives,
+                and Jacobian determinant.
+        """
         raise NotImplementedError
     # -------------------------------------------------------------------------
     @abstractmethod
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
+        """Compute element stiffness matrix.
+
+        Args:
+            detJ (Tensor): Jacobian determinant at integration points.
+            BCB (Tensor): B^T * C * B matrix product.
+
+        Returns:
+            Tensor: Element stiffness matrix.
+        """
         raise NotImplementedError
     # -------------------------------------------------------------------------
     @abstractmethod
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
+        """Compute element internal force vector.
+
+        Args:
+            detJ (Tensor): Jacobian determinant at integration points.
+            B (Tensor): Strain-displacement matrix.
+            S (Tensor): Stress tensor.
+        """
         raise NotImplementedError
     # -------------------------------------------------------------------------
     @abstractmethod
     def plot(self, u: float | Tensor = 0.0, **kwargs):
+        """Plot finite element mesh and results.
+
+        Args:
+            u (float | Tensor): Displacement field for deformed
+                configuration. Defaults to 0.0.
+            **kwargs: Additional plotting parameters.
+        """
         raise NotImplementedError
     # -------------------------------------------------------------------------
     def compute_B(self) -> Tensor:
-        """Null space representing rigid body modes."""
+        """
+        Compute null space matrix representing rigid body modes.
+        """
         if self.n_dim == 3:
             B = torch.zeros((self.n_dofs, 6))
             B[0::3, 0] = 1
@@ -842,7 +936,9 @@ class FEM(ABC):
 
         """
         # Load MSC model
-        msc_model = torch.load(model_path)
+        msc_model = torch.load(model_path, weights_only=True)
+
+        # model.load_state_dict(torch.load('./trained_lmsc_u7_d4_w25_e1500_batch64_lrinit0.005_lrrate0.03_lrpower0.5', weights_only=True))
         msc_model.eval()
         
         # Number of increments
@@ -985,10 +1081,130 @@ class FEM(ABC):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         return tuple(result)
     # -------------------------------------------------------------------------
+    def _build_graph_topology(self, patch_id: int):
+        """Build and store graph topology for a material patch.
+
+        Args:
+            patch_id (int): Material patch identifier.
+        """
+        # Get material patch nodes
+        elem_nodes = self.elements[patch_id]
+        elem_coords_ref = self.nodes[elem_nodes]
+        node_coords_init = elem_coords_ref.detach().numpy()
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Extract data in format expected by Graphorge - patch dimensions
+        dim = self.n_dim
+        if dim == 2:
+            patch_dim = [1.0, 1.0]
+            n_elem_per_dim = [1, 1]
+        elif dim == 3:
+            patch_dim = [1.0, 1.0, 1.0]
+            n_elem_per_dim = [1, 1, 1]
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Create mesh matrix for single-element material patch
+        if isinstance(self.etype, Quad1):
+            elem_order = 1
+            # mesh_nodes_matrix = np.array([[0, 1], [2, 3]])
+        elif isinstance(self.etype, Quad2):
+            elem_order = 2
+        # Initialize mesh_nodes_matrix
+        mesh_nx = mesh_ny = mesh_nz = 1
+        n_nod = self.etype.nodes
+        if dim == 2:
+            if elem_order == 1:
+                # Linear elements:
+                # (mesh_nx+1)x(mesh_ny+1) nodes
+                mesh_nodes_matrix = np.zeros(
+                    (mesh_nx + 1, mesh_ny + 1), dtype=int)
+                node_idx = 0
+                for i in range(mesh_nx + 1):
+                    for j in range(mesh_ny + 1):
+                        mesh_nodes_matrix[i, j] = node_idx
+                        node_idx += 1
+            else:  # elem_order == 2
+                # Quadratic elements:
+                # (2*mesh_nx+1)x(2*mesh_ny+1) nodes
+                mesh_nodes_matrix = np.zeros(
+                    (2*mesh_nx + 1, 2*mesh_ny + 1), dtype=int)
+                node_idx = 0
+                for i in range(2*mesh_nx + 1):
+                    for j in range(2*mesh_ny + 1):
+                        mesh_nodes_matrix[i, j] = node_idx
+                        node_idx += 1     
+        elif dim == 3:
+            if elem_order == 1:
+                # Linear elements:
+                # (mesh_nx+1)x(mesh_ny+1)x(mesh_nz+1) nodes
+                mesh_nodes_matrix = np.zeros(
+                    (mesh_nx + 1, mesh_ny + 1, mesh_nz + 1), dtype=int)
+                node_idx = 0
+                for i in range(mesh_nx + 1):
+                    for j in range(mesh_ny + 1):
+                        for k in range(mesh_nz + 1):
+                            mesh_nodes_matrix[i, j, k] = node_idx
+                            node_idx += 1
+            else:  # elem_order == 2
+                # Quadratic elements:
+                # (2*mesh_nx+1)x(2*mesh_ny+1)x(2*mesh_nz+1) nodes
+                mesh_nodes_matrix = np.zeros(
+                    (2*mesh_nx + 1, 2*mesh_ny + 1, 2*mesh_nz + 1),
+                    dtype=int)
+                node_idx = 0
+                for i in range(2*mesh_nx + 1):
+                    for j in range(2*mesh_ny + 1):
+                        for k in range(2*mesh_nz + 1):
+                            mesh_nodes_matrix[i, j, k] = node_idx
+                            node_idx += 1
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Instantiate GNN-based material patch graph data
+        gnn_patch_data = GraphData(
+            n_dim=dim, nodes_coords=node_coords_init)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Set connectivity radius based on finite element size
+        connect_radius = 4 * np.sqrt(np.sum([x**2 for x in 
+            get_elem_size_dims(patch_dim, n_elem_per_dim, dim)]))
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Get boundary node information
+        # Note: for single element all nodes are boundary nodes
+        bd_node_indices = list(range(n_nod))
+        boundary_node_set = set(bd_node_indices)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Create mapping from original to boundary indices
+        original_to_boundary_idx = {node_id: position for position, 
+                                    node_id in enumerate(bd_node_indices)}
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Get finite element mesh edges for all nodes
+        connected_nodes_all = get_mesh_connected_nodes(
+            dim, mesh_nodes_matrix)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Filter connected_nodes to only include boundary node pairs
+        connected_nodes_boundary = []
+        for node1, node2 in connected_nodes_all:
+            if node1 in boundary_node_set and node2 in boundary_node_set:
+                boundary_node1 = original_to_boundary_idx[node1]
+                boundary_node2 = original_to_boundary_idx[node2]
+                connected_nodes_boundary.append(
+                    (boundary_node1, boundary_node2))
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Organize connected nodes as tuples
+        connected_nodes = tuple(connected_nodes_boundary)
+        edges_indexes_mesh = GraphData.get_edges_indexes_mesh(
+            connected_nodes)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Set GNN-based material patch graph edges
+        gnn_patch_data.set_graph_edges_indexes(
+            connect_radius=connect_radius,
+            edges_indexes_mesh=edges_indexes_mesh)
+        edges_indexes = torch.tensor(
+            np.transpose(
+                copy.deepcopy(gnn_patch_data.get_graph_edges_indexes())),
+                dtype=torch.long)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        self._edges_indexes[f"patch_{patch_id}"] = edges_indexes
+    # -------------------------------------------------------------------------
     def surrogate_integrate_material(
         self, model, u: Tensor, n: int, du: Tensor,
         is_stepwise: bool = False,
-        is_converged: bool = False,
         patch_ids: Tensor = None,
         hidden_states: dict = None,
     ) -> Tuple[Tensor, Tensor]:
@@ -1007,11 +1223,14 @@ class FEM(ABC):
                 hidden state tracking between steps. Defaults to False.
             
         Returns:
-            Tuple[Tensor, Tensor]: A tuple containing:
-                - k (Tensor): Element stiffness matrices of shape (n_elem, 
+            Tuple[Tensor, Tensor] | Tuple[Tensor, Tensor, dict]: A tuple
+                containing:
+                - k (Tensor): Element stiffness matrices of shape (n_elem,
                   n_dof_elem, n_dof_elem).
-                - f (Tensor): Element internal force vectors of shape (n_elem, 
+                - f (Tensor): Element internal force vectors of shape (n_elem,
                   n_dof_elem).
+                - hidden_states_out (dict, optional): Updated hidden states
+                  for each patch (only returned in stepwise mode).
                   
         Note:
             This method constructs graphs using only the current step 
@@ -1021,7 +1240,7 @@ class FEM(ABC):
         """
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize patch-specific hidden states output
-        hidden_states_output = {}
+        hidden_states_out = {}
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Update current displacement
         u[n] = u[n - 1] + du.view((-1, self.n_dim))
@@ -1045,192 +1264,12 @@ class FEM(ABC):
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Get material patch nodes
             elem_nodes = self.elements[idx_patch]  
-            # Extract material patch nodal coordinates and displacements
-            elem_coords_ref = self.nodes[elem_nodes]
             # Current displacement at increment n
-            # Enable gradients for stiffness matrix computation
-            elem_u_current = u[n, elem_nodes, :].clone().requires_grad_(True)
-            # Convert to numpy for GraphData (reference coordinates)
-            node_coords_init = elem_coords_ref.detach().numpy()
-            
-            #
-            # scaler_type = 'minmax'
-            
-            # # Unit elements: normalize coordinates to [0, 1] for minmax 
-            # # scaler compatibility
-            # if scaler_type == 'minmax':
-            #     coords_min = node_coords_init.min(axis=0, keepdims=True)
-            #     coords_max = node_coords_init.max(axis=0, keepdims=True)
-            #     coords_range = coords_max - coords_min
-            #     node_coords_init_norm = (node_coords_init - coords_min
-            #                                    ) / coords_range
-            #     breakpoint()
-            #     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            #     # Nodal coordinates (also normalize current coordinates)
-            #     nodes_coords_current = (elem_coords_ref + elem_u_current
-            #                             ).detach().numpy()
-            #     nodes_coords_current_norm = (nodes_coords_current - \
-            #                                        coords_min) / coords_range
-            #     nodes_coords_hist = nodes_coords_current_norm[:, :, np.newaxis]
-            #     # Use normalized coordinates for GraphData
-            #     graph_coords = node_coords_init_norm
-            # else:
-
-            # Use original coordinates for other scalers
-            nodes_coords_current = (elem_coords_ref + elem_u_current
-                                    ).detach().numpy()
-            nodes_coords_hist = nodes_coords_current[:, :, np.newaxis]
-            graph_coords = node_coords_init
-
-            # Nodal displacements
-            nodes_disps_hist = elem_u_current.detach().numpy(
-                )[:, :, np.newaxis]
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Forces history (not available, set to zeros)
-            nodes_int_forces_hist = np.zeros_like(nodes_disps_hist)
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Extract data in format expected by Graphorge - patch dimensions
-            dim = self.n_dim
-            if dim == 2:
-                patch_dim = [1.0, 1.0]
-                n_elem_per_dim = [1, 1]
-            elif dim == 3:
-                patch_dim = [1.0, 1.0, 1.0]
-                n_elem_per_dim = [1, 1, 1]
-
-            # Create mesh matrix for single-element material patch
-            if isinstance(self.etype, Quad1):
-                elem_order = 1
-                # mesh_nodes_matrix = np.array([[0, 1], [2, 3]])
-            elif isinstance(self.etype, Quad2):
-                elem_order = 2
-            # Correct way of initializing mesh_nodes_matrix
-            mesh_nx = 1
-            mesh_ny = 1
-            mesh_nz = 1
-            if dim == 2:
-                if elem_order == 1:
-                    # Linear elements:
-                    # (mesh_nx+1)x(mesh_ny+1) nodes
-                    mesh_nodes_matrix = np.zeros(
-                        (mesh_nx + 1, mesh_ny + 1), dtype=int)
-                    node_idx = 0
-                    for i in range(mesh_nx + 1):
-                        for j in range(mesh_ny + 1):
-                            mesh_nodes_matrix[i, j] = node_idx
-                            node_idx += 1
-                else:  # elem_order == 2
-                    # Quadratic elements:
-                    # (2*mesh_nx+1)x(2*mesh_ny+1) nodes
-                    mesh_nodes_matrix = np.zeros(
-                        (2*mesh_nx + 1, 2*mesh_ny + 1), dtype=int)
-                    node_idx = 0
-                    for i in range(2*mesh_nx + 1):
-                        for j in range(2*mesh_ny + 1):
-                            mesh_nodes_matrix[i, j] = node_idx
-                            node_idx += 1     
-            elif dim == 3:
-                if elem_order == 1:
-                    # Linear elements:
-                    # (mesh_nx+1)x(mesh_ny+1)x(mesh_nz+1) nodes
-                    mesh_nodes_matrix = np.zeros(
-                        (mesh_nx + 1, mesh_ny + 1, mesh_nz + 1), dtype=int)
-                    node_idx = 0
-                    for i in range(mesh_nx + 1):
-                        for j in range(mesh_ny + 1):
-                            for k in range(mesh_nz + 1):
-                                mesh_nodes_matrix[i, j, k] = node_idx
-                                node_idx += 1
-                else:  # elem_order == 2
-                    # Quadratic elements:
-                    # (2*mesh_nx+1)x(2*mesh_ny+1)x(2*mesh_nz+1) nodes
-                    mesh_nodes_matrix = np.zeros(
-                        (2*mesh_nx + 1, 2*mesh_ny + 1, 2*mesh_nz + 1),
-                        dtype=int)
-                    node_idx = 0
-                    for i in range(2*mesh_nx + 1):
-                        for j in range(2*mesh_ny + 1):
-                            for k in range(2*mesh_nz + 1):
-                                mesh_nodes_matrix[i, j, k] = node_idx
-                                node_idx += 1
-        
-            # Instantiate GNN-based material patch graph data
-            gnn_patch_data = GraphData(
-                n_dim=dim, nodes_coords=graph_coords)
-            
-            # Set connectivity radius based on finite element size
-            connect_radius = 4 * np.sqrt(np.sum([x**2 for x in 
-                get_elem_size_dims(patch_dim, n_elem_per_dim, dim)]))
-            
-            # Get boundary node information
-            # Note: for single element all nodes are boundary nodes
-            bd_node_indices = list(range(n_nod))
-            boundary_node_set = set(bd_node_indices)
-            
-            # Create mapping from original to boundary indices
-            original_to_boundary_idx = {node_id: position for position, 
-                                      node_id in enumerate(bd_node_indices)}
-            
-            # Get finite element mesh edges for all nodes
-            connected_nodes_all = get_mesh_connected_nodes(
-                dim, mesh_nodes_matrix)
-            
-            # Filter connected_nodes to only include boundary node pairs
-            connected_nodes_boundary = []
-            for node1, node2 in connected_nodes_all:
-                if node1 in boundary_node_set and node2 in boundary_node_set:
-                    boundary_node1 = original_to_boundary_idx[node1]
-                    boundary_node2 = original_to_boundary_idx[node2]
-                    connected_nodes_boundary.append(
-                        (boundary_node1, boundary_node2))
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Organize connected nodes as tuples
-            connected_nodes = tuple(connected_nodes_boundary)
-            edges_indexes_mesh = GraphData.get_edges_indexes_mesh(
-                connected_nodes)
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Set GNN-based material patch graph edges
-            gnn_patch_data.set_graph_edges_indexes(
-                connect_radius=connect_radius,
-                edges_indexes_mesh=edges_indexes_mesh)
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Create features generator following Graphorge approach
-            features_generator = GNNPatchFeaturesGenerator(
-                n_dim=self.n_dim,
-                nodes_coords_hist=nodes_coords_hist,
-                edges_indexes=gnn_patch_data.get_graph_edges_indexes(),
-                nodes_disps_hist=nodes_disps_hist,
-                nodes_int_forces_hist=nodes_int_forces_hist)
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Build node feature matrix
-            node_features_matrix = \
-                features_generator.build_nodes_features_matrix(
-                features=('coord_hist', 'disp_hist'), 
-                n_time_steps=1)
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Build edge feature matrix
-            edge_features_matrix = \
-                features_generator.build_edges_features_matrix(
-                features=('edge_vector', 'relative_disp'), 
-                n_time_steps=1)
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Set GNN-based material patch graph node and edges features
-            gnn_patch_data.set_node_features_matrix(node_features_matrix)
-            gnn_patch_data.set_edge_features_matrix(edge_features_matrix)
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Get PyG homogeneous graph data object
-            pyg_graph = gnn_patch_data.get_torch_data_object()
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Get input features and normalize
-            node_features_in, edge_features_in, global_features_in, \
-                edges_indexes = (model.get_input_features_from_graph(
-                    pyg_graph, is_normalized=True))
-            # print(f'node_features_in: {node_features_in}')
-            # print(f'edge_features_in: {edge_features_in}')
-            # print(f'global_features_in: {global_features_in}')
-            # print(f'edges_indexes: {edges_indexes}')
-            # print(f'node_features_matrix: {node_features_matrix}')
-            # print(f'edge_features_matrix: {edge_features_matrix}')
+            elem_u_current = u[n, elem_nodes, :].clone()
+            # Extract material patch nodal coordinates
+            elem_coords_ref = self.nodes[elem_nodes]
+            # Get pre-computed edges_indexes for this patch
+            edges_indexes = self._edges_indexes[patch_id]
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             def detach_hidden_states(states):
                 if isinstance(states, dict):
@@ -1266,94 +1305,46 @@ class FEM(ABC):
                         patch_hidden['decoder']
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Model prediction: stepwise vs non-stepwise mode
-            # Stepwise mode: single step prediction with hidden state tracking
-            if is_stepwise:
-                # Step - forward pass for forces
-                node_features_out, _, _, updated_hidden_states = model.step(
-                    node_features_in=node_features_in,
-                    edge_features_in=edge_features_in,
-                    global_features_in=global_features_in,
-                    edges_indexes=edges_indexes,
-                    is_converged=is_converged)
-                # Store updated hidden states for this specific patch
-                hidden_states_output[patch_id] = updated_hidden_states
-            # Prediction without hidden state tracking (FFNNs)
-            else:
-                # Forward pass for forces
-                node_features_out, _, _ = model(
-                    node_features_in=node_features_in,
-                    edge_features_in=edge_features_in,
-                    global_features_in=global_features_in,
-                    edges_indexes=edges_indexes,
-                    batch_vector=None)
+            hidden_states_trial = None
+            def forward(disp):
+                """Forward function for gradient computation."""
+                nonlocal hidden_states_trial
+                if is_stepwise:
+                    node_prediction, hidden_states_out = forward_graph(
+                        model=model,
+                        disps=disp, coords_ref=elem_coords_ref,
+                        edges_indexes=edges_indexes, n_dim=self.n_dim)
+                    hidden_states_trial = hidden_states_out
+                else:
+                    node_prediction = forward_graph(
+                        model=model,
+                        disps=disp, coords_ref=elem_coords_ref,
+                        edges_indexes=edges_indexes, n_dim=self.n_dim)
+                return node_prediction, node_prediction.detach()
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Denormalize output to get real forces
-            node_forces_real = model.data_scaler_transform(
-                tensor=node_features_out,
-                features_type='node_features_out',
-                mode='denormalize')
+            # Compute Jacobian: d(forces_t)/d(u)
+            # Use torch.func.jacrev for vectorized Jacobian computation
+            # jacrev computes J[i,j] = d(output[i])/d(input[j])
+            (jacobian, node_output) = torch_func.jacfwd(
+                forward, has_aux=True)(elem_u_current)
+            node_forces_trial = node_output.flatten()
+            # Reshape Jacobian to stiffness matrix format
+            # jacobian shape: (n_nodes, n_dim, n_nodes, n_dim)
+            # Reshape to: (n_nodes*n_dim, n_nodes*n_dim)
+            stiffness_matrix = jacobian.view(n_dof_elem, n_dof_elem)
+
+            # Store updated hidden states for stepwise mode
+            if is_stepwise and hidden_states_trial is not None:
+                hidden_states_out[patch_id] = hidden_states_trial
+
             # Store forces
-            f[idx_patch] = node_forces_real.flatten() 
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # # Compute stiffness matrix
-            # stiffness_matrix_direct = torch.zeros(
-            #     n_dof_elem, n_dof_elem, device=elem_u_current.device)
-            # for i in range(node_forces_real.numel()):
-            #     # Compute grad. of force component w.r.t. displacements
-            #     grad_outputs = torch.zeros_like(node_forces_real)
-            #     grad_outputs.view(-1)[i] = 1.0
-            #     # Compute grads
-            #     grads = torch.autograd.grad(
-            #         outputs=node_forces_real,
-            #         inputs=elem_u_current,
-            #         grad_outputs=grad_outputs,
-            #         retain_graph=True,
-            #         create_graph=False)[0]
-            #     # Save gradients to stiffness matrix
-            #     stiffness_matrix_direct[i, :] = grads.reshape(-1)
-            # print(f'compute_stiffness_matrix direct: {stiffness_matrix_direct}')
-            # breakpoint()
-            # Load patch-specific hidden states into model 
-            # before stiffness computation
-            if is_stepwise and hidden_states and patch_id in hidden_states:
-                patch_hidden = copy.deepcopy(hidden_states[patch_id])
-                model._gnn_epd_model._hidden_states = patch_hidden
-                # Set the model's hidden states to this patch's states
-                if 'encoder' in patch_hidden:
-                    model._gnn_epd_model._encoder._hidden_states = \
-                        patch_hidden['encoder']
-                if 'processor' in patch_hidden:
-                    model._gnn_epd_model._processor._hidden_states = \
-                        patch_hidden['processor']
-                    for i, layer in enumerate(
-                        model._gnn_epd_model._processor._processor):
-                        layer_key = f'layer_{i}'
-                        if layer_key in patch_hidden['processor']:
-                            layer._hidden_states = \
-                                patch_hidden['processor'][layer_key]
-                if 'decoder' in patch_hidden:
-                    model._gnn_epd_model._decoder._hidden_states = \
-                        patch_hidden['decoder']
-            # Compute stiffness matrix
-            stiffness_matrix = compute_stiffness_matrix(
-                model=model,
-                node_features_in=node_features_in,
-                edge_features_in=edge_features_in,
-                global_features_in=global_features_in,
-                edges_indexes=edges_indexes,
-                batch_vector=None,
-                n_dim=self.n_dim)
-            # Use direct method as primary
-            # stiffness_matrix = stiffness_matrix
-            # print(f'compute_stiffness_matrix: {stiffness_matrix}')
-            # breakpoint()
+            f[idx_patch] = node_forces_trial.flatten()
             # Store stiffness matrix
             k[idx_patch] = stiffness_matrix
-            # print(f'stiffness matrix: {k[idx_patch]}')
-            # breakpoint()
+            breakpoint()
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  
         if is_stepwise:
-            return k, f, hidden_states_output
+            return k, f, hidden_states_out
         else:    
             return k, f
     # -------------------------------------------------------------------------
@@ -1501,7 +1492,11 @@ class FEM(ABC):
             
             # Initialize patch_id dictionary with None values
             patch_ids = torch.unique(is_mat_patch[is_mat_patch >= 0])
+            # Initialize edges_indexes dict
+            self._edges_indexes = {}
             for pid in patch_ids:
+                # Build graph topology for this material patch
+                self._build_graph_topology(pid)
                 # Initialize hidden states structure for GNN model
                 # Same structure as graphorge:
                 # - encoder: for encoding layers
@@ -1585,7 +1580,6 @@ class FEM(ABC):
                             self.surrogate_integrate_material(
                             model, u, n, du,
                             is_stepwise=is_stepwise,
-                            is_converged=False,
                             patch_ids=patch_ids,
                             hidden_states=hidden_states_dict)
                     else:
@@ -1593,7 +1587,6 @@ class FEM(ABC):
                             self.surrogate_integrate_material(
                             model, u, n, du,
                             is_stepwise=is_stepwise,
-                            is_converged=False,
                             patch_ids=patch_ids)
                     # profiler_surr.disable()
                     # print(f"\n=== surrogate_integrate_material PROFILE (increment {n}) ===")
@@ -1701,3 +1694,172 @@ class FEM(ABC):
             result.append(residual_history)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         return tuple(result)
+# =============================================================================
+def compute_edge_features(coords_hist, disps_hist, edges_indexes, 
+                              n_dim):
+        """Compute edge features following the logic of features.py.
+        
+        Computes edge features ('edge_vector', 'relative_disp').
+        
+        Parameters
+        ----------
+        coords_hist : torch.Tensor
+            Node coordinates history (coord_hist feature),
+            shape (n_nodes, n_time_steps*n_dim)
+        disps_hist : torch.Tensor  
+            Node displacements history (disp_hist feature),
+            shape (n_nodes, n_time_steps*n_dim)
+        edges_indexes : torch.Tensor
+            Edge connectivity, shape (2, n_edges)
+        n_dim : int
+            Spatial dimensions
+            
+        Returns
+        -------
+        edge_features : torch.Tensor
+            Edge features [edge_vector, relative_disp],
+            shape (n_edges, 2*n_time_steps*n_dim)
+        """
+        # Get edge connections
+        # Source nodes
+        edge_sources = edges_indexes[0]
+        # Target nodes
+        edge_targets = edges_indexes[1]  
+        n_edges = edge_sources.shape[0]
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Compute number of time steps
+        n_coords_features = coords_hist.shape[1]
+        n_time_steps = n_coords_features // n_dim
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Edge features: [edge_vector, relative_disp]
+        # Each edge has n_time_steps * n_dim components
+        edge_vector_size = n_time_steps * n_dim
+        relative_disp_size = n_time_steps * n_dim
+        n_edge_features = edge_vector_size + relative_disp_size
+        edge_features = torch.zeros(
+            n_edges, n_edge_features, device=coords_hist.device)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # coords_hist already contains current coordinates
+        # (reference + displacements)
+        current_coords_hist = coords_hist
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Loop over edges
+        for k in range(n_edges):
+            # Source node
+            i = edge_sources[k]
+            # Target node
+            j = edge_targets[k]  
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Compute edge_vector: current_coords[i] - current_coords[j]
+            # See lines 443-445 in features.py
+            for t in range(n_time_steps):
+                # Set start and end indices for each time step
+                start_idx = t * n_dim
+                end_idx = (t + 1) * n_dim
+                # Edge vector for time step t
+                edge_vector_t = (current_coords_hist[i, start_idx:end_idx] - 
+                               current_coords_hist[j, start_idx:end_idx])
+                # Store in edge features
+                edge_features[k, start_idx:end_idx] = edge_vector_t
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Compute relative_disp: disps[i] - disps[j]  
+            # See lines 505-508 in features.py
+            for t in range(n_time_steps):
+                # Set start and end indices for each time step
+                start_idx = t * n_dim
+                end_idx = (t + 1) * n_dim
+                # Relative displacement for time step t
+                relative_disp_t = (disps_hist[i, start_idx:end_idx] - 
+                                 disps_hist[j, start_idx:end_idx]) 
+                # Store in edge features (after edge_vector section)
+                edge_features[k,edge_vector_size + \
+                              start_idx:edge_vector_size + end_idx] = \
+                                relative_disp_t
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        return edge_features
+# =============================================================================
+def forward_graph(
+        model, disps, coords_ref, edges_indexes, n_dim,
+        batch_vector=None, global_features_in=None):
+        """Forward pass through GNN model with graph data reconstruction.
+
+        Args:
+            model: Trained GNN model for material patch prediction.
+            disps (Tensor): Nodal displacements of shape (n_nodes, n_dim).
+            coords_ref (Tensor): Reference nodal coordinates of shape
+                (n_nodes, n_dim).
+            edges_indexes (Tensor): Edge connectivity of shape (2, n_edges).
+            n_dim (int): Spatial dimension (2 or 3).
+            batch_vector (Tensor, optional): Batch vector for multiple
+                patches. Defaults to None.
+            global_features_in (Tensor, optional): Global features.
+                Defaults to None.
+
+        Returns:
+            Tensor: Predicted nodal forces of shape (n_nodes, n_dim).
+        """
+        coords = coords_ref + disps
+        node_features_in = torch.cat([coords, disps], dim=1)
+        # Recompute edge features based on updated data coords:
+        edge_features_in = compute_edge_features(
+            coords, disps, edges_indexes, n_dim)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Forward pass with updated features
+        # Stepwise forward mode
+        if model._is_stepwise:
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Normalize updated node features
+            node_features_norm = model.stepwise_data_scaler_transform(
+                tensor=node_features_in,
+                features_type='node_features_in',
+                mode='normalize')
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Normalize updated edge features
+            edge_features_norm = model.stepwise_data_scaler_transform(
+                tensor=edge_features_in,
+                features_type='edge_features_in',
+                mode='normalize')
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Use stepwise forward method
+            node_output_norm, _, _, hidden_states_out = model.step(
+                node_features_in=node_features_norm,
+                edge_features_in=edge_features_norm,
+                global_features_in=global_features_in,
+                edges_indexes=edges_indexes)
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Denormalize output to get real forces
+            node_output_real = model.stepwise_data_scaler_transform(
+                tensor=node_output_norm,
+                features_type='node_features_out',
+                mode='denormalize')
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            return node_output_real, hidden_states_out
+        # Regular forward mode
+        else:
+            # Normalize updated node features
+            node_features_norm = model.data_scaler_transform(
+                tensor=node_features_in,
+                features_type='node_features_in',
+                mode='normalize')
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Normalize updated edge features
+            edge_features_norm = model.data_scaler_transform(
+                tensor=edge_features_in,
+                features_type='edge_features_in',
+                mode='normalize')
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Use regular forward method
+            node_output_norm, _, _ = model(
+                node_features_in=node_features_norm,
+                edge_features_in=edge_features_norm,
+                global_features_in=global_features_in,
+                edges_indexes=edges_indexes,
+                batch_vector=batch_vector)
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Denormalize output to get real forces
+            node_output_real = model.data_scaler_transform(
+                tensor=node_output_norm,
+                features_type='node_features_out',
+                mode='denormalize')
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            return node_output_real
