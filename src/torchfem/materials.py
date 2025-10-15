@@ -1767,9 +1767,9 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
 
         # Full stiffness tensor
         if self.E_1.dim() == 0:
-            self.C = torch.zeros(3, 3, 3, 3)
+            self.C = torch.zeros(2, 2, 2, 2)
         else:
-            self.C = torch.zeros(*self.E_1.shape, 3, 3, 3, 3)
+            self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)
         F = 1 / (
             1
             - self.nu_12 * self.nu_21
