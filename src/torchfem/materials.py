@@ -309,7 +309,7 @@ class Hyperelastic3D(Material):
                 - Shape: `(..., 3, 3)`, same as `H_inc`.
             sigma (Tensor): Current Cauchy stress tensor.
                 - Shape: `(..., 3, 3)`.
-            state (Tensor): Internal state variables (unused in linear elasticity).
+            state (Tensor): Internal state variables (unused in hyperelasticity).
                 - Shape: Arbitrary, remains unchanged.
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 - Shape: `(..., 3, 3)`.
@@ -330,7 +330,7 @@ class Hyperelastic3D(Material):
         F_new = F + H_inc
         J_new = torch.det(F_new)[:, None, None]
         F_new.requires_grad_(True)
-        # Compute first Piolar-Kirchhoff stress tensor
+        # Compute first Piola-Kirchhoff stress tensor
         P = vmap(jacrev(self.psi))(F_new)
         # Compute Cauchy stress
         sigma_new = 1 / J_new * P @ F_new.transpose(-1, -2)
