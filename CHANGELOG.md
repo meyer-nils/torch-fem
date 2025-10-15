@@ -17,6 +17,7 @@
 
 ### Fixed
 - Corrected type hints in `export_mesh` for elem_data.
+- The size of the stiffness tensor for `OrthotropicElasticityPlaneStrain` was incorrect. It is corrected from (3,3,3,3) to (2,2,2,2).
 
 ## Version 0.4.5 - June 05 2025 
 
