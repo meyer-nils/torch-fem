@@ -12,7 +12,6 @@ from .materials import Material
 
 class Planar(FEM):
     n_dof_per_node = 2
-    n_dim = 2
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the planar FEM problem."""

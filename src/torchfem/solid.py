@@ -9,7 +9,6 @@ from .materials import Material
 
 class Solid(FEM):
     n_dof_per_node = 3
-    n_dim = 3
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the solid FEM problem."""
