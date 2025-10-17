@@ -8,6 +8,9 @@ from .materials import Material
 
 
 class Solid(FEM):
+    n_dof_per_node = 3
+    n_dim = 3
+
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the solid FEM problem."""
 
@@ -34,7 +37,7 @@ class Solid(FEM):
         self.n_int = len(self.etype.iweights())
 
         # Initialize external strain
-        self.ext_strain = torch.zeros(self.n_elem, 3, 3)
+        self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__

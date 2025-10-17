@@ -11,6 +11,9 @@ from .materials import Material
 
 
 class Truss(FEM):
+    n_dof_per_node = 2
+    n_dim = 3
+
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem."""
 
@@ -188,7 +191,6 @@ class Truss(FEM):
         constraint_size_factor: float = 0.1,
         cmap: str = "viridis",
     ):
-
         pyvista.set_plot_theme("document")
         pyvista.set_jupyter_backend("client")
         pl = pyvista.Plotter()
