@@ -113,3 +113,14 @@ def test_gradient(elem):
         for i in range(elem.nodes):
             grad = torch.autograd.grad(elem.N(q)[i], q)[0]
             assert torch.allclose(grad, elem.B(q)[:, i], atol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "elem",
+    [Quad1(), Quad2(), Tria1(), Tria2(), Tetra1(), Tetra2(), Hexa1(), Hexa2()],
+)
+def test_completeness(elem):
+    N = elem.N(elem.iso_coords)
+    assert torch.allclose(
+        N - torch.eye(elem.nodes), torch.zeros(elem.nodes, elem.nodes), atol=1e-5
+    )
