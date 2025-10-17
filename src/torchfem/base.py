@@ -473,3 +473,103 @@ class FEM(FEMGeneral):
                 k += w * self.compute_k(detJ, kg)
 
         return k, f
+
+
+class FEMHEat(FEM):
+    physics_type = "thermal"
+
+    def k0(self) -> Tensor:
+        """Compute element stiffness matrix for zero strain."""
+        temp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature
+        temp_grad = torch.zeros(
+            2, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
+        )
+        heat_flux = torch.zeros(
+            2, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
+        )  # heat flux
+        state = torch.zeros(
+            2, self.n_int, self.n_elem, self.material.n_state
+        )  # state variables
+        dtemp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature increment
+        dtemp_grad0 = torch.zeros(
+            self.n_elem, self.n_dof_per_node, self.n_dim
+        )  # temperature gradient increment
+        self.K = torch.empty(0)
+        k, _ = self.integrate_material(
+            temp,
+            temp_grad,
+            heat_flux,
+            state,
+            1,
+            0,
+            dtemp,
+            dtemp_grad0,
+        )
+        return k
+
+    def integrate_material(
+        self,
+        temp: Tensor,
+        temp_grad: Tensor,
+        heat_flux: Tensor,
+        state: Tensor,
+        n: int,
+        iter: int,
+        dtemp: Tensor,
+        dtemp_grad0: Tensor,
+        nlgeom: bool = False,
+    ) -> Tuple[Tensor, Tensor]:
+        """Perform numerical integrations for element stiffness matrix."""
+
+        # Reshape temperature increment
+        dtemp = dtemp.view(-1, self.n_dof_per_node)[self.elements].reshape(
+            self.n_elem, -1, self.n_dof_per_node
+        )
+
+        # Initialize nodal heat fluxes and conductivity matrix
+        N_nod = self.etype.nodes
+        f = torch.zeros(self.n_elem, self.n_dof_per_node * N_nod)
+        k = torch.zeros(
+            (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
+        )
+
+        for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
+            # Compute gradient operators
+            _, B0, detJ0 = self.eval_shape_functions(xi)
+
+            B = B0
+            detJ = detJ0
+
+            # Compute temperature gradient increment
+            temp_grad_inc = torch.einsum("...ij,...jk->...ki", B0, dtemp)
+
+            # Update deformation gradient
+            temp_grad[n, i] = temp_grad[n - 1, i] + temp_grad_inc
+
+            # Evaluate material response
+            heat_flux[n, i], state[n, i], ddheat_flux_ddtemp_grad = self.material.step(
+                temp_grad_inc,
+                temp_grad[n - 1, i],
+                heat_flux[n - 1, i],
+                state[n - 1, i],
+                dtemp_grad0,
+                self.char_lengths,
+                iter,
+            )
+
+            # Compute element internal forces
+            force_contrib = self.compute_f(detJ, B, heat_flux[n, i].clone())
+            f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
+
+            # Compute element stiffness matrix
+            if self.K.numel() == 0 or not self.material.n_state == 0:
+                # Material stiffness
+                BCB = torch.einsum(
+                    "...ij,...iN,...jM->...NM", ddheat_flux_ddtemp_grad, B, B
+                )
+                BCB = BCB.reshape(
+                    -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
+                )
+                k += w * self.compute_k(detJ, BCB)
+
+        return k, f
