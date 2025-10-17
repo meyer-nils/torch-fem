@@ -277,7 +277,6 @@ class Hyperelastic3D(Material):
     """
 
     def __init__(self, psi: Callable):
-
         # Store the strain energy density function
         self.psi = psi
 
@@ -1832,3 +1831,99 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.nu_12 = -S[..., 0, 0] * S[..., 0, 1]
         self.G_12 = 1 / S[..., 2, 2]
         return self
+
+
+class IsotropicConductivity3D(Material):
+    """Isotropic heat conductivity material.
+
+    This class represents a 3D isotropic heat conductivity material, defined by the thermal conductivity k.
+
+    Attributes:
+        k (Tensor | float): Thermal conductivity. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+    """
+
+    def __init__(self, kappa: Tensor | float):
+        # Convert float inputs to tensors
+        self.kappa = torch.as_tensor(kappa)
+
+        # There are no internal variables
+        self.n_state = 0
+
+        # Check if the material is vectorized
+        self.is_vectorized = self.kappa.dim() > 0
+
+        # Identity tensors
+        I2 = torch.eye(3)
+
+        # Stiffness tensor
+        self.KAPPA = self.kappa[..., None, None] * I2
+
+    def vectorize(self, n_elem: int) -> IsotropicElasticity3D:
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicElasticity3D: A new material instance with vectorized properties.
+        """
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            KAPPA = self.kappa.repeat(n_elem)
+            return IsotropicConductivity3D(KAPPA)
+
+    def step(
+        self,
+        temp_grad_inc: Tensor,
+        temp_grad: Tensor,
+        heat_flux: Tensor,
+        state: Tensor,
+        dtemp_grad0: Tensor,
+        cl: Tensor,
+        iter: int,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Performs an incremental step in the small-strain isotropic elasticity model.
+
+        This function updates the deformation gradient, stress, and internal state
+        variables based on a small-strain assumption.
+
+        Args:
+            temp_grad_inc (Tensor): Incremental temperature gradient increment.
+                - Shape: `(..., 3, 1)`, where `...` represents batch dimensions.
+            temp_grad (Tensor): Current temperature gradient.
+                - Shape: `(..., 3, 1)`, same as `temp_grad_inc`.
+            heat_flux (Tensor): Current heat flux.
+                - Shape: `(..., 3, 1)`.
+            state (Tensor): Internal state variables (unused in heat conductivity).
+                - Shape: Arbitrary, remains unchanged.
+            dtemp_grad0 (Tensor): External temperature gradient increment (e.g., thermal).
+                - Shape: `(..., 3, 1)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
+            iter (int): Current iteration number.
+
+        Returns:
+            tuple:
+                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
+                Shape: `(..., 3, 3)`.
+                - **state_new (Tensor)**: Updated internal state (unchanged).
+                Shape: same as `state`.
+                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 3, 3, 3, 3)`.
+        """
+        # Compute new heat flux
+        heat_flux_new = heat_flux + torch.einsum(
+            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc - dtemp_grad0
+        )
+        # Update internal state (this material does not change state)
+        state_new = state
+        # Algorithmic tangent
+        ddheat_flux_ddtemp_grad = self.KAPPA
+        return heat_flux_new, state_new, ddheat_flux_ddtemp_grad
