@@ -1911,19 +1911,32 @@ class IsotropicConductivity3D(Material):
 
         Returns:
             tuple:
-                - **sigma_new (Tensor)**: Updated Cauchy stress tensor.
-                Shape: `(..., 3, 3)`.
+                - **heat_flux_new (Tensor)**: Updated heat flux.
+                Shape: `(..., 3, 1)`.
                 - **state_new (Tensor)**: Updated internal state (unchanged).
                 Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                Shape: `(..., 3, 3, 3, 3)`.
+                - **ddheat_flux_ddtemp_grad (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 3, 3)`.
         """
         # Compute new heat flux
-        heat_flux_new = heat_flux + torch.einsum(
+        heat_flux_new = heat_flux - torch.einsum(
             "...ij,...kj->...ki", self.KAPPA, temp_grad_inc - dtemp_grad0
         )
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
-        ddheat_flux_ddtemp_grad = self.KAPPA
+        ddheat_flux_ddtemp_grad = -self.KAPPA
         return heat_flux_new, state_new, ddheat_flux_ddtemp_grad
+
+
+class IsotropicConductivity2D(IsotropicConductivity3D):
+    def __init__(self, kappa: Tensor | float):
+        super().__init__(kappa)
+        self.KAPPA = self.KAPPA[..., :2, :2]
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return IsotropicConductivity2D(self.kappa.repeat(n_elem))
