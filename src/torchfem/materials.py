@@ -1919,13 +1919,13 @@ class IsotropicConductivity3D(Material):
                 Shape: `(..., 3, 3)`.
         """
         # Compute new heat flux
-        heat_flux_new = heat_flux - torch.einsum(
+        heat_flux_new = heat_flux + torch.einsum(
             "...ij,...kj->...ki", self.KAPPA, temp_grad_inc - dtemp_grad0
         )
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
-        ddheat_flux_ddtemp_grad = -self.KAPPA
+        ddheat_flux_ddtemp_grad = self.KAPPA
         return heat_flux_new, state_new, ddheat_flux_ddtemp_grad
 
 

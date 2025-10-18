@@ -248,6 +248,7 @@ class PlanarHeat(FEMHEat, Planar):
         vmax: float | None = None,
         title: str | None = None,
         ax: Axes | None = None,
+        normalized_vector_field: bool = False,
         **kwargs,
     ):
         cmap = kwargs.get("cmap", "viridis")
@@ -255,21 +256,27 @@ class PlanarHeat(FEMHEat, Planar):
         # helper functions for quiver plots
         def plot_element_vector_field(vectors: Tensor, ax: Axes, **kwargs):
             centers = pos[self.elements, :].mean(dim=1)
+            if normalized_vector_field:
+                vectors_to_plot = vectors / torch.linalg.norm(
+                    vectors, dim=1, keepdim=True
+                )
+            else:
+                vectors_to_plot = vectors
             ax.quiver(
                 centers[:, 0],
                 centers[:, 1],
-                vectors[:, 0],
-                vectors[:, 1],
+                vectors_to_plot[:, 0],
+                vectors_to_plot[:, 1],
                 torch.linalg.norm(vectors, dim=1),
                 pivot="middle",
-                cmap=cmap,
+                **kwargs,
             )
 
         # Compute deformed positions
         pos = self.nodes
 
         # Bounding box
-        size = torch.linalg.norm(pos.max() - pos.min())
+        # size = torch.linalg.norm(pos.max() - pos.min())
 
         # Set figure size
         if ax is None:
