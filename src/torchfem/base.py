@@ -119,12 +119,17 @@ class FEMGeneral(ABC):
             B[2::3, 4] = -self.nodes[:, 0]
             B[0::3, 5] = -self.nodes[:, 1]
             B[1::3, 5] = self.nodes[:, 0]
-        else:
+        elif self.n_dim == 2:
             B = torch.zeros((self.n_dim * self.n_nod, 3))
             B[0::2, 0] = 1
             B[1::2, 1] = 1
             B[1::2, 2] = -self.nodes[:, 0]
             B[0::2, 2] = self.nodes[:, 1]
+        elif self.n_dim == 1:
+            B = torch.zeros((self.n_dim * self.n_nod, 1))
+            B[0::1, 0] = 1
+        else:
+            raise ValueError("Unsupported spatial dimension.")
         return B
 
     @abstractmethod
