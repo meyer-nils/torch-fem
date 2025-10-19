@@ -20,6 +20,8 @@ from .utils import (
 class Material(ABC):
     """Base class for material models."""
 
+    linear: bool
+
     @abstractmethod
     def __init__(self):
         self.n_state: int
@@ -68,6 +70,8 @@ class IsotropicElasticity3D(Material):
         C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
             Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
     """
+
+    linear = True
 
     def __init__(self, E: Tensor | float, nu: Tensor | float):
         # Convert float inputs to tensors
@@ -276,6 +280,8 @@ class Hyperelastic3D(Material):
 
     """
 
+    linear = False
+
     def __init__(self, psi: Callable):
         # Store the strain energy density function
         self.psi = psi
@@ -370,6 +376,8 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         eq_strain (Literal["rankine", "mises"]): Type of equivalent strain used for
             damage.
     """
+
+    linear = False
 
     def __init__(
         self,
@@ -513,6 +521,8 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         max_iter (int, optional): Maximum number of iterations for the local Newton
             solver in plasticity correction. Default is `10`.
     """
+
+    linear = False
 
     def __init__(
         self,
@@ -685,6 +695,8 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
             Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
     """
+
+    linear = False
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
@@ -942,6 +954,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         max_iter (int, optional): Maximum number of iterations for the local Newton
             solver in plasticity correction. Default is `10`.
     """
+
+    linear = False
 
     def __init__(
         self,
@@ -1212,6 +1226,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             solver in plasticity correction. Default is `10`.
     """
 
+    linear = False
+
     def __init__(
         self,
         E: float | Tensor,
@@ -1396,6 +1412,8 @@ class IsotropicElasticity1D(Material):
 
 class IsotropicPlasticity1D(IsotropicElasticity1D):
     """Isotropic plasticity with isotropic hardening"""
+
+    linear = False
 
     def __init__(
         self,
@@ -1834,6 +1852,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
 
 
 class IsotropicConductivity3D(Material):
+    linear = True
     """Isotropic heat conductivity material.
 
     This class represents a 3D isotropic heat conductivity material, defined by the thermal conductivity k.
@@ -1842,6 +1861,7 @@ class IsotropicConductivity3D(Material):
         k (Tensor | float): Thermal conductivity. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
     """
+    linear = True
 
     def __init__(self, kappa: Tensor | float):
         # Convert float inputs to tensors
@@ -1940,3 +1960,16 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
             return self
         else:
             return IsotropicConductivity2D(self.kappa.repeat(n_elem))
+
+
+class IsotropicConductivity1D(IsotropicConductivity2D):
+    def init(self, kappa: Tensor | float):
+        super().__init__(kappa)
+        self.KAPPA = self.KAPPA[..., :1, :1]
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return IsotropicConductivity1D(self.kappa.repeat(n_elem))
