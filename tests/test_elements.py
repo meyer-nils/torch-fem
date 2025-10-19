@@ -1,7 +1,22 @@
 import pytest
 import torch
 
-from torchfem.elements import Hexa1, Hexa2, Quad1, Quad2, Tetra1, Tetra2, Tria1, Tria2
+from torchfem.elements import (
+    Bar1,
+    Bar2,
+    Hexa1,
+    Hexa2,
+    Quad1,
+    Quad2,
+    Tetra1,
+    Tetra2,
+    Tria1,
+    Tria2,
+)
+
+# Test elements with bar shape and length 1
+test_bar1 = torch.tensor([[0.0], [1.0]])
+test_bar2 = torch.tensor([[0.0], [1.0], [0.5]])
 
 # Test elements with quad shape and area 1
 test_quad1 = torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
@@ -85,6 +100,8 @@ test_hexa2 = torch.tensor(
 @pytest.mark.parametrize(
     "elem, nodes",
     [
+        (Bar1(), test_bar1),
+        (Bar2(), test_bar2),
         (Quad1(), test_quad1),
         (Quad2(), test_quad2),
         (Tria1(), test_tria1),
@@ -105,7 +122,19 @@ def test_jacobian(elem, nodes):
 
 
 @pytest.mark.parametrize(
-    "elem", [Quad1(), Quad2(), Tria1(), Tria2(), Tetra1(), Tetra2(), Hexa1(), Hexa2()]
+    "elem",
+    [
+        Bar1(),
+        Bar2(),
+        Quad1(),
+        Quad2(),
+        Tria1(),
+        Tria2(),
+        Tetra1(),
+        Tetra2(),
+        Hexa1(),
+        Hexa2(),
+    ],
 )
 def test_gradient(elem):
     for q in elem.ipoints():
