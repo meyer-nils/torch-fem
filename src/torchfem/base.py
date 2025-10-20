@@ -328,7 +328,12 @@ class FEMGeneral(ABC):
                     )
 
                 # Check convergence
-                if res_norm < rtol * res_norm0 or res_norm < atol:
+                if (
+                    res_norm < rtol * res_norm0
+                    or res_norm < atol
+                    or torch.isnan(res_norm)
+                    or torch.isinf(res_norm)
+                ):
                     break
 
                 # Use cached solve from previous iteration if available
