@@ -39,7 +39,7 @@ class Planar(FEM):
 
         # Set element type specific sizes
         self.n_stress = 2
-        self.n_int = len(self.etype.iweights())
+        self.n_int = len(self.etype.iweights)
 
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)

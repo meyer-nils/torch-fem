@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from math import sqrt
 
+from .misc import classproperty
+
 import numpy as np
 import torch
 from torch import Tensor
@@ -32,12 +34,12 @@ class Element(ABC):
     def B(cls, xi: Tensor) -> Tensor:
         pass
 
-    @classmethod
+    @classproperty
     @abstractmethod
     def ipoints(cls) -> Tensor:
         pass
 
-    @classmethod
+    @classproperty
     @abstractmethod
     def iweights(cls) -> Tensor:
         pass
@@ -63,13 +65,13 @@ class Bar1(Element):
             N = xi.shape[0]
             return torch.tensor([[-0.5, 0.5]]).repeat(N, 1, 1)
 
-    @classmethod
-    def ipoints(cls) -> Tensor:
-        return torch.tensor([[0.0]])
-
-    @classmethod
+    @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([2.0])
+
+    @classproperty
+    def ipoints(cls) -> Tensor:
+        return torch.tensor([[0.0]])
 
 
 class Bar2(Bar1):
@@ -99,13 +101,13 @@ class Bar2(Bar1):
             dim=xi.dim() - 1,
         )
 
-    @classmethod
-    def ipoints(cls) -> Tensor:
-        return torch.tensor([[-1 / sqrt(3.0)], [1 / sqrt(3.0)]])
-
-    @classmethod
+    @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([1.0, 1.0])
+
+    @classproperty
+    def ipoints(cls) -> Tensor:
+        return torch.tensor([[-1.0 / sqrt(3.0)], [1.0 / sqrt(3.0)]])
 
 
 class Tria1(Element):
@@ -129,13 +131,13 @@ class Tria1(Element):
             N = xi.shape[0]
             return torch.tensor([[-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]]).repeat(N, 1, 1)
 
-    @classmethod
-    def ipoints(cls) -> Tensor:
-        return torch.tensor([[1.0 / 3.0, 1.0 / 3.0]])
-
-    @classmethod
+    @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([0.5])
+
+    @classproperty
+    def ipoints(cls) -> Tensor:
+        return torch.tensor([[1.0 / 3.0, 1.0 / 3.0]])
 
 
 class Tria2(Tria1):
@@ -185,13 +187,13 @@ class Tria2(Tria1):
             dim=xi.dim() - 1,
         )
 
-    @classmethod
-    def ipoints(cls) -> Tensor:
-        return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
-
-    @classmethod
+    @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([1.0 / 6.0, 1.0 / 6.0, 1.0 / 6.0])
+
+    @classproperty
+    def ipoints(cls) -> Tensor:
+        return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
 
 
 class Quad1(Element):
@@ -234,7 +236,11 @@ class Quad1(Element):
             dim=xi.dim() - 1,
         )
 
-    @classmethod
+    @classproperty
+    def iweights(cls) -> Tensor:
+        return torch.tensor([1, 1, 1, 1])
+
+    @classproperty
     def ipoints(cls) -> Tensor:
         return torch.tensor(
             [
@@ -243,10 +249,6 @@ class Quad1(Element):
                 for xi_1 in [-1, 1]
             ]
         )
-
-    @classmethod
-    def iweights(cls) -> Tensor:
-        return torch.tensor([1, 1, 1, 1])
 
 
 class Quad2(Quad1):
@@ -312,7 +314,11 @@ class Quad2(Quad1):
             dim=xi.dim() - 1,
         )
 
-    @classmethod
+    @classproperty
+    def iweights(cls) -> Tensor:
+        return torch.tensor([1, 1, 1, 1])
+
+    @classproperty
     def ipoints(cls) -> Tensor:
         return torch.tensor(
             [
@@ -321,10 +327,6 @@ class Quad2(Quad1):
                 for xi_1 in [-1, 1]
             ]
         )
-
-    @classmethod
-    def iweights(cls) -> Tensor:
-        return torch.tensor([1, 1, 1, 1])
 
 
 class Tetra1(Element):
@@ -355,13 +357,13 @@ class Tetra1(Element):
                 [[-1.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 1.0, 0.0], [-1.0, 0.0, 0.0, 1.0]]
             ).repeat(N, 1, 1)
 
-    @classmethod
-    def ipoints(cls) -> Tensor:
-        return torch.tensor([[0.25, 0.25, 0.25]])
-
-    @classmethod
+    @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([1.0 / 6.0])
+
+    @classproperty
+    def ipoints(cls) -> Tensor:
+        return torch.tensor([[0.25, 0.25, 0.25]])
 
 
 class Tetra2(Tetra1):
@@ -453,7 +455,11 @@ class Tetra2(Tetra1):
             dim=xi.dim() - 1,
         )
 
-    @classmethod
+    @classproperty
+    def iweights(cls) -> Tensor:
+        return torch.tensor([0.041666667, 0.041666667, 0.041666667, 0.041666667])
+
+    @classproperty
     def ipoints(cls) -> Tensor:
         return torch.tensor(
             [
@@ -463,10 +469,6 @@ class Tetra2(Tetra1):
                 [0.13819660, 0.13819660, 0.13819660],
             ]
         )
-
-    @classmethod
-    def iweights(cls) -> Tensor:
-        return torch.tensor([0.041666667, 0.041666667, 0.041666667, 0.041666667])
 
 
 class Hexa1(Element):
@@ -485,6 +487,21 @@ class Hexa1(Element):
     iso_volume = 8.0
     iso_dim = 3
     nodes = 8
+
+    @classproperty
+    def iweights(cls) -> Tensor:
+        return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+    @classproperty
+    def ipoints(cls) -> Tensor:
+        return torch.tensor(
+            [
+                [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0), xi_3 / sqrt(3.0)]
+                for xi_3 in [-1.0, 1.0]
+                for xi_2 in [-1.0, 1.0]
+                for xi_1 in [-1.0, 1.0]
+            ]
+        )
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
@@ -544,21 +561,6 @@ class Hexa1(Element):
             ],
             dim=xi.dim() - 1,
         )
-
-    @classmethod
-    def ipoints(cls) -> Tensor:
-        return torch.tensor(
-            [
-                [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0), xi_3 / sqrt(3.0)]
-                for xi_3 in [-1.0, 1.0]
-                for xi_2 in [-1.0, 1.0]
-                for xi_1 in [-1.0, 1.0]
-            ]
-        )
-
-    @classmethod
-    def iweights(cls) -> Tensor:
-        return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 
 
 class Hexa2(Hexa1):
@@ -811,7 +813,22 @@ class Hexa2(Hexa1):
             dim=xi.dim() - 1,
         )
 
-    @classmethod
+    @classproperty
+    def iweights(cls) -> Tensor:
+        return torch.tensor(
+            [
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+            ]
+        )
+
+    @classproperty
     def ipoints(cls) -> Tensor:
         return torch.tensor(
             [
@@ -821,10 +838,6 @@ class Hexa2(Hexa1):
                 for xi_1 in [-1.0, 1.0]
             ]
         )
-
-    @classmethod
-    def iweights(cls) -> Tensor:
-        return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 
 
 def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor]:

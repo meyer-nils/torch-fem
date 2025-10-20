@@ -36,7 +36,7 @@ class Truss(FEM):
 
         # Set element type specific sizes
         self.n_stress = 1
-        self.n_int = len(self.etype.iweights())
+        self.n_int = len(self.etype.iweights)
 
         # Initialize external strain
         self.ext_strain = torch.zeros(self.n_elem, 1, 1)
@@ -280,7 +280,7 @@ class Truss(FEM):
         f = torch.zeros(self.n_elem, self.n_dim * N_nod)
         k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
 
-        for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
+        for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
             # Compute gradient operators
             _, B0, detJ0 = self.eval_shape_functions(xi)
             if nlgeom:

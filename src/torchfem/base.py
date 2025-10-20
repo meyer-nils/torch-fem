@@ -160,7 +160,7 @@ class FEMGeneral(ABC):
 
         # Integrate
         res = torch.zeros(len(self.elements))
-        for w, xi in zip(self.etype.iweights(), self.etype.ipoints()):
+        for w, xi in zip(self.etype.iweights, self.etype.ipoints):
             N, B, detJ = self.eval_shape_functions(xi)
             f = field[self.elements, None].squeeze() @ N
             res += w * f * detJ
@@ -425,7 +425,7 @@ class FEM(FEMGeneral):
             (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
         )
 
-        for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
+        for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
             # Compute gradient operators
             _, B0, detJ0 = self.eval_shape_functions(xi)
             if nlgeom:
@@ -541,7 +541,7 @@ class FEMHEat(FEM):
             (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
         )
 
-        for i, (w, xi) in enumerate(zip(self.etype.iweights(), self.etype.ipoints())):
+        for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
             # Compute gradient operators
             _, B0, detJ0 = self.eval_shape_functions(xi)
 
