@@ -328,13 +328,11 @@ class FEMGeneral(ABC):
                     )
 
                 # Check convergence
-                if (
-                    res_norm < rtol * res_norm0
-                    or res_norm < atol
-                    or torch.isnan(res_norm)
-                    or torch.isinf(res_norm)
-                ):
+                if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
+
+                if torch.isnan(res_norm) or torch.isinf(res_norm):
+                    raise Exception("Newton-Raphson iteration did not converge")
 
                 # Use cached solve from previous iteration if available
                 if i == 0 and use_cached_solve:
