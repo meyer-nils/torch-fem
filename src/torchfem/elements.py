@@ -6,10 +6,21 @@ import torch
 from torch import Tensor
 
 
+# Registry of all concrete Element subclasses
+ELEMENT_REGISTRY: list[type["Element"]] = []
+
+
 class Element(ABC):
     iso_coords: Tensor
+    iso_volume: float
     iso_dim: int
     nodes: int
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Auto-register concrete subclasses (exclude the abstract base itself)
+        if cls is not Element:
+            ELEMENT_REGISTRY.append(cls)
 
     @classmethod
     @abstractmethod
@@ -34,6 +45,7 @@ class Element(ABC):
 
 class Bar1(Element):
     iso_coords = torch.tensor([[-1.0], [1.0]])
+    iso_volume = 2.0
     iso_dim = 1
     nodes = 2
 
@@ -60,9 +72,8 @@ class Bar1(Element):
         return torch.tensor([2.0])
 
 
-class Bar2(Element):
-    iso_coords = torch.tensor([[-1.0], [0.0], [1.0]])
-    iso_dim = 1
+class Bar2(Bar1):
+    iso_coords = torch.tensor([[-1.0], [1.0], [0.0]])
     nodes = 3
 
     @classmethod
@@ -99,6 +110,7 @@ class Bar2(Element):
 
 class Tria1(Element):
     iso_coords = torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+    iso_volume = 0.5
     iso_dim = 2
     nodes = 3
 
@@ -126,11 +138,10 @@ class Tria1(Element):
         return torch.tensor([0.5])
 
 
-class Tria2(Element):
+class Tria2(Tria1):
     iso_coords = torch.tensor(
         [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]]
     )
-    iso_dim = 2
     nodes = 6
 
     @classmethod
@@ -185,6 +196,7 @@ class Tria2(Element):
 
 class Quad1(Element):
     iso_coords = torch.tensor([[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]])
+    iso_volume = 4.0
     iso_dim = 2
     nodes = 4
 
@@ -237,7 +249,7 @@ class Quad1(Element):
         return torch.tensor([1, 1, 1, 1])
 
 
-class Quad2(Element):
+class Quad2(Quad1):
     iso_coords = torch.tensor(
         [
             # 4 corner nodes
@@ -252,7 +264,6 @@ class Quad2(Element):
             [-1.0, 0.0],
         ]
     )
-    iso_dim = 2
     nodes = 8
 
     @classmethod
@@ -320,6 +331,7 @@ class Tetra1(Element):
     iso_coords = torch.tensor(
         [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     )
+    iso_volume = 1.0 / 6.0
     iso_dim = 3
     nodes = 4
 
@@ -352,7 +364,7 @@ class Tetra1(Element):
         return torch.tensor([1.0 / 6.0])
 
 
-class Tetra2(Element):
+class Tetra2(Tetra1):
     iso_coords = torch.tensor(
         [
             # 4 corner nodes
@@ -369,7 +381,6 @@ class Tetra2(Element):
             [0.0, 0.5, 0.5],
         ]
     )
-    iso_dim = 3
     nodes = 10
 
     @classmethod
@@ -471,6 +482,7 @@ class Hexa1(Element):
             [-1.0, 1.0, 1.0],
         ]
     )
+    iso_volume = 8.0
     iso_dim = 3
     nodes = 8
 
@@ -549,7 +561,7 @@ class Hexa1(Element):
         return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 
 
-class Hexa2(Element):
+class Hexa2(Hexa1):
     iso_coords = torch.tensor(
         [
             # 8 corner nodes
