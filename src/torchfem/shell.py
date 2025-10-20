@@ -42,7 +42,7 @@ class Shell:
         self.update_local_nodes()
 
         # Element type
-        self.etype = Tria1()
+        self.etype = Tria1
 
         # Compute mapping from local to global indices (hard to read, but fast)
         N = self.n_elem

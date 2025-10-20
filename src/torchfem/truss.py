@@ -23,9 +23,9 @@ class Truss(FEM):
 
         # Element type
         if len(elements[0]) == 2:
-            self.etype = Bar1()
+            self.etype = Bar1
         elif len(elements[0]) == 3:
-            self.etype = Bar2()
+            self.etype = Bar2
         else:
             raise ValueError("Element type not supported.")
 

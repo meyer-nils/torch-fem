@@ -17,13 +17,13 @@ class Solid(FEM):
 
         # Set element type depending on number of nodes per element
         if len(elements[0]) == 4:
-            self.etype = Tetra1()
+            self.etype = Tetra1
         elif len(elements[0]) == 8:
-            self.etype = Hexa1()
+            self.etype = Hexa1
         elif len(elements[0]) == 10:
-            self.etype = Tetra2()
+            self.etype = Tetra2
         elif len(elements[0]) == 20:
-            self.etype = Hexa2()
+            self.etype = Hexa2
         else:
             raise ValueError("Element type not supported.")
 
@@ -108,13 +108,13 @@ class Solid(FEM):
         pl.enable_anti_aliasing("ssaa")
 
         # VTK cell types
-        if isinstance(self.etype, Tetra1):
+        if self.etype is Tetra1:
             cell_types = self.n_elem * [pyvista.CellType.TETRA]
-        elif isinstance(self.etype, Tetra2):
+        elif self.etype is Tetra2:
             cell_types = self.n_elem * [pyvista.CellType.QUADRATIC_TETRA]
-        elif isinstance(self.etype, Hexa1):
+        elif self.etype is Hexa1:
             cell_types = self.n_elem * [pyvista.CellType.HEXAHEDRON]
-        elif isinstance(self.etype, Hexa2):
+        elif self.etype is Hexa2:
             cell_types = self.n_elem * [pyvista.CellType.QUADRATIC_HEXAHEDRON]
 
         # VTK element list
@@ -163,7 +163,7 @@ class Solid(FEM):
             pl.add_mesh(mesh.contour(values, scalars=scalars), **kwargs)
         else:
             if show_edges:
-                if isinstance(self.etype, Tetra2) or isinstance(self.etype, Hexa2):
+                if self.etype is Tetra2 or self.etype is Hexa2:
                     # Trick to plot edges for quadratic elements
                     # See: https://github.com/pyvista/pyvista/discussions/5777
                     surface = mesh.separate_cells().extract_surface(
@@ -244,13 +244,13 @@ class SolidHeat(FEMHEat, Solid):
         pl.enable_anti_aliasing("ssaa")
 
         # VTK cell types
-        if isinstance(self.etype, Tetra1):
+        if self.etype is Tetra1:
             cell_types = self.n_elem * [pyvista.CellType.TETRA]
-        elif isinstance(self.etype, Tetra2):
+        elif self.etype is Tetra2:
             cell_types = self.n_elem * [pyvista.CellType.QUADRATIC_TETRA]
-        elif isinstance(self.etype, Hexa1):
+        elif self.etype is Hexa1:
             cell_types = self.n_elem * [pyvista.CellType.HEXAHEDRON]
-        elif isinstance(self.etype, Hexa2):
+        elif self.etype is Hexa2:
             cell_types = self.n_elem * [pyvista.CellType.QUADRATIC_HEXAHEDRON]
 
         # VTK element list
@@ -299,7 +299,7 @@ class SolidHeat(FEMHEat, Solid):
             pl.add_mesh(mesh.contour(values, scalars=scalars), **kwargs)
         else:
             if show_edges:
-                if isinstance(self.etype, Tetra2) or isinstance(self.etype, Hexa2):
+                if self.etype is Tetra2 or self.etype is Hexa2:
                     # Trick to plot edges for quadratic elements
                     # See: https://github.com/pyvista/pyvista/discussions/5777
                     surface = mesh.separate_cells().extract_surface(

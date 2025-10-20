@@ -23,13 +23,13 @@ class Planar(FEM):
 
         # Element type
         if len(elements[0]) == 3:
-            self.etype = Tria1()
+            self.etype = Tria1
         elif len(elements[0]) == 4:
-            self.etype = Quad1()
+            self.etype = Quad1
         elif len(elements[0]) == 6:
-            self.etype = Tria2()
+            self.etype = Tria2
         elif len(elements[0]) == 8:
-            self.etype = Quad2()
+            self.etype = Quad2
         else:
             raise ValueError("Element type not supported.")
 
@@ -107,7 +107,7 @@ class Planar(FEM):
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
-            if isinstance(self.etype, (Quad1, Quad2)):
+            if self.etype is Quad1 or self.etype is Quad2:
                 triangles = []
                 for e in self.elements:
                     triangles.append([e[0], e[1], e[2]])
@@ -129,9 +129,9 @@ class Planar(FEM):
 
         # Color surface with element properties (if provided)
         if element_property is not None:
-            if isinstance(self.etype, Tria2):
+            if self.etype is Tria2:
                 verts = pos[self.elements[:, :3]]
-            elif isinstance(self.etype, Quad2):
+            elif self.etype is Quad2:
                 verts = pos[self.elements[:, :4]]
             else:
                 verts = pos[self.elements]
@@ -155,9 +155,9 @@ class Planar(FEM):
 
         # Elements
         for element in self.elements:
-            if isinstance(self.etype, Tria2):
+            if self.etype is Tria2:
                 element = element[:3]
-            if isinstance(self.etype, Quad2):
+            if self.etype is Quad2:
                 element = element[:4]
             x1 = [pos[node, 0] for node in element] + [pos[element[0], 0]]
             x2 = [pos[node, 1] for node in element] + [pos[element[0], 1]]
@@ -284,7 +284,7 @@ class PlanarHeat(FEMHEat, Planar):
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
-            if isinstance(self.etype, (Quad1, Quad2)):
+            if self.etype is Quad1 or self.etype is Quad2:
                 triangles = []
                 for e in self.elements:
                     triangles.append([e[0], e[1], e[2]])
@@ -307,9 +307,9 @@ class PlanarHeat(FEMHEat, Planar):
         # Color surface with element properties (if provided)
         if element_property is not None:
             if element_property.shape == (self.n_elem,):
-                if isinstance(self.etype, Tria2):
+                if self.etype is Tria2:
                     verts = pos[self.elements[:, :3]]
-                elif isinstance(self.etype, Quad2):
+                elif self.etype is Quad2:
                     verts = pos[self.elements[:, :4]]
                 else:
                     verts = pos[self.elements]
@@ -341,9 +341,9 @@ class PlanarHeat(FEMHEat, Planar):
 
         # Elements
         for element in self.elements:
-            if isinstance(self.etype, Tria2):
+            if self.etype is Tria2:
                 element = element[:3]
-            if isinstance(self.etype, Quad2):
+            if self.etype is Quad2:
                 element = element[:4]
             x1 = [pos[node, 0] for node in element] + [pos[element[0], 0]]
             x2 = [pos[node, 1] for node in element] + [pos[element[0], 1]]

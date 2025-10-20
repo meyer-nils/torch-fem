@@ -19,25 +19,7 @@ def export_mesh(
     nodal_data: Dict[str, Tensor] = {},
     elem_data: Dict[str, List[Tensor]] = {},
 ):
-    if isinstance(mesh, Truss):
-        etype = "line"
-    else:
-        if isinstance(mesh.etype, Quad1):
-            etype = "quad"
-        elif isinstance(mesh.etype, Quad2):
-            etype = "quad8"
-        elif isinstance(mesh.etype, Tria1):
-            etype = "triangle"
-        elif isinstance(mesh.etype, Tria2):
-            etype = "triangle6"
-        elif isinstance(mesh.etype, Tetra1):
-            etype = "tetra"
-        elif isinstance(mesh.etype, Tetra2):
-            etype = "tetra10"
-        elif isinstance(mesh.etype, Hexa1):
-            etype = "hexahedron"
-        elif isinstance(mesh.etype, Hexa2):
-            etype = "hexahedron20"
+    etype = mesh.etype.meshio_type
 
     msh = Mesh(
         points=mesh.nodes.cpu().detach(),

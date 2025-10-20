@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Literal
 from math import sqrt
 
 from .misc import classproperty
@@ -16,6 +17,17 @@ class Element(ABC):
     iso_volume: float
     iso_dim: int
     nodes: int
+    meshio_type: Literal[
+        "line",
+        "triangle",
+        "triangle6",
+        "quad",
+        "quad8",
+        "tetra",
+        "tetra10",
+        "hexahedron",
+        "hexahedron20",
+    ]
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -53,6 +65,7 @@ class Bar1(Element):
     iso_volume = 2.0
     iso_dim = 1
     nodes = 2
+    meshio_type = "line"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -83,6 +96,7 @@ class Bar1(Element):
 
 class Bar2(Bar1):
     nodes = 3
+    meshio_type = "line"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -124,6 +138,7 @@ class Tria1(Element):
     iso_volume = 0.5
     iso_dim = 2
     nodes = 3
+    meshio_type = "triangle"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -155,6 +170,7 @@ class Tria1(Element):
 
 class Tria2(Tria1):
     nodes = 6
+    meshio_type = "triangle6"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -223,6 +239,7 @@ class Quad1(Element):
     iso_volume = 4.0
     iso_dim = 2
     nodes = 4
+    meshio_type = "quad"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -279,6 +296,7 @@ class Quad1(Element):
 
 class Quad2(Quad1):
     nodes = 8
+    meshio_type = "quad8"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -362,6 +380,7 @@ class Tetra1(Element):
     iso_volume = 1.0 / 6.0
     iso_dim = 3
     nodes = 4
+    meshio_type = "tetra"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -400,6 +419,7 @@ class Tetra1(Element):
 
 class Tetra2(Tetra1):
     nodes = 10
+    meshio_type = "tetra10"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -510,6 +530,7 @@ class Hexa1(Element):
     iso_volume = 8.0
     iso_dim = 3
     nodes = 8
+    meshio_type = "hexahedron"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -604,6 +625,7 @@ class Hexa1(Element):
 class Hexa2(Hexa1):
     iso_dim = 3
     nodes = 20
+    meshio_type = "hexahedron20"
 
     @classproperty
     def iso_coords(cls) -> Tensor:
