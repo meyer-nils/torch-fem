@@ -1963,7 +1963,7 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
 
 
 class IsotropicConductivity1D(IsotropicConductivity2D):
-    def init(self, kappa: Tensor | float):
+    def __init__(self, kappa: Tensor | float):
         super().__init__(kappa)
         self.KAPPA = self.KAPPA[..., :1, :1]
 
