@@ -50,20 +50,6 @@ class Planar(FEM):
             f"<torch-fem planar ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
         )
 
-    def eval_shape_functions(
-        self, xi: Tensor, u: Tensor | float = 0.0
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Gradient operator at integration points xi."""
-        nodes = self.nodes + u
-        nodes = nodes[self.elements, :]
-        b = self.etype.B(xi)
-        J = torch.einsum("jk,mkl->mjl", b, nodes)
-        detJ = torch.linalg.det(J)
-        if torch.any(detJ <= 0.0):
-            raise Exception("Negative Jacobian. Check element numbering.")
-        B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
-        return self.etype.N(xi), B, detJ
-
     def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix."""
         return torch.einsum("...,...,...kl->...kl", self.thickness, detJ, BCB)

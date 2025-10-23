@@ -39,22 +39,8 @@ class Line(FEM):
         self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
 
     def __repr__(self) -> str:
-        etype = self.etype.__class__.__name__
+        etype = self.etype.__name__
         return f"<torch-fem line ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-
-    def eval_shape_functions(
-        self, xi: Tensor, u: Tensor | float = 0.0
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Gradient operator at integration points xi."""
-        nodes = self.nodes + u
-        nodes = nodes[self.elements, :]
-        b = self.etype.B(xi)
-        J = torch.einsum("jk,mkl->mjl", b, nodes)
-        detJ = torch.linalg.det(J)
-        if torch.any(detJ <= 0.0):
-            raise Exception("Negative Jacobian. Check element numbering.")
-        B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
-        return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix."""
@@ -214,8 +200,12 @@ class Line(FEM):
         #     ax.set_axis_off()
 
 
-class LineHeat(Line):
+class LineHeat(FEMHEat, Line):
     """In 1D heat transfer problem is numerically
     equivalent to mechanical problem."""
 
-    pass
+    n_dof_per_node = 1
+
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+        super().__init__(nodes, elements, material)
+        self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)

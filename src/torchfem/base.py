@@ -88,11 +88,19 @@ class FEMGeneral(ABC):
             raise TypeError("Constraints must be a boolean tensor.")
         self._constraints = value.to(self.nodes.device)
 
-    @abstractmethod
     def eval_shape_functions(
         self, xi: Tensor, u: Tensor | float = 0.0
     ) -> tuple[Tensor, Tensor, Tensor]:
-        raise NotImplementedError
+        """Gradient operator at integration points xi."""
+        nodes = self.nodes + u
+        nodes = nodes[self.elements, :]
+        b = self.etype.B(xi)
+        J = torch.einsum("...iN, ANj -> ...Aij", b, nodes)
+        detJ = torch.linalg.det(J)
+        if torch.any(detJ <= 0.0):
+            raise Exception("Negative Jacobian. Check element numbering.")
+        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
+        return self.etype.N(xi), B, detJ
 
     @abstractmethod
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
@@ -104,6 +112,10 @@ class FEMGeneral(ABC):
 
     @abstractmethod
     def plot(self, u: float | Tensor = 0.0, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    def compute_m(self) -> Tensor:
         raise NotImplementedError
 
     def compute_B(self) -> Tensor:
@@ -482,6 +494,9 @@ class FEM(FEMGeneral):
 
         return k, f
 
+    def compute_m(self) -> Tensor:
+        raise NotImplementedError
+
 
 class FEMHEat(FEM):
     physics_type = "thermal"
@@ -581,3 +596,14 @@ class FEMHEat(FEM):
                 k += w * self.compute_k(detJ, BCB)
 
         return k, f
+
+    def compute_m(self) -> Tensor:
+        ipoints = self.etype.ipoints
+        weights = self.etype.iweights
+
+        N, _, detJ = self.eval_shape_functions(ipoints)
+        RHO = self.material.RHO
+        CP = self.material.CP
+
+        m = torch.einsum("I, IN, IM, E, E, IE -> ENM", weights, N, N, RHO, CP, detJ)
+        return m
