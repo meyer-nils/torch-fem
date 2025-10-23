@@ -108,8 +108,8 @@ class FEMGeneral(ABC):
 
     def compute_B(self) -> Tensor:
         """Null space representing rigid body modes."""
-        if self.n_dim == 3:
-            B = torch.zeros((self.n_dim * self.n_nod, 6))
+        if self.n_dof_per_node == 3:
+            B = torch.zeros((self.n_dof_per_node * self.n_nod, 6))
             B[0::3, 0] = 1
             B[1::3, 1] = 1
             B[2::3, 2] = 1
@@ -119,17 +119,17 @@ class FEMGeneral(ABC):
             B[2::3, 4] = -self.nodes[:, 0]
             B[0::3, 5] = -self.nodes[:, 1]
             B[1::3, 5] = self.nodes[:, 0]
-        elif self.n_dim == 2:
-            B = torch.zeros((self.n_dim * self.n_nod, 3))
+        elif self.n_dof_per_node == 2:
+            B = torch.zeros((self.n_dof_per_node * self.n_nod, 3))
             B[0::2, 0] = 1
             B[1::2, 1] = 1
             B[1::2, 2] = -self.nodes[:, 0]
             B[0::2, 2] = self.nodes[:, 1]
-        elif self.n_dim == 1:
-            B = torch.zeros((self.n_dim * self.n_nod, 1))
+        elif self.n_dof_per_node == 1:
+            B = torch.zeros((self.n_dof_per_node * self.n_nod, 1))
             B[0::1, 0] = 1
         else:
-            raise ValueError("Unsupported spatial dimension.")
+            raise ValueError("Unsupported dimension of DOF vector.")
         return B
 
     @abstractmethod
