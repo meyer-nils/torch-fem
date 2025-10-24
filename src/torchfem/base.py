@@ -691,7 +691,7 @@ class FEMHEat(FEM):
 
         # fill initial conditions
         u[0] = temp_eq
-        f[0] = reaction_flux
+        # f[0] = reaction_flux
         stress[0] = heat_flux_eq.view(
             self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )
