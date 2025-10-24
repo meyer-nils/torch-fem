@@ -607,3 +607,204 @@ class FEMHEat(FEM):
 
         m = torch.einsum("I, IN, IM, E, E, IE -> ENM", weights, N, N, RHO, CP, detJ)
         return m
+
+    def time_integration(
+        self,
+        t_output: Tensor = torch.tensor([0.0, 1.0]),
+        delta_t: float = 1.0e-1,
+        max_iter: int = 100,
+        verbose: bool = False,
+        rtol: float = 1e-8,
+        atol: float = 1e-6,
+        stol: float = 1e-10,
+        use_cached_solve: bool = False,
+        device: str | None = None,
+        method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
+        aggregate_integration_points: bool = True,
+        return_intermediate: bool = False,
+    ) -> Tensor:
+        # in heat transfer there is no geometric nonlinearity
+        nlgeom = False
+
+        # initial step: we get heat fluxes and temperature gradients for initial conditions
+        # enforce initial conditions as boundary conditions
+
+        bc_constraints = self.constraints.clone()
+        self.constraints[:] = True
+
+        # solve for initial conditions
+        temp_eq, reaction_flux, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
+            aggregate_integration_points=False
+        )
+
+        # assemble time_steps for evaluation
+        t_eval = torch.clamp(t_output, min=0.0, max=t_output.max())
+        start_time = 0.0
+        end_time = t_output.max()
+        increments = torch.arange(start_time, end_time, delta_t)
+
+        increments = torch.cat((increments, t_eval))
+        increments = increments.unique(sorted=True)
+        mask_t_output = torch.isin(increments, t_output)
+        idx_output = torch.cumsum(mask_t_output, dim=0)
+
+        dt = increments[1:] - increments[:-1]  # time step sizes
+
+        N_inc = len(increments)  # number of temporal increments
+        # N_output = len(t_output)  # number of output steps
+        N_output = N_inc  # current design requires to explicitly store all increments.
+
+        # release boundary conditions, restore
+        self.constraints[:] = bc_constraints
+
+        # null space rigid body modes for AMG preconditioner
+        B = self.compute_B()
+
+        # Indexes of constrained and unconstrained degrees of freedom
+        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
+        uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
+
+        # Initialize variables to be computed
+        u = torch.zeros(
+            N_output, self.n_nod, self.n_dof_per_node
+        )  # generalized solution variable
+        f = torch.zeros(N_output, self.n_nod, self.n_dof_per_node)  # generalized forces
+        stress = torch.zeros(
+            N_output,
+            self.n_int,
+            self.n_elem,
+            self.n_dof_per_node,
+            self.n_dim,
+        )
+
+        # generalized gradient of the solution variable
+        defgrad = torch.zeros(
+            N_output,
+            self.n_int,
+            self.n_elem,
+            self.n_dof_per_node,
+            self.n_dim,
+        )
+        state = torch.zeros(
+            N_output, self.n_int, self.n_int, self.n_elem, self.material.n_state
+        )
+
+        # fill initial conditions
+        u[0] = temp_eq
+        f[0] = reaction_flux
+        stress[0] = heat_flux_eq.view(
+            self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
+        )
+        defgrad[0] = temp_grad_eq.view(
+            self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
+        )
+        state[0] = alpha_eq
+
+        # Initialize stiffness matrix and mass matrix
+        self.K = torch.empty(0)
+        self.M = torch.empty(0)
+
+        # compute element mass matrices
+        m = self.compute_m()
+
+        # Initialize displacement increment
+        du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
+        # Enforce initial BCs on u[0] explicitly, in case line_heat.displacements gives updated BCs
+        u[0].view(-1)[con] = self.displacements.view(-1)[con]
+
+        # f_int_old = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
+
+        # u_old = u[0]
+
+        for n, t_n in enumerate(increments[1:], 1):
+            # print(f"Processing increment {n} with time {t_n}")
+
+            # output_index = idx_output[n]
+            # output_step = mask_t_output[n]
+
+            # print(f"Output index: {output_index}, output step: {output_step}")
+
+            u_guess = u[n - 1].clone()
+            dt_n = dt[n - 1]
+            f_int_old = f[n - 1].clone()
+
+            for it in range(max_iter):
+                du = u_guess - u[n - 1]
+                k, f_int = self.integrate_material(
+                    u, defgrad, stress, state, n, it, du, self.ext_strain, nlgeom
+                )
+                f_int = self.assemble_force(f_int)
+                f_ext = self.forces.ravel()
+
+                # assemble stiffness and mass matrices
+                if self.K.numel() == 0:
+                    self.K = self.assemble_stiffness(k, con)
+                if self.M.numel() == 0:
+                    self.M = self.assemble_stiffness(m, con)
+
+                f_inertia = self.M @ du
+
+                residual = f_inertia.squeeze(-1) + 0.5 * dt_n * (
+                    f_int_old.squeeze(-1) + f_int.squeeze(-1) + f_ext
+                )
+
+                residual[con] = 0.0
+                res_norm = torch.linalg.norm(residual)
+
+                # save initial residual
+                if it == 0:
+                    res_norm0 = res_norm
+
+                # Print iteration information
+                if verbose:
+                    print(
+                        f"Increment {n} | Iteration {it + 1} | Residual: {res_norm:.5e}"
+                    )
+
+                if res_norm < rtol * res_norm0 or res_norm < atol:
+                    break
+
+                # Use cached solve from previous iteration if available
+                if it == 0 and use_cached_solve:
+                    cached_solve = self.cached_solve
+                else:
+                    cached_solve = CachedSolve()
+                # only update cache on first iteration
+                update_cache = it == 0
+                du = sparse_solve(
+                    self.M + 0.5 * dt_n * self.K,
+                    -residual,
+                    B,
+                    stol,
+                    device,
+                    method,
+                    None,
+                    cached_solve,
+                    update_cache,
+                )
+
+                u_guess += du.reshape((-1, self.n_dof_per_node))
+
+                # u_old = u_guess.clone()
+                # f_int_old = f_int.clone()
+
+            if res_norm > rtol * res_norm0 and res_norm > atol:
+                raise Exception("Newton-Raphson iteration did not converge.")
+
+            u[n] = u_guess
+            f[n] = f_int.reshape((-1, self.n_dof_per_node))
+
+        # Aggregate integration points as mean
+        if aggregate_integration_points:
+            defgrad = defgrad.mean(dim=1)
+            stress = stress.mean(dim=1)
+            state = state.mean(dim=1)
+        # Squeeze outputs
+        stress = stress.squeeze()
+        defgrad = defgrad.squeeze()
+        if return_intermediate:
+            # Return all intermediate values
+            return u, f, stress, defgrad, state
+        else:
+            # Return only the final values
+            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
