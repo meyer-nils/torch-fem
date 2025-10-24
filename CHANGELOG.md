@@ -12,6 +12,7 @@
 ### Changed 
 - Material 'step' functions get an additional input 'cl' for the characteristic length of each element. This can be used for regularization in damage models.
 - Accelerate 'linear_to_quadratic()' function for elements.
+- Accelerate filter matrix H in 'bracket.ipynb' topology optimization example with KD Tree.
 - Planar plot uses explicit triangulation objects.
 - Truss plot accepts u as positional argument to match base class.
 
