@@ -597,17 +597,6 @@ class FEMHEat(FEM):
 
         return k, f
 
-    def compute_m(self) -> Tensor:
-        ipoints = self.etype.ipoints
-        weights = self.etype.iweights
-
-        N, _, detJ = self.eval_shape_functions(ipoints)
-        RHO = self.material.RHO
-        CP = self.material.CP
-
-        m = torch.einsum("I, IN, IM, E, E, IE -> ENM", weights, N, N, RHO, CP, detJ)
-        return m
-
     def time_integration(
         self,
         t_output: Tensor = torch.tensor([0.0, 1.0]),

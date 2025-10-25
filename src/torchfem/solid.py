@@ -186,6 +186,17 @@ class SolidHeat(FEMHEat, Solid):
         # Override external temperature gradient
         self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
 
+    def compute_m(self) -> Tensor:
+        ipoints = self.etype.ipoints
+        weights = self.etype.iweights
+
+        N, _, detJ = self.eval_shape_functions(ipoints)
+        RHO = self.material.RHO
+        CP = self.material.CP
+
+        m = torch.einsum("I, IN, IM, E, E, IE -> ENM", weights, N, N, RHO, CP, detJ)
+        return m
+
     @torch.no_grad()
     def plot(
         self,

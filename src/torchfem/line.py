@@ -206,6 +206,19 @@ class LineHeat(FEMHEat, Line):
 
     n_dof_per_node = 1
 
+    def compute_m(self) -> Tensor:
+        ipoints = self.etype.ipoints
+        weights = self.etype.iweights
+
+        N, _, detJ = self.eval_shape_functions(ipoints)
+        RHO = self.material.RHO
+        CP = self.material.CP
+
+        m = torch.einsum(
+            "I, IN, IM, E, E, IE,E -> ENM", weights, N, N, RHO, CP, detJ, self.areas
+        )
+        return m
+
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
         self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)

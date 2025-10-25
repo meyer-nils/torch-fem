@@ -213,6 +213,26 @@ class PlanarHeat(FEMHEat, Planar):
         super().__init__(nodes, elements, material)
         self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
 
+    def compute_m(self) -> Tensor:
+        ipoints = self.etype.ipoints
+        weights = self.etype.iweights
+
+        N, _, detJ = self.eval_shape_functions(ipoints)
+        RHO = self.material.RHO
+        CP = self.material.CP
+
+        m = torch.einsum(
+            "I, IN, IM, E, E, IE, E -> ENM",
+            weights,
+            N,
+            N,
+            RHO,
+            CP,
+            detJ,
+            self.thickness,
+        )
+        return m
+
     @torch.no_grad()
     def plot(
         self,
@@ -281,11 +301,12 @@ class PlanarHeat(FEMHEat, Planar):
             tri = ax.tricontourf(
                 triangulation,
                 node_property,
-                cmap=cmap,
-                levels=100,
+                # cmap=cmap,
+                # levels=100,
                 alpha=alpha,
                 vmin=vmin,
                 vmax=vmax,
+                **kwargs,
             )
             if colorbar:
                 plt.colorbar(tri, ax=ax)
