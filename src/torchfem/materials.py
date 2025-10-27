@@ -1862,13 +1862,13 @@ class IsotropicConductivity3D(Material):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
     """
     linear = True
+    n_state = 0
 
-    def __init__(self, kappa: Tensor | float):
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
         # Convert float inputs to tensors
         self.kappa = torch.as_tensor(kappa)
-
-        # There are no internal variables
-        self.n_state = 0
+        self.RHO = torch.as_tensor(rho)
+        self.CP = torch.as_tensor(cp)
 
         # Check if the material is vectorized
         self.is_vectorized = self.kappa.dim() > 0
@@ -1896,8 +1896,10 @@ class IsotropicConductivity3D(Material):
             print("Material is already vectorized.")
             return self
         else:
-            KAPPA = self.kappa.repeat(n_elem)
-            return IsotropicConductivity3D(KAPPA)
+            kappa = self.kappa.repeat(n_elem)
+            rho = self.RHO.repeat(n_elem)
+            cp = self.CP.repeat(n_elem)
+            return IsotropicConductivity3D(kappa, rho, cp)
 
     def step(
         self,
@@ -1950,8 +1952,8 @@ class IsotropicConductivity3D(Material):
 
 
 class IsotropicConductivity2D(IsotropicConductivity3D):
-    def __init__(self, kappa: Tensor | float):
-        super().__init__(kappa)
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
+        super().__init__(kappa, rho, cp)
         self.KAPPA = self.KAPPA[..., :2, :2]
 
     def vectorize(self, n_elem: int):
@@ -1959,12 +1961,16 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
             print("Material is already vectorized.")
             return self
         else:
-            return IsotropicConductivity2D(self.kappa.repeat(n_elem))
+            return IsotropicConductivity2D(
+                self.kappa.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
 
 
 class IsotropicConductivity1D(IsotropicConductivity2D):
-    def __init__(self, kappa: Tensor | float):
-        super().__init__(kappa)
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
+        super().__init__(kappa, rho, cp)
         self.KAPPA = self.KAPPA[..., :1, :1]
 
     def vectorize(self, n_elem: int):
@@ -1972,4 +1978,104 @@ class IsotropicConductivity1D(IsotropicConductivity2D):
             print("Material is already vectorized.")
             return self
         else:
-            return IsotropicConductivity1D(self.kappa.repeat(n_elem))
+            return IsotropicConductivity1D(
+                self.kappa.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
+
+
+class OrthotropicConductivity3D(IsotropicConductivity3D):
+    def __init__(
+        self,
+        kappa_1: Tensor | float,
+        kappa_2: Tensor | float,
+        kappa_3: Tensor | float,
+        rho: Tensor | float,
+        cp: Tensor | float,
+    ):
+        self.kappa_1 = torch.as_tensor(kappa_1)
+        self.kappa_2 = torch.as_tensor(kappa_2)
+        self.kappa_3 = torch.as_tensor(kappa_3)
+        self.RHO = torch.as_tensor(rho)
+        self.CP = torch.as_tensor(cp)
+
+        e1, e2, e3 = torch.eye(3)
+        P1 = torch.outer(e1, e1)
+        P2 = torch.outer(e2, e2)
+        P3 = torch.outer(e3, e3)
+
+        self.KAPPA = (
+            self.kappa_1[..., None, None] * P1
+            + self.kappa_2[..., None, None] * P2
+            + self.kappa_3[..., None, None] * P3
+        )
+
+        self.is_vectorized = self.kappa_1.dim() > 0
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return OrthotropicConductivity3D(
+                self.kappa_1.repeat(n_elem),
+                self.kappa_2.repeat(n_elem),
+                self.kappa_3.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
+
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        if R.shape[-2] != 3 or R.shape[-1] != 3:
+            raise ValueError("Rotation matrix must be a 3x3 tensor.")
+
+        # compute rotated conductivity tensor
+        self.KAPPA = torch.einsum("...ik, ...jl, ...kl -> ...ij", R, R, self.KAPPA)
+        return self
+
+
+class OrthotropicConductivity2D(IsotropicConductivity2D):
+    def __init__(
+        self,
+        kappa_1: Tensor | float,
+        kappa_2: Tensor | float,
+        rho: Tensor | float,
+        cp: Tensor | float,
+    ):
+        self.kappa_1 = torch.as_tensor(kappa_1)
+        self.kappa_2 = torch.as_tensor(kappa_2)
+        self.RHO = torch.as_tensor(rho)
+        self.CP = torch.as_tensor(cp)
+
+        e1, e2 = torch.eye(2)
+        P1 = torch.outer(e1, e1)
+        P2 = torch.outer(e2, e2)
+
+        self.KAPPA = (
+            self.kappa_1[..., None, None] * P1 + self.kappa_2[..., None, None] * P2
+        )
+
+        self.is_vectorized = self.kappa_1.dim() > 0
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return OrthotropicConductivity2D(
+                self.kappa_1.repeat(n_elem),
+                self.kappa_2.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
+
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        if R.shape[-2] != 2 or R.shape[-1] != 2:
+            raise ValueError("Rotation matrix must be a 2x2 tensor.")
+
+        # compute rotated conductivity tensor
+        self.KAPPA = torch.einsum("...ik, ...jl, ...kl -> ...ij", R, R, self.KAPPA)
+        return self
