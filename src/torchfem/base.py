@@ -747,43 +747,26 @@ class FEM(ABC):
             # Update deformation gradient
             F[n, i] = F[n - 1, i] + H_inc
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            # Compute strain tensor from displacement gradient
+            # Compute increment strain tensor from displacement gradient
             # For small strain: epsilon = 0.5*(H + H^T)
-            eps = 0.5 * (H_inc + H_inc.transpose(-1, -2))
-            
+            delta_eps = 0.5 * (H_inc + H_inc.transpose(-1, -2)).requires_grad_(
+                True)
+            breakpoint()
             # Prepare strains in torch-fem order for gradient computation
-            eps_torchfem = torch.zeros(self.n_elem, self.n_stress)
-            eps_torchfem[:, 0] = eps[:, 0, 0]  # eps_11
-            eps_torchfem[:, 1] = eps[:, 0, 1]  # eps_12
+            delta_eps_msc = torch.zeros(self.n_elem, 6)
+            delta_eps_msc[:, 0] = delta_eps[:, 0, 0]  # eps_11
+            delta_eps_msc[:, 1] = delta_eps[:, 0, 1]  # eps_12
             if self.n_dim == 3:
-                eps_torchfem[:, 2] = eps[:, 0, 2]  # eps_13
-                eps_torchfem[:, 3] = eps[:, 1, 1]  # eps_22
-                eps_torchfem[:, 4] = eps[:, 1, 2]  # eps_23
-                eps_torchfem[:, 5] = eps[:, 2, 2]  # eps_33
+                delta_eps_msc[:, 2] = delta_eps[:, 0, 2]  # eps_13
+                delta_eps_msc[:, 3] = delta_eps[:, 1, 1]  # eps_22
+                delta_eps_msc[:, 4] = delta_eps[:, 1, 2]  # eps_23
+                delta_eps_msc[:, 5] = delta_eps[:, 2, 2]  # eps_33
             else:
-                eps_torchfem[:, 2] = eps[:, 1, 1]  # eps_22
-            
-            # Enable gradients for torch-fem ordered strains
-            eps_torchfem_grad = eps_torchfem.clone().requires_grad_(True)
-            
-            # Convert to MSC order for model input
-            eps_msc_grad = torch.zeros(self.n_elem, 6)
-            eps_msc_grad[:, 0] = eps_torchfem_grad[:, 0]  # eps_11
-            eps_msc_grad[:, 1] = eps_torchfem_grad[:, 1]  # eps_12
-            if self.n_dim == 3:
-                eps_msc_grad[:, 2] = eps_torchfem_grad[:, 2]  # eps_13
-                eps_msc_grad[:, 3] = eps_torchfem_grad[:, 3]  # eps_22
-                eps_msc_grad[:, 4] = eps_torchfem_grad[:, 4]  # eps_23
-                eps_msc_grad[:, 5] = eps_torchfem_grad[:, 5]  # eps_33
-            else:
-                eps_msc_grad[:, 2] = 0.0
-                eps_msc_grad[:, 3] = eps_torchfem_grad[:, 2]  # eps_22
-                eps_msc_grad[:, 4] = 0.0
-                eps_msc_grad[:, 5] = 0.0
+                delta_eps_msc[:, 2] = delta_eps[:, 1, 1]  # eps_22
             
             # Reshape for MSC input (seq_len=1, features=6)
-            eps_msc_input = eps_msc_grad.unsqueeze(1)
-            
+            eps_msc_input = delta_eps_msc.unsqueeze(1)
+            breakpoint()
             # Extract hidden states from previous step
             # state[n-1, i] stores states per integration point
             hidden_states = state[n - 1, i]
@@ -791,62 +774,67 @@ class FEM(ABC):
             # Single forward pass with gradients enabled
             sigma_pred, new_hidden_states = msc_model(
                 eps_msc_input, hidden_states)
-            
+
             # Store new hidden states
             # state[n, i] stores states per integration point
             state[n, i] = new_hidden_states
-            
+
             # Apply denormalization to get stress in MSC order
+            # sigma_pred is (batch, 6), need to add time dimension
             sigma_denorm = sigma_pred.clone()
-            sigma_denorm[:, :, 0] *= scaler_hydrostatic
-            sigma_denorm[:, :, 1:] *= scaler_deviatoric
-            
+            sigma_denorm[:, 0] *= scaler_hydrostatic
+            sigma_denorm[:, 1:] *= scaler_deviatoric
+            breakpoint()
             # Reorder denormalized stress to torch-fem order
-            sigma_torchfem = torch.zeros(self.n_elem, 1, self.n_stress)
-            sigma_torchfem[:, :, 0] = (sigma_denorm[:, :, 1] + 
-                                     sigma_denorm[:, :, 0])  # s11
-            sigma_torchfem[:, :, 1] = sigma_denorm[:, :, 3]  # s12
+            sigma_torchfem = torch.zeros(self.n_elem, 6)
+            sigma_torchfem[:, 0] = (sigma_denorm[:, 1] + 
+                                     sigma_denorm[:, 0])  # s11
+            sigma_torchfem[:, 1] = sigma_denorm[:, 3]  # s12
             if self.n_dim == 3:
-                sigma_torchfem[:, :, 2] = sigma_denorm[:, :, 4]  # s13
-                sigma_torchfem[:, :, 3] = (sigma_denorm[:, :, 2] + 
-                                         sigma_denorm[:, :, 0])  # s22
-                sigma_torchfem[:, :, 4] = sigma_denorm[:, :, 5]  # s23
-                sigma_torchfem[:, :, 5] = (3*sigma_denorm[:, :, 0] - 
-                                         sigma_torchfem[:, :, 0] - 
-                                         sigma_torchfem[:, :, 3])  # s33
+                sigma_torchfem[:, 2] = sigma_denorm[:, 4]  # s13
+                sigma_torchfem[:, 3] = (sigma_denorm[:, 2] + 
+                                         sigma_denorm[:, 0])  # s22
+                sigma_torchfem[:, 4] = sigma_denorm[:, 5]  # s23
+                sigma_torchfem[:, 5] = (3*sigma_denorm[:, 0] - 
+                                         sigma_torchfem[:, 0] - 
+                                         sigma_torchfem[:, 3])  # s33
             else:
-                sigma_torchfem[:, :, 2] = (sigma_denorm[:, :, 2] + 
-                                         sigma_denorm[:, :, 0])  # s22
-            
+                sigma_torchfem[:, 2] = (sigma_denorm[:, 2] + 
+                                         sigma_denorm[:, 0])  # s22
+            breakpoint()
             # Update stress tensor for this integration point
             if self.n_dim == 3:
-                stress[n, i, :, 0, 0] = sigma_torchfem[:, 0, 0]  # s11
-                stress[n, i, :, 0, 1] = sigma_torchfem[:, 0, 1]  # s12
-                stress[n, i, :, 0, 2] = sigma_torchfem[:, 0, 2]  # s13
-                stress[n, i, :, 1, 0] = sigma_torchfem[:, 0, 1]  # s21
-                stress[n, i, :, 1, 1] = sigma_torchfem[:, 0, 3]  # s22
-                stress[n, i, :, 1, 2] = sigma_torchfem[:, 0, 4]  # s23
-                stress[n, i, :, 2, 0] = sigma_torchfem[:, 0, 2]  # s31
-                stress[n, i, :, 2, 1] = sigma_torchfem[:, 0, 4]  # s32
-                stress[n, i, :, 2, 2] = sigma_torchfem[:, 0, 5]  # s33
+                stress[n, i, :, 0, 0] = sigma_torchfem[:, 0]  # s11
+                stress[n, i, :, 0, 1] = sigma_torchfem[:, 1]  # s12
+                stress[n, i, :, 0, 2] = sigma_torchfem[:, 2]  # s13
+                stress[n, i, :, 1, 0] = sigma_torchfem[:, 1]  # s21
+                stress[n, i, :, 1, 1] = sigma_torchfem[:, 3]  # s22
+                stress[n, i, :, 1, 2] = sigma_torchfem[:, 4]  # s23
+                stress[n, i, :, 2, 0] = sigma_torchfem[:, 2]  # s31
+                stress[n, i, :, 2, 1] = sigma_torchfem[:, 4]  # s32
+                stress[n, i, :, 2, 2] = sigma_torchfem[:, 5]  # s33
             else:
-                stress[n, i, :, 0, 0] = sigma_torchfem[:, 0, 0]  # s11
-                stress[n, i, :, 0, 1] = sigma_torchfem[:, 0, 1]  # s12
-                stress[n, i, :, 1, 0] = sigma_torchfem[:, 0, 1]  # s21
-                stress[n, i, :, 1, 1] = sigma_torchfem[:, 0, 2]  # s22
+                stress[n, i, :, 0, 0] = sigma_torchfem[:, 0]  # s11
+                stress[n, i, :, 0, 1] = sigma_torchfem[:, 1]  # s12
+                stress[n, i, :, 1, 0] = sigma_torchfem[:, 1]  # s21
+                stress[n, i, :, 1, 1] = sigma_torchfem[:, 2]  # s22
             
-            # Compute ddsdde via autograd from single forward pass
-            ddsdde = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
-            for i_stress in range(self.n_stress):
-                grad_output = torch.zeros_like(sigma_torchfem)
-                grad_output[:, 0, i_stress] = 1.0
-                
-                grads = torch.autograd.grad(outputs=sigma_torchfem, 
-                                          inputs=eps_torchfem_grad,
-                                          grad_outputs=grad_output,
-                                          retain_graph=True,
-                                          create_graph=False)[0]
-                ddsdde[:, i_stress, :] = grads
+            # Compute ddsdde via autograd as 4th-order tensor
+            # ddsdde[e,i_idx,j_idx,k,l] = ∂σ_ij/∂ε_kl
+            ddsdde = torch.zeros(self.n_elem, 3, 3, 3, 3)
+            for i_idx in range(3):
+                for j_idx in range(3):
+                    grad_output = torch.zeros(self.n_elem, 3, 3)
+                    grad_output[:, i_idx, j_idx] = 1.0
+
+                    grads = torch.autograd.grad(
+                        outputs=stress[n, i],
+                        inputs=delta_eps,
+                        grad_outputs=grad_output,
+                        retain_graph=True,
+                        create_graph=False)[0]
+                    # grads has shape (n_elem, 3, 3)
+                    ddsdde[:, i_idx, j_idx, :, :] = grads
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # Compute element internal forces
             force_contrib = self.compute_f(detJ, B, stress[n, i].clone())
@@ -877,7 +865,8 @@ class FEM(ABC):
     # -------------------------------------------------------------------------
     def solve_msc(
         self,
-        model_path: str,
+        msc_model,
+        msc_variables: int = 7,
         scaler_hydrostatic: float = 1375.297984380115,
         scaler_deviatoric: float = 324.7645473652983,
         increments: Tensor = torch.tensor([0.0, 1.0]),
@@ -901,13 +890,18 @@ class FEM(ABC):
         """Solve the FEM problem using the MSC surrogate model.
 
         Args:
-            model_path (str): Path to the MSC PyTorch model file.
-            scaler_hydrostatic (float): Scaling factor for hydrostatic stress.
-            scaler_deviatoric (float): Scaling factor for deviatoric stress.
+            msc_variables (int): Number of MSC hidden state variables.
+            scaler_hydrostatic (float): Scaling factor for hydrostatic
+                stress.
+            scaler_deviatoric (float): Scaling factor for deviatoric
+                stress.
             increments (Tensor): Load increment stepping.
-            max_iter (int): Maximum number of iterations during Newton-Raphson.
-            rtol (float): Relative tolerance for Newton-Raphson convergence.
-            atol (float): Absolute tolerance for Newton-Raphson convergence.
+            max_iter (int): Maximum number of iterations during
+                Newton-Raphson.
+            rtol (float): Relative tolerance for Newton-Raphson
+                convergence.
+            atol (float): Absolute tolerance for Newton-Raphson
+                convergence.
             stol (float): Solver tolerance for iterative methods.
             verbose (bool): Print iteration information.
             method (str): Method for linear solve 
@@ -935,12 +929,6 @@ class FEM(ABC):
                 increment numbers as keys and lists of residual norms as values.
 
         """
-        # Load MSC model
-        msc_model = torch.load(model_path, weights_only=True)
-
-        # model.load_state_dict(torch.load('./trained_lmsc_u7_d4_w25_e1500_batch64_lrinit0.005_lrrate0.03_lrpower0.5', weights_only=True))
-        msc_model.eval()
-        
         # Number of increments
         N = len(increments)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -958,7 +946,7 @@ class FEM(ABC):
         defgrad = torch.zeros(N, self.n_int, self.n_elem,
                               self.n_stress, self.n_stress)
         defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
-        state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
+        state = torch.zeros(N, self.n_int, self.n_elem, msc_variables)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize volumes if requested
         if return_volumes:
@@ -998,8 +986,7 @@ class FEM(ABC):
                     msc_model, u, defgrad, stress, state, n, du, de0, nlgeom,
                     scaler_hydrostatic, scaler_deviatoric
                 )
-                if self.K.numel() == 0 or not self.material.n_state == 0 or \
-                    nlgeom:
+                if self.K.numel() == 0 or not msc_variables == 0 or nlgeom:
                     self.K = self.assemble_stiffness(k, con)
                 F_int = self.assemble_force(f_i)
                 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

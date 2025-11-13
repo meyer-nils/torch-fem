@@ -206,6 +206,55 @@ class Quad1(Element):
         return torch.tensor([1, 1, 1, 1])
 
 
+class Quad1r(Element):
+    """Quad1 element with reduced integration (1 point).
+
+    Uses single Gauss point at element center to avoid volumetric
+    locking in nearly incompressible materials.
+    """
+
+    def __init__(self):
+        self.nodes = 4
+
+    def N(self, xi: Tensor) -> Tensor:
+        N_1 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1])
+        N_2 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1])
+        N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1])
+        N_4 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1])
+        return 0.25 * torch.stack([N_1, N_2, N_3, N_4], dim=-1)
+
+    def B(self, xi: Tensor) -> Tensor:
+        return 0.25 * torch.stack(
+            [
+                torch.stack(
+                    [
+                        -(1 - xi[..., 1]),
+                        (1 - xi[..., 1]),
+                        (1.0 + xi[..., 1]),
+                        -(1.0 + xi[..., 1]),
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        -(1 - xi[..., 0]),
+                        -(1 + xi[..., 0]),
+                        (1.0 + xi[..., 0]),
+                        (1.0 - xi[..., 0]),
+                    ],
+                    dim=-1,
+                ),
+            ],
+            dim=xi.dim() - 1,
+        )
+
+    def ipoints(self) -> Tensor:
+        return torch.tensor([[0.0, 0.0]])
+
+    def iweights(self) -> Tensor:
+        return torch.tensor([4.0])
+
+
 class Quad2(Element):
     def __init__(self):
         self.nodes = 8
@@ -395,7 +444,8 @@ class Hexa1(Element):
         N_6 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 + xi[..., 2])
         N_7 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
         N_8 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
-        return 0.125 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
+        return 0.125 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8],
+                                   dim=-1)
 
     def B(self, xi: Tensor) -> Tensor:
         return 0.125 * torch.stack(
@@ -455,6 +505,75 @@ class Hexa1(Element):
 
     def iweights(self) -> Tensor:
         return torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+
+class Hexa1r(Element):
+    def __init__(self):
+        self.nodes = 8
+
+    def N(self, xi: Tensor) -> Tensor:
+        N_1 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 - xi[..., 2])
+        N_2 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 - xi[..., 2])
+        N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 - xi[..., 2])
+        N_4 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 - xi[..., 2])
+        N_5 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 + xi[..., 2])
+        N_6 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 + xi[..., 2])
+        N_7 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
+        N_8 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
+        return 0.125 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], 
+                                   dim=-1)
+
+    def B(self, xi: Tensor) -> Tensor:
+        return 0.125 * torch.stack(
+            [
+                torch.stack(
+                    [
+                        -(1.0 - xi[..., 1]) * (1.0 - xi[..., 2]),
+                        (1.0 - xi[..., 1]) * (1.0 - xi[..., 2]),
+                        (1.0 + xi[..., 1]) * (1.0 - xi[..., 2]),
+                        -(1.0 + xi[..., 1]) * (1.0 - xi[..., 2]),
+                        -(1.0 - xi[..., 1]) * (1.0 + xi[..., 2]),
+                        (1.0 - xi[..., 1]) * (1.0 + xi[..., 2]),
+                        (1.0 + xi[..., 1]) * (1.0 + xi[..., 2]),
+                        -(1.0 + xi[..., 1]) * (1.0 + xi[..., 2]),
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        -(1.0 - xi[..., 0]) * (1.0 - xi[..., 2]),
+                        -(1.0 + xi[..., 0]) * (1.0 - xi[..., 2]),
+                        (1.0 + xi[..., 0]) * (1.0 - xi[..., 2]),
+                        (1.0 - xi[..., 0]) * (1.0 - xi[..., 2]),
+                        -(1.0 - xi[..., 0]) * (1.0 + xi[..., 2]),
+                        -(1.0 + xi[..., 0]) * (1.0 + xi[..., 2]),
+                        (1.0 + xi[..., 0]) * (1.0 + xi[..., 2]),
+                        (1.0 - xi[..., 0]) * (1.0 + xi[..., 2]),
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        -(1.0 - xi[..., 0]) * (1.0 - xi[..., 1]),
+                        -(1.0 + xi[..., 0]) * (1.0 - xi[..., 1]),
+                        -(1.0 + xi[..., 0]) * (1.0 + xi[..., 1]),
+                        -(1.0 - xi[..., 0]) * (1.0 + xi[..., 1]),
+                        (1.0 - xi[..., 0]) * (1.0 - xi[..., 1]),
+                        (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]),
+                        (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]),
+                        (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]),
+                    ],
+                    dim=-1,
+                ),
+            ],
+            dim=xi.dim() - 1,
+        )
+
+    def ipoints(self) -> Tensor:
+        return torch.tensor([[0.0, 0.0, 0.0]])
+
+    def iweights(self) -> Tensor:
+        return torch.tensor([8.0])
 
 
 class Hexa2(Element):
