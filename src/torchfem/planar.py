@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import torch
 from matplotlib.axes import Axes
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.tri import Triangulation
 from torch import Tensor
 
@@ -140,14 +140,18 @@ class Planar(FEM):
                     )
 
         # Elements
-        for element in self.elements:
+        if linewidth > 0.0:
+            coords = pos[self.elements]
             if self.etype is Tria2:
-                element = element[:3]
+                coords = coords[:, :3]
             if self.etype is Quad2:
-                element = element[:4]
-            x1 = [pos[node, 0] for node in element] + [pos[element[0], 0]]
-            x2 = [pos[node, 1] for node in element] + [pos[element[0], 1]]
-            ax.plot(x1, x2, color=color, linewidth=linewidth)
+                coords = coords[:, :4]
+            closed_segments = torch.cat([coords, coords[:, :1, :]], dim=1)
+            segments = closed_segments[:, :, None, :]
+            segments = torch.cat([segments[:, :-1], segments[:, 1:]], dim=2)
+            segments = segments.reshape(-1, 2, 2)
+            lc = LineCollection(segments.tolist(), colors=color, linewidths=linewidth)
+            ax.add_collection(lc)
 
         # Forces
         if bcs:
