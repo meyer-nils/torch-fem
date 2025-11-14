@@ -42,7 +42,7 @@ class Shell:
         self.update_local_nodes()
 
         # Element type
-        self.etype = Tria1()
+        self.etype = Tria1
 
         # Compute mapping from local to global indices (hard to read, but fast)
         N = self.n_elem
@@ -160,7 +160,7 @@ class Shell:
     def k(self):
         # Perform integrations
         k = torch.zeros((self.n_elem, NDOF * self.etype.nodes, NDOF * self.etype.nodes))
-        for w, q in zip(self.etype.iweights(), self.etype.ipoints()):
+        for w, q in zip(self.etype.iweights, self.etype.ipoints):
             # Jacobian
             J = self.etype.B(q) @ self.loc_nodes
             detJ = torch.linalg.det(J)

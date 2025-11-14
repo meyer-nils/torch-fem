@@ -19,6 +19,8 @@ dist
 # Abaqus 
 *.inp
 
-# VTU files except for the ones in the folder data 
+# VTU and INP files except for the ones in the folder data 
 *.vtu
 !src/torchfem/data/*.vtu
+*.inp
+!src/torchfem/data/*.inp

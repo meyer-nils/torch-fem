@@ -20,6 +20,8 @@ from .utils import (
 class Material(ABC):
     """Base class for material models."""
 
+    linear: bool
+
     @abstractmethod
     def __init__(self):
         self.n_state: int
@@ -68,6 +70,8 @@ class IsotropicElasticity3D(Material):
         C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
             Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
     """
+
+    linear = True
 
     def __init__(self, E: Tensor | float, nu: Tensor | float):
         # Convert float inputs to tensors
@@ -276,8 +280,9 @@ class Hyperelastic3D(Material):
 
     """
 
-    def __init__(self, psi: Callable):
+    linear = False
 
+    def __init__(self, psi: Callable):
         # Store the strain energy density function
         self.psi = psi
 
@@ -371,6 +376,8 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         eq_strain (Literal["rankine", "mises"]): Type of equivalent strain used for
             damage.
     """
+
+    linear = False
 
     def __init__(
         self,
@@ -514,6 +521,8 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         max_iter (int, optional): Maximum number of iterations for the local Newton
             solver in plasticity correction. Default is `10`.
     """
+
+    linear = False
 
     def __init__(
         self,
@@ -686,6 +695,8 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         C (Tensor): Fourth-order elasticity tensor for 3D isotropic elasticity.
             Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
     """
+
+    linear = False
 
     def __init__(self, E: float | Tensor, nu: float | Tensor):
         super().__init__(E, nu)
@@ -943,6 +954,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         max_iter (int, optional): Maximum number of iterations for the local Newton
             solver in plasticity correction. Default is `10`.
     """
+
+    linear = False
 
     def __init__(
         self,
@@ -1213,6 +1226,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             solver in plasticity correction. Default is `10`.
     """
 
+    linear = False
+
     def __init__(
         self,
         E: float | Tensor,
@@ -1397,6 +1412,8 @@ class IsotropicElasticity1D(Material):
 
 class IsotropicPlasticity1D(IsotropicElasticity1D):
     """Isotropic plasticity with isotropic hardening"""
+
+    linear = False
 
     def __init__(
         self,
@@ -1831,4 +1848,234 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.E_2 = 1 / S[..., 1, 1]
         self.nu_12 = -S[..., 0, 0] * S[..., 0, 1]
         self.G_12 = 1 / S[..., 2, 2]
+        return self
+
+
+class IsotropicConductivity3D(Material):
+    linear = True
+    """Isotropic heat conductivity material.
+
+    This class represents a 3D isotropic heat conductivity material, defined by the thermal conductivity k.
+
+    Attributes:
+        k (Tensor | float): Thermal conductivity. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+    """
+    linear = True
+    n_state = 0
+
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
+        # Convert float inputs to tensors
+        self.kappa = torch.as_tensor(kappa)
+        self.RHO = torch.as_tensor(rho)
+        self.CP = torch.as_tensor(cp)
+
+        # Check if the material is vectorized
+        self.is_vectorized = self.kappa.dim() > 0
+
+        # Identity tensors
+        I2 = torch.eye(3)
+
+        # Stiffness tensor
+        self.KAPPA = self.kappa[..., None, None] * I2
+
+    def vectorize(self, n_elem: int) -> IsotropicElasticity3D:
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicElasticity3D: A new material instance with vectorized properties.
+        """
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            kappa = self.kappa.repeat(n_elem)
+            rho = self.RHO.repeat(n_elem)
+            cp = self.CP.repeat(n_elem)
+            return IsotropicConductivity3D(kappa, rho, cp)
+
+    def step(
+        self,
+        temp_grad_inc: Tensor,
+        temp_grad: Tensor,
+        heat_flux: Tensor,
+        state: Tensor,
+        dtemp_grad0: Tensor,
+        cl: Tensor,
+        iter: int,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Performs an incremental step in the small-strain isotropic elasticity model.
+
+        This function updates the deformation gradient, stress, and internal state
+        variables based on a small-strain assumption.
+
+        Args:
+            temp_grad_inc (Tensor): Incremental temperature gradient increment.
+                - Shape: `(..., 3, 1)`, where `...` represents batch dimensions.
+            temp_grad (Tensor): Current temperature gradient.
+                - Shape: `(..., 3, 1)`, same as `temp_grad_inc`.
+            heat_flux (Tensor): Current heat flux.
+                - Shape: `(..., 3, 1)`.
+            state (Tensor): Internal state variables (unused in heat conductivity).
+                - Shape: Arbitrary, remains unchanged.
+            dtemp_grad0 (Tensor): External temperature gradient increment (e.g., thermal).
+                - Shape: `(..., 3, 1)`.
+            cl (Tensor): Characteristic lengths.
+                - Shape: `(..., 1)`.
+            iter (int): Current iteration number.
+
+        Returns:
+            tuple:
+                - **heat_flux_new (Tensor)**: Updated heat flux.
+                Shape: `(..., 3, 1)`.
+                - **state_new (Tensor)**: Updated internal state (unchanged).
+                Shape: same as `state`.
+                - **ddheat_flux_ddtemp_grad (Tensor)**: Algorithmic tangent stiffness tensor.
+                Shape: `(..., 3, 3)`.
+        """
+        # Compute new heat flux
+        heat_flux_new = heat_flux + torch.einsum(
+            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc - dtemp_grad0
+        )
+        # Update internal state (this material does not change state)
+        state_new = state
+        # Algorithmic tangent
+        ddheat_flux_ddtemp_grad = self.KAPPA
+        return heat_flux_new, state_new, ddheat_flux_ddtemp_grad
+
+
+class IsotropicConductivity2D(IsotropicConductivity3D):
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
+        super().__init__(kappa, rho, cp)
+        self.KAPPA = self.KAPPA[..., :2, :2]
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return IsotropicConductivity2D(
+                self.kappa.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
+
+
+class IsotropicConductivity1D(IsotropicConductivity2D):
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
+        super().__init__(kappa, rho, cp)
+        self.KAPPA = self.KAPPA[..., :1, :1]
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return IsotropicConductivity1D(
+                self.kappa.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
+
+
+class OrthotropicConductivity3D(IsotropicConductivity3D):
+    def __init__(
+        self,
+        kappa_1: Tensor | float,
+        kappa_2: Tensor | float,
+        kappa_3: Tensor | float,
+        rho: Tensor | float,
+        cp: Tensor | float,
+    ):
+        self.kappa_1 = torch.as_tensor(kappa_1)
+        self.kappa_2 = torch.as_tensor(kappa_2)
+        self.kappa_3 = torch.as_tensor(kappa_3)
+        self.RHO = torch.as_tensor(rho)
+        self.CP = torch.as_tensor(cp)
+
+        e1, e2, e3 = torch.eye(3)
+        P1 = torch.outer(e1, e1)
+        P2 = torch.outer(e2, e2)
+        P3 = torch.outer(e3, e3)
+
+        self.KAPPA = (
+            self.kappa_1[..., None, None] * P1
+            + self.kappa_2[..., None, None] * P2
+            + self.kappa_3[..., None, None] * P3
+        )
+
+        self.is_vectorized = self.kappa_1.dim() > 0
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return OrthotropicConductivity3D(
+                self.kappa_1.repeat(n_elem),
+                self.kappa_2.repeat(n_elem),
+                self.kappa_3.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
+
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        if R.shape[-2] != 3 or R.shape[-1] != 3:
+            raise ValueError("Rotation matrix must be a 3x3 tensor.")
+
+        # compute rotated conductivity tensor
+        self.KAPPA = torch.einsum("...ik, ...jl, ...kl -> ...ij", R, R, self.KAPPA)
+        return self
+
+
+class OrthotropicConductivity2D(IsotropicConductivity2D):
+    def __init__(
+        self,
+        kappa_1: Tensor | float,
+        kappa_2: Tensor | float,
+        rho: Tensor | float,
+        cp: Tensor | float,
+    ):
+        self.kappa_1 = torch.as_tensor(kappa_1)
+        self.kappa_2 = torch.as_tensor(kappa_2)
+        self.RHO = torch.as_tensor(rho)
+        self.CP = torch.as_tensor(cp)
+
+        e1, e2 = torch.eye(2)
+        P1 = torch.outer(e1, e1)
+        P2 = torch.outer(e2, e2)
+
+        self.KAPPA = (
+            self.kappa_1[..., None, None] * P1 + self.kappa_2[..., None, None] * P2
+        )
+
+        self.is_vectorized = self.kappa_1.dim() > 0
+
+    def vectorize(self, n_elem: int):
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            return OrthotropicConductivity2D(
+                self.kappa_1.repeat(n_elem),
+                self.kappa_2.repeat(n_elem),
+                self.RHO.repeat(n_elem),
+                self.CP.repeat(n_elem),
+            )
+
+    def rotate(self, R):
+        """Rotate the material with rotation matrix R."""
+        if R.shape[-2] != 2 or R.shape[-1] != 2:
+            raise ValueError("Rotation matrix must be a 2x2 tensor.")
+
+        # compute rotated conductivity tensor
+        self.KAPPA = torch.einsum("...ik, ...jl, ...kl -> ...ij", R, R, self.KAPPA)
         return self

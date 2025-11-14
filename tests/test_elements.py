@@ -1,115 +1,50 @@
 import pytest
 import torch
 
-from torchfem.elements import Hexa1, Hexa2, Quad1, Quad2, Tetra1, Tetra2, Tria1, Tria2
-
-# Test elements with quad shape and area 1
-test_quad1 = torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
-test_quad2 = torch.tensor(
-    [
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [1.0, 1.0],
-        [0.0, 1.0],
-        [0.5, 0.0],
-        [1.0, 0.5],
-        [0.5, 1.0],
-        [0.0, 0.5],
-    ]
-)
-
-# Test elements with tria shape and area 1
-test_tria1 = torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 2.0]])
-test_tria2 = torch.tensor(
-    [[0.0, 0.0], [1.0, 0.0], [0.0, 2.0], [0.5, 0.0], [0.5, 1.0], [0.0, 1.0]]
-)
-
-# Test elements with tetra shape and volume 1
-test_tetra1 = torch.tensor(
-    [[3.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
-)
-test_tetra2 = torch.tensor(
-    [
-        [3.0, 0.0, 0.0],
-        [0.0, 2.0, 0.0],
-        [0.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [1.5, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [1.5, 0.0, 0.0],
-        [1.5, 0.0, 0.5],
-        [0.0, 1.0, 0.5],
-        [0.0, 0.0, 0.5],
-    ]
-)
-
-# Test elements with hexa shape and volume 1
-test_hexa1 = torch.tensor(
-    [
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [1.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [1.0, 0.0, 1.0],
-        [1.0, 1.0, 1.0],
-        [0.0, 1.0, 1.0],
-    ]
-)
-test_hexa2 = torch.tensor(
-    [
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [1.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [1.0, 0.0, 1.0],
-        [1.0, 1.0, 1.0],
-        [0.0, 1.0, 1.0],
-        [0.5, 0.0, 0.0],
-        [1.0, 0.5, 0.0],
-        [0.5, 1.0, 0.0],
-        [0.0, 0.5, 0.0],
-        [0.5, 0.0, 1.0],
-        [1.0, 0.5, 1.0],
-        [0.5, 1.0, 1.0],
-        [0.0, 0.5, 1.0],
-        [0.0, 0.0, 0.5],
-        [1.0, 0.0, 0.5],
-        [1.0, 1.0, 0.5],
-        [0.0, 1.0, 0.5],
-    ]
-)
+from torchfem.elements import ELEMENT_REGISTRY
 
 
 @pytest.mark.parametrize(
-    "elem, nodes",
-    [
-        (Quad1(), test_quad1),
-        (Quad2(), test_quad2),
-        (Tria1(), test_tria1),
-        (Tria2(), test_tria2),
-        (Tetra1(), test_tetra1),
-        (Tetra2(), test_tetra2),
-        (Hexa1(), test_hexa1),
-        (Hexa2(), test_hexa2),
-    ],
+    "elem",
+    ELEMENT_REGISTRY,
 )
-def test_jacobian(elem, nodes):
+def test_jacobian(elem):
     volume = torch.tensor([0.0])
-    for w, q in zip(elem.iweights(), elem.ipoints()):
-        J = elem.B(q) @ nodes
+    for w, q in zip(elem.iweights, elem.ipoints):
+        J = elem.B(q) @ elem.iso_coords
         detJ = torch.linalg.det(J)
         volume += w * detJ
-    assert torch.allclose(volume, torch.tensor([1.0]), atol=1e-5)
+    assert torch.allclose(volume, torch.tensor(elem.iso_volume), atol=1e-5)
 
 
 @pytest.mark.parametrize(
-    "elem", [Quad1(), Quad2(), Tria1(), Tria2(), Tetra1(), Tetra2(), Hexa1(), Hexa2()]
+    "elem",
+    ELEMENT_REGISTRY,
 )
 def test_gradient(elem):
-    for q in elem.ipoints():
+    for q in elem.ipoints:
         q.requires_grad = True
         for i in range(elem.nodes):
             grad = torch.autograd.grad(elem.N(q)[i], q)[0]
             assert torch.allclose(grad, elem.B(q)[:, i], atol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "elem",
+    ELEMENT_REGISTRY,
+)
+def test_completeness(elem):
+    N = elem.N(elem.iso_coords)
+    assert torch.allclose(
+        N - torch.eye(elem.nodes), torch.zeros(elem.nodes, elem.nodes), atol=1e-5
+    )
+
+
+@pytest.mark.parametrize(
+    "elem",
+    ELEMENT_REGISTRY,
+)
+def test_quadrature_weights(elem):
+    assert torch.allclose(
+        elem.iweights.sum() - torch.tensor(elem.iso_volume), torch.zeros(1), atol=1e-5
+    )
