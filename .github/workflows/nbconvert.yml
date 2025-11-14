@@ -25,7 +25,7 @@ jobs:
         run: |
           echo "DISPLAY variable: $DISPLAY"
           python -m pip install --upgrade pip
-          python -m pip install jupyter nbconvert
+          python -m pip install jupyter nbconvert imageio
           python -m pip install .
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/planar/ examples/basic/planar/*.ipynb
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/solid/ examples/basic/solid/*.ipynb
