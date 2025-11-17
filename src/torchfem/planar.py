@@ -102,8 +102,9 @@ class Planar(FEM):
             else:
                 triangles = self.elements[:, :3].tolist()
             triangulation = Triangulation(pos[:, 0], pos[:, 1], triangles)
+            # Adjust levels for some edge cases
             levels = torch.linspace(
-                node_property.min(), 1.001 * node_property.max(), 100
+                node_property.min(), 1.001 * node_property.max() + 1e-8, 100
             )
             tri = ax.tricontourf(
                 triangulation,
