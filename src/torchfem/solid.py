@@ -1,5 +1,8 @@
+import typing
+
 import pyvista
 import torch
+from pyvista import DataSet
 from torch import Tensor
 
 from .base import Heat, Mechanics
@@ -149,6 +152,7 @@ class Solid(Mechanics):
             pl.add_mesh(mesh.outline(), color="black")
             pl.add_mesh(mesh.contour(values, scalars=scalars), **kwargs)
         else:
+            mesh = typing.cast(DataSet, mesh)
             if show_edges:
                 if self.etype is Tetra2 or self.etype is Hexa2:
                     # Trick to plot edges for quadratic elements
