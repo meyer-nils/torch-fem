@@ -209,11 +209,13 @@ class Truss(Mechanics):
         for j, element in enumerate(self.elements):
             n1 = element[0]
             n2 = element[1]
-            tube = pyvista.Tube(pos[n1].numpy(), pos[n2].numpy(), radius=radii[j])
+            tube = pyvista.Tube(
+                pointa=pos[n1].numpy(), pointb=pos[n2].numpy(), radius=radii[j]
+            )
             if element_property is not None:
                 for key, value in element_property.items():
                     value = element_property[key].squeeze()
-                    tube.cell_data[key] = value[j]
+                    tube.cell_data[key] = value[j].numpy()
                 pl.add_mesh(tube, scalars=key, cmap=cmap)
             else:
                 pl.add_mesh(tube, color="gray")
@@ -258,8 +260,8 @@ class Truss(Mechanics):
     def integrate_material(
         self,
         u: Tensor,
-        F: Tensor,
-        stress: Tensor,
+        grad: Tensor,
+        flux: Tensor,
         state: Tensor,
         n: int,
         iter: int,
@@ -268,6 +270,11 @@ class Truss(Mechanics):
         nlgeom: bool,
     ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
+
+        # Interpretation of variables
+        F = grad
+        stress = flux
+
         # Compute updated configuration
         u_trial = u[n - 1] + du.view((-1, self.n_dim))
 
