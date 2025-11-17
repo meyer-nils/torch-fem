@@ -20,13 +20,11 @@ from .utils import (
 class Material(ABC):
     """Base class for material models."""
 
-    linear: bool
-
     @abstractmethod
     def __init__(self):
         self.n_state: int
         self.is_vectorized: bool
-        self.C: Tensor
+        self.rho: Tensor
         pass
 
     @abstractmethod
@@ -61,6 +59,8 @@ class IsotropicElasticity3D(Material):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         nu (Tensor | float): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
         lbd (Tensor): First Lamé parameter.
@@ -71,12 +71,13 @@ class IsotropicElasticity3D(Material):
             Shape: `(N, 3, 3, 3, 3)` if vectorized, otherwise `(3, 3, 3, 3)`.
     """
 
-    linear = True
-
-    def __init__(self, E: Tensor | float, nu: Tensor | float):
+    def __init__(
+        self, E: Tensor | float, nu: Tensor | float, rho: Tensor | float = 1.0
+    ):
         # Convert float inputs to tensors
         self.E = torch.as_tensor(E)
         self.nu = torch.as_tensor(nu)
+        self.rho = torch.as_tensor(rho)
 
         # There are no internal variables
         self.n_state = 0
@@ -117,7 +118,8 @@ class IsotropicElasticity3D(Material):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicElasticity3D(E, nu)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicElasticity3D(E, nu, rho)
 
     def step(
         self,
@@ -209,7 +211,8 @@ class IsotropicHencky3D(IsotropicElasticity3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicHencky3D(E, nu)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicHencky3D(E, nu, rho)
 
     def step(
         self,
@@ -280,20 +283,38 @@ class Hyperelastic3D(Material):
 
     """
 
-    linear = False
-
-    def __init__(self, psi: Callable):
+    def __init__(self, psi: Callable, rho: Tensor | float = 1.0):
         # Store the strain energy density function
         self.psi = psi
 
         # There are no internal variables
         self.n_state = 0
 
+        # Density
+        self.rho = torch.as_tensor(rho)
+
         # Check if the material is vectorized
         self.is_vectorized = True
 
-    def vectorize(self, n_elem: int):
-        return self
+    def vectorize(self, n_elem: int) -> Hyperelastic3D:
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        This function creates a batched version of the material properties. If the
+        material is already vectorized (`self.is_vectorized == True`), the function
+        simply returns `self` without modification.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            Hyperelastic3D: A new material instance with vectorized properties.
+        """
+        if self.is_vectorized:
+            print("Material is already vectorized.")
+            return self
+        else:
+            rho = self.rho.repeat(n_elem)
+            return Hyperelastic3D(self.psi, rho)
 
     def step(
         self,
@@ -365,9 +386,11 @@ class IsotropicDamage3D(IsotropicElasticity3D):
     single damage variable.
 
     Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
+        E (Tensor | float): Young's modulus. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+        nu (Tensor | float): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor | float): Mass density. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 2).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
@@ -377,8 +400,6 @@ class IsotropicDamage3D(IsotropicElasticity3D):
             damage.
     """
 
-    linear = False
-
     def __init__(
         self,
         E: float | Tensor,
@@ -386,8 +407,9 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         d: Callable,
         d_prime: Callable,
         eq_strain: Literal["rankine", "mises"],
+        rho: float | Tensor = 1.0,
     ):
-        super().__init__(E, nu)
+        super().__init__(E, nu, rho)
         self.d = d
         self.d_prime = d_prime
         self.n_state = 2
@@ -412,7 +434,8 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicDamage3D(E, nu, self.d, self.d_prime, self.eq_strain)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicDamage3D(E, nu, self.d, self.d_prime, self.eq_strain, rho)
 
     def step(
         self,
@@ -510,6 +533,8 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor): Mass density. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 1).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
         sigma_f (Callable): Function that defines the yield stress as a function
@@ -522,8 +547,6 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
             solver in plasticity correction. Default is `10`.
     """
 
-    linear = False
-
     def __init__(
         self,
         E: float | Tensor,
@@ -532,8 +555,9 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
         max_iter: int = 10,
+        rho: float | Tensor = 1.0,
     ):
-        super().__init__(E, nu)
+        super().__init__(E, nu, rho)
         self.sigma_f = sigma_f
         self.sigma_f_prime = sigma_f_prime
         self.n_state = 1
@@ -559,8 +583,15 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
+            rho = self.rho.repeat(n_elem)
             return IsotropicPlasticity3D(
-                E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+                E,
+                nu,
+                self.sigma_f,
+                self.sigma_f_prime,
+                self.tolerance,
+                self.max_iter,
+                rho,
             )
 
     def step(
@@ -686,6 +717,8 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor): Mass density. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
         lbd (Tensor): First Lamé parameter.
@@ -696,10 +729,10 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
             Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
     """
 
-    linear = False
-
-    def __init__(self, E: float | Tensor, nu: float | Tensor):
-        super().__init__(E, nu)
+    def __init__(
+        self, E: float | Tensor, nu: float | Tensor, rho: float | Tensor = 1.0
+    ):
+        super().__init__(E, nu, rho)
 
         # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
         fac = self.E / (1.0 - self.nu**2)
@@ -742,7 +775,8 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicElasticityPlaneStress(E, nu)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicElasticityPlaneStress(E, nu, rho)
 
 
 class IsotropicHenckyPlaneStrain(IsotropicHencky3D):
@@ -756,6 +790,8 @@ class IsotropicHenckyPlaneStrain(IsotropicHencky3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor): Mass density. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
         lbd (Tensor): First Lamé parameter.
@@ -766,8 +802,10 @@ class IsotropicHenckyPlaneStrain(IsotropicHencky3D):
             Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
     """
 
-    def __init__(self, E: float | Tensor, nu: float | Tensor):
-        super().__init__(E, nu)
+    def __init__(
+        self, E: float | Tensor, nu: float | Tensor, rho: float | Tensor = 1.0
+    ):
+        super().__init__(E, nu, rho)
 
         # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
         if self.E.dim() == 0:
@@ -795,7 +833,8 @@ class IsotropicHenckyPlaneStrain(IsotropicHencky3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicHenckyPlaneStrain(E, nu)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicHenckyPlaneStrain(E, nu, rho)
 
 
 class IsotropicHenckyPlaneStress(IsotropicHencky3D):
@@ -808,6 +847,8 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         E (Tensor): Young's modulus. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor): Mass density. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 1).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
@@ -823,10 +864,11 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         self,
         E: float | Tensor,
         nu: float | Tensor,
+        rho: float | Tensor = 1.0,
         tolerance: float = 1e-5,
         max_iter: int = 10,
     ):
-        super().__init__(E, nu)
+        super().__init__(E, nu, rho)
         self.tolerance = tolerance
         self.max_iter = max_iter
 
@@ -853,7 +895,8 @@ class IsotropicHenckyPlaneStress(IsotropicHencky3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicHenckyPlaneStress(E, nu)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicHenckyPlaneStress(E, nu, rho, self.tolerance, self.max_iter)
 
     def step(
         self,
@@ -953,9 +996,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             return-mapping algorithm. Default is `1e-5`.
         max_iter (int, optional): Maximum number of iterations for the local Newton
             solver in plasticity correction. Default is `10`.
+        rho (float | Tensor, optional): Mass density. Default is `1.0`.
     """
-
-    linear = False
 
     def __init__(
         self,
@@ -965,8 +1007,9 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
         max_iter: int = 10,
+        rho: float | Tensor = 1.0,
     ):
-        super().__init__(E, nu)
+        super().__init__(E, nu, rho)
         self._C = stiffness2voigt(self.C)
         self._S = torch.linalg.inv(self._C)
         self.sigma_f = sigma_f
@@ -995,8 +1038,15 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
+            rho = self.rho.repeat(n_elem)
             return IsotropicPlasticityPlaneStress(
-                E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+                E,
+                nu,
+                self.sigma_f,
+                self.sigma_f_prime,
+                self.tolerance,
+                self.max_iter,
+                rho,
             )
 
     def step(
@@ -1143,6 +1193,8 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
         nu (Tensor | float): Poisson's ratio. If a float is provided, it is converted.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+            Shape: `()` for a scalar or `(N,)` for a batch of materials.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
         lbd (Tensor): First Lamé parameter.
@@ -1153,8 +1205,10 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
             Shape: `(N, 2, 2, 2, 2)` if vectorized, otherwise `(2, 2, 2, 2)`.
     """
 
-    def __init__(self, E: Tensor | float, nu: Tensor | float):
-        super().__init__(E, nu)
+    def __init__(
+        self, E: Tensor | float, nu: Tensor | float, rho: Tensor | float = 1.0
+    ):
+        super().__init__(E, nu, rho)
 
         # Overwrite the 3D stiffness tensor with a 2D plane strain tensor
         lbd = self.lbd
@@ -1198,7 +1252,8 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
-            return IsotropicElasticityPlaneStrain(E, nu)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicElasticityPlaneStrain(E, nu, rho)
 
 
 class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
@@ -1224,9 +1279,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             return-mapping algorithm. Default is `1e-5`.
         max_iter (int, optional): Maximum number of iterations for the local Newton
             solver in plasticity correction. Default is `10`.
+        rho (float | Tensor, optional): Mass density. Default is `1.0`.
     """
-
-    linear = False
 
     def __init__(
         self,
@@ -1236,8 +1290,9 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
         max_iter: int = 10,
+        rho: float | Tensor = 1.0,
     ):
-        super().__init__(E, nu)
+        super().__init__(E, nu, rho)
         self.sigma_f = sigma_f
         self.sigma_f_prime = sigma_f_prime
         self.n_state = 2
@@ -1252,8 +1307,15 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         else:
             E = self.E.repeat(n_elem)
             nu = self.nu.repeat(n_elem)
+            rho = self.rho.repeat(n_elem)
             return IsotropicPlasticityPlaneStrain(
-                E, nu, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+                E,
+                nu,
+                self.sigma_f,
+                self.sigma_f_prime,
+                self.tolerance,
+                self.max_iter,
+                rho,
             )
 
     def step(
@@ -1371,9 +1433,10 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
 
 class IsotropicElasticity1D(Material):
-    def __init__(self, E: float | Tensor):
+    def __init__(self, E: float | Tensor, rho: float | Tensor = 1.0):
         # Convert float inputs to tensors
         self.E = torch.as_tensor(E)
+        self.rho = torch.as_tensor(rho)
 
         # Check if the material is vectorized
         self.is_vectorized = self.E.dim() > 0
@@ -1391,7 +1454,8 @@ class IsotropicElasticity1D(Material):
             return self
         else:
             E = self.E.repeat(n_elem)
-            return IsotropicElasticity1D(E)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicElasticity1D(E, rho)
 
     def step(
         self,
@@ -1413,8 +1477,6 @@ class IsotropicElasticity1D(Material):
 class IsotropicPlasticity1D(IsotropicElasticity1D):
     """Isotropic plasticity with isotropic hardening"""
 
-    linear = False
-
     def __init__(
         self,
         E: float | Tensor,
@@ -1422,8 +1484,9 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         sigma_f_prime: Callable,
         tolerance: float = 1e-5,
         max_iter: int = 10,
+        rho: float | Tensor = 1.0,
     ):
-        super().__init__(E)
+        super().__init__(E, rho)
         self.sigma_f = sigma_f
         self.sigma_f_prime = sigma_f_prime
         self.n_state = 1
@@ -1437,8 +1500,9 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
             return self
         else:
             E = self.E.repeat(n_elem)
+            rho = self.rho.repeat(n_elem)
             return IsotropicPlasticity1D(
-                E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter
+                E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter, rho
             )
 
     def step(
@@ -1515,6 +1579,7 @@ class OrthotropicElasticity3D(Material):
         G_12: float | Tensor,
         G_13: float | Tensor,
         G_23: float | Tensor,
+        rho: float | Tensor = 1.0,
     ):
         # Convert float inputs to tensors
         self.E_1 = torch.as_tensor(E_1)
@@ -1529,6 +1594,7 @@ class OrthotropicElasticity3D(Material):
         self.G_12 = torch.as_tensor(G_12)
         self.G_13 = torch.as_tensor(G_13)
         self.G_23 = torch.as_tensor(G_23)
+        self.rho = torch.as_tensor(rho)
 
         # Check if the material is vectorized
         self.is_vectorized = self.E_1.dim() > 0
@@ -1585,8 +1651,9 @@ class OrthotropicElasticity3D(Material):
             G_12 = self.G_12.repeat(n_elem)
             G_13 = self.G_13.repeat(n_elem)
             G_23 = self.G_23.repeat(n_elem)
+            rho = self.rho.repeat(n_elem)
             return OrthotropicElasticity3D(
-                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
+                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho
             )
 
     def step(
@@ -1644,6 +1711,7 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         nu_L: float | Tensor,
         nu_T: float | Tensor,
         G_L: float | Tensor,
+        rho: float | Tensor = 1.0,
     ):
         # https://webpages.tuni.fi/rakmek/jmm/slides/jmm_lect_06.pdf
         if G_L > E_L / (2 * (1 + nu_L)):
@@ -1659,7 +1727,7 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         G_13 = G_L
         G_23 = E_2 / (2 * (1 + nu_23))
 
-        super().__init__(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23)
+        super().__init__(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho)
 
 
 class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
@@ -1673,6 +1741,7 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         G_12: float | Tensor,
         G_13: float | Tensor = 0.0,
         G_23: float | Tensor = 0.0,
+        rho: float | Tensor = 1.0,
     ):
         # Convert float inputs to tensors
         self.E_1 = torch.as_tensor(E_1)
@@ -1682,6 +1751,7 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.G_12 = torch.as_tensor(G_12)
         self.G_13 = torch.as_tensor(G_13)
         self.G_23 = torch.as_tensor(G_23)
+        self.rho = torch.as_tensor(rho)
 
         # Check if the material is vectorized
         self.is_vectorized = self.E_1.dim() > 0
@@ -1723,7 +1793,10 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
             G_12 = self.G_12.repeat(n_elem)
             G_13 = self.G_13.repeat(n_elem)
             G_23 = self.G_23.repeat(n_elem)
-            return OrthotropicElasticityPlaneStress(E_1, E_2, nu_12, G_12, G_13, G_23)
+            rho = self.rho.repeat(n_elem)
+            return OrthotropicElasticityPlaneStress(
+                E_1, E_2, nu_12, G_12, G_13, G_23, rho
+            )
 
     def rotate(self, R):
         """Rotate the material with rotation matrix R."""
@@ -1761,6 +1834,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         G_12: float | Tensor,
         G_13: float | Tensor = 0.0,
         G_23: float | Tensor = 0.0,
+        rho: float | Tensor = 1.0,
     ):
         # Convert float inputs to tensors
         self.E_1 = torch.as_tensor(E_1)
@@ -1775,6 +1849,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.G_12 = torch.as_tensor(G_12)
         self.G_13 = torch.as_tensor(G_13)
         self.G_23 = torch.as_tensor(G_23)
+        self.rho = torch.as_tensor(rho)
 
         # Check if the material is vectorized
         self.is_vectorized = self.E_1.dim() > 0
@@ -1825,8 +1900,9 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
             G_12 = self.G_12.repeat(n_elem)
             G_13 = self.G_13.repeat(n_elem)
             G_23 = self.G_23.repeat(n_elem)
+            rho = self.rho.repeat(n_elem)
             return OrthotropicElasticityPlaneStrain(
-                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23
+                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho
             )
 
     def rotate(self, R):
@@ -1852,23 +1928,23 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
 
 
 class IsotropicConductivity3D(Material):
-    linear = True
     """Isotropic heat conductivity material.
 
-    This class represents a 3D isotropic heat conductivity material, defined by the thermal conductivity k.
+    This class represents a 3D isotropic heat conductivity material, defined by the
+    thermal conductivity k.
 
     Attributes:
-        k (Tensor | float): Thermal conductivity. If a float is provided, it is converted.
+        k (Tensor | float): Thermal conductivity. Converted, if a float is provided.
             Shape: `()` for a scalar or `(N,)` for a batch of materials.
     """
-    linear = True
-    n_state = 0
 
-    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
         # Convert float inputs to tensors
         self.kappa = torch.as_tensor(kappa)
-        self.RHO = torch.as_tensor(rho)
-        self.CP = torch.as_tensor(cp)
+        self.rho = torch.as_tensor(rho)
+
+        # There are no internal variables
+        self.n_state = 0
 
         # Check if the material is vectorized
         self.is_vectorized = self.kappa.dim() > 0
@@ -1879,7 +1955,7 @@ class IsotropicConductivity3D(Material):
         # Stiffness tensor
         self.KAPPA = self.kappa[..., None, None] * I2
 
-    def vectorize(self, n_elem: int) -> IsotropicElasticity3D:
+    def vectorize(self, n_elem: int) -> IsotropicConductivity3D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         This function creates a batched version of the material properties. If the
@@ -1890,24 +1966,23 @@ class IsotropicConductivity3D(Material):
             n_elem (int): Number of elements to vectorize the material for.
 
         Returns:
-            IsotropicElasticity3D: A new material instance with vectorized properties.
+            IsotropicConductivity3D: A new material instance with vectorized properties.
         """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
         else:
             kappa = self.kappa.repeat(n_elem)
-            rho = self.RHO.repeat(n_elem)
-            cp = self.CP.repeat(n_elem)
-            return IsotropicConductivity3D(kappa, rho, cp)
+            rho = self.rho.repeat(n_elem)
+            return IsotropicConductivity3D(kappa, rho)
 
     def step(
         self,
-        temp_grad_inc: Tensor,
-        temp_grad: Tensor,
-        heat_flux: Tensor,
+        H_inc: Tensor,
+        F: Tensor,
+        sigma: Tensor,
         state: Tensor,
-        dtemp_grad0: Tensor,
+        de0: Tensor,
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
@@ -1917,15 +1992,15 @@ class IsotropicConductivity3D(Material):
         variables based on a small-strain assumption.
 
         Args:
-            temp_grad_inc (Tensor): Incremental temperature gradient increment.
+            H_inc (Tensor): Incremental temperature gradient increment.
                 - Shape: `(..., 3, 1)`, where `...` represents batch dimensions.
-            temp_grad (Tensor): Current temperature gradient.
-                - Shape: `(..., 3, 1)`, same as `temp_grad_inc`.
-            heat_flux (Tensor): Current heat flux.
+            F (Tensor): Current temperature gradient.
+                - Shape: `(..., 3, 1)`, same as `H_inc`.
+            sigma (Tensor): Current heat flux.
                 - Shape: `(..., 3, 1)`.
             state (Tensor): Internal state variables (unused in heat conductivity).
                 - Shape: Arbitrary, remains unchanged.
-            dtemp_grad0 (Tensor): External temperature gradient increment (e.g., thermal).
+            de0 (Tensor): External temperature gradient increment.
                 - Shape: `(..., 3, 1)`.
             cl (Tensor): Characteristic lengths.
                 - Shape: `(..., 1)`.
@@ -1937,12 +2012,16 @@ class IsotropicConductivity3D(Material):
                 Shape: `(..., 3, 1)`.
                 - **state_new (Tensor)**: Updated internal state (unchanged).
                 Shape: same as `state`.
-                - **ddheat_flux_ddtemp_grad (Tensor)**: Algorithmic tangent stiffness tensor.
+                - **ddheat_flux_ddtemp_grad (Tensor)**: Algorithmic tangent tensor.
                 Shape: `(..., 3, 3)`.
         """
+        # Interpretation of inputs
+        temp_grad_inc = H_inc
+        heat_flux = sigma
+
         # Compute new heat flux
         heat_flux_new = heat_flux + torch.einsum(
-            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc - dtemp_grad0
+            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc - de0
         )
         # Update internal state (this material does not change state)
         state_new = state
@@ -1952,36 +2031,33 @@ class IsotropicConductivity3D(Material):
 
 
 class IsotropicConductivity2D(IsotropicConductivity3D):
-    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
-        super().__init__(kappa, rho, cp)
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
+        super().__init__(kappa, rho)
         self.KAPPA = self.KAPPA[..., :2, :2]
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicConductivity2D:
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
         else:
             return IsotropicConductivity2D(
-                self.kappa.repeat(n_elem),
-                self.RHO.repeat(n_elem),
-                self.CP.repeat(n_elem),
+                self.kappa.repeat(n_elem), self.rho.repeat(n_elem)
             )
 
 
 class IsotropicConductivity1D(IsotropicConductivity2D):
-    def __init__(self, kappa: Tensor | float, rho: Tensor | float, cp: Tensor | float):
-        super().__init__(kappa, rho, cp)
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
+        super().__init__(kappa, rho)
         self.KAPPA = self.KAPPA[..., :1, :1]
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicConductivity1D:
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
         else:
             return IsotropicConductivity1D(
                 self.kappa.repeat(n_elem),
-                self.RHO.repeat(n_elem),
-                self.CP.repeat(n_elem),
+                self.rho.repeat(n_elem),
             )
 
 
@@ -1991,14 +2067,15 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
         kappa_1: Tensor | float,
         kappa_2: Tensor | float,
         kappa_3: Tensor | float,
-        rho: Tensor | float,
-        cp: Tensor | float,
+        rho: Tensor | float = 1.0,
     ):
         self.kappa_1 = torch.as_tensor(kappa_1)
         self.kappa_2 = torch.as_tensor(kappa_2)
         self.kappa_3 = torch.as_tensor(kappa_3)
-        self.RHO = torch.as_tensor(rho)
-        self.CP = torch.as_tensor(cp)
+        self.rho = torch.as_tensor(rho)
+
+        # There are no internal variables
+        self.n_state = 0
 
         e1, e2, e3 = torch.eye(3)
         P1 = torch.outer(e1, e1)
@@ -2013,7 +2090,7 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
 
         self.is_vectorized = self.kappa_1.dim() > 0
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> OrthotropicConductivity3D:
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -2022,8 +2099,7 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
                 self.kappa_1.repeat(n_elem),
                 self.kappa_2.repeat(n_elem),
                 self.kappa_3.repeat(n_elem),
-                self.RHO.repeat(n_elem),
-                self.CP.repeat(n_elem),
+                self.rho.repeat(n_elem),
             )
 
     def rotate(self, R):
@@ -2041,13 +2117,14 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
         self,
         kappa_1: Tensor | float,
         kappa_2: Tensor | float,
-        rho: Tensor | float,
-        cp: Tensor | float,
+        rho: Tensor | float = 1.0,
     ):
         self.kappa_1 = torch.as_tensor(kappa_1)
         self.kappa_2 = torch.as_tensor(kappa_2)
-        self.RHO = torch.as_tensor(rho)
-        self.CP = torch.as_tensor(cp)
+        self.rho = torch.as_tensor(rho)
+
+        # There are no internal variables
+        self.n_state = 0
 
         e1, e2 = torch.eye(2)
         P1 = torch.outer(e1, e1)
@@ -2059,7 +2136,7 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
 
         self.is_vectorized = self.kappa_1.dim() > 0
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> OrthotropicConductivity2D:
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -2067,8 +2144,7 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
             return OrthotropicConductivity2D(
                 self.kappa_1.repeat(n_elem),
                 self.kappa_2.repeat(n_elem),
-                self.RHO.repeat(n_elem),
-                self.CP.repeat(n_elem),
+                self.rho.repeat(n_elem),
             )
 
     def rotate(self, R):

@@ -195,8 +195,9 @@ class SolidHeat(Heat, Solid):
         weights = self.etype.iweights
 
         N, _, detJ = self.eval_shape_functions(ipoints)
-        RHO = self.material.RHO
-        CP = self.material.CP
 
-        m = torch.einsum("I, IN, IM, E, E, IE -> ENM", weights, N, N, RHO, CP, detJ)
+        # This is a thermal mass (rho * c), but we only have rho here.
+        rho = self.material.rho
+
+        m = torch.einsum("I, IN, IM, E, IE -> ENM", weights, N, N, rho, detJ)
         return m

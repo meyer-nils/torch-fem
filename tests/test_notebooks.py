@@ -31,6 +31,16 @@ def test_planar_large_stretch_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/planar/thermal_static.ipynb", execute=True)
+def test_planar_thermal_static_notebook(tb):
+    tb.execute()
+
+
+@testbook("examples/basic/planar/thermal_transient.ipynb", execute=True)
+def test_planar_thermal_transient_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/shell/cantilever.ipynb", execute=True)
 def test_shell_cantilever_notebook(tb):
     tb.execute()
