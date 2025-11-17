@@ -93,6 +93,7 @@ class Planar(FEM):
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
+            node_property = node_property.squeeze()
             if self.etype is Quad1 or self.etype is Quad2:
                 triangles = []
                 for e in self.elements:
@@ -101,7 +102,6 @@ class Planar(FEM):
             else:
                 triangles = self.elements[:, :3].tolist()
             triangulation = Triangulation(pos[:, 0], pos[:, 1], triangles)
-            node_property = node_property.squeeze()
             levels = torch.linspace(
                 node_property.min(), 1.001 * node_property.max(), 100
             )
@@ -119,18 +119,36 @@ class Planar(FEM):
 
         # Color surface with element properties (if provided)
         if element_property is not None:
-            if self.etype is Tria2:
-                verts = pos[self.elements[:, :3]]
-            elif self.etype is Quad2:
-                verts = pos[self.elements[:, :4]]
-            else:
-                verts = pos[self.elements]
-            pc = PolyCollection([v for v in verts.numpy()], cmap=cmap)
-            pc.set_array(element_property)
-            ax.add_collection(pc)
-            if colorbar:
-                plt.colorbar(pc, ax=ax)
-                pc.set_clim(vmin=vmin, vmax=vmax)
+            element_property = element_property.squeeze()
+            if element_property.numel() == self.n_elem:
+                # Plot scalar field
+                if self.etype is Tria2:
+                    verts = pos[self.elements[:, :3]]
+                elif self.etype is Quad2:
+                    verts = pos[self.elements[:, :4]]
+                else:
+                    verts = pos[self.elements]
+                pc = PolyCollection([v for v in verts.numpy()], cmap=cmap)
+                pc.set_array(element_property)
+                ax.add_collection(pc)
+                if colorbar:
+                    plt.colorbar(pc, ax=ax)
+                    pc.set_clim(vmin=vmin, vmax=vmax)
+            elif element_property.numel() == 2 * self.n_elem:
+                # Plot vector field
+                centers = pos[self.elements, :].mean(dim=1)
+                vectors = element_property / torch.linalg.norm(
+                    element_property, dim=1, keepdim=True
+                )
+                ax.quiver(
+                    centers[:, 0],
+                    centers[:, 1],
+                    vectors[:, 0],
+                    vectors[:, 1],
+                    torch.linalg.norm(element_property, dim=1),
+                    pivot="middle",
+                    cmap=cmap,
+                )
 
         # Nodes
         if node_markers:
@@ -179,10 +197,14 @@ class Planar(FEM):
             for i, constraint in enumerate(self.constraints):
                 x = float(pos[i][0])
                 y = float(pos[i][1])
-                if constraint[0]:
-                    ax.plot(x - 0.01 * size, y, ">", color="gray")
-                if constraint[1]:
-                    ax.plot(x, y - 0.01 * size, "^", color="gray")
+                if len(constraint) == 2:
+                    if constraint[0]:
+                        ax.plot(x - 0.01 * size, y, ">", color="gray")
+                    if constraint[1]:
+                        ax.plot(x, y - 0.01 * size, "^", color="gray")
+                elif len(constraint) == 1:
+                    if constraint[0]:
+                        ax.plot(x, y, "s", color="gray")
 
         # Material orientations
         if orientation is not None:
