@@ -9,7 +9,7 @@ from .materials import Material
 from .sparse import CachedSolve, sparse_solve
 
 
-class FEMGeneral(ABC):
+class FEM(ABC):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a general FEM problem."""
 
@@ -23,9 +23,9 @@ class FEMGeneral(ABC):
         self.n_dim = nodes.shape[1]
         self.n_elem = len(self.elements)
 
-        # Initialize load variables
-        self._forces = torch.zeros(self.n_nod, self.n_dof_per_node)
-        self._displacements = torch.zeros(self.n_nod, self.n_dof_per_node)
+        # Initialize boundary conditions
+        self._neumann = torch.zeros(self.n_nod, self.n_dof_per_node)
+        self._dirichlet = torch.zeros(self.n_nod, self.n_dof_per_node)
         self._constraints = torch.zeros(
             self.n_nod, self.n_dof_per_node, dtype=torch.bool
         )
@@ -43,38 +43,59 @@ class FEMGeneral(ABC):
             self.material = material.vectorize(self.n_elem)
 
         # Initialize types
-        self.n_stress: int
+        self.n_flux: int
         self.n_int: int
-        self.ext_strain: Tensor
-        self.etype: Element
+        self._external_gradient: Tensor
+        self.etype: type[Element]
         self.char_lengths: Tensor
 
         # Cached solve for sparse linear systems
         self.cached_solve = CachedSolve()
 
     @property
-    def forces(self) -> Tensor:
-        return self._forces
-
-    @forces.setter
-    def forces(self, value: Tensor):
-        if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Forces must have the same shape as nodes.")
-        if not torch.is_floating_point(value):
-            raise TypeError("Forces must be a floating-point tensor.")
-        self._forces = value.to(self.nodes.device)
+    @abstractmethod
+    def n_dof_per_node(self) -> int:
+        raise NotImplementedError
 
     @property
-    def displacements(self) -> Tensor:
-        return self._displacements
+    @abstractmethod
+    def initial_grad(self) -> Tensor:
+        raise NotImplementedError
 
-    @displacements.setter
-    def displacements(self, value: Tensor):
-        if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Displacements must have the same shape as nodes.")
-        if not torch.is_floating_point(value):
-            raise TypeError("Displacements must be a floating-point tensor.")
-        self._displacements = value.to(self.nodes.device)
+    @abstractmethod
+    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
+        raise NotImplementedError
+
+    @abstractmethod
+    def plot(self, u: float | Tensor = 0.0, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    def compute_m(self) -> Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def k0(self) -> Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def integrate_material(
+        self,
+        u: Tensor,
+        grad: Tensor,
+        flux: Tensor,
+        state: Tensor,
+        n: int,
+        iter: int,
+        du: Tensor,
+        de0: Tensor,
+        nlgeom: bool,
+    ) -> Tuple[Tensor, Tensor]:
+        raise NotImplementedError
 
     @property
     def constraints(self) -> Tensor:
@@ -102,22 +123,6 @@ class FEMGeneral(ABC):
         B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
         return self.etype.N(xi), B, detJ
 
-    @abstractmethod
-    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    @abstractmethod
-    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
-        raise NotImplementedError
-
-    @abstractmethod
-    def plot(self, u: float | Tensor = 0.0, **kwargs):
-        raise NotImplementedError
-
-    @abstractmethod
-    def compute_m(self) -> Tensor:
-        raise NotImplementedError
-
     def compute_B(self) -> Tensor:
         """Null space representing rigid body modes."""
         if self.n_dof_per_node == 3:
@@ -144,25 +149,6 @@ class FEMGeneral(ABC):
             raise ValueError("Unsupported dimension of DOF vector.")
         return B
 
-    @abstractmethod
-    def k0(self) -> Tensor:
-        raise NotImplementedError
-
-    @abstractmethod
-    def integrate_material(
-        self,
-        u: Tensor,
-        F: Tensor,
-        stress: Tensor,
-        state: Tensor,
-        n: int,
-        i: int,
-        du: Tensor,
-        de0: Tensor,
-        nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor]:
-        raise NotImplementedError
-
     def integrate_field(self, field: Tensor | None = None) -> Tensor:
         """Integrate scalar field over elements."""
 
@@ -178,8 +164,8 @@ class FEMGeneral(ABC):
             res += w * f * detJ
         return res
 
-    def assemble_stiffness(self, k: Tensor, con: Tensor) -> Tensor:
-        """Assemble global stiffness matrix."""
+    def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
+        """Assemble global generalized stiffness matrix."""
 
         # Initialize sparse matrix
         size = (self.n_dofs, self.n_dofs)
@@ -213,10 +199,10 @@ class FEMGeneral(ABC):
 
         return K.coalesce()
 
-    def assemble_force(self, f: Tensor) -> Tensor:
-        """Assemble global force vector."""
+    def assemble_rhs(self, f: Tensor) -> Tensor:
+        """Assemble global right hand side vector."""
 
-        # Initialize force vector
+        # Initialize global right hand side vector
         F = torch.zeros((self.n_dofs))
 
         # Ravel indices and values
@@ -258,7 +244,7 @@ class FEMGeneral(ABC):
 
         Returns:
                 Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]: Final displacements,
-                internal forces, stress, deformation gradient, and material state.
+                internal forces, flux, deformation gradient, and material state.
 
         """
         # Number of increments
@@ -271,20 +257,11 @@ class FEMGeneral(ABC):
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
-        u = torch.zeros(
-            N, self.n_nod, self.n_dof_per_node
-        )  # generalized solution variable
-        f = torch.zeros(N, self.n_nod, self.n_dof_per_node)  # generalized forces
-        stress = torch.zeros(
-            N, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
-        )
-        # generalized gradient of the solution variable
-        defgrad = torch.zeros(
-            N, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
-        )
-        # initialize with deformation gradient for mechanics, dirty hack for generality
-        if self.n_dim == self.n_dof_per_node and self.physics_type == "mechanics":
-            defgrad[:, :, :, :, :] = torch.eye(self.n_dim)
+        u = torch.zeros(N, self.n_nod, self.n_dof_per_node)
+        f = torch.zeros(N, self.n_nod, self.n_dof_per_node)
+        flux = torch.zeros(N, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim)
+        grad = torch.zeros(N, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim)
+        grad[:, :, :, :, :] = self.initial_grad
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
 
         if verbose and u.dtype != torch.float64:
@@ -297,7 +274,7 @@ class FEMGeneral(ABC):
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
 
-        # Initialize displacement increment
+        # Initialize field variable increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
         # Incremental loading
@@ -306,9 +283,9 @@ class FEMGeneral(ABC):
             inc = increments[n] - increments[n - 1]
 
             # Load increment
-            F_ext = increments[n] * self.forces.ravel()
-            DU = inc * self.displacements.clone().ravel()
-            de0 = inc * self.ext_strain
+            F_ext = increments[n] * self._neumann.ravel()
+            DU = inc * self._dirichlet.clone().ravel()
+            de0 = inc * self._external_gradient
 
             # Newton-Raphson iterations
             for i in range(max_iter):
@@ -316,13 +293,13 @@ class FEMGeneral(ABC):
 
                 # Element-wise integration
                 k, f_i = self.integrate_material(
-                    u, defgrad, stress, state, n, i, du, de0, nlgeom
+                    u, grad, flux, state, n, i, du, de0, nlgeom
                 )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
-                    self.K = self.assemble_stiffness(k, con)
-                F_int = self.assemble_force(f_i)
+                    self.K = self.assemble_matrix(k, con)
+                F_int = self.assemble_rhs(f_i)
 
                 # Compute residual
                 residual = F_int - F_ext
@@ -377,24 +354,67 @@ class FEMGeneral(ABC):
 
         # Aggregate integration points as mean
         if aggregate_integration_points:
-            defgrad = defgrad.mean(dim=1)
-            stress = stress.mean(dim=1)
+            grad = grad.mean(dim=1)
+            flux = flux.mean(dim=1)
             state = state.mean(dim=1)
 
         # Squeeze outputs
-        stress = stress.squeeze()
-        defgrad = defgrad.squeeze()
+        flux = flux.squeeze()
+        grad = grad.squeeze()
 
         if return_intermediate:
             # Return all intermediate values
-            return u, f, stress, defgrad, state
+            return u, f, flux, grad, state
         else:
             # Return only the final values
-            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
+            return u[-1], f[-1], flux[-1], grad[-1], state[-1]
 
 
-class FEM(FEMGeneral):
-    physics_type = "mechanics"
+class Mechanics(FEM, ABC):
+
+    @property
+    def n_dof_per_node(self) -> int:
+        return self.nodes.shape[1]
+
+    @property
+    def initial_grad(self) -> Tensor:
+        return torch.eye(self.n_dim)
+
+    @property
+    def forces(self) -> Tensor:
+        return self._neumann
+
+    @forces.setter
+    def forces(self, value: Tensor):
+        if not value.shape == (self.n_nod, self.n_dof_per_node):
+            raise ValueError("Forces must have the same shape as nodes.")
+        if not torch.is_floating_point(value):
+            raise TypeError("Forces must be a floating-point tensor.")
+        self._neumann = value.to(self.nodes.device)
+
+    @property
+    def displacements(self) -> Tensor:
+        return self._dirichlet
+
+    @displacements.setter
+    def displacements(self, value: Tensor):
+        if not value.shape == (self.n_nod, self.n_dof_per_node):
+            raise ValueError("Displacements must have the same shape as nodes.")
+        if not torch.is_floating_point(value):
+            raise TypeError("Displacements must be a floating-point tensor.")
+        self._dirichlet = value.to(self.nodes.device)
+
+    @property
+    def ext_strain(self) -> Tensor:
+        return self._external_gradient
+
+    @ext_strain.setter
+    def ext_strain(self, value: Tensor):
+        if not value.shape == (self.n_nod, self.n_dof_per_node, self.n_dim):
+            raise ValueError("External strain must have the same shape as strains.")
+        if not torch.is_floating_point(value):
+            raise TypeError("External strain must be a floating-point tensor.")
+        self._external_gradient = value.to(self.nodes.device)
 
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
@@ -412,8 +432,8 @@ class FEM(FEMGeneral):
     def integrate_material(
         self,
         u: Tensor,
-        F: Tensor,
-        stress: Tensor,
+        grad: Tensor,
+        flux: Tensor,
         state: Tensor,
         n: int,
         iter: int,
@@ -422,6 +442,11 @@ class FEM(FEMGeneral):
         nlgeom: bool,
     ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
+
+        # Mechanical interpretation of variables
+        F = grad
+        stress = flux
+
         # Compute updated configuration
         u_trial = u[n - 1] + du.view((-1, self.n_dof_per_node))
 
@@ -498,8 +523,38 @@ class FEM(FEMGeneral):
         raise NotImplementedError
 
 
-class FEMHEat(FEM):
-    physics_type = "thermal"
+class Heat(FEM, ABC):
+    @property
+    def n_dof_per_node(self) -> int:
+        return 1
+
+    @property
+    def initial_grad(self) -> Tensor:
+        return torch.zeros(1)
+
+    @property
+    def heat_flux(self) -> Tensor:
+        return self._neumann
+
+    @heat_flux.setter
+    def heat_flux(self, value: Tensor):
+        if not value.shape == (self.n_nod, 1):
+            raise ValueError("Heat flux must have the same shape as nodes.")
+        if not torch.is_floating_point(value):
+            raise TypeError("Heat flux must be a floating-point tensor.")
+        self._neumann = value.to(self.nodes.device)
+
+    @property
+    def temperatures(self) -> Tensor:
+        return self._dirichlet
+
+    @temperatures.setter
+    def temperatures(self, value: Tensor):
+        if not value.shape == (self.n_nod, self.n_dof_per_node):
+            raise ValueError("Temperatures must have the same shape as nodes.")
+        if not torch.is_floating_point(value):
+            raise TypeError("Temperatures must be a floating-point tensor.")
+        self._dirichlet = value.to(self.nodes.device)
 
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
@@ -532,20 +587,20 @@ class FEMHEat(FEM):
 
     def integrate_material(
         self,
-        temp: Tensor,
-        temp_grad: Tensor,
-        heat_flux: Tensor,
+        u: Tensor,
+        grad: Tensor,
+        flux: Tensor,
         state: Tensor,
         n: int,
         iter: int,
-        dtemp: Tensor,
-        dtemp_grad0: Tensor,
+        du: Tensor,
+        de0: Tensor,
         nlgeom: bool = False,
     ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
 
         # Reshape temperature increment
-        dtemp = dtemp.view(-1, self.n_dof_per_node)[self.elements].reshape(
+        du = du.view(-1, self.n_dof_per_node)[self.elements].reshape(
             self.n_elem, -1, self.n_dof_per_node
         )
 
@@ -564,32 +619,30 @@ class FEMHEat(FEM):
             detJ = detJ0
 
             # Compute temperature gradient increment
-            temp_grad_inc = torch.einsum("...ij,...jk->...ki", B0, dtemp)
+            temp_grad_inc = torch.einsum("...ij,...jk->...ki", B0, du)
 
             # Update deformation gradient
-            temp_grad[n, i] = temp_grad[n - 1, i] + temp_grad_inc
+            grad[n, i] = grad[n - 1, i] + temp_grad_inc
 
             # Evaluate material response
-            heat_flux[n, i], state[n, i], ddheat_flux_ddtemp_grad = self.material.step(
+            flux[n, i], state[n, i], ddflux_ddgrad = self.material.step(
                 temp_grad_inc,
-                temp_grad[n - 1, i],
-                heat_flux[n - 1, i],
+                grad[n - 1, i],
+                flux[n - 1, i],
                 state[n - 1, i],
-                dtemp_grad0,
+                de0,
                 self.char_lengths,
                 iter,
             )
 
             # Compute element internal forces
-            force_contrib = self.compute_f(detJ, B, heat_flux[n, i].clone())
+            force_contrib = self.compute_f(detJ, B, flux[n, i].clone())
             f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0:
                 # Material stiffness
-                BCB = torch.einsum(
-                    "...ij,...iN,...jM->...NM", ddheat_flux_ddtemp_grad, B, B
-                )
+                BCB = torch.einsum("...ij,...iN,...jM->...NM", ddflux_ddgrad, B, B)
                 BCB = BCB.reshape(
                     -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
                 )
@@ -611,12 +664,12 @@ class FEMHEat(FEM):
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         aggregate_integration_points: bool = True,
         return_intermediate: bool = False,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         # in heat transfer there is no geometric nonlinearity
         nlgeom = False
 
-        # initial step: we get heat fluxes and temperature gradients for initial conditions
-        # enforce initial conditions as boundary conditions
+        # initial step: we get heat fluxes and temperature gradients for initial
+        # conditions enforce initial conditions as boundary conditions
 
         bc_constraints = self.constraints.clone()
         self.constraints[:] = True
@@ -627,15 +680,13 @@ class FEMHEat(FEM):
         )
 
         # assemble time_steps for evaluation
-        t_eval = torch.clamp(t_output, min=0.0, max=t_output.max())
         start_time = 0.0
-        end_time = t_output.max()
+        end_time = t_output.max().item()
+        t_eval = torch.clamp(t_output, min=0.0, max=end_time)
         increments = torch.arange(start_time, end_time, delta_t)
 
         increments = torch.cat((increments, t_eval))
         increments = increments.unique(sorted=True)
-        mask_t_output = torch.isin(increments, t_output)
-        idx_output = torch.cumsum(mask_t_output, dim=0)
 
         dt = increments[1:] - increments[:-1]  # time step sizes
 
@@ -651,23 +702,14 @@ class FEMHEat(FEM):
 
         # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
-        uncon = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
-        u = torch.zeros(
-            N_output, self.n_nod, self.n_dof_per_node
-        )  # generalized solution variable
-        f = torch.zeros(N_output, self.n_nod, self.n_dof_per_node)  # generalized forces
-        stress = torch.zeros(
-            N_output,
-            self.n_int,
-            self.n_elem,
-            self.n_dof_per_node,
-            self.n_dim,
+        u = torch.zeros(N_output, self.n_nod, self.n_dof_per_node)
+        f = torch.zeros(N_output, self.n_nod, self.n_dof_per_node)
+        flux = torch.zeros(
+            N_output, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )
-
-        # generalized gradient of the solution variable
-        defgrad = torch.zeros(
+        grad = torch.zeros(
             N_output,
             self.n_int,
             self.n_elem,
@@ -681,10 +723,10 @@ class FEMHEat(FEM):
         # fill initial conditions
         u[0] = temp_eq
         # f[0] = reaction_flux
-        stress[0] = heat_flux_eq.view(
+        flux[0] = heat_flux_eq.view(
             self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )
-        defgrad[0] = temp_grad_eq.view(
+        grad[0] = temp_grad_eq.view(
             self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )
         state[0] = alpha_eq
@@ -698,21 +740,11 @@ class FEMHEat(FEM):
 
         # Initialize displacement increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
-        # Enforce initial BCs on u[0] explicitly, in case line_heat.displacements gives updated BCs
-        u[0].view(-1)[con] = self.displacements.view(-1)[con]
-
-        # f_int_old = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
-
-        # u_old = u[0]
+        # Enforce initial BCs on u[0] explicitly, in case line_heat._dirichlet gives
+        # updated BCs
+        u[0].view(-1)[con] = self._dirichlet.view(-1)[con]
 
         for n, t_n in enumerate(increments[1:], 1):
-            # print(f"Processing increment {n} with time {t_n}")
-
-            # output_index = idx_output[n]
-            # output_step = mask_t_output[n]
-
-            # print(f"Output index: {output_index}, output step: {output_step}")
-
             u_guess = u[n - 1].clone()
             dt_n = dt[n - 1]
             f_int_old = f[n - 1].clone()
@@ -720,16 +752,24 @@ class FEMHEat(FEM):
             for it in range(max_iter):
                 du = u_guess - u[n - 1]
                 k, f_int = self.integrate_material(
-                    u, defgrad, stress, state, n, it, du, self.ext_strain, nlgeom
+                    u,
+                    grad,
+                    flux,
+                    state,
+                    n,
+                    it,
+                    du,
+                    self._external_gradient,
+                    nlgeom,
                 )
-                f_int = self.assemble_force(f_int)
-                f_ext = self.forces.ravel()
+                f_int = self.assemble_rhs(f_int)
+                f_ext = self._neumann.ravel()
 
                 # assemble stiffness and mass matrices
                 if self.K.numel() == 0:
-                    self.K = self.assemble_stiffness(k, con)
+                    self.K = self.assemble_matrix(k, con)
                 if self.M.numel() == 0:
-                    self.M = self.assemble_stiffness(m, con)
+                    self.M = self.assemble_matrix(m, con)
 
                 f_inertia = self.M @ du
 
@@ -785,15 +825,15 @@ class FEMHEat(FEM):
 
         # Aggregate integration points as mean
         if aggregate_integration_points:
-            defgrad = defgrad.mean(dim=1)
-            stress = stress.mean(dim=1)
+            grad = grad.mean(dim=1)
+            flux = flux.mean(dim=1)
             state = state.mean(dim=1)
         # Squeeze outputs
-        stress = stress.squeeze()
-        defgrad = defgrad.squeeze()
+        flux = flux.squeeze()
+        grad = grad.squeeze()
         if return_intermediate:
             # Return all intermediate values
-            return u, f, stress, defgrad, state
+            return u, f, flux, grad, state
         else:
             # Return only the final values
-            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
+            return u[-1], f[-1], flux[-1], grad[-1], state[-1]

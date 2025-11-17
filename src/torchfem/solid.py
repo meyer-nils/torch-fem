@@ -2,13 +2,12 @@ import pyvista
 import torch
 from torch import Tensor
 
-from .base import FEM, FEMHEat
+from .base import Heat, Mechanics
 from .elements import Hexa1, Hexa2, Tetra1, Tetra2
 from .materials import Material
 
 
-class Solid(FEM):
-    n_dof_per_node = 3
+class Solid(Mechanics):
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the solid FEM problem."""
@@ -35,8 +34,10 @@ class Solid(FEM):
         self.n_stress = 3
         self.n_int = len(self.etype.iweights)
 
-        # Initialize external strain
-        self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
+        # Initialize external gradient
+        self._external_gradient = torch.zeros(
+            self.n_elem, self.n_dof_per_node, self.n_dim
+        )
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
@@ -177,14 +178,13 @@ class Solid(FEM):
             pl.show(jupyter_backend="html")
 
 
-class SolidHeat(FEMHEat, Solid):
-    n_dof_per_node = 1
+class SolidHeat(Heat, Solid):
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
-
-        # Override external temperature gradient
-        self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
+        self._external_gradient = torch.zeros(
+            self.n_elem, self.n_dof_per_node, self.n_dim
+        )
 
     def compute_m(self) -> Tensor:
         ipoints = self.etype.ipoints

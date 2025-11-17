@@ -5,13 +5,12 @@ from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.tri import Triangulation
 from torch import Tensor
 
-from .base import FEM, FEMHEat
+from .base import Heat, Mechanics
 from .elements import Quad1, Quad2, Tria1, Tria2
 from .materials import Material
 
 
-class Planar(FEM):
-    n_dof_per_node = 2
+class Planar(Mechanics):
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize the planar FEM problem."""
@@ -42,7 +41,9 @@ class Planar(FEM):
         self.n_int = len(self.etype.iweights)
 
         # Initialize external strain
-        self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
+        self._external_gradient = torch.zeros(
+            self.n_elem, self.n_dof_per_node, self.n_dim
+        )
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
@@ -237,12 +238,13 @@ class Planar(FEM):
             ax.set_axis_off()
 
 
-class PlanarHeat(FEMHEat, Planar):
-    n_dof_per_node = 1
+class PlanarHeat(Heat, Planar):
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
-        self.ext_strain = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
+        self._external_gradient = torch.zeros(
+            self.n_elem, self.n_dof_per_node, self.n_dim
+        )
 
     def compute_m(self) -> Tensor:
         ipoints = self.etype.ipoints

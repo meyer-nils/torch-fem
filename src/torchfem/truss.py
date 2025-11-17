@@ -1,21 +1,21 @@
+from typing import Literal, Tuple
+
 import matplotlib.pyplot as plt
 import pyvista
 import torch
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
 from torch import Tensor
-from typing import Literal, Tuple
 
-from .base import FEM
+from .base import Mechanics
 from .elements import Bar1, Bar2
 from .materials import Material
 from .sparse import CachedSolve, sparse_solve
 
 
-class Truss(FEM):
+class Truss(Mechanics):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem."""
-        self.n_dof_per_node = nodes.shape[-1]
         super().__init__(nodes, elements, material)
 
         # Set up areas
@@ -38,12 +38,13 @@ class Truss(FEM):
         self.n_stress = 1
         self.n_int = len(self.etype.iweights)
 
-        # Initialize external strain
-        self.ext_strain = torch.zeros(self.n_elem, 1, 1)
-
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
         return f"<torch-fem truss ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
+
+    @property
+    def external_gradient(self) -> Tensor:
+        return torch.zeros(self.n_elem, 1, 1)
 
     def eval_shape_functions(
         self, xi: Tensor, u: Tensor | float = 0.0
@@ -407,7 +408,7 @@ class Truss(FEM):
             # Load increment
             F_ext = increments[n] * self.forces.ravel()
             DU = inc * self.displacements.clone().ravel()
-            de0 = inc * self.ext_strain
+            de0 = inc * self.external_gradient
 
             # Newton-Raphson iterations
             for i in range(max_iter):
@@ -420,8 +421,8 @@ class Truss(FEM):
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
-                    self.K = self.assemble_stiffness(k, con)
-                F_int = self.assemble_force(f_i)
+                    self.K = self.assemble_matrix(k, con)
+                F_int = self.assemble_rhs(f_i)
 
                 # Compute residual
                 residual = F_int - F_ext
@@ -486,4 +487,5 @@ class Truss(FEM):
             return u, f, stress, defgrad, state
         else:
             # Return only the final values
+            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
             return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
