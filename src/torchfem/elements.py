@@ -1,16 +1,25 @@
 from abc import ABC, abstractmethod
-from typing import Literal
 from math import sqrt
-
-from .misc import classproperty
+from typing import Literal
 
 import numpy as np
 import torch
 from torch import Tensor
 
-
 # Registry of all concrete Element subclasses
 ELEMENT_REGISTRY: list[type["Element"]] = []
+
+
+class ClassPropertyDescriptor:
+    def __init__(self, fget):
+        self.fget = fget
+
+    def __get__(self, obj, cls):
+        return self.fget(cls)
+
+
+def classproperty(func):
+    return ClassPropertyDescriptor(func)
 
 
 class Element(ABC):
