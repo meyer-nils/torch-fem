@@ -5,10 +5,9 @@ import torch
 from meshio import Mesh
 from torch import Tensor
 
-from torchfem import Planar, Shell, Solid, Truss
+from torchfem import Planar, Shell, Solid
 
 from .base import FEM
-from .elements import Hexa1, Hexa2, Quad1, Quad2, Tetra1, Tetra2, Tria1, Tria2
 from .materials import Material
 
 
