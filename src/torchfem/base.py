@@ -22,6 +22,7 @@ class FEM(ABC):
         self.n_nod = nodes.shape[0]
         self.n_dim = nodes.shape[1]
         self.n_elem = len(self.elements)
+        self.n_int = len(self.etype.iweights)
 
         # Initialize boundary conditions
         self._neumann = torch.zeros(self.n_nod, self.n_dof_per_node)
@@ -29,6 +30,7 @@ class FEM(ABC):
         self._constraints = torch.zeros(
             self.n_nod, self.n_dof_per_node, dtype=torch.bool
         )
+        self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
 
         # Compute mapping from local to global indices
         idx = (self.n_dof_per_node * self.elements).unsqueeze(-1) + torch.arange(
@@ -42,24 +44,37 @@ class FEM(ABC):
         else:
             self.material = material.vectorize(self.n_elem)
 
-        # Initialize types
-        self.n_flux: int
-        self.n_int: int
-        self._external_gradient: Tensor
-        self.etype: type[Element]
-        self.char_lengths: Tensor
-
         # Cached solve for sparse linear systems
         self.cached_solve = CachedSolve()
 
     @property
     @abstractmethod
+    def n_flux(self) -> list[int]:
+        """Shape of the flux tensor."""
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
     def n_dof_per_node(self) -> int:
+        """Number of DOFs per node"""
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def etype(self) -> type[Element]:
+        """Element type."""
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def char_lengths(self) -> Tensor:
+        """Characteristic lengths of the elements."""
         raise NotImplementedError
 
     @property
     @abstractmethod
     def initial_grad(self) -> Tensor:
+        """Initial gradient at integration points."""
         raise NotImplementedError
 
     @abstractmethod
@@ -259,8 +274,8 @@ class FEM(ABC):
         # Initialize variables to be computed
         u = torch.zeros(N, self.n_nod, self.n_dof_per_node)
         f = torch.zeros(N, self.n_nod, self.n_dof_per_node)
-        flux = torch.zeros(N, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim)
-        grad = torch.zeros(N, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim)
+        flux = torch.zeros(N, self.n_int, self.n_elem, *self.n_flux)
+        grad = torch.zeros(N, self.n_int, self.n_elem, *self.n_flux)
         grad[:, :, :, :, :] = self.initial_grad
         state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
 
@@ -378,7 +393,7 @@ class Mechanics(FEM, ABC):
 
     @property
     def initial_grad(self) -> Tensor:
-        return torch.eye(self.n_dim)
+        return torch.eye(self.n_flux[0])
 
     @property
     def forces(self) -> Tensor:
@@ -419,14 +434,14 @@ class Mechanics(FEM, ABC):
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
         u = torch.zeros(self.n_nod, self.n_dof_per_node)
-        F = torch.zeros(2, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim)
-        F[:, :, :, :, :] = torch.eye(self.n_dim)
-        s = torch.zeros(2, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim)
-        a = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
+        grad = torch.zeros(2, self.n_int, self.n_elem, *self.n_flux)
+        grad[:, :, :, :, :] = torch.eye(self.n_dim)
+        flux = torch.zeros(2, self.n_int, self.n_elem, *self.n_flux)
+        state = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros(self.n_nod, self.n_dof_per_node)
         de0 = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
         self.K = torch.empty(0)
-        k, _ = self.integrate_material(u, F, s, a, 1, 0, du, de0, False)
+        k, _ = self.integrate_material(u, grad, flux, state, 1, 0, du, de0, False)
         return k
 
     def integrate_material(
@@ -452,7 +467,7 @@ class Mechanics(FEM, ABC):
 
         # Reshape displacement increment
         du = du.view(-1, self.n_dof_per_node)[self.elements].reshape(
-            self.n_elem, -1, self.n_dof_per_node
+            self.n_elem, -1, self.n_flux[0]
         )
 
         # Initialize nodal force and stiffness
@@ -527,6 +542,11 @@ class Heat(FEM, ABC):
     @property
     def n_dof_per_node(self) -> int:
         return 1
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the heat flux tensor."""
+        return [1, self.n_dim]
 
     @property
     def initial_grad(self) -> Tensor:

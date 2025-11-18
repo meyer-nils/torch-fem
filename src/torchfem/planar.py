@@ -6,7 +6,7 @@ from matplotlib.tri import Triangulation
 from torch import Tensor
 
 from .base import Heat, Mechanics
-from .elements import Quad1, Quad2, Tria1, Tria2
+from .elements import Element, Quad1, Quad2, Tria1, Tria2
 from .materials import Material
 
 
@@ -20,36 +20,36 @@ class Planar(Mechanics):
         # Set up thickness
         self.thickness = torch.ones(self.n_elem)
 
-        # Element type
-        if len(elements[0]) == 3:
-            self.etype = Tria1
-        elif len(elements[0]) == 4:
-            self.etype = Quad1
-        elif len(elements[0]) == 6:
-            self.etype = Tria2
-        elif len(elements[0]) == 8:
-            self.etype = Quad2
-        else:
-            raise ValueError("Element type not supported.")
-
-        # Initialize characteristic lengths
-        areas = self.integrate_field()
-        self.char_lengths = areas**0.5
-
-        # Set element type specific sizes
-        self.n_stress = 2
-        self.n_int = len(self.etype.iweights)
-
-        # Initialize external strain
-        self._external_gradient = torch.zeros(
-            self.n_elem, self.n_dof_per_node, self.n_dim
-        )
-
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
         return (
             f"<torch-fem planar ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
         )
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the stress tensor."""
+        return [2, 2]
+
+    @property
+    def etype(self) -> type[Element]:
+        """Set element type depending on number of nodes per element."""
+        if len(self.elements[0]) == 3:
+            return Tria1
+        elif len(self.elements[0]) == 4:
+            return Quad1
+        elif len(self.elements[0]) == 6:
+            return Tria2
+        elif len(self.elements[0]) == 8:
+            return Quad2
+        else:
+            raise ValueError("Element type not supported.")
+
+    @property
+    def char_lengths(self) -> Tensor:
+        """Characteristic lengths of the elements."""
+        areas = self.integrate_field()
+        return areas ** (1 / 2)
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix."""
@@ -242,9 +242,7 @@ class PlanarHeat(Heat, Planar):
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
-        self._external_gradient = torch.zeros(
-            self.n_elem, self.n_dof_per_node, self.n_dim
-        )
+        self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
 
     def compute_m(self) -> Tensor:
         ipoints = self.etype.ipoints

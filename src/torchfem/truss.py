@@ -1,5 +1,3 @@
-from typing import Literal, Tuple
-
 import matplotlib.pyplot as plt
 import pyvista
 import torch
@@ -8,9 +6,8 @@ from matplotlib.colors import Normalize
 from torch import Tensor
 
 from .base import Mechanics
-from .elements import Bar1, Bar2
+from .elements import Bar1, Bar2, Element
 from .materials import Material
-from .sparse import CachedSolve, sparse_solve
 
 
 class Truss(Mechanics):
@@ -21,30 +18,31 @@ class Truss(Mechanics):
         # Set up areas
         self.areas = torch.ones((len(elements)))
 
-        # Element type
-        if len(elements[0]) == 2:
-            self.etype = Bar1
-        elif len(elements[0]) == 3:
-            self.etype = Bar2
-        else:
-            raise ValueError("Element type not supported.")
-
-        # Initialize characteristic lengths
-        start_nodes = self.nodes[self.elements[:, 0]]
-        end_nodes = self.nodes[self.elements[:, 1]]
-        self.char_lengths = torch.linalg.norm(end_nodes - start_nodes, dim=-1)
-
-        # Set element type specific sizes
-        self.n_stress = 1
-        self.n_int = len(self.etype.iweights)
-
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
         return f"<torch-fem truss ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
 
     @property
-    def external_gradient(self) -> Tensor:
-        return torch.zeros(self.n_elem, 1, 1)
+    def n_flux(self) -> list[int]:
+        """Shape of the stress tensor."""
+        return [1, 1]
+
+    @property
+    def etype(self) -> type[Element]:
+        """Set element type depending on number of nodes per element."""
+        if len(self.elements[0]) == 2:
+            return Bar1
+        elif len(self.elements[0]) == 3:
+            return Bar2
+        else:
+            raise ValueError("Element type not supported.")
+
+    @property
+    def char_lengths(self) -> Tensor:
+        """Characteristic lengths of the elements."""
+        start_nodes = self.nodes[self.elements[:, 0]]
+        end_nodes = self.nodes[self.elements[:, 1]]
+        return torch.linalg.norm(end_nodes - start_nodes, dim=-1)
 
     def eval_shape_functions(
         self, xi: Tensor, u: Tensor | float = 0.0
@@ -243,256 +241,3 @@ class Truss(Mechanics):
                 pl.add_mesh(sphere, color="gray")
 
         pl.show(jupyter_backend="html")
-
-    def k0(self) -> Tensor:
-        """Compute element stiffness matrix for zero strain."""
-        u = torch.zeros_like(self.nodes)
-        F = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
-        F[:, :, :, :, :] = torch.eye(self.n_stress)
-        s = torch.zeros(2, self.n_int, self.n_elem, self.n_stress, self.n_stress)
-        a = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
-        du = torch.zeros_like(self.nodes)
-        de0 = torch.zeros(self.n_elem, self.n_stress, self.n_stress)
-        self.K = torch.empty(0)
-        k, _ = self.integrate_material(u, F, s, a, 1, 0, du, de0, False)
-        return k
-
-    def integrate_material(
-        self,
-        u: Tensor,
-        grad: Tensor,
-        flux: Tensor,
-        state: Tensor,
-        n: int,
-        iter: int,
-        du: Tensor,
-        de0: Tensor,
-        nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor]:
-        """Perform numerical integrations for element stiffness matrix."""
-
-        # Interpretation of variables
-        F = grad
-        stress = flux
-
-        # Compute updated configuration
-        u_trial = u[n - 1] + du.view((-1, self.n_dim))
-
-        # Reshape displacement increment
-        du = du.view(-1, self.n_dim)[self.elements].reshape(
-            self.n_elem, -1, self.n_stress
-        )
-
-        # Initialize nodal force and stiffness
-        N_nod = self.etype.nodes
-        f = torch.zeros(self.n_elem, self.n_dim * N_nod)
-        k = torch.zeros((self.n_elem, self.n_dim * N_nod, self.n_dim * N_nod))
-
-        for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
-            # Compute gradient operators
-            _, B0, detJ0 = self.eval_shape_functions(xi)
-            if nlgeom:
-                # Compute updated gradient operators in deformed configuration
-                _, B, detJ = self.eval_shape_functions(xi, u_trial)
-            else:
-                # Use initial gradient operators
-                B = B0
-                detJ = detJ0
-
-            # Compute displacement gradient increment
-            H_inc = torch.einsum("...ij,...jk->...ik", B0, du)
-
-            # Update deformation gradient
-            F[n, i] = F[n - 1, i] + H_inc
-
-            # Evaluate material response
-            stress[n, i], state[n, i], ddsdde = self.material.step(
-                H_inc,
-                F[n - 1, i],
-                stress[n - 1, i],
-                state[n - 1, i],
-                de0,
-                self.char_lengths,
-                iter,
-            )
-
-            # Compute element internal forces
-            force_contrib = self.compute_f(detJ, B, stress[n, i].clone())
-            f += w * force_contrib.reshape(-1, self.n_dim * N_nod)
-
-            # Compute element stiffness matrix
-            if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
-                # Material stiffness
-                BCB = torch.einsum("...ijpq,...qk,...il->...ljkp", ddsdde, B, B)
-                BCB = BCB.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
-                k += w * self.compute_k(detJ, BCB)
-            if nlgeom:
-                # Geometric stiffness
-                BSB = torch.einsum(
-                    "...iq,...qk,...il->...lk", stress[n, i].clone(), B, B
-                )
-                zeros = torch.zeros_like(BSB)
-                kg = torch.stack([BSB] + (self.n_dim - 1) * [zeros], dim=-1)
-                kg = kg.reshape(-1, N_nod, self.n_dim * N_nod).unsqueeze(-2)
-                zeros = torch.zeros_like(kg)
-                kg = torch.stack([kg] + (self.n_dim - 1) * [zeros], dim=-2)
-                kg = kg.reshape(-1, self.n_dim * N_nod, self.n_dim * N_nod)
-                k += w * self.compute_k(detJ, kg)
-
-        return k, f
-
-    def solve(
-        self,
-        increments: Tensor = torch.tensor([0.0, 1.0]),
-        max_iter: int = 100,
-        rtol: float = 1e-8,
-        atol: float = 1e-6,
-        stol: float = 1e-10,
-        verbose: bool = False,
-        method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
-        device: str | None = None,
-        return_intermediate: bool = False,
-        aggregate_integration_points: bool = True,
-        use_cached_solve: bool = False,
-        nlgeom: bool = False,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Solve the FEM problem with the Newton-Raphson method.
-
-        Args:
-            increments (Tensor): Load increment stepping.
-            max_iter (int): Maximum number of iterations during Newton-Raphson.
-            rtol (float): Relative tolerance for Newton-Raphson convergence.
-            atol (float): Absolute tolerance for Newton-Raphson convergence.
-            stol (float): Solver tolerance for iterative methods.
-            verbose (bool): Print iteration information.
-            method (str): Method for linear solve ('spsolve','minres','cg','pardiso').
-            device (str): Device to run the linear solve on.
-            return_intermediate (bool): Return intermediate values if True.
-            aggregate_integration_points (bool): Aggregate integration points if True.
-            use_cached_solve (bool): Use cached solve, e.g. in topology optimization.
-            nlgeom (bool): Use nonlinear geometry if True.
-
-        Returns:
-                Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]: Final displacements,
-                internal forces, stress, deformation gradient, and material state.
-
-        """
-        # Number of increments
-        N = len(increments)
-
-        # Null space rigid body modes for AMG preconditioner
-        B = self.compute_B()
-
-        # Indexes of constrained and unconstrained degrees of freedom
-        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
-
-        # Initialize variables to be computed
-        u = torch.zeros(N, self.n_nod, self.n_dim)
-        f = torch.zeros(N, self.n_nod, self.n_dim)
-        stress = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
-        defgrad = torch.zeros(N, self.n_int, self.n_elem, self.n_stress, self.n_stress)
-        defgrad[:, :, :, :, :] = torch.eye(self.n_stress)
-        state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
-
-        if verbose and u.dtype != torch.float64:
-            print(
-                "WARNING: Detected single precision floating points. It is highly "
-                "recommended to use torch-fem with double precision by setting "
-                "'torch.set_default_dtype(torch.float64)'."
-            )
-
-        # Initialize global stiffness matrix
-        self.K = torch.empty(0)
-
-        # Initialize displacement increment
-        du = torch.zeros_like(self.nodes).ravel()
-
-        # Incremental loading
-        for n in range(1, N):
-            # Increment size
-            inc = increments[n] - increments[n - 1]
-
-            # Load increment
-            F_ext = increments[n] * self.forces.ravel()
-            DU = inc * self.displacements.clone().ravel()
-            de0 = inc * self.external_gradient
-
-            # Newton-Raphson iterations
-            for i in range(max_iter):
-                du[con] = DU[con]
-
-                # Element-wise integration
-                k, f_i = self.integrate_material(
-                    u, defgrad, stress, state, n, i, du, de0, nlgeom
-                )
-
-                # Assemble global stiffness matrix and internal force vector (if needed)
-                if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
-                    self.K = self.assemble_matrix(k, con)
-                F_int = self.assemble_rhs(f_i)
-
-                # Compute residual
-                residual = F_int - F_ext
-                residual[con] = 0.0
-                res_norm = torch.linalg.norm(residual)
-
-                # Save initial residual
-                if i == 0:
-                    res_norm0 = res_norm
-
-                # Print iteration information
-                if verbose:
-                    print(
-                        f"Increment {n} | Iteration {i + 1} | Residual: {res_norm:.5e}"
-                    )
-
-                # Check convergence
-                if res_norm < rtol * res_norm0 or res_norm < atol:
-                    break
-
-                # Use cached solve from previous iteration if available
-                if i == 0 and use_cached_solve:
-                    cached_solve = self.cached_solve
-                else:
-                    cached_solve = CachedSolve()
-
-                # Only update cache on first iteration
-                update_cache = i == 0
-
-                # Solve for displacement increment
-                du -= sparse_solve(
-                    self.K,
-                    residual,
-                    B,
-                    stol,
-                    device,
-                    method,
-                    None,
-                    cached_solve,
-                    update_cache,
-                )
-
-            if res_norm > rtol * res_norm0 and res_norm > atol:
-                raise Exception("Newton-Raphson iteration did not converge.")
-
-            # Update increment
-            f[n] = F_int.reshape((-1, self.n_dim))
-            u[n] = u[n - 1] + du.reshape((-1, self.n_dim))
-
-        # Aggregate integration points as mean
-        if aggregate_integration_points:
-            defgrad = defgrad.mean(dim=1)
-            stress = stress.mean(dim=1)
-            state = state.mean(dim=1)
-
-        # Squeeze outputs
-        stress = stress.squeeze()
-        defgrad = defgrad.squeeze()
-
-        if return_intermediate:
-            # Return all intermediate values
-            return u, f, stress, defgrad, state
-        else:
-            # Return only the final values
-            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]
-            return u[-1], f[-1], stress[-1], defgrad[-1], state[-1]

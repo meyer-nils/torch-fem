@@ -6,45 +6,40 @@ from pyvista import DataSet
 from torch import Tensor
 
 from .base import Heat, Mechanics
-from .elements import Hexa1, Hexa2, Tetra1, Tetra2
+from .elements import Element, Hexa1, Hexa2, Tetra1, Tetra2
 from .materials import Material
 
 
 class Solid(Mechanics):
 
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
-        """Initialize the solid FEM problem."""
-
-        super().__init__(nodes, elements, material)
-
-        # Set element type depending on number of nodes per element
-        if len(elements[0]) == 4:
-            self.etype = Tetra1
-        elif len(elements[0]) == 8:
-            self.etype = Hexa1
-        elif len(elements[0]) == 10:
-            self.etype = Tetra2
-        elif len(elements[0]) == 20:
-            self.etype = Hexa2
-        else:
-            raise ValueError("Element type not supported.")
-
-        # Initialize characteristic lengths
-        vols = self.integrate_field()
-        self.char_lengths = vols ** (1 / 3)
-
-        # Set element type specific sizes
-        self.n_stress = 3
-        self.n_int = len(self.etype.iweights)
-
-        # Initialize external gradient
-        self._external_gradient = torch.zeros(
-            self.n_elem, self.n_dof_per_node, self.n_dim
-        )
-
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
         return f"<torch-fem solid ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the stress tensor."""
+        return [3, 3]
+
+    @property
+    def etype(self) -> type[Element]:
+        """Set element type depending on number of nodes per element."""
+        if len(self.elements[0]) == 4:
+            return Tetra1
+        elif len(self.elements[0]) == 8:
+            return Hexa1
+        elif len(self.elements[0]) == 10:
+            return Tetra2
+        elif len(self.elements[0]) == 20:
+            return Hexa2
+        else:
+            raise ValueError("Element type not supported.")
+
+    @property
+    def char_lengths(self) -> Tensor:
+        """Characteristic lengths of the elements."""
+        vols = self.integrate_field()
+        return vols ** (1 / 3)
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
         """Element stiffness matrix"""
@@ -186,9 +181,7 @@ class SolidHeat(Heat, Solid):
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
-        self._external_gradient = torch.zeros(
-            self.n_elem, self.n_dof_per_node, self.n_dim
-        )
+        self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
 
     def compute_m(self) -> Tensor:
         ipoints = self.etype.ipoints
