@@ -48,15 +48,16 @@ class Truss(Mechanics):
         self, xi: Tensor, u: Tensor | float = 0.0
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
+
+        # Compute transformation matrix x = T X with element coords x and
+        # global coords X
         nodes = self.nodes + u
         nodes = nodes[self.elements, :]
-        # Direction of the element
         dx = nodes[:, 1] - nodes[:, 0]
-        # Length of the element
         l0 = torch.linalg.norm(dx, dim=-1)
-        # Cosine and sine of the element
-        cs = dx / l0[:, None]
+        T = dx[:, None, :] / l0[:, None, None]
 
+        # Compute Jacobian and its determinant
         J = 0.5 * torch.linalg.norm(dx, dim=1)[:, None, None]
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
@@ -64,8 +65,7 @@ class Truss(Mechanics):
 
         b = self.etype.B(xi)
         B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
-        B = torch.einsum("ijk,il->ijkl", B, cs).reshape(self.n_elem, -1)[:, None, :]
-
+        B = torch.einsum("ijk,ijl->ijkl", B, T).reshape(self.n_elem, 1, -1)
         return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
