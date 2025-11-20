@@ -439,7 +439,7 @@ class Mechanics(FEM, ABC):
         flux = torch.zeros(2, self.n_int, self.n_elem, *self.n_flux)
         state = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros(self.n_nod, self.n_dof_per_node)
-        de0 = torch.zeros(self.n_elem, self.n_dof_per_node, self.n_dim)
+        de0 = torch.zeros(self.n_elem, *self.n_flux)
         self.K = torch.empty(0)
         k, _ = self.integrate_material(u, grad, flux, state, 1, 0, du, de0, False)
         return k
