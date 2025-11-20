@@ -8,6 +8,7 @@ from torch import Tensor
 from torchfem import Planar, Shell, Solid
 
 from .base import FEM
+from .elements import ELEMENT_REGISTRY
 from .materials import Material
 
 
@@ -32,24 +33,17 @@ def export_mesh(
     msh.write(filename)
 
 
-def import_mesh(filename: PathLike, material: Material):
+def import_mesh(filename: PathLike, material: Material) -> FEM:
     import meshio
     import numpy as np
 
     mesh = meshio.read(filename)
     elems = []
     etypes = []
+    allowed_meshio_types = set([e.meshio_type for e in ELEMENT_REGISTRY])
+    forbidden_meshio_types = {"line"}
     for cell_block in mesh.cells:
-        if cell_block.type in [
-            "triangle",
-            "triangle6",
-            "quad",
-            "quad8",
-            "tetra",
-            "tetra10",
-            "hexahedron",
-            "hexahedron20",
-        ]:
+        if cell_block.type in allowed_meshio_types.difference(forbidden_meshio_types):
             etypes.append(cell_block.type)
             elems += cell_block.data.tolist()
     if len(etypes) > 1:
@@ -65,6 +59,8 @@ def import_mesh(filename: PathLike, material: Material):
             return Shell(nodes, elements, material)
         elif etype in ["tetra", "tetra10", "hexahedron", "hexahedron20"]:
             return Solid(nodes, elements, material)
+        else:
+            raise Exception(f"Cannot interpret element type {etype}.")
     else:
         nodes = torch.from_numpy(mesh.points.astype(np.float32)[:, 0:2]).type(dtype)
         return Planar(nodes, elements, material)
