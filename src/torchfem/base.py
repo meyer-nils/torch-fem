@@ -161,7 +161,7 @@ class FEM(ABC):
             B = torch.zeros((self.n_dof_per_node * self.n_nod, 1))
             B[0::1, 0] = 1
         else:
-            raise ValueError("Unsupported dimension of DOF vector.")
+            B = torch.ones((self.n_dof_per_node * self.n_nod, 1))
         return B
 
     def integrate_field(self, field: Tensor | None = None) -> Tensor:

@@ -749,12 +749,6 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = fac * 0.5 * (1.0 - self.nu)
         self.C[..., 1, 0, 1, 0] = fac * 0.5 * (1.0 - self.nu)
 
-        # Shear stiffness for shells
-        z = torch.zeros_like(self.E)
-        self.Cs = torch.stack(
-            [torch.stack([self.G, z], dim=-1), torch.stack([z, self.G], dim=-1)], dim=-1
-        )
-
     def vectorize(self, n_elem: int):
         """Returns a vectorized copy of the material for `n_elem` elements.
 
@@ -1225,12 +1219,6 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         self.C[..., 0, 1, 1, 0] = G
         self.C[..., 1, 0, 0, 1] = G
         self.C[..., 1, 0, 1, 0] = G
-
-        # Shear stiffness for shells
-        z = torch.zeros_like(self.E)
-        self.Cs = torch.stack(
-            [torch.stack([self.G, z], dim=-1), torch.stack([z, self.G], dim=-1)], dim=-1
-        )
 
     def vectorize(self, n_elem: int):
         """Returns a vectorized copy of the material for `n_elem` elements.
@@ -1774,13 +1762,6 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = G_12
         self.C[..., 1, 0, 1, 0] = G_12
 
-        # Transverse shear stiffness matrix for shells
-        z = torch.zeros_like(self.E_1)
-        self.Cs = torch.stack(
-            [torch.stack([self.G_13, z], dim=-1), torch.stack([z, self.G_23], dim=-1)],
-            dim=-1,
-        )
-
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
         if self.is_vectorized:
@@ -1807,9 +1788,6 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.C = torch.einsum(
             "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
         )
-
-        # Compute rotated shell stiffness matrix
-        self.Cs = torch.einsum("...ij,...ik,...jl->...kl", self.Cs, R**2, R**2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)
@@ -1878,13 +1856,6 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.C[..., 0, 1, 1, 0] = self.G_12
         self.C[..., 1, 0, 0, 1] = self.G_12
 
-        # Transverse shear stiffness matrix for shells
-        z = torch.zeros_like(self.E_1)
-        self.Cs = torch.stack(
-            [torch.stack([self.G_13, z], dim=-1), torch.stack([z, self.G_23], dim=-1)],
-            dim=-1,
-        )
-
     def vectorize(self, n_elem: int):
         """Create a vectorized copy of the material for `n_elm` elements."""
         if self.is_vectorized:
@@ -1914,9 +1885,6 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.C = torch.einsum(
             "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
         )
-
-        # Compute rotated shell stiffness matrix
-        self.Cs = torch.einsum("...ij,...ik,...jl->...kl", self.Cs, R**2, R**2)
 
         # Compute rotated internal variables
         S = torch.linalg.inv(self.C)

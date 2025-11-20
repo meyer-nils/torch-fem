@@ -299,23 +299,3 @@ def sparse_solve(
     if result is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return result
-
-
-def sparse_index_select(t: Tensor, slices: list[Tensor | None]) -> Tensor:
-    coalesced = t.is_coalesced()
-    indices = t.indices()
-    values = t.values()
-    in_shape = t.shape
-    out_shape = []
-    for dim, slice in enumerate(slices):
-        if slice is None:
-            out_shape.append(in_shape[dim])
-        else:
-            out_shape.append(len(slice))
-            mask = torch.isin(indices[dim], slice)
-            cumsum = torch.cumsum(torch.isin(torch.arange(0, in_shape[dim]), slice), 0)
-            indices = indices[:, mask]
-            values = values[mask]
-            indices[dim] = cumsum[indices[dim]] - 1
-
-    return torch.sparse_coo_tensor(indices, values, out_shape, is_coalesced=coalesced)
