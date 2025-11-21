@@ -28,6 +28,7 @@ class Shell(Mechanics):
         transverse_kappa: float = 5.0 / 6.0,
         transverse_G: list[float] | list[Tensor] | None = None,
         drill_penalty: float = 1.0,
+        n_simpson: int = 3,
     ):
         """Initialize the planar FEM problem."""
 
@@ -38,6 +39,24 @@ class Shell(Mechanics):
 
         # Drill penalty
         self.drill_penalty = drill_penalty
+
+        # Thickness integration points
+        if n_simpson % 2 == 0:
+            raise ValueError("n_simpson must be an odd integer.")
+        else:
+            self.n_simpson = n_simpson
+
+        # Update number of integration points to account for thickness integration
+        self.n_int = self.n_int * n_simpson
+
+        # Compute Simpson points in thickness direction
+        self.z_simpson = torch.linspace(-0.5, 0.5, n_simpson)
+
+        # Simpson weights for thickness integration
+        self.w_simpson = torch.ones(n_simpson)
+        self.w_simpson[1:-1:2] = 4.0
+        self.w_simpson[2:-2:2] = 2.0
+        self.w_simpson /= 3.0
 
         # Transverse shear properties
         self.transverse_nu = transverse_nu
@@ -219,13 +238,17 @@ class Shell(Mechanics):
     ) -> Tuple[Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix."""
 
+        # Mechanical interpretation of variables
+        F = grad
+        stress = flux
+
         # Compute updated configuration
         u_trial = u[n - 1] + du.view((-1, self.n_dof_per_node))
 
-        # Reshape displacement increment
-        du = du.view(-1, self.n_dof_per_node)[self.elements].reshape(
-            self.n_elem, -1, self.n_flux[0]
-        )
+        # Reshape displacement increment and rotation increment
+        du = du.view(-1, self.n_dof_per_node)[self.elements]
+        d_u = du[..., :3]
+        d_w = du[..., 3:]
 
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
@@ -239,27 +262,56 @@ class Shell(Mechanics):
                 "Geometric nonlinearity is not yet implemented for shells."
             )
 
-        for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
+        for i, (wi, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
             # Compute gradient operators
             _, B, detJ = self.eval_shape_functions(xi)
-            A = detJ / 2.0
 
-            # Compute displacement gradient increment
-            BB = torch.einsum("ijk,ijl->ijkl", B, self.t[:, 0:2, :]).reshape(
-                self.n_elem, 2, -1
-            )
-            H_inc = torch.einsum("...ij,...jk->...ik", BB, du)
+            # Transform displacement increment to local element coordinates
+            du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
+            dw_local = torch.einsum("...ij,...kj->...ki", self.t, d_w)
 
-            # Evaluate material response
-            _, _, ddsdde = self.material.step(
-                H_inc,
-                grad[n - 1, i],
-                flux[n - 1, i],
-                state[n - 1, i],
-                de0,
-                self.char_lengths,
-                iter,
-            )
+            f_loc = torch.zeros(self.n_elem, *self.n_flux)
+            m_loc = torch.zeros(self.n_elem, *self.n_flux)
+
+            for j, (wz, z) in enumerate(zip(self.w_simpson, self.z_simpson)):
+                # Compute integration point index
+                ip = i * self.n_simpson + j
+                z = z * self.thickness[:, None, None]
+
+                # Compute total strain increment
+                dudxi = B @ du_local
+                dwdxi = B @ dw_local
+                # Build Koiter bending strain operator
+                kappa = torch.stack(
+                    [
+                        torch.stack(
+                            [dwdxi[..., 0, 1], -dwdxi[..., 0, 0] - dwdxi[..., 1, 1]],
+                            dim=-1,
+                        ),
+                        torch.stack(
+                            [-dwdxi[..., 0, 0] - dwdxi[..., 1, 1], -dwdxi[..., 1, 0]],
+                            dim=-1,
+                        ),
+                    ],
+                    dim=-1,
+                )
+
+                H_inc = dudxi[..., 0:2] + z * kappa
+
+                # Evaluate material response
+                stress[n, ip], state[n, ip], ddsdde = self.material.step(
+                    H_inc,
+                    F[n - 1, ip],
+                    stress[n - 1, ip],
+                    state[n - 1, ip],
+                    de0,
+                    self.char_lengths,
+                    iter,
+                )
+
+                # Compute local internal forces
+                f_loc += wz / 2 * stress[n, ip].clone()
+                m_loc += wz / 2 * z * stress[n, ip].clone()
 
             # Material stiffness
             C = stiffness2voigt(ddsdde)
@@ -268,14 +320,15 @@ class Shell(Mechanics):
             # Element membrane stiffness
             Dm = self._Dm(B)
             DmCDm = torch.einsum("...ji,...jk,...kl->...il", Dm, C, Dm)
-            km = torch.einsum("i,ijk->ijk", w * self.thickness * detJ, DmCDm)
+            km = torch.einsum("i,ijk->ijk", wi * self.thickness * detJ, DmCDm)
 
             # Element bending stiffness
             Db = self._Db(B)
             DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, C, Db)
-            kb = torch.einsum("i,ijk->ijk", w * self.thickness**3 * detJ / 12.0, DbCDb)
+            kb = torch.einsum("i,ijk->ijk", wi * self.thickness**3 * detJ / 12.0, DbCDb)
 
             # Element transverse stiffness
+            A = detJ / 2.0
             Ds = self._Ds(A)
             h = sqrt(2) * A
             alpha = self.transverse_kappa / (2 * (1 + self.transverse_nu))
@@ -285,7 +338,9 @@ class Shell(Mechanics):
                 / (self.thickness**2 + alpha * h**2)
             )
             DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, Cs, Ds)
-            ks = torch.einsum("i,ijk->ijk", w * A * psi * self.thickness * detJ, DsCsDs)
+            ks = torch.einsum(
+                "i,ijk->ijk", wi * A * psi * self.thickness * detJ, DsCsDs
+            )
 
             # Element drilling stiffness
             kd = torch.zeros_like(km)
