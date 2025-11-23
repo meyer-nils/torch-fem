@@ -284,14 +284,8 @@ class Shell(Mechanics):
                 # Build Koiter bending strain operator
                 kappa = torch.stack(
                     [
-                        torch.stack(
-                            [dwdxi[..., 0, 1], -dwdxi[..., 0, 0] - dwdxi[..., 1, 1]],
-                            dim=-1,
-                        ),
-                        torch.stack(
-                            [-dwdxi[..., 0, 0] - dwdxi[..., 1, 1], -dwdxi[..., 1, 0]],
-                            dim=-1,
-                        ),
+                        torch.stack([dwdxi[..., 0, 1], -dwdxi[..., 0, 0]], dim=-1),
+                        torch.stack([dwdxi[..., 1, 1], -dwdxi[..., 1, 0]], dim=-1),
                     ],
                     dim=-1,
                 )
@@ -361,6 +355,21 @@ class Shell(Mechanics):
             f[:, :] += torch.einsum(
                 "...ki, ...ij,...j->...k", self.T.transpose(1, 2), kt, loc_disp
             )
+            # temp_f = torch.einsum("...ij,...j->...i", km + kb, loc_disp)
+            # print(temp_f[0])
+
+            # fv = torch.stack(
+            #     [f_loc[:, 0, 0], f_loc[:, 1, 1], f_loc[:, 0, 1]],
+            #     dim=-1,
+            # )
+            # mv = torch.stack(
+            #     [m_loc[:, 0, 0], m_loc[:, 1, 1], m_loc[:, 0, 1]],
+            #     dim=-1,
+            # )
+            # fm = torch.einsum("...ji,...j->...i", Dm, fv)
+            # fb = torch.einsum("...ji,...j->...i", Db, mv)
+            # force = wi * self.thickness[:, None] * detJ[:, None] * (fm + fb)
+            # print(force[0])
 
         return k, f
 
@@ -421,7 +430,8 @@ class Shell(Mechanics):
         stress_tensor[:, 1, 2] = sigma_s[:, 1]
 
         # Compute stress in global coordinate system
-        S = self.t.transpose(1, 2) @ stress_tensor @ self.t
+        # S = self.t.transpose(1, 2) @ stress_tensor @ self.t
+        S = stress_tensor
 
         if mises:
             return torch.sqrt(
