@@ -147,7 +147,7 @@ class Shell(Mechanics):
             A (torch tensor): Element surface areas (shape: [N])
 
         Returns:
-            torch tensor: Shear-displacement matrices shaped [N x 3 x 18]
+            torch tensor: Shear-displacement matrices shaped [N x 2 x 18]
         """
         N = self.n_elem
         z = torch.zeros(N)
@@ -270,19 +270,24 @@ class Shell(Mechanics):
             du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
             dw_local = torch.einsum("...ij,...kj->...ki", self.t, d_w)
 
+            # Initialize local force contributions
             f_loc = torch.zeros(self.n_elem, *self.n_flux)
             m_loc = torch.zeros(self.n_elem, *self.n_flux)
 
+            # Thickness integration of membrane and bending stresses
             for j, (wz, z) in enumerate(zip(self.w_simpson, self.z_simpson)):
                 # Compute integration point index
                 ip = i * self.n_simpson + j
+
+                # Compute integration point position
                 z = z * self.thickness[:, None, None]
 
-                # Compute total strain increment
+                # Compute gradient of displacement increment and rotation increment
                 dudxi = B @ du_local
                 dwdxi = B @ dw_local
-                # Build Koiter bending strain operator
-                kappa = torch.stack(
+
+                # Compute curvature
+                dkappa = torch.stack(
                     [
                         torch.stack([dwdxi[..., 0, 1], -dwdxi[..., 0, 0]], dim=-1),
                         torch.stack([dwdxi[..., 1, 1], -dwdxi[..., 1, 0]], dim=-1),
@@ -290,7 +295,8 @@ class Shell(Mechanics):
                     dim=-1,
                 )
 
-                H_inc = dudxi[..., 0:2] + z * kappa
+                # Compute in-plane displacement gradient increment
+                H_inc = dudxi[..., 0:2] + z * dkappa
 
                 # Evaluate material response
                 stress[n, ip], state[n, ip], ddsdde = self.material.step(
