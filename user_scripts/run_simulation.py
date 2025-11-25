@@ -136,7 +136,7 @@ class Simulation:
 
         if self.dim == 2:
             self.dir_path = (
-                f'{out_filepath}_data/{self.material_behavior}/'
+                f'{out_filepath}_data_2/{self.material_behavior}/'
                 f'{self.dim}d/{self.element_type}/'
                 f'mesh_{self.mesh_nx}x{self.mesh_ny}/'
                 f'ninc{self.num_increments}/')
