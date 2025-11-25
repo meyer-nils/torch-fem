@@ -1,3 +1,7 @@
+"""User script: Run FEM simulation with material patch surrogate models."""
+#
+#                                                                       Modules
+# =============================================================================
 import os
 import sys
 import pathlib
@@ -5,7 +9,6 @@ import pickle as pkl
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Add graphorge to sys.path
 graphorge_path = str(
@@ -42,6 +45,13 @@ from utils.plotting import (
     plot_domain_displacements,
     plot_shape_functions
 )
+#
+#                                                          Authorship & Credits
+# =============================================================================
+__author__ = 'Rui Barreira Morais Pinto (rui_pinto@brown.edu)'
+__credits__ = ['Rui B. M. Pinto', ]
+__status__ = 'Development'
+# =============================================================================
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 torch.set_default_dtype(torch.float64)
 # =============================================================================
