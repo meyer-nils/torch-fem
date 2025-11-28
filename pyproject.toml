@@ -25,7 +25,6 @@ dependencies = [
     "matplotlib",
     "memory_profiler",
     "meshio",
-    "meshzoo",
     "pyamg",
     "pyvista",
     "scipy~=1.15.0",
