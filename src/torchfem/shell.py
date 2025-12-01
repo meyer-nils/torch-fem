@@ -39,7 +39,7 @@ class Shell(Mechanics):
         if isinstance(thickness, float):
             self.thickness = torch.full((self.n_elem,), thickness)
         else:
-            self.thickness = thickness
+            self.thickness = torch.as_tensor(thickness)
 
         # Drill penalty
         self.drill_penalty = drill_penalty

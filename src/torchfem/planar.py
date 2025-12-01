@@ -27,7 +27,7 @@ class Planar(Mechanics):
         if isinstance(thickness, float):
             self.thickness = torch.full((self.n_elem,), thickness)
         else:
-            self.thickness = thickness
+            self.thickness = torch.as_tensor(thickness)
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
@@ -257,7 +257,7 @@ class PlanarHeat(Heat, Planar):
         ipoints = self.etype.ipoints
         weights = self.etype.iweights
 
-        N, _, detJ, _ = self.eval_shape_functions(ipoints)
+        N, _, detJ = self.eval_shape_functions(ipoints)
 
         # This is a thermal mass (rho * c), but we only have rho here.
         rho = self.material.rho
