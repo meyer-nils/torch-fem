@@ -60,7 +60,7 @@ class Shell(Mechanics):
         self.w_simpson = torch.ones(n_simpson)
         self.w_simpson[1:-1:2] = 4.0
         self.w_simpson[2:-2:2] = 2.0
-        self.w_simpson /= 3.0
+        self.w_simpson *= 1.0 / (n_simpson - 1) / 3.0
 
         # Transverse shear properties
         self.transverse_nu = transverse_nu
@@ -314,8 +314,8 @@ class Shell(Mechanics):
                 )
 
                 # Compute local internal forces
-                f_loc += wz / 2 * stress[n, ip].clone()
-                m_loc += wz / 2 * z * stress[n, ip].clone()
+                f_loc += wz * stress[n, ip].clone()
+                m_loc += wz * z * stress[n, ip].clone()
 
             # Material stiffness
             C = stiffness2voigt(ddsdde)
