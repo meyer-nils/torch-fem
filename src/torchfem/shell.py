@@ -223,7 +223,7 @@ class Shell(Mechanics):
         return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        raise NotImplementedError
+        return torch.einsum("i,ijk->ijk", detJ, BCB)
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         raise NotImplementedError
@@ -278,6 +278,11 @@ class Shell(Mechanics):
             f_loc = torch.zeros(self.n_elem, *self.n_flux)
             m_loc = torch.zeros(self.n_elem, *self.n_flux)
 
+            # Initialize ABD matrices
+            A_matrix = torch.zeros((self.n_elem, 3, 3))
+            B_matrix = torch.zeros((self.n_elem, 3, 3))
+            D_matrix = torch.zeros((self.n_elem, 3, 3))
+
             # Thickness integration of membrane and bending stresses
             for j, (wz, z) in enumerate(zip(self.w_simpson, self.z_simpson)):
                 # Compute integration point index
@@ -317,23 +322,24 @@ class Shell(Mechanics):
                 f_loc += wz * stress[n, ip].clone()
                 m_loc += wz * z * stress[n, ip].clone()
 
-            # Material stiffness
-            C = stiffness2voigt(ddsdde)
-            Cs = self.Cs
+                # Compute ABD matrix contributions
+                C = stiffness2voigt(ddsdde)
+                A_matrix += C * wz * self.thickness[:, None, None]
+                B_matrix += C * wz * z * self.thickness[:, None, None]
+                D_matrix += C * wz * z**2 * self.thickness[:, None, None]
 
             # Element membrane stiffness
             Dm = self._Dm(B)
-            DmCDm = torch.einsum("...ji,...jk,...kl->...il", Dm, C, Dm)
-            km = torch.einsum("i,ijk->ijk", wi * self.thickness * detJ, DmCDm)
+            DmCDm = torch.einsum("...ji,...jk,...kl->...il", Dm, A_matrix, Dm)
+            km = wi * self.compute_k(detJ, DmCDm)
 
             # Element bending stiffness
             Db = self._Db(B)
-            DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, C, Db)
-            kb = torch.einsum("i,ijk->ijk", wi * self.thickness**3 * detJ / 12.0, DbCDb)
+            DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, D_matrix, Db)
+            kb = wi * self.compute_k(detJ, DbCDb)
 
             # Element transverse stiffness
             A = detJ / 2.0
-            Ds = self._Ds(A)
             h = sqrt(2) * A
             alpha = self.transverse_kappa / (2 * (1 + self.transverse_nu))
             psi = (
@@ -341,10 +347,10 @@ class Shell(Mechanics):
                 * self.thickness**2
                 / (self.thickness**2 + alpha * h**2)
             )
-            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, Cs, Ds)
-            ks = torch.einsum(
-                "i,ijk->ijk", wi * A * psi * self.thickness * detJ, DsCsDs
-            )
+            Ds = self._Ds(A)
+            int_Cs = (A * psi * self.thickness)[:, None, None] * self.Cs
+            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, int_Cs, Ds)
+            ks = wi * self.compute_k(detJ, DsCsDs)
 
             # Element drilling stiffness
             kd = torch.zeros_like(km)
@@ -365,21 +371,6 @@ class Shell(Mechanics):
             f[:, :] += torch.einsum(
                 "...ki, ...ij,...j->...k", self.T.transpose(1, 2), kt, loc_disp
             )
-            # temp_f = torch.einsum("...ij,...j->...i", km + kb, loc_disp)
-            # print(temp_f[0])
-
-            # fv = torch.stack(
-            #     [f_loc[:, 0, 0], f_loc[:, 1, 1], f_loc[:, 0, 1]],
-            #     dim=-1,
-            # )
-            # mv = torch.stack(
-            #     [m_loc[:, 0, 0], m_loc[:, 1, 1], m_loc[:, 0, 1]],
-            #     dim=-1,
-            # )
-            # fm = torch.einsum("...ji,...j->...i", Dm, fv)
-            # fb = torch.einsum("...ji,...j->...i", Db, mv)
-            # force = wi * self.thickness[:, None] * detJ[:, None] * (fm + fb)
-            # print(force[0])
 
         return k, f
 
