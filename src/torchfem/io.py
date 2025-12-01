@@ -1,13 +1,14 @@
 from os import PathLike
 from typing import Dict, List
 
+import numpy as np
 import torch
-from meshio import Mesh
+from meshio import Mesh, read
 from torch import Tensor
 
 from torchfem import Planar, Shell, Solid
 
-from .base import FEM
+from .base import FEM, Mechanics
 from .elements import ELEMENT_REGISTRY
 from .materials import Material
 
@@ -33,11 +34,11 @@ def export_mesh(
     msh.write(filename)
 
 
-def import_mesh(filename: PathLike, material: Material) -> FEM:
-    import meshio
-    import numpy as np
+def import_mesh(
+    filename: PathLike, material: Material, thickness: float = 1.0
+) -> Mechanics:
 
-    mesh = meshio.read(filename)
+    mesh = read(filename)
     elems = []
     etypes = []
     allowed_meshio_types = set([e.meshio_type for e in ELEMENT_REGISTRY])
@@ -56,11 +57,11 @@ def import_mesh(filename: PathLike, material: Material) -> FEM:
     if not np.allclose(mesh.points[:, 2], np.zeros_like(mesh.points[:, 2])):
         nodes = torch.from_numpy(mesh.points.astype(np.float32)).type(dtype)
         if etype in ["triangle"]:
-            return Shell(nodes, elements, material)
+            return Shell(nodes, elements, material, thickness=thickness)
         elif etype in ["tetra", "tetra10", "hexahedron", "hexahedron20"]:
             return Solid(nodes, elements, material)
         else:
             raise Exception(f"Cannot interpret element type {etype}.")
     else:
         nodes = torch.from_numpy(mesh.points.astype(np.float32)[:, 0:2]).type(dtype)
-        return Planar(nodes, elements, material)
+        return Planar(nodes, elements, material, thickness=thickness)

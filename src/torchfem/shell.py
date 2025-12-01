@@ -24,6 +24,7 @@ class Shell(Mechanics):
         nodes: Tensor,
         elements: Tensor,
         material: Material,
+        thickness: Tensor | float = 1.0,
         transverse_nu: float = 0.5,
         transverse_kappa: float = 5.0 / 6.0,
         transverse_G: list[float] | list[Tensor] | None = None,
@@ -35,7 +36,10 @@ class Shell(Mechanics):
         super().__init__(nodes, elements, material)
 
         # Set up thickness
-        self.thickness = torch.ones(self.n_elem)
+        if isinstance(thickness, float):
+            self.thickness = torch.full((self.n_elem,), thickness)
+        else:
+            self.thickness = thickness
 
         # Drill penalty
         self.drill_penalty = drill_penalty
