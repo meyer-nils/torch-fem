@@ -472,10 +472,9 @@ class Mechanics(FEM, ABC):
 
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
-        f = torch.zeros(self.n_elem, self.n_dof_per_node * N_nod)
-        k = torch.zeros(
-            (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
-        )
+        N_dof = self.n_dof_per_node
+        f = torch.zeros(self.n_elem, N_dof * N_nod)
+        k = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod))
 
         for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
             # Compute gradient operators
@@ -507,30 +506,23 @@ class Mechanics(FEM, ABC):
 
             # Compute element internal forces
             force_contrib = self.compute_f(detJ, B, stress[n, i].clone())
-            f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
+            f += w * force_contrib.reshape(-1, N_dof * N_nod)
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
                 # Material stiffness
                 BCB = torch.einsum("...ijpq,...qk,...il->...ljkp", ddsdde, B, B)
-                BCB = BCB.reshape(
-                    -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
-                )
+                BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
                 k += w * self.compute_k(detJ, BCB)
             if nlgeom:
                 # Geometric stiffness
-                BSB = torch.einsum(
-                    "...iq,...qk,...il->...lk", stress[n, i].clone(), B, B
+                K_IJ = torch.einsum(
+                    "...mI,...mn,...nJ->...IJ", B, stress[n, i].clone(), B
                 )
-                zeros = torch.zeros_like(BSB)
-                kg = torch.stack([BSB] + (self.n_dof_per_node - 1) * [zeros], dim=-1)
-                kg = kg.reshape(-1, N_nod, self.n_dim * N_nod).unsqueeze(-2)
-                zeros = torch.zeros_like(kg)
-                kg = torch.stack([kg] + (self.n_dof_per_node - 1) * [zeros], dim=-2)
-                kg = kg.reshape(
-                    -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
-                )
-                k += w * self.compute_k(detJ, kg)
+                K_g_blocks = K_IJ[..., None, None] * torch.eye(N_dof)
+                kg_new = K_g_blocks.permute(0, -4, -2, -3, -1)
+                kg_new = kg_new.reshape(-1, N_nod * N_dof, N_nod * N_dof)
+                k += w * self.compute_k(detJ, kg_new)
 
         return k, f
 
