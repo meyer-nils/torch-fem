@@ -456,14 +456,14 @@ class Mechanics(FEM, ABC):
         de0: Tensor,
         nlgeom: bool,
     ) -> Tuple[Tensor, Tensor]:
-        """Perform numerical integrations for element stiffness matrix."""
+        """
+        Perform numerical integrations for the element stiffness matrix and forces
+        assuming a total Lagrangian formulation.
+        """
 
         # Mechanical interpretation of variables
         F = grad
         stress = flux
-
-        # Compute updated configuration
-        u_trial = u[n - 1] + du.view((-1, self.n_dof_per_node))
 
         # Reshape displacement increment
         du = du.view(-1, self.n_dof_per_node)[self.elements].reshape(
@@ -479,22 +479,12 @@ class Mechanics(FEM, ABC):
         for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
             # Compute gradient operators
             _, B0, detJ0 = self.eval_shape_functions(xi)
-            if nlgeom:
-                # Compute updated gradient operators in deformed configuration
-                _, B, detJ = self.eval_shape_functions(xi, u_trial)
-            else:
-                # Use initial gradient operators
-                B = B0
-                detJ = detJ0
 
-            # Compute displacement gradient increment
-            H_inc = torch.einsum("...ij,...jk->...ik", B0, du)
-
-            # Update deformation gradient
-            F[n, i] = F[n - 1, i] + H_inc
+            # Compute displacement gradient increment (Batch, Spatial, Material)
+            H_inc = torch.einsum("...ni,...jn->...ij", du, B0)
 
             # Evaluate material response
-            stress[n, i], state[n, i], ddsdde = self.material.step(
+            P, alpha, ddsdde = self.material.step(
                 H_inc,
                 F[n - 1, i],
                 stress[n - 1, i],
@@ -504,25 +494,28 @@ class Mechanics(FEM, ABC):
                 iter,
             )
 
+            # Compute new Cauchy stress
+            if nlgeom:
+                J = torch.det(F[n, i])[:, None, None]
+                stress[n, i] = (F[n, i] @ P) / J
+            else:
+                stress[n, i] = P
+
+            # Compute new deformation gradient
+            F[n, i] = F[n - 1, i] + H_inc
+
+            # Compute new state
+            state[n, i] = alpha
+
             # Compute element internal forces
-            force_contrib = self.compute_f(detJ, B, stress[n, i].clone())
+            force_contrib = self.compute_f(detJ0, B0, P)
             f += w * force_contrib.reshape(-1, N_dof * N_nod)
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
-                # Material stiffness
-                BCB = torch.einsum("...ijpq,...qk,...il->...ljkp", ddsdde, B, B)
+                BCB = torch.einsum("...Jp, ...iJkL, ...Lq -> ...piqk", B0, ddsdde, B0)
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
-                k += w * self.compute_k(detJ, BCB)
-            if nlgeom:
-                # Geometric stiffness
-                K_IJ = torch.einsum(
-                    "...mI,...mn,...nJ->...IJ", B, stress[n, i].clone(), B
-                )
-                K_g_blocks = K_IJ[..., None, None] * torch.eye(N_dof)
-                kg_new = K_g_blocks.permute(0, -4, -2, -3, -1)
-                kg_new = kg_new.reshape(-1, N_nod * N_dof, N_nod * N_dof)
-                k += w * self.compute_k(detJ, kg_new)
+                k += w * self.compute_k(detJ0, BCB)
 
         return k, f
 
