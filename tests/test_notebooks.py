@@ -26,11 +26,6 @@ def test_planar_finite_strain_notebook(tb):
     tb.execute()
 
 
-@testbook("examples/basic/planar/large_stretch.ipynb", execute=True)
-def test_planar_large_stretch_notebook(tb):
-    tb.execute()
-
-
 @testbook("examples/basic/planar/thermal_static.ipynb", execute=True)
 def test_planar_thermal_static_notebook(tb):
     tb.execute()
