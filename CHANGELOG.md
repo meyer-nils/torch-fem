@@ -3,22 +3,37 @@
 ## Unreleased
 
 ### Added 
+- Added `PlanarHeat` and `SolidHeat` for heat transfer problems (Thanks to @kraussco).
+- Added new planar examples "thermal_static.ipynb", "thermal_transient.ipynb", "orientation_thermal_static.ipynb", "topology_thermal_static.ipynb" for heat transfer and thermal optimization (Thanks to @kraussco).
+- Added new solid examples "thermal_static.ipynb", "thermal_transient.ipynb", "topology_thermal.ipynb" for heat transfer and thermal optimization (Thanks to @kraussco).
+- Better meshing capabilities in the `mesh` module (structured tet meshes, structured tri meshes) to remove dependency on meshzoo. 
 - Warning message for single precision solves.
 - Added new example geometry (*.vtu) of a quarter symmetric plate.
 - Added two new solid examples "isotropic_damage.ipynb" and "plate_damage.ipynb"
 - Add simple damage model 'IsotropicDamage3D'.
 - \_\_repr\_\_ functions to print torch-fem objects.
 
+
 ### Changed 
+- Split the base FEM class into a `Mechanics` and a `Heat` class with generic fluxes.
+- Shells are now properly integrated in the parent classes by inheriting from `Mechanics`.
+- Simplified thickness assignments for planar and shell meshes.
 - Material 'step' functions get an additional input 'cl' for the characteristic length of each element. This can be used for regularization in damage models.
+- Accelerate element potting for planar models.
 - Accelerate 'linear_to_quadratic()' function for elements.
 - Accelerate filter matrix H in 'bracket.ipynb' topology optimization example with KD Tree.
 - Planar plot uses explicit triangulation objects.
 - Truss plot accepts u as positional argument to match base class.
 
 ### Fixed
+- Fixed some typing issues.
+- The hyperelasticity was somewhat working, but not strictly correct and failed to converge at very large strains. Now, we use a Total Lagrangian Formulation, which is robustly and (hopefully) correctly implemented.
 - Corrected type hints in `export_mesh` for elem_data.
 - The size of the stiffness tensor for `OrthotropicElasticityPlaneStrain` was incorrect. It is corrected from (3,3,3,3) to (2,2,2,2).
+
+### Removed 
+- The material classes `IsotropicHencky3D`, `IsotropicHenckyPlanarStrain` and `IsotropicHenckyPlanarStress` are removed. Use the more general hyperelastic models instead.
+- Dependency on meshzoo. This was limited to a few nodes with a license - use the internal functions in the `mesh` module instead.
 
 ## Version 0.4.5 - June 05 2025 
 
