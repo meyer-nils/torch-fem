@@ -179,14 +179,18 @@ class Hyperelastic3D(Material):
 
     Attributes:
         psi (Callable): Function that computes the strain energy density.
+        params (list | Tensor): Material parameters for the strain energy density.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `psi` accepts batch dimensions.
 
     """
 
-    def __init__(self, psi: Callable, rho: Tensor | float = 1.0):
+    def __init__(self, psi: Callable, params: list | Tensor, rho: Tensor | float = 1.0):
         # Store the strain energy density function
         self.psi = psi
+
+        # Store material parameters
+        self.params = torch.as_tensor(params)
 
         # There are no internal variables
         self.n_state = 0
@@ -195,7 +199,7 @@ class Hyperelastic3D(Material):
         self.rho = torch.as_tensor(rho)
 
         # Check if the material is vectorized
-        self.is_vectorized = True
+        self.is_vectorized = self.params.dim() > 1
 
     def vectorize(self, n_elem: int) -> Hyperelastic3D:
         """Returns a vectorized copy of the material for `n_elem` elements.
@@ -215,7 +219,8 @@ class Hyperelastic3D(Material):
             return self
         else:
             rho = self.rho.repeat(n_elem)
-            return Hyperelastic3D(self.psi, rho)
+            params = self.params.repeat(n_elem, 1)
+            return Hyperelastic3D(self.psi, params, rho)
 
     def step(
         self,
@@ -257,11 +262,11 @@ class Hyperelastic3D(Material):
         F_new = F + H_inc
         F_new.requires_grad_(True)
         # Compute first Piola-Kirchhoff stress tensor
-        P_new = vmap(jacrev(self.psi))(F_new)
+        P_new = vmap(jacrev(self.psi))(F_new, self.params)
         # Update internal state
         state_new = state
         # Compute algorithmic tangent stiffness
-        ddsdde = vmap(jacrev(jacrev(self.psi)))(F_new)
+        ddsdde = vmap(jacrev(jacrev(self.psi)))(F_new, self.params)
         return P_new.detach(), state_new.detach(), ddsdde.detach()
 
 
@@ -667,6 +672,9 @@ class HyperelasticPlaneStress(Hyperelastic3D):
 
     Attributes:
         psi (Callable): Function that computes the strain energy density.
+        params (list | Tensor): Material parameters for the strain energy density.
+        tolerance (float): Convergence tolerance for the local Newton solver.
+        max_iter (int): Maximum number of iterations for the local Newton solver.
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `psi` accepts batch dimensions.
 
@@ -675,11 +683,12 @@ class HyperelasticPlaneStress(Hyperelastic3D):
     def __init__(
         self,
         psi: Callable,
+        params: list | Tensor,
         rho: float | Tensor = 1.0,
         tolerance: float = 1e-5,
         max_iter: int = 10,
     ):
-        super().__init__(psi, rho)
+        super().__init__(psi, params, rho)
         self.tolerance = tolerance
         self.max_iter = max_iter
 
@@ -704,7 +713,10 @@ class HyperelasticPlaneStress(Hyperelastic3D):
             return self
         else:
             rho = self.rho.repeat(n_elem)
-            return HyperelasticPlaneStress(self.psi, rho)
+            params = self.params.repeat(n_elem, 1)
+            return HyperelasticPlaneStress(
+                self.psi, params, rho, self.tolerance, self.max_iter
+            )
 
     def step(
         self,
@@ -1073,6 +1085,8 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
 
     Attributes:
         psi (Callable): Function that computes the strain energy density.
+        params (list | Tensor): Material parameters for the strain energy density.
+        rho (Tensor | float): Mass density. If a float is provided, it is converted
         n_state (int): Number of internal state variables (here: 0).
         is_vectorized (bool): `True` if `psi` accepts batch dimensions.
 
@@ -1096,7 +1110,8 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
             return self
         else:
             rho = self.rho.repeat(n_elem)
-            return HyperelasticPlaneStrain(self.psi, rho)
+            params = self.params.repeat(n_elem, 1)
+            return HyperelasticPlaneStrain(self.psi, params, rho)
 
     def step(
         self,
