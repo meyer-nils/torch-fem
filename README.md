@@ -75,7 +75,7 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
             <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_finite_strain.png"></a></td>
         </tr>
         <tr>
-            <td colspan="3" align="center"><b>Cantilever:</b> Logarithmic strains and geometric stiffness.</td>
+            <td colspan="3" align="center"><b>Finite strain cantilever:</b> Hyperelastic model in Total Lagrangian Formulation.</td>
         </tr>
     </tbody>
 </table>
@@ -109,6 +109,12 @@ The subdirectory `examples->optimization` demonstrates the use of torch-fem for 
         <tr>
             <td align="center"><b>Combined topology and orientation optimization:</b> Compliance is minimized by optimizing fiber orientation and density of an anisotropic material using automatic differentiation.</td>
             <td align="center"><b>Fiber orientation optimization of a plate with a hole</b> Compliance is minimized by optimizing the fiber orientation of an anisotropic material using automatic differentiation w.r.t. element-wise fiber angles.</td>
+        </tr>
+        <tr>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology_thermal_static.html"><img src="https://meyer-nils.github.io/torch-fem/topology_thermal_static.png"></a></td>
+        </tr>
+        <tr>
+            <td colspan="2" align="center"><b>Heat sink:</b> Thermal topology optimization</td>
         </tr>
     </tbody>
 </table>
