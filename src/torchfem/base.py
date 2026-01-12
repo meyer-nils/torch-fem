@@ -131,11 +131,11 @@ class FEM(ABC):
         nodes = self.nodes + u
         nodes = nodes[self.elements, :]
         b = self.etype.B(xi)
-        J = torch.einsum("...iN, ANj -> ...Aij", b, nodes)
+        J = b @ nodes
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
-        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
+        B = torch.linalg.inv(J) @ b
         return self.etype.N(xi), B, detJ
 
     def compute_B(self) -> Tensor:
@@ -466,8 +466,10 @@ class Mechanics(FEM, ABC):
         stress = flux
 
         # Reshape displacement increment
-        du = du.view(-1, self.n_dof_per_node)[self.elements].reshape(
-            self.n_elem, -1, self.n_flux[0]
+        du = (
+            du.view(-1, self.n_dof_per_node)[self.elements]
+            .reshape(self.n_elem, -1, self.n_flux[0])
+            .transpose(-1, -2)
         )
 
         # Initialize nodal force and stiffness
@@ -481,7 +483,7 @@ class Mechanics(FEM, ABC):
             _, B0, detJ0 = self.eval_shape_functions(xi)
 
             # Compute displacement gradient increment (Batch, Spatial, Material)
-            H_inc = torch.einsum("...ni,...jn->...ij", du, B0)
+            H_inc = du @ B0.transpose(-1, -2)
 
             # Evaluate material response
             P, alpha, ddsdde = self.material.step(
