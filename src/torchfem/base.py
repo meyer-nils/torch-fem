@@ -478,12 +478,12 @@ class Mechanics(FEM, ABC):
         f = torch.zeros(self.n_elem, N_dof * N_nod)
         k = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod))
 
-        for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
-            # Compute gradient operators
-            _, B0, detJ0 = self.eval_shape_functions(xi)
+        # Compute gradient operators
+        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
+        for i, w in enumerate(self.etype.iweights):
             # Compute displacement gradient increment (Batch, Spatial, Material)
-            H_inc = du @ B0.transpose(-1, -2)
+            H_inc = du @ B[i].transpose(-1, -2)
 
             # Evaluate material response
             P, alpha, ddsdde = self.material.step(
@@ -510,14 +510,14 @@ class Mechanics(FEM, ABC):
             state[n, i] = alpha
 
             # Compute element internal forces
-            force_contrib = self.compute_f(detJ0, B0, P)
+            force_contrib = self.compute_f(detJ[i], B[i], P)
             f += w * force_contrib.reshape(-1, N_dof * N_nod)
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
-                BCB = torch.einsum("...Jp, ...iJkL, ...Lq -> ...piqk", B0, ddsdde, B0)
+                BCB = torch.einsum("...Jp,...iJkL,...Lq->...piqk", B[i], ddsdde, B[i])
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
-                k += w * self.compute_k(detJ0, BCB)
+                k += w * self.compute_k(detJ[i], BCB)
 
         return k, f
 
@@ -618,21 +618,18 @@ class Heat(FEM, ABC):
             (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
         )
 
-        for i, (w, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
-            # Compute gradient operators
-            _, B0, detJ0 = self.eval_shape_functions(xi)
+        # Compute gradient operators
+        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
-            B = B0
-            detJ = detJ0
+        for i, w in enumerate(self.etype.iweights):
 
             # Compute temperature gradient increment
-            temp_grad_inc = torch.einsum("...ij,...jk->...ki", B0, du)
-
+            temp_grad_inc = torch.einsum("...ij,...jk->...ki", B[i], du)
             # Update deformation gradient
             grad[n, i] = grad[n - 1, i] + temp_grad_inc
 
             # Evaluate material response
-            flux[n, i], state[n, i], ddflux_ddgrad = self.material.step(
+            flux[n, i], state[n, i], ddfddg = self.material.step(
                 temp_grad_inc,
                 grad[n - 1, i],
                 flux[n - 1, i],
@@ -643,18 +640,17 @@ class Heat(FEM, ABC):
             )
 
             # Compute element internal forces
-            force_contrib = self.compute_f(detJ, B, flux[n, i].clone())
+            force_contrib = self.compute_f(detJ[i], B[i], flux[n, i].clone())
             f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
 
             # Compute element stiffness matrix
             if self.K.numel() == 0 or not self.material.n_state == 0:
                 # Material stiffness
-                BCB = torch.einsum("...ij,...iN,...jM->...NM", ddflux_ddgrad, B, B)
+                BCB = torch.einsum("...ij,...iN,...jM->...NM", ddfddg, B[i], B[i])
                 BCB = BCB.reshape(
                     -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
                 )
-                k += w * self.compute_k(detJ, BCB)
-
+                k += w * self.compute_k(detJ[i], BCB)
         return k, f
 
     def time_integration(

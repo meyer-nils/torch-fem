@@ -58,14 +58,16 @@ class Truss(Mechanics):
         T = dx[:, None, :] / l0[:, None, None]
 
         # Compute Jacobian and its determinant
-        J = 0.5 * torch.linalg.norm(dx, dim=1)[:, None, None]
-        detJ = torch.linalg.det(J)
+        J = 0.5 * l0[:, None, None]
+        detJ = J.squeeze(-1)
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
 
         b = self.etype.B(xi)
-        B = torch.einsum("jkl,lm->jkm", torch.linalg.inv(J), b)
-        B = torch.einsum("ijk,ijl->ijkl", B, T).reshape(self.n_elem, 1, -1)
+        B = torch.einsum("...jkl,...lm->...jkm", torch.linalg.inv(J), b)
+        B = torch.einsum("...ijk,ijl->...ijkl", B, T).reshape(
+            xi.shape[0], self.n_elem, 1, -1
+        )
         return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
