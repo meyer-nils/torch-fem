@@ -162,10 +162,11 @@ class Solve(Function):
         )
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
-        row = A._indices()[0, :]
-        col = A._indices()[1, :]
+        indices = A._indices()
+        row = indices[0, :]
+        col = indices[1, :]
         val = -gradb[row] * x[col]
-        gradA = torch.sparse_coo_tensor(torch.stack([row, col]), val, A.shape)
+        gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
 
         # Update storage for next iteration
         if ctx.update_cache:
