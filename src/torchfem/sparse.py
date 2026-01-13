@@ -1,8 +1,11 @@
+from typing import Tuple
+
 import numpy as np
 import pyamg
 import torch
 from scipy.sparse import coo_matrix as scipy_coo_matrix
 from scipy.sparse import csgraph
+from scipy.sparse.linalg import LinearOperator
 from scipy.sparse.linalg import cg as scipy_cg
 from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
@@ -74,7 +77,7 @@ class Solve(Function):
         M: Tensor | None = None,
         cached_solve=CachedSolve(),
         update_cache=False,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, LinearOperator | None]:
         """
         Solve the linear system Ax = b.
 
@@ -128,9 +131,9 @@ class Solve(Function):
 
         # Solve either on CPU or GPU
         if A.device.type == "cuda":
-            x_xp = Solve._solve_gpu(A, b, B, method, rtol, M, shape, cached_solve)
+            x_xp, M_xp = Solve._solve_gpu(A, b, B, method, rtol, M, shape, cached_solve)
         else:
-            x_xp = Solve._solve_cpu(A, b, B, method, rtol, M, shape, cached_solve)
+            x_xp, M_xp = Solve._solve_cpu(A, b, B, method, rtol, M, shape, cached_solve)
 
         # Convert back to torch
         x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=out_device)
@@ -139,7 +142,7 @@ class Solve(Function):
         if update_cache:
             cached_solve.update_x(x.detach().clone())
 
-        return x
+        return x, M_xp
 
     @staticmethod
     def backward(ctx, *grad_outputs):
@@ -173,7 +176,7 @@ class Solve(Function):
     @staticmethod
     def setup_context(ctx, inputs, output):
         A, b, B, rtol, device, method, M, cached_solve, update_cache = inputs
-        x = output
+        x, M_computed = output
         ctx.save_for_backward(A, x)
 
         # Save the parameters for backward pass (including the preconditioner)
@@ -181,7 +184,7 @@ class Solve(Function):
         ctx.device = device
         ctx.method = method
         ctx.B = B
-        ctx.M = M
+        ctx.M = M_computed
         ctx.cached_solve = cached_solve
         ctx.update_cache = update_cache
 
@@ -202,14 +205,17 @@ class Solve(Function):
             shape=shape,
         ).tocsr()
         b_cp = cupy.asarray(b.data)
+
         if cached_solve.previous_x is not None:
             x0_cp = cupy.asarray(cached_solve.previous_x.data)
         else:
             x0_cp = None
+
         if method == "pardiso":
             raise RuntimeError("Pardiso backend is not available on GPU.")
         elif method == "spsolve":
             x_xp = cupy_spsolve(A_cp, b_cp)
+            M = None
         elif method == "minres":
             # Jacobi preconditioner
             M = cupy_diags(1.0 / A_cp.diagonal())
@@ -225,7 +231,7 @@ class Solve(Function):
             if exit_code != 0:
                 raise RuntimeError(f"CG failed with exit code {exit_code}")
 
-        return x_xp
+        return x_xp, M
 
     @staticmethod
     def _solve_cpu(A, b, B, method, rtol, M, shape, cached_solve):
@@ -258,8 +264,10 @@ class Solve(Function):
             # Restore the original order
             inv_rcm_order = np.argsort(rcm_order)
             x_xp = x_rcm[inv_rcm_order]
+            M = None
         elif method == "spsolve":
             x_xp = scipy_spsolve(A_np, b_np)
+            M = None
         elif method == "minres":
             # AMG preconditioner with Jacobi smoother
             if M is None:
@@ -281,7 +289,7 @@ class Solve(Function):
             if exit_code != 0:
                 raise RuntimeError(f"CG failed with exit code {exit_code}")
 
-        return x_xp
+        return x_xp, M
 
 
 def sparse_solve(
@@ -295,7 +303,9 @@ def sparse_solve(
     cached_solve=CachedSolve(),
     update_cache=False,
 ) -> Tensor:
-    result = Solve.apply(A, b, B, rtol, device, method, M, cached_solve, update_cache)
+    result, _ = Solve.apply(
+        A, b, B, rtol, device, method, M, cached_solve, update_cache
+    )  # type: ignore
     if result is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return result
