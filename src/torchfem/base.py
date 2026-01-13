@@ -131,11 +131,11 @@ class FEM(ABC):
         nodes = self.nodes + u
         nodes = nodes[self.elements, :]
         b = self.etype.B(xi)
-        J = b @ nodes
+        J = torch.einsum("...iN, ANj -> ...Aij", b, nodes)
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
-        B = torch.linalg.inv(J) @ b
+        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
         return self.etype.N(xi), B, detJ
 
     def compute_B(self) -> Tensor:

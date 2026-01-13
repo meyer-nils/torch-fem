@@ -263,6 +263,6 @@ class PlanarHeat(Heat, Planar):
         rho = self.material.rho
 
         m = torch.einsum(
-            "I, IN, IM, E, E, E -> ENM", weights, N, N, rho, detJ, self.thickness
+            "I, IN, IM, E, IE, E -> ENM", weights, N, N, rho, detJ, self.thickness
         )
         return m
