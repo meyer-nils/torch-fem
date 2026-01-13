@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from functools import cached_property
 from typing import Literal, Tuple
 
 import torch
@@ -65,7 +66,7 @@ class FEM(ABC):
         """Element type."""
         raise NotImplementedError
 
-    @property
+    @cached_property
     @abstractmethod
     def char_lengths(self) -> Tensor:
         """Characteristic lengths of the elements."""

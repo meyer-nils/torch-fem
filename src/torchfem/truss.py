@@ -1,3 +1,5 @@
+from functools import cached_property
+
 import matplotlib.pyplot as plt
 import pyvista
 import torch
@@ -37,7 +39,7 @@ class Truss(Mechanics):
         else:
             raise ValueError("Element type not supported.")
 
-    @property
+    @cached_property
     def char_lengths(self) -> Tensor:
         """Characteristic lengths of the elements."""
         start_nodes = self.nodes[self.elements[:, 0]]

@@ -1,3 +1,5 @@
+from functools import cached_property
+
 import matplotlib.pyplot as plt
 import torch
 from matplotlib.axes import Axes
@@ -54,7 +56,7 @@ class Planar(Mechanics):
         else:
             raise ValueError("Element type not supported.")
 
-    @property
+    @cached_property
     def char_lengths(self) -> Tensor:
         """Characteristic lengths of the elements."""
         areas = self.integrate_field()

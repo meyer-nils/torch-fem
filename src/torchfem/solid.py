@@ -1,4 +1,5 @@
 import typing
+from functools import cached_property
 
 import pyvista
 import torch
@@ -35,7 +36,7 @@ class Solid(Mechanics):
         else:
             raise ValueError("Element type not supported.")
 
-    @property
+    @cached_property
     def char_lengths(self) -> Tensor:
         """Characteristic lengths of the elements."""
         vols = self.integrate_field()

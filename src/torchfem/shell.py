@@ -6,6 +6,7 @@ for Numerical Methods in Engineering, vol. 123, issue 10, pp. 2399-2423, 2022
 https://doi.org/10.1002/nme.6944
 """
 
+from functools import cached_property
 from math import sqrt
 from typing import Tuple
 
@@ -106,7 +107,7 @@ class Shell(Mechanics):
         """Set element type."""
         return Tria1
 
-    @property
+    @cached_property
     def char_lengths(self) -> Tensor:
         """Characteristic lengths of the elements."""
         areas = self.integrate_field()
