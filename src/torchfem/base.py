@@ -167,17 +167,21 @@ class FEM(ABC):
     def integrate_field(self, field: Tensor | None = None) -> Tensor:
         """Integrate scalar field over elements."""
 
-        # Default field is ones to integrate volume
+        # Default field is ones (to integrate volume)
         if field is None:
             field = torch.ones(self.n_nod)
 
-        # Integrate
-        res = torch.zeros(len(self.elements))
-        for w, xi in zip(self.etype.iweights, self.etype.ipoints):
-            N, B, detJ = self.eval_shape_functions(xi)
-            f = field[self.elements, None].squeeze() @ N
-            res += w * f * detJ
-        return res
+        # Shape functions at integration points
+        N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
+
+        # Integration weights
+        weights = self.etype.iweights
+
+        # Field at integration points
+        f_ip = torch.einsum("ej,ij->ie", field[self.elements], N)
+
+        # Integration
+        return torch.einsum("i,ie,ie->e", weights, f_ip, detJ)
 
     def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
         """Assemble global generalized stiffness matrix."""

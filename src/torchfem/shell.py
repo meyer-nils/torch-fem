@@ -212,7 +212,7 @@ class Shell(Mechanics):
         b = self.etype.B(xi)
         dx = (nodes - nodes[:, 0, None]).transpose(2, 1)
         self.loc_nodes = (self.t[:, 0:2, :] @ dx).transpose(2, 1)
-        J = b @ self.loc_nodes
+        J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
@@ -266,9 +266,10 @@ class Shell(Mechanics):
                 "Geometric nonlinearity is not yet implemented for shells."
             )
 
-        for i, (wi, xi) in enumerate(zip(self.etype.iweights, self.etype.ipoints)):
-            # Compute gradient operators
-            _, B, detJ = self.eval_shape_functions(xi)
+        # Compute gradient operators
+        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
+
+        for i, wi in enumerate(self.etype.iweights):
 
             # Transform displacement increment to local element coordinates
             du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
@@ -292,8 +293,8 @@ class Shell(Mechanics):
                 z = z * self.thickness[:, None, None]
 
                 # Compute gradient of displacement increment and rotation increment
-                dudxi = B @ du_local
-                dwdxi = B @ dw_local
+                dudxi = B[i] @ du_local
+                dwdxi = B[i] @ dw_local
 
                 # Compute curvature
                 dkappa = torch.stack(
@@ -329,17 +330,17 @@ class Shell(Mechanics):
                 D_matrix += C * wz * z**2 * self.thickness[:, None, None]
 
             # Element membrane stiffness
-            Dm = self._Dm(B)
+            Dm = self._Dm(B[i])
             DmCDm = torch.einsum("...ji,...jk,...kl->...il", Dm, A_matrix, Dm)
-            km = wi * self.compute_k(detJ, DmCDm)
+            km = wi * self.compute_k(detJ[i], DmCDm)
 
             # Element bending stiffness
-            Db = self._Db(B)
+            Db = self._Db(B[i])
             DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, D_matrix, Db)
-            kb = wi * self.compute_k(detJ, DbCDb)
+            kb = wi * self.compute_k(detJ[i], DbCDb)
 
             # Element transverse stiffness
-            A = detJ / 2.0
+            A = detJ[i] / 2.0
             h = sqrt(2) * A
             alpha = self.transverse_kappa / (2 * (1 + self.transverse_nu))
             psi = (
@@ -350,7 +351,7 @@ class Shell(Mechanics):
             Ds = self._Ds(A)
             int_Cs = (A * psi * self.thickness)[:, None, None] * self.Cs
             DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, int_Cs, Ds)
-            ks = wi * self.compute_k(detJ, DsCsDs)
+            ks = wi * self.compute_k(detJ[i], DsCsDs)
 
             # Element drilling stiffness
             kd = torch.zeros_like(km)
