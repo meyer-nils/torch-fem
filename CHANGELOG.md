@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added 
+- Added a new example "property_fields.ipynb" for neural fields in the planar optimization examples.
+
+### Changes 
+- In the backward sparse solve, we solve the adjoint problem with A_T. Since A is symmetric, we can use the exact same preconditioner M from the forward pass again in iterative methods. This saves us the overhead of creating the preconditioner again and accelerates backward passes massively. 
+- Vectorize material parameters in hyperelastic materials
+
+
 ## Version 0.5.0 - December 19 2025 
 
 ### Added 
