@@ -7,7 +7,10 @@
 
 ### Changes 
 - In the backward sparse solve, we solve the adjoint problem with A_T. Since A is symmetric, we can use the exact same preconditioner M from the forward pass again in iterative methods. This saves us the overhead of creating the preconditioner again and accelerates backward passes massively. 
+- Improve construction of sparse gradient in adjoint backward path of the sparse solver knowing that it is coalesced. 
 - Vectorize material parameters in hyperelastic materials
+- Vectorize evaluation of shape function. This accelerates in particular frequent small solves in inverse problems.
+- Make characteristic length cached properties to prevent frequent recomputation in inverse problems.
 
 
 ## Version 0.5.0 - December 19 2025 
