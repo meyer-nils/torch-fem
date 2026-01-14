@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## Version 0.5.1 - January 14 2026 
+
 ### Added 
 - Added a new example "property_fields.ipynb" for neural fields in the planar optimization examples.
 
