@@ -179,20 +179,18 @@ torch.autograd.grad(compliance, cantilever.thickness)[0]
 The following benchmarks were performed on a cube subjected to a one-dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of displacements with respect to forces.
 
 #### Apple M1 Pro (10 cores, 16 GB RAM)
-Python 3.10, SciPy 1.14.1, Apple Accelerate
+Python 3.10, SciPy 1.14.1, Apple Accelerate, float64
 
 |  N  |     DOFs |  FWD Time |  BWD Time |   Peak RAM |
 | --- | -------- | --------- | --------- | ---------- |
-|  10 |     3000 |     0.14s |     0.03s |    592.2MB |
-|  20 |    24000 |     0.99s |     0.15s |    968.3MB |
-|  30 |    81000 |     3.42s |     0.57s |   1562.8MB |
-|  40 |   192000 |     8.48s |     1.14s |   2497.1MB |
-|  50 |   375000 |    16.46s |     2.23s |   3963.7MB |
-|  60 |   648000 |    28.63s |     3.56s |   5503.3MB |
-|  70 |  1029000 |    46.86s |     5.91s |   6309.5MB |
-|  80 |  1536000 |    74.12s |    10.69s |   6933.7MB |
-|  90 |  2187000 |   121.11s |    16.63s |   7663.5MB |
-| 100 |  3000000 |   179.44s |    38.35s |   9662.4MB |
+|  10 |     3000 |     0.16s |     0.10s |    870.0MB |
+|  20 |    24000 |     0.99s |     0.18s |   1268.9MB |
+|  30 |    81000 |     3.44s |     0.60s |   1953.6MB |
+|  40 |   192000 |     8.78s |     1.19s |   2749.4MB |
+|  50 |   375000 |    17.90s |     2.29s |   3920.5MB |
+|  60 |   648000 |    32.46s |     3.69s |   5103.4MB |
+|  70 |  1029000 |    53.75s |     6.23s |   7243.5MB |
+|  80 |  1536000 |    85.68s |     9.61s |  10532.1MB |
 
 
 #### AMD Ryzen Threadripper PRO 5995WX (64 Cores, 512 GB RAM) and NVIDIA GeForce RTX 4090

@@ -8,6 +8,8 @@ from torchfem.elements import linear_to_quadratic
 from torchfem.materials import IsotropicElasticity3D
 from torchfem.mesh import cube_hexa
 
+torch.set_default_dtype(torch.float64)
+
 
 def get_cube(N, order=1):
     nodes, elements = cube_hexa(N, N, N)
@@ -45,7 +47,7 @@ if __name__ == "__main__":
 
     # Forward pass
     start_time = time.time()
-    u, f, sigma, epsilon, state = box.solve(rtol=1e-5)
+    u, f, sigma, epsilon, state = box.solve()
     end_time = time.time()
     fwd_t = end_time - start_time
 
