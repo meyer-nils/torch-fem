@@ -193,20 +193,18 @@ Python 3.10, SciPy 1.14.1, Apple Accelerate, float64
 |  80 |  1536000 |    85.68s |     9.61s |  10532.1MB |
 
 
-#### AMD Ryzen Threadripper PRO 5995WX (64 Cores, 512 GB RAM) and NVIDIA GeForce RTX 4090
-Python 3.12, CuPy 13.3.0, CUDA 11.8
+#### NVIDIA GeForce RTX 4090 (16,384 Cuda cores, 24 GB VRAM)
+Python 3.12, CuPy 13.3.0, CUDA 11.8, float64
 
 |  N  |     DOFs |  FWD Time |  BWD Time |   Peak RAM |
 | --- | -------- | --------- | --------- | ---------- |
-|  10 |     3000 |     0.66s |     0.15s |   1371.7MB |
-|  20 |    24000 |     1.00s |     0.43s |   1358.9MB |
-|  30 |    81000 |     1.14s |     0.65s |   1371.1MB |
-|  40 |   192000 |     1.37s |     0.83s |   1367.3MB |
-|  50 |   375000 |     1.51s |     1.04s |   1356.4MB |
-|  60 |   648000 |     1.94s |     1.43s |   1342.1MB |
-|  70 |  1029000 |     5.19s |     4.31s |   1366.8MB |
-|  80 |  1536000 |     7.48s |    18.88s |   5105.6MB |
-
+|  10 |     3000 |     0.68s |     0.17s |   1503.0MB |
+|  20 |    24000 |     0.94s |     0.41s |   1495.1MB |
+|  30 |    81000 |     1.15s |     0.54s |   1496.3MB |
+|  40 |   192000 |     1.46s |     0.73s |   1489.9MB |
+|  50 |   375000 |     1.97s |     1.02s |   1505.1MB |
+|  60 |   648000 |     2.65s |     1.36s |   1506.7MB |
+|  70 |  1029000 |     3.69s |     1.89s |   1496.4MB |
 
 ## Alternatives
 There are many alternative FEM solvers in Python that you may also consider: 
