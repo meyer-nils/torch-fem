@@ -37,15 +37,16 @@ class FEM(ABC):
         idx = (self.n_dof_per_node * self.elements).unsqueeze(-1) + torch.arange(
             self.n_dof_per_node
         )
-        self.idx = idx.reshape(self.n_elem, -1).to(torch.int32)
+        self.idx = idx.reshape(self.n_elem, -1)
 
         # Precompute global index mapping for sparse matrix assembly
         n = self.idx.shape[1]
-        cols = self.idx.unsqueeze(1).expand(self.n_elem, n, -1).ravel().to(torch.int64)
-        rows = self.idx.unsqueeze(-1).expand(self.n_elem, -1, n).ravel().to(torch.int64)
+        cols = self.idx.unsqueeze(1).expand(self.n_elem, n, -1).ravel()
+        rows = self.idx.unsqueeze(-1).expand(self.n_elem, -1, n).ravel()
         diag = torch.arange(self.n_dofs, dtype=torch.int64)
         packed = torch.cat([(rows << 32) | cols, (diag << 32) | diag])
         self.glob_idx_packed, inverse = torch.unique(packed, return_inverse=True)
+        self.idx = self.idx.to(torch.int32)
         inverse = inverse.to(torch.int32)
         self.glob_idx = torch.stack(
             [
@@ -210,8 +211,10 @@ class FEM(ABC):
         val.index_add_(0, self.k_map, k.ravel())
 
         # Apply Dirichlet boundary conditions
-        row_con = torch.isin(self.glob_idx[0], con)
-        col_con = torch.isin(self.glob_idx[1], con)
+        self.is_constrained = torch.zeros(self.n_dofs, dtype=torch.bool)
+        self.is_constrained[con] = True
+        row_con = self.is_constrained[self.glob_idx[0]]
+        col_con = self.is_constrained[self.glob_idx[1]]
         val[row_con | col_con] = 0.0
         val[self.diag_map[con]] = 1.0
 
