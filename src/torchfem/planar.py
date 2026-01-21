@@ -96,6 +96,12 @@ class Planar(Mechanics):
         # Compute deformed positions
         pos = self.nodes + u
 
+        # Copy all tensors to CPU
+        pos = pos.cpu()
+        elements = self.elements.cpu()
+        forces = self.forces.cpu()
+        constraints = self.constraints
+
         # Bounding box
         size = torch.linalg.norm(pos.max() - pos.min())
 
@@ -105,19 +111,19 @@ class Planar(Mechanics):
 
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
-            node_property = node_property.squeeze()
+            node_property = node_property.squeeze().cpu()
             if self.etype is Quad1 or self.etype is Quad2:
                 triangles = []
-                for e in self.elements:
+                for e in elements:
                     triangles.append([e[0], e[1], e[2]])
                     triangles.append([e[2], e[3], e[0]])
             else:
-                triangles = self.elements[:, :3].tolist()
+                triangles = elements[:, :3].tolist()
             triangulation = Triangulation(pos[:, 0], pos[:, 1], triangles)
             # Adjust levels for some edge cases
             levels = torch.linspace(
                 node_property.min(), 1.001 * node_property.max() + 1e-8, 100
-            )
+            ).cpu()
             tri = ax.tricontourf(
                 triangulation,
                 node_property,
@@ -132,15 +138,15 @@ class Planar(Mechanics):
 
         # Color surface with element properties (if provided)
         if element_property is not None:
-            element_property = element_property.squeeze()
+            element_property = element_property.squeeze().cpu()
             if element_property.numel() == self.n_elem:
                 # Plot scalar field
                 if self.etype is Tria2:
-                    verts = pos[self.elements[:, :3]]
+                    verts = pos[elements[:, :3]]
                 elif self.etype is Quad2:
-                    verts = pos[self.elements[:, :4]]
+                    verts = pos[elements[:, :4]]
                 else:
-                    verts = pos[self.elements]
+                    verts = pos[elements]
                 pc = PolyCollection([v for v in verts.numpy()], cmap=cmap)
                 pc.set_array(element_property)
                 ax.add_collection(pc)
@@ -149,7 +155,7 @@ class Planar(Mechanics):
                     pc.set_clim(vmin=vmin, vmax=vmax)
             elif element_property.numel() == 2 * self.n_elem:
                 # Plot vector field
-                centers = pos[self.elements, :].mean(dim=1)
+                centers = pos[elements, :].mean(dim=1)
                 vectors = element_property / torch.linalg.norm(
                     element_property, dim=1, keepdim=True
                 )
@@ -176,7 +182,7 @@ class Planar(Mechanics):
 
         # Elements
         if linewidth > 0.0:
-            coords = pos[self.elements]
+            coords = pos[elements]
             if self.etype is Tria2:
                 coords = coords[:, :3]
             if self.etype is Quad2:
@@ -190,7 +196,7 @@ class Planar(Mechanics):
 
         # Forces
         if bcs:
-            for i, force in enumerate(self.forces):
+            for i, force in enumerate(forces):
                 if torch.norm(force) > 0.0:
                     x = float(pos[i][0])
                     y = float(pos[i][1])
@@ -207,7 +213,7 @@ class Planar(Mechanics):
 
         # Constraints
         if bcs:
-            for i, constraint in enumerate(self.constraints):
+            for i, constraint in enumerate(constraints):
                 x = float(pos[i][0])
                 y = float(pos[i][1])
                 if len(constraint) == 2:
@@ -221,7 +227,8 @@ class Planar(Mechanics):
 
         # Material orientations
         if orientation is not None:
-            centers = pos[self.elements, :].mean(dim=1)
+            orientation = orientation.cpu()
+            centers = pos[elements, :].mean(dim=1)
             dir = torch.stack(
                 [
                     torch.cos(orientation),
@@ -241,10 +248,16 @@ class Planar(Mechanics):
                 width=0.005,
             )
 
+        # Plot limits (collections do not autoscale)
+        margin = 0.1 * size 
+        ax.set_xlim(pos[:, 0].min() - margin, pos[:, 0].max() + margin)
+        ax.set_ylim(pos[:, 1].min() - margin, pos[:, 1].max() + margin)
+        ax.set_aspect("equal", adjustable="box")
+
         if title:
             ax.set_title(title)
 
-        ax.set_aspect("equal", adjustable="box")
+        
         if not axes:
             ax.set_axis_off()
 
