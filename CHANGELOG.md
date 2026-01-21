@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changes 
+- Accelerate assembly by precomputing sparsity pattern. This accelerates iterative applications (property_fields.ipynb example, bracket topology example, etc.) by roughly 30%.
+- Ensure that all tensors are on CPU before plotting.
+
 ## Version 0.5.1 - January 14 2026 
 
 ### Added 
