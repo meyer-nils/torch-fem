@@ -39,6 +39,24 @@ class FEM(ABC):
         )
         self.idx = idx.reshape(self.n_elem, -1).to(torch.int32)
 
+        # Precompute global index mapping for sparse matrix assembly
+        n = self.idx.shape[1]
+        cols = self.idx.unsqueeze(1).expand(self.n_elem, n, -1).ravel().to(torch.int64)
+        rows = self.idx.unsqueeze(-1).expand(self.n_elem, -1, n).ravel().to(torch.int64)
+        diag = torch.arange(self.n_dofs, dtype=torch.int64)
+        packed = torch.cat([(rows << 32) | cols, (diag << 32) | diag])
+        self.glob_idx_packed, inverse = torch.unique(packed, return_inverse=True)
+        inverse = inverse.to(torch.int32)
+        self.glob_idx = torch.stack(
+            [
+                torch.div(self.glob_idx_packed, 2**32, rounding_mode="floor"),
+                self.glob_idx_packed % 2**32,
+            ]
+        ).to(torch.int32)
+        m = rows.numel()
+        self.k_map = inverse[:m]
+        self.diag_map = inverse[m:]
+
         # Vectorize material
         if material.is_vectorized:
             self.material = material
@@ -187,37 +205,21 @@ class FEM(ABC):
     def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
         """Assemble global generalized stiffness matrix."""
 
-        # Initialize sparse matrix
-        size = (self.n_dofs, self.n_dofs)
-        K = torch.empty(size, layout=torch.sparse_coo)
+        # Fill in stiffness matrix values at appropriate indices
+        val = torch.zeros(self.glob_idx.shape[1])
+        val.index_add_(0, self.k_map, k.ravel())
 
-        # Build matrix in chunks to prevent excessive memory usage
-        chunks = 4
-        for idx, k_chunk in zip(torch.chunk(self.idx, chunks), torch.chunk(k, chunks)):
-            # Ravel indices and values
-            chunk_size = idx.shape[0]
-            col = idx.unsqueeze(1).expand(chunk_size, self.idx.shape[1], -1).ravel()
-            row = idx.unsqueeze(-1).expand(chunk_size, -1, self.idx.shape[1]).ravel()
-            indices = torch.stack([row, col], dim=0)
-            values = k_chunk.ravel()
+        # Apply Dirichlet boundary conditions
+        row_con = torch.isin(self.glob_idx[0], con)
+        col_con = torch.isin(self.glob_idx[1], con)
+        val[row_con | col_con] = 0.0
+        val[self.diag_map[con]] = 1.0
 
-            # Eliminate and replace constrained dofs
-            ci = torch.isin(idx, con)
-            mask_col = ci.unsqueeze(1).expand(chunk_size, self.idx.shape[1], -1).ravel()
-            mask_row = (
-                ci.unsqueeze(-1).expand(chunk_size, -1, self.idx.shape[1]).ravel()
-            )
-            mask = ~(mask_col | mask_row)
-            diag_index = torch.stack((con, con), dim=0)
-            diag_value = torch.ones_like(con, dtype=k.dtype)
-
-            # Concatenate
-            indices = torch.cat((indices[:, mask], diag_index), dim=1)
-            values = torch.cat((values[mask], diag_value), dim=0)
-
-            K += torch.sparse_coo_tensor(indices, values, size=size).coalesce()
-
-        return K.coalesce()
+        # Create sparse global stiffness matrix
+        K = torch.sparse_coo_tensor(
+            self.glob_idx, val, size=(self.n_dofs, self.n_dofs), is_coalesced=True
+        )
+        return K
 
     def assemble_rhs(self, f: Tensor) -> Tensor:
         """Assemble global right hand side vector."""
