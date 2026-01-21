@@ -399,11 +399,11 @@ class Shell(Mechanics):
 
         # VTK element list
         elements = []
-        for element in self.elements:
+        for element in self.elements.cpu().numpy():
             elements += [len(element), *element]
 
         # Deformed node positions
-        pos = self.nodes + u
+        pos = (self.nodes + u).cpu().numpy()
 
         # Create unstructured mesh
         mesh = pyvista.PolyData(pos.tolist(), elements)
@@ -424,7 +424,7 @@ class Shell(Mechanics):
             count = np.zeros((len(self.nodes)))
             for i, face in enumerate(mesh.faces.reshape(-1, 4)):
                 idx = face[1::]
-                nodal_thickness[idx] += self.thickness[i].item()
+                nodal_thickness[idx] += self.thickness[i].cpu().item()
                 count[idx] += 1
             nodal_thickness /= count
 
