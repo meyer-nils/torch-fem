@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   convert:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
@@ -29,20 +29,38 @@ jobs:
           sudo apt install -y libgl1-mesa-glx xvfb
           Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 &
 
-      - name: Run nbconvert
+      - name: Install torch-fem and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install jupyter nbconvert
+          python -m pip install .
+
+      - name: Convert planar notebooks to HTML
+        run: |
+          jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/planar/ examples/basic/planar/*.ipynb
+          jupyter nbconvert --to HTML --output-dir doc/examples/optimization/planar/ examples/optimization/planar/*.ipynb
+
+      - name: Convert truss notebooks to HTML
         env:
           DISPLAY: ":99"
         run: |
           echo "DISPLAY variable: $DISPLAY"
-          python -m pip install --upgrade pip
-          python -m pip install jupyter nbconvert
-          python -m pip install .
-          jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/planar/ examples/basic/planar/*.ipynb
-          jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/solid/ examples/basic/solid/*.ipynb
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/truss/ examples/basic/truss/*.ipynb
+          jupyter nbconvert --to HTML --output-dir doc/examples/optimization/truss/ examples/optimization/truss/*.ipynb
+
+      - name: Convert shell notebooks to HTML
+        env:
+          DISPLAY: ":99"
+        run: |
+          echo "DISPLAY variable: $DISPLAY"
           jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/shell/ examples/basic/shell/*.ipynb
-          jupyter nbconvert --to HTML --execute --output-dir doc/examples/optimization/planar/ examples/optimization/planar/*.ipynb
-          jupyter nbconvert --to HTML --execute --output-dir doc/examples/optimization/truss/ examples/optimization/truss/*.ipynb
+
+      - name: Convert solid notebooks to HTML
+        env:
+          DISPLAY: ":99"
+        run: |
+          echo "DISPLAY variable: $DISPLAY"
+          jupyter nbconvert --to HTML --execute --output-dir doc/examples/basic/solid/ examples/basic/solid/*.ipynb
           
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
