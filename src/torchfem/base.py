@@ -45,15 +45,15 @@ class FEM(ABC):
         rows = self.idx.unsqueeze(-1).expand(self.n_elem, -1, n).ravel()
         diag = torch.arange(self.n_dofs, dtype=torch.int64)
         packed = torch.cat([(rows << 32) | cols, (diag << 32) | diag])
-        self.glob_idx_packed, inverse = torch.unique(packed, return_inverse=True)
-        self.idx = self.idx.to(torch.int32)
-        inverse = inverse.to(torch.int32)
+        glob_idx_packed, inverse = torch.unique(packed, return_inverse=True)
         self.glob_idx = torch.stack(
             [
-                torch.div(self.glob_idx_packed, 2**32, rounding_mode="floor"),
-                self.glob_idx_packed % 2**32,
+                torch.div(glob_idx_packed, 2**32, rounding_mode="floor"),
+                glob_idx_packed % 2**32,
             ]
         ).to(torch.int32)
+        self.idx = self.idx.to(torch.int32)
+        inverse = inverse.to(torch.int32)
         m = rows.numel()
         self.k_map = inverse[:m]
         self.diag_map = inverse[m:]
