@@ -42,19 +42,19 @@ if __name__ == "__main__":
 
     torch.set_default_device(args.device)
 
+    # Start timing
+    snapshots = []
+    print(f"START:{time.time()}")
+
+    # Setup
     box = get_cube(args.N, args.order)
     dofs = box.n_dofs
+    print(f"SETUP_DONE:{time.time()}")
 
     # Forward pass
-    start_time = time.time()
     u, f, sigma, epsilon, state = box.solve()
-    end_time = time.time()
-    fwd_t = end_time - start_time
+    print(f"FWD_DONE:{time.time()}")
 
     # Backward pass
-    start_time = time.time()
     u.sum().backward(retain_graph=True)
-    end_time = time.time()
-    bwd_t = end_time - start_time
-
-    print(f"| {args.N:3d} | {dofs:8d} | {fwd_t:8.2f}s | {bwd_t:8.2f}s |")
+    print(f"BWD_DONE:{time.time()}")
