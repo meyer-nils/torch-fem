@@ -20,7 +20,7 @@ def export_mesh(
     filename: str | PathLike,
     nodal_data: Dict[str, Tensor] = {},
     elem_data: Dict[str, List[Tensor]] = {},
-    compress: bool = True
+    compress: bool = True,
 ):
     etype = mesh.etype.meshio_type
 
@@ -42,6 +42,7 @@ def export_mesh(
         if compress:
             write_kwargs["compression_opts"] = 4
     msh.write(filename, **write_kwargs)
+
 
 def import_mesh(
     filename: PathLike, material: Material, thickness: float = 1.0
@@ -74,5 +75,9 @@ def import_mesh(
         else:
             raise Exception(f"Cannot interpret element type {etype}.")
     else:
-        nodes = torch.from_numpy(mesh.points.astype(np.float32)[:, 0:2]).type(dtype).to(device)
+        nodes = (
+            torch.from_numpy(mesh.points.astype(np.float32)[:, 0:2])
+            .type(dtype)
+            .to(device)
+        )
         return Planar(nodes, elements, material, thickness=thickness)
