@@ -1,4 +1,5 @@
 from os import PathLike
+from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
@@ -19,6 +20,7 @@ def export_mesh(
     filename: str | PathLike,
     nodal_data: Dict[str, Tensor] = {},
     elem_data: Dict[str, List[Tensor]] = {},
+    compress: bool = True
 ):
     etype = mesh.etype.meshio_type
 
@@ -31,8 +33,15 @@ def export_mesh(
             for key, tensor_list in elem_data.items()
         },
     )
-    msh.write(filename)
-
+    suffix = Path(str(filename)).suffix.lower()
+    write_kwargs = {}
+    if suffix in {".vtu"}:
+        write_kwargs["compression"] = "zlib" if compress else None
+    elif suffix in {".xdmf", ".xmf"}:
+        write_kwargs["compression"] = "gzip" if compress else None
+        if compress:
+            write_kwargs["compression_opts"] = 4
+    msh.write(filename, **write_kwargs)
 
 def import_mesh(
     filename: PathLike, material: Material, thickness: float = 1.0
