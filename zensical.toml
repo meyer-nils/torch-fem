@@ -11,11 +11,17 @@ edit_uri = "edit/main/docs"
 nav = [
   { "About" = "index.md" },
   { "Installation" = "installation.md" },
+  { "Getting Started" = "getting_started.md" },
   { "API Reference" = [
     { "Overview" = "api/index.md" },
     { "Base" = "api/base.md" },
     { "Materials" = "api/materials.md" },
   ] },
+]
+
+extra_javascript = [
+    "javascripts/mathjax.js",
+    "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"
 ]
 
 [project.theme]
