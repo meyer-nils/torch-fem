@@ -24,3 +24,6 @@ dist
 !src/torchfem/data/*.vtu
 *.inp
 !src/torchfem/data/*.inp
+
+# Documentation
+site

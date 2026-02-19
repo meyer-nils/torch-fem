@@ -1,0 +1,68 @@
+[project]
+site_name = "torch-fem"
+site_description = "The documentation for the torch-fem Python package."
+site_author = "Nils Meyer"
+site_url = "https://meyer-nils.github.io/torch-fem"
+
+repo_url = "https://github.com/meyer-nils/torch-fem"
+repo_name = "GitHub"
+edit_uri = "edit/main/docs"
+
+nav = [
+  { "About" = "index.md" },
+  { "Installation" = "installation.md" },
+  { "API Reference" = [
+    { "Overview" = "api/index.md" },
+    { "Base" = "api/base.md" },
+    { "Materials" = "api/materials.md" },
+  ] },
+]
+
+[project.theme]
+language = "en"
+logo = "images/logo.png"
+
+
+features = [
+    "announce.dismiss",
+    #"content.action.edit",
+    #"content.action.view",
+    "content.code.annotate",
+    "content.code.copy",
+    "content.code.select",
+    "content.footnote.tooltips",
+    "content.tabs.link",
+    "content.tooltips",
+    "navigation.footer",
+    "navigation.indexes",
+    "navigation.instant",
+    "navigation.instant.prefetch",
+    "navigation.path",
+    "navigation.top",
+    "navigation.tracking",
+    "search.highlight",
+]
+
+[[project.theme.palette]]
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[project.plugins.mkdocstrings.handlers.python]
+inventories = ["https://docs.python.org/3/objects.inv"]
+paths = ["src"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+inherited_members = true
+show_source = false
+
+[project.plugins.jupyter]
+src = "examples"
+dest = "examples"
+execute = true
