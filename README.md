@@ -56,9 +56,9 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
 <table>
     <tbody>
         <tr>
-            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/gyroid.html"><img src="https://meyer-nils.github.io/torch-fem/gyroid.png"></a></td>
-            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/cubes.html"><img src="https://meyer-nils.github.io/torch-fem/cubes.png"></a></td>
-            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/cantilever.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_tria2.png"></a></td>
+            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/gyroid.html"><img src="https://meyer-nils.github.io/torch-fem/images/gyroid.png"></a></td>
+            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/cubes.html"><img src="https://meyer-nils.github.io/torch-fem/images/cubes.png"></a></td>
+            <td style="width: 30%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/cantilever.html"><img src="https://meyer-nils.github.io/torch-fem/images/cantilever_tria2.png"></a></td>
         </tr>
         <tr>
             <td align="center"><b>Gyroid:</b> Support for voxel meshes and implicit surfaces.</td>
@@ -66,13 +66,13 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
             <td align="center"><b>Planar cantilever beams:</b> There are several examples with different element types rendered in matplotlib.</td>
         </tr>
         <tr>
-            <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/plate_hole_plasticity.png"></a></td>
+            <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity.png"></a></td>
         </tr>
         <tr>
             <td colspan="3" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
         </tr>
         <tr>
-            <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><img src="https://meyer-nils.github.io/torch-fem/cantilever_finite_strain.png"></a></td>
+            <td colspan="3"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><img src="https://meyer-nils.github.io/torch-fem/images/cantilever_finite_strain.png"></a></td>
         </tr>
         <tr>
             <td colspan="3" align="center"><b>Finite strain cantilever:</b> Hyperelastic model in Total Lagrangian Formulation.</td>
@@ -86,24 +86,24 @@ The subdirectory `examples->optimization` demonstrates the use of torch-fem for 
 <table>
     <tbody>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/truss/shape.html"><img src="https://meyer-nils.github.io/torch-fem/bridge.png"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/shape.html"><img src="https://meyer-nils.github.io/torch-fem/fillet_shape_optimization.png"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/truss/shape.html"><img src="https://meyer-nils.github.io/torch-fem/images/bridge.png"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/shape.html"><img src="https://meyer-nils.github.io/torch-fem/images/fillet_shape_optimization.png"></a></td>
         </tr>
         <tr>
             <td align="center"><b>Shape optimization of a truss:</b> The top nodes are moved and MMA + autograd is used to minimize the compliance.</td>
             <td align="center"><b>Shape optimization of a fillet:</b> The shape is morphed with shape basis vectors and MMA + autograd is used to minimize the maximum stress.</td>
         </tr>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology.html"><img src="https://meyer-nils.github.io/torch-fem/topopt_mbb.png"></a></td>
-            <td style="width: 50%;"><img src="https://meyer-nils.github.io/torch-fem/topopt_3d.png"></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology.html"><img src="https://meyer-nils.github.io/torch-fem/images/topopt_mbb.png"></a></td>
+            <td style="width: 50%;"><img src="https://meyer-nils.github.io/torch-fem/images/topopt_3d.png"></td>
         </tr>
         <tr>
             <td align="center"><b>Topology optimization of a MBB beam:</b> You can switch between analytical and autograd sensitivities.</td>
             <td align="center"><b>Topology optimization of a jet engine bracket:</b> The 3D model is exported to Paraview for visualization.</td>
         </tr>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology+orientation.html"><img src="https://meyer-nils.github.io/torch-fem/topo+ori.png"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/orientation.html"><img src="https://meyer-nils.github.io/torch-fem/plate_hole_shape_optimization.png"></a>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology+orientation.html"><img src="https://meyer-nils.github.io/torch-fem/images/topo+ori.png"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/orientation.html"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_shape_optimization.png"></a>
             </td>
         </tr>
         <tr>
@@ -111,7 +111,7 @@ The subdirectory `examples->optimization` demonstrates the use of torch-fem for 
             <td align="center"><b>Fiber orientation optimization of a plate with a hole</b> Compliance is minimized by optimizing the fiber orientation of an anisotropic material using automatic differentiation w.r.t. element-wise fiber angles.</td>
         </tr>
         <tr>
-            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology_thermal_static.html"><img src="https://meyer-nils.github.io/torch-fem/topology_thermal_static.png"></a></td>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology_thermal_static.html"><img src="https://meyer-nils.github.io/torch-fem/images/topology_thermal_static.png"></a></td>
         </tr>
         <tr>
             <td colspan="2" align="center"><b>Heat sink:</b> Thermal topology optimization</td>
@@ -151,7 +151,7 @@ cantilever.plot(node_markers="o", node_labels=True)
 ```
 This creates a minimal planar FEM model:
 
-![minimal](https://meyer-nils.github.io/torch-fem/minimal_example.png)
+![minimal](https://meyer-nils.github.io/torch-fem/images/minimal_example.png)
 
 ```python
 # Solve
@@ -162,7 +162,7 @@ cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 This solves the model and plots the result:
 
-![minimal](https://meyer-nils.github.io/torch-fem/minimal_example_solved.png)
+![minimal](https://meyer-nils.github.io/torch-fem/images/minimal_example_solved.png)
 
 If we want to compute gradients through the FEM model, we simply need to define the variables that require gradients. Automatic differentiation is performed through the entire FE solver.
 ```python 
