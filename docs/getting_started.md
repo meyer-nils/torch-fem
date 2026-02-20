@@ -156,42 +156,5 @@ sens = torch.autograd.grad(compliance, cantilever.thickness)[0]
 
 The result is a vector with two entries containing the sensitivity of compliance w.r.t. to each of those two elements. This mechanism generalizes to material parameters, loads, geometric variables, or any other differentiable model attribute.
 
-### Complete code 
-
-```py
-import torch
-from torchfem import Planar
-from torchfem.materials import IsotropicElasticityPlaneStress
-
-torch.set_default_dtype(torch.float64)
-
-# Nodes and elements
-nodes = torch.tensor([[0., 0.], [1., 0.], [2., 0.], [0., 1.], [1., 1.], [2., 1.]])
-elements = torch.tensor([[0, 1, 4, 3], [1, 2, 5, 4]])
-
-# Material
-material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
-
-# Create model
-cantilever = Planar(nodes, elements, material)
-
-# Load at tip [Node_ID, DOF]
-cantilever.forces[5, 1] = -1.0
-
-# Constrained displacement at left end [Node_IDs, DOFs]
-cantilever.constraints[[0, 3], :] = True
-
-# Solve
-u, f, σ, F, α = cantilever.solve()
-
-# Plot displacement magnitude on deformed state
-cantilever.plot(u, node_property=torch.norm(u, dim=1))
-
-# Enable automatic differentiation
-cantilever.thickness.requires_grad = True
-u, f, _, _, _ = cantilever.solve()
-
-# Compute sensitivity of compliance w.r.t. element thicknesses
-compliance = torch.inner(f.ravel(), u.ravel())
-torch.autograd.grad(compliance, cantilever.thickness)[0]
-```
+[View example on GitHub :fontawesome-brands-github:](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/planar/minimal.ipynb){ .md-button }
+[Open in Google Colab :fontawesome-brands-google-drive:](https://colab.research.google.com/github/meyer-nils/torch-fem/blob/main/examples/basic/planar/minimal.ipynb){ .md-button }
