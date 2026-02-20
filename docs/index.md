@@ -12,8 +12,4 @@ icon: lucide/binoculars
 - 🧱 Built-in material models from linear elasticity to finite-strain hyperelasticity  
 - 📈 GPU acceleration via PyTorch (and optional CuPy support)  
 - 🔁 Differentiable solvers enabling end-to-end gradient-based optimization  
-- 📓 Rich examples — from basic cantilevers to topology optimization notebooks
-
-!!! warning
-
-    The documentation is brand new and incomplete. For now, it is probably better to a look at all the examples in the repository to get started.
+- 📓 Rich examples - from basic cantilevers to topology optimization notebooks

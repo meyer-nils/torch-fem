@@ -12,10 +12,13 @@ nav = [
   { "About" = "index.md" },
   { "Installation" = "installation.md" },
   { "Getting Started" = "getting_started.md" },
-  { "API Reference" = [
-    { "Overview" = "api/index.md" },
-    { "Base" = "api/base.md" },
-    { "Materials" = "api/materials.md" },
+  { "Differentiability" = "differentiability.md" },
+  #{ "Theory" = "theory.md" },
+  { "Materials" = [
+    { "Base" = "materials/index.md" },
+    { "Isotropic Elasticity 3D" = "materials/isotropic_elasticity_3D.md" },
+    { "Isotropic Elasticity Plane Strain" = "materials/isotropic_elasticity_plane_strain.md" },
+    { "Isotropic Elasticity Plane Stress" = "materials/isotropic_elasticity_plane_stress.md" },
   ] },
 ]
 
