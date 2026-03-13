@@ -7,7 +7,7 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import CachedSolve, sparse_solve
+from .sparse import newton_solve, sparse_solve
 
 
 class FEM(ABC):
@@ -63,9 +63,6 @@ class FEM(ABC):
             self.material = material
         else:
             self.material = material.vectorize(self.n_elem)
-
-        # Cached solve for sparse linear systems
-        self.cached_solve = CachedSolve()
 
     @property
     @abstractmethod
@@ -236,6 +233,85 @@ class FEM(ABC):
 
         return F.index_add_(0, indices, values)
 
+    def _collect_differentiable_tensors(self) -> tuple[Tensor, ...]:
+        """Collect unique tensors that require gradients from the model state."""
+
+        parameters: list[Tensor] = []
+        seen_objects: set[int] = set()
+        seen_tensors: set[int] = set()
+
+        def visit(value):
+            if isinstance(value, torch.Tensor):
+                tensor_id = id(value)
+                if value.requires_grad and tensor_id not in seen_tensors:
+                    seen_tensors.add(tensor_id)
+                    parameters.append(value)
+                return
+
+            if isinstance(value, (str, bytes, int, float, bool, type(None))):
+                return
+
+            object_id = id(value)
+            if object_id in seen_objects:
+                return
+            seen_objects.add(object_id)
+
+            if isinstance(value, dict):
+                for item in value.values():
+                    visit(item)
+                return
+
+            if isinstance(value, (list, tuple, set)):
+                for item in value:
+                    visit(item)
+                return
+
+            if hasattr(value, "__dict__"):
+                for item in vars(value).values():
+                    visit(item)
+
+        visit(self)
+
+        candidate_grad_fns = {
+            id(tensor.grad_fn): tensor
+            for tensor in parameters
+            if tensor.grad_fn is not None
+        }
+
+        def depends_on_other_parameter(tensor: Tensor) -> bool:
+            grad_fn = tensor.grad_fn
+            if grad_fn is None:
+                return False
+
+            target_grad_fns = dict(candidate_grad_fns)
+            target_grad_fns.pop(id(grad_fn), None)
+            if not target_grad_fns:
+                return False
+
+            stack = [grad_fn]
+            visited_grad_fns: set[int] = set()
+
+            while stack:
+                current = stack.pop()
+                current_id = id(current)
+                if current_id in visited_grad_fns:
+                    continue
+                visited_grad_fns.add(current_id)
+
+                for next_fn, _ in current.next_functions:
+                    if next_fn is None:
+                        continue
+                    if id(next_fn) in target_grad_fns:
+                        return True
+                    stack.append(next_fn)
+
+            return False
+
+        independent_parameters = tuple(
+            tensor for tensor in parameters if not depends_on_other_parameter(tensor)
+        )
+        return independent_parameters
+
     def solve(
         self,
         increments: Tensor = torch.tensor([0.0, 1.0]),
@@ -248,7 +324,6 @@ class FEM(ABC):
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
-        use_cached_solve: bool = False,
         nlgeom: bool = False,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method.
@@ -264,7 +339,6 @@ class FEM(ABC):
             device (str): Device to run the linear solve on.
             return_intermediate (bool): Return intermediate values if True.
             aggregate_integration_points (bool): Aggregate integration points if True.
-            use_cached_solve (bool): Use cached solve, e.g. in topology optimization.
             nlgeom (bool): Use nonlinear geometry if True.
 
         Returns:
@@ -304,6 +378,9 @@ class FEM(ABC):
 
         # Incremental loading
         for n in range(1, N):
+            if verbose:
+                print(f"Starting increment {n} ...")
+
             # Increment size
             inc = increments[n] - increments[n - 1]
 
@@ -312,13 +389,15 @@ class FEM(ABC):
             DU = inc * self._dirichlet.clone().ravel()
             de0 = inc * self._external_gradient
 
-            # Newton-Raphson iterations
-            for i in range(max_iter):
-                du[con] = DU[con]
+            # Residual for Newton-Raphson iterations
+            def eval_residual(du, i):
+                # Enforce Dirichlet BCs on increment
+                du_bc = du.clone()
+                du_bc[con] = DU[con]
 
                 # Element-wise integration
                 k, f_i = self.integrate_material(
-                    u, grad, flux, state, n, i, du, de0, nlgeom
+                    u, grad, flux, state, n, i, du_bc, de0, nlgeom
                 )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
@@ -327,72 +406,53 @@ class FEM(ABC):
                 F_int = self.assemble_rhs(f_i)
 
                 # Compute residual
-                residual = F_int - F_ext
-                residual[con] = 0.0
-                res_norm = torch.linalg.norm(residual)
+                res = F_int - F_ext
+                res[con] = 0.0
 
-                # Save initial residual
-                if i == 0:
-                    res_norm0 = res_norm
+                return res, self.K, F_int
 
-                # Print iteration information
-                if verbose:
-                    print(
-                        f"Increment {n} | Iteration {i + 1} | Residual: {res_norm:.5e}"
-                    )
-
-                # Check convergence
-                if res_norm < rtol * res_norm0 or res_norm < atol:
-                    break
-
-                if torch.isnan(res_norm) or torch.isinf(res_norm):
-                    raise Exception("Newton-Raphson iteration did not converge")
-
-                # Use cached solve from previous iteration if available
-                if i == 0 and use_cached_solve:
-                    cached_solve = self.cached_solve
-                else:
-                    cached_solve = CachedSolve()
-
-                # Only update cache on first iteration
-                update_cache = i == 0
-
-                # Solve for displacement increment
-                du -= sparse_solve(
-                    self.K,
-                    residual,
-                    B,
-                    stol,
-                    device,
-                    method,
-                    None,
-                    cached_solve,
-                    update_cache,
-                )
-
-            if res_norm > rtol * res_norm0 and res_norm > atol:
-                raise Exception("Newton-Raphson iteration did not converge.")
+            # Solve for increment using Newton-Raphson method
+            parameters = self._collect_differentiable_tensors()
+            du, F_int = newton_solve(
+                eval_residual,
+                du,
+                B,
+                max_iter,
+                rtol,
+                atol,
+                stol,
+                verbose,
+                method,
+                device,
+                *parameters,
+            )
 
             # Update increment
+            du[con] = DU[con]
             f[n] = F_int.reshape((-1, self.n_dof_per_node))
             u[n] = u[n - 1] + du.reshape((-1, self.n_dof_per_node))
 
+        # Create output views without mutating tensors captured by eval_residual.
+        out_flux = flux
+        out_grad = grad
+        out_state = state
+
         # Aggregate integration points as mean
         if aggregate_integration_points:
-            grad = grad.mean(dim=1)
-            flux = flux.mean(dim=1)
-            state = state.mean(dim=1)
+            out_grad = out_grad.mean(dim=1)
+            out_flux = out_flux.mean(dim=1)
+            out_state = out_state.mean(dim=1)
 
         # Squeeze outputs
-        flux = flux.squeeze()
-        grad = grad.squeeze()
+        out_flux = out_flux.squeeze()
+        out_grad = out_grad.squeeze()
 
         if return_intermediate:
             # Return all intermediate values
-            return u, f, flux, grad, state
+            return u, f, out_flux, out_grad, out_state
         else:
             # Return only the final values
-            return u[-1], f[-1], flux[-1], grad[-1], state[-1]
+            return u[-1], f[-1], out_flux[-1], out_grad[-1], out_state[-1]
 
 
 class Mechanics(FEM, ABC):
@@ -672,7 +732,6 @@ class Heat(FEM, ABC):
         rtol: float = 1e-8,
         atol: float = 1e-6,
         stol: float = 1e-10,
-        use_cached_solve: bool = False,
         device: str | None = None,
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         aggregate_integration_points: bool = True,
@@ -806,14 +865,7 @@ class Heat(FEM, ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
-                # Use cached solve from previous iteration if available
-                if it == 0 and use_cached_solve:
-                    cached_solve = self.cached_solve
-                else:
-                    cached_solve = CachedSolve()
-                # only update cache on first iteration
-                update_cache = it == 0
-                du = sparse_solve(
+                du, _ = sparse_solve(
                     self.M + 0.5 * dt_n * self.K,
                     -residual,
                     B,
@@ -821,8 +873,6 @@ class Heat(FEM, ABC):
                     device,
                     method,
                     None,
-                    cached_solve,
-                    update_cache,
                 )
 
                 u_guess += du.reshape((-1, self.n_dof_per_node))
