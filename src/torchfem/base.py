@@ -349,6 +349,9 @@ class FEM(ABC):
         # Number of increments
         N = len(increments)
 
+        # Determine differentiable model tensors once per solve call.
+        differentiable_parameters = self._collect_differentiable_tensors()
+
         # Null space rigid body modes for AMG preconditioner
         B = self.compute_B()
 
@@ -416,7 +419,6 @@ class FEM(ABC):
                 return res, self.K
 
             # Solve for increment using Newton-Raphson method
-            parameters = self._collect_differentiable_tensors()
             du = newton_solve(
                 eval_residual,
                 du,
@@ -428,7 +430,7 @@ class FEM(ABC):
                 verbose,
                 method,
                 device,
-                *parameters,
+                *differentiable_parameters,
             )
 
             # Evaluate converged state
@@ -458,6 +460,13 @@ class FEM(ABC):
         # Squeeze outputs
         out_flux = out_flux.squeeze()
         out_grad = out_grad.squeeze()
+
+        # In pure forward evaluations, detach output fields
+        # (gradients may come from hyperelasticity)
+        if not differentiable_parameters:
+            out_flux = out_flux.detach()
+            out_grad = out_grad.detach()
+            out_state = out_state.detach()
 
         if return_intermediate:
             # Return all intermediate values
