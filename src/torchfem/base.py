@@ -395,9 +395,13 @@ class FEM(ABC):
                 du_bc = du.clone()
                 du_bc[con] = DU[con]
 
+                grad_local = grad.detach().clone()
+                flux_local = flux.detach().clone()
+                state_local = state.detach().clone()
+
                 # Element-wise integration
                 k, f_i = self.integrate_material(
-                    u, grad, flux, state, n, i, du_bc, de0, nlgeom
+                    u, grad_local, flux_local, state_local, n, i, du_bc, de0, nlgeom
                 )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
@@ -409,11 +413,11 @@ class FEM(ABC):
                 res = F_int - F_ext
                 res[con] = 0.0
 
-                return res, self.K, F_int
+                return res, self.K
 
             # Solve for increment using Newton-Raphson method
             parameters = self._collect_differentiable_tensors()
-            du, F_int = newton_solve(
+            du = newton_solve(
                 eval_residual,
                 du,
                 B,
@@ -427,10 +431,18 @@ class FEM(ABC):
                 *parameters,
             )
 
+            # Evaluate converged state
+            du_eval = du.clone()
+            du_eval[con] = DU[con]
+            _, f_i = self.integrate_material(
+                u, grad, flux, state, n, max_iter, du_eval, de0, nlgeom
+            )
+            F_int = self.assemble_rhs(f_i)
+
             # Update increment
-            du[con] = DU[con]
             f[n] = F_int.reshape((-1, self.n_dof_per_node))
-            u[n] = u[n - 1] + du.reshape((-1, self.n_dof_per_node))
+            u[n] = u[n - 1] + du_eval.reshape((-1, self.n_dof_per_node))
+            du = du_eval
 
         # Create output views without mutating tensors captured by eval_residual.
         out_flux = flux

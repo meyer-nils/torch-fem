@@ -50,14 +50,14 @@ class NewtonRaphsonAdjoint(Function):
         method: str | None = None,
         device: str | None = None,
         *parameters: Tensor,
-    ) -> Tuple[Tensor, LinearOperator | None]:
+    ) -> Tensor:
         M = None
 
         # Newton-Raphson iterations
         for i in range(max_iter):
 
             # Evaluate residual, stiffness matrix, and internal forces
-            residual, K, F_int = eval_residual(du, i)
+            residual, K = eval_residual(du, i)
 
             # Compute residual norm
             res_norm = torch.linalg.norm(residual)
@@ -94,15 +94,11 @@ class NewtonRaphsonAdjoint(Function):
         ctx.eval_residual = eval_residual
         ctx.n_parameters = len(parameters)
 
-        return du, F_int
+        return du
 
     @staticmethod
     def backward(ctx, *grad_outputs):
-        grad_du, _ = grad_outputs
-        if grad_du is None:
-            return (None, None, None, None, None, None, None, None, None, None) + (
-                None,
-            ) * ctx.n_parameters
+        grad_du = grad_outputs[0]
 
         K, du, *parameters = ctx.saved_tensors
 
@@ -127,7 +123,7 @@ class NewtonRaphsonAdjoint(Function):
         # Recompute the residual with a differentiable local state.
         du_local = du.detach().requires_grad_(True)
         with torch.enable_grad():
-            residual, _, _ = eval_residual(du_local, 0)
+            residual, _ = eval_residual(du_local, 0)
 
         grad_inputs = (du_local, *parameters)
         grads = torch.autograd.grad(
@@ -167,8 +163,8 @@ def newton_solve(
     method: str | None = None,
     device: str | None = None,
     *parameters: Tensor,
-) -> Tuple[Tensor, Tensor]:
-    du, F_int = NewtonRaphsonAdjoint.apply(
+) -> Tensor:
+    du = NewtonRaphsonAdjoint.apply(
         eval_residual,
         du,
         B,
@@ -183,7 +179,7 @@ def newton_solve(
     )  # type: ignore
     if du is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
-    return du, F_int
+    return du
 
 
 def sparse_solve(
