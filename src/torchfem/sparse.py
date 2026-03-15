@@ -218,9 +218,7 @@ class _DifferentiableSolve(Function):
         indices = A._indices()
         row, col = indices[0], indices[1]
         val = -gradb[row] * x[col]
-        gradA = torch.sparse_coo_tensor(
-            indices, val, A.shape, is_coalesced=True
-        )
+        gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
 
         return gradA, gradb, None, None, None, None
 
