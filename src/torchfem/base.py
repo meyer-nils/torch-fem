@@ -243,7 +243,11 @@ class FEM(ABC):
         def visit(value):
             if isinstance(value, torch.Tensor):
                 tensor_id = id(value)
-                if value.requires_grad and tensor_id not in seen_tensors:
+                if (
+                    value.requires_grad
+                    and value.is_leaf
+                    and tensor_id not in seen_tensors
+                ):
                     seen_tensors.add(tensor_id)
                     parameters.append(value)
                 return
@@ -312,6 +316,41 @@ class FEM(ABC):
         )
         return independent_parameters
 
+    def _has_differentiable_dependency(self) -> bool:
+        """Return True if any tensor in the model state participates in autodiff."""
+
+        seen_objects: set[int] = set()
+        seen_tensors: set[int] = set()
+
+        def visit(value) -> bool:
+            if isinstance(value, torch.Tensor):
+                tensor_id = id(value)
+                if tensor_id in seen_tensors:
+                    return False
+                seen_tensors.add(tensor_id)
+                return bool(value.requires_grad)
+
+            if isinstance(value, (str, bytes, int, float, bool, type(None))):
+                return False
+
+            object_id = id(value)
+            if object_id in seen_objects:
+                return False
+            seen_objects.add(object_id)
+
+            if isinstance(value, dict):
+                return any(visit(item) for item in value.values())
+
+            if isinstance(value, (list, tuple, set)):
+                return any(visit(item) for item in value)
+
+            if hasattr(value, "__dict__"):
+                return any(visit(item) for item in vars(value).values())
+
+            return False
+
+        return visit(self)
+
     def solve(
         self,
         increments: Tensor = torch.tensor([0.0, 1.0]),
@@ -351,6 +390,7 @@ class FEM(ABC):
 
         # Determine differentiable model tensors once per solve call.
         differentiable_parameters = self._collect_differentiable_tensors()
+        has_differentiable_dependency = self._has_differentiable_dependency()
 
         # Null space rigid body modes for AMG preconditioner
         B = self.compute_B()
@@ -463,7 +503,7 @@ class FEM(ABC):
 
         # In pure forward evaluations, detach output fields
         # (gradients may come from hyperelasticity)
-        if not differentiable_parameters:
+        if not has_differentiable_dependency:
             out_flux = out_flux.detach()
             out_grad = out_grad.detach()
             out_state = out_state.detach()
