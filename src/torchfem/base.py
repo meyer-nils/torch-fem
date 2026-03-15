@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from functools import cached_property
 from typing import Literal, Tuple
 
@@ -233,124 +234,6 @@ class FEM(ABC):
 
         return F.index_add_(0, indices, values)
 
-    def _collect_differentiable_tensors(self) -> tuple[Tensor, ...]:
-        """Collect unique tensors that require gradients from the model state."""
-
-        parameters: list[Tensor] = []
-        seen_objects: set[int] = set()
-        seen_tensors: set[int] = set()
-
-        def visit(value):
-            if isinstance(value, torch.Tensor):
-                tensor_id = id(value)
-                if (
-                    value.requires_grad
-                    and value.is_leaf
-                    and tensor_id not in seen_tensors
-                ):
-                    seen_tensors.add(tensor_id)
-                    parameters.append(value)
-                return
-
-            if isinstance(value, (str, bytes, int, float, bool, type(None))):
-                return
-
-            object_id = id(value)
-            if object_id in seen_objects:
-                return
-            seen_objects.add(object_id)
-
-            if isinstance(value, dict):
-                for item in value.values():
-                    visit(item)
-                return
-
-            if isinstance(value, (list, tuple, set)):
-                for item in value:
-                    visit(item)
-                return
-
-            if hasattr(value, "__dict__"):
-                for item in vars(value).values():
-                    visit(item)
-
-        visit(self)
-
-        candidate_grad_fns = {
-            id(tensor.grad_fn): tensor
-            for tensor in parameters
-            if tensor.grad_fn is not None
-        }
-
-        def depends_on_other_parameter(tensor: Tensor) -> bool:
-            grad_fn = tensor.grad_fn
-            if grad_fn is None:
-                return False
-
-            target_grad_fns = dict(candidate_grad_fns)
-            target_grad_fns.pop(id(grad_fn), None)
-            if not target_grad_fns:
-                return False
-
-            stack = [grad_fn]
-            visited_grad_fns: set[int] = set()
-
-            while stack:
-                current = stack.pop()
-                current_id = id(current)
-                if current_id in visited_grad_fns:
-                    continue
-                visited_grad_fns.add(current_id)
-
-                for next_fn, _ in current.next_functions:
-                    if next_fn is None:
-                        continue
-                    if id(next_fn) in target_grad_fns:
-                        return True
-                    stack.append(next_fn)
-
-            return False
-
-        independent_parameters = tuple(
-            tensor for tensor in parameters if not depends_on_other_parameter(tensor)
-        )
-        return independent_parameters
-
-    def _has_differentiable_dependency(self) -> bool:
-        """Return True if any tensor in the model state participates in autodiff."""
-
-        seen_objects: set[int] = set()
-        seen_tensors: set[int] = set()
-
-        def visit(value) -> bool:
-            if isinstance(value, torch.Tensor):
-                tensor_id = id(value)
-                if tensor_id in seen_tensors:
-                    return False
-                seen_tensors.add(tensor_id)
-                return bool(value.requires_grad)
-
-            if isinstance(value, (str, bytes, int, float, bool, type(None))):
-                return False
-
-            object_id = id(value)
-            if object_id in seen_objects:
-                return False
-            seen_objects.add(object_id)
-
-            if isinstance(value, dict):
-                return any(visit(item) for item in value.values())
-
-            if isinstance(value, (list, tuple, set)):
-                return any(visit(item) for item in value)
-
-            if hasattr(value, "__dict__"):
-                return any(visit(item) for item in vars(value).values())
-
-            return False
-
-        return visit(self)
-
     def solve(
         self,
         increments: Tensor = torch.tensor([0.0, 1.0]),
@@ -364,6 +247,7 @@ class FEM(ABC):
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
         nlgeom: bool = False,
+        differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the FEM problem with the Newton-Raphson method.
 
@@ -379,6 +263,8 @@ class FEM(ABC):
             return_intermediate (bool): Return intermediate values if True.
             aggregate_integration_points (bool): Aggregate integration points if True.
             nlgeom (bool): Use nonlinear geometry if True.
+            differentiable_parameters: Explicit parameter(s) to differentiate
+                through the linear solves.
 
         Returns:
                 Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]: Final displacements,
@@ -388,9 +274,17 @@ class FEM(ABC):
         # Number of increments
         N = len(increments)
 
-        # Determine differentiable model tensors once per solve call.
-        differentiable_parameters = self._collect_differentiable_tensors()
-        has_differentiable_dependency = self._has_differentiable_dependency()
+        # Determine differentiable dependencies for this solve call.
+        if differentiable_parameters is None:
+            differentiable_parameters = tuple()
+        elif isinstance(differentiable_parameters, torch.Tensor):
+            differentiable_parameters = (differentiable_parameters,)
+        else:
+            differentiable_parameters = tuple(differentiable_parameters)
+
+        has_differentiable_dependency = any(
+            param.requires_grad for param in differentiable_parameters
+        )
 
         # Null space rigid body modes for AMG preconditioner
         B = self.compute_B()
@@ -438,13 +332,22 @@ class FEM(ABC):
                 du_bc = du.clone()
                 du_bc[con] = DU[con]
 
+                u_local = u.detach()
                 grad_local = grad.detach().clone()
                 flux_local = flux.detach().clone()
                 state_local = state.detach().clone()
 
                 # Element-wise integration
                 k, f_i = self.integrate_material(
-                    u, grad_local, flux_local, state_local, n, i, du_bc, de0, nlgeom
+                    u_local,
+                    grad_local,
+                    flux_local,
+                    state_local,
+                    n,
+                    i,
+                    du_bc,
+                    de0,
+                    nlgeom,
                 )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
@@ -797,9 +700,17 @@ class Heat(FEM, ABC):
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         aggregate_integration_points: bool = True,
         return_intermediate: bool = False,
+        differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         # in heat transfer there is no geometric nonlinearity
         nlgeom = False
+
+        if differentiable_parameters is None:
+            differentiable_parameters = tuple()
+        elif isinstance(differentiable_parameters, torch.Tensor):
+            differentiable_parameters = (differentiable_parameters,)
+        else:
+            differentiable_parameters = tuple(differentiable_parameters)
 
         # initial step: we get heat fluxes and temperature gradients for initial
         # conditions enforce initial conditions as boundary conditions
@@ -809,7 +720,8 @@ class Heat(FEM, ABC):
 
         # solve for initial conditions
         temp_eq, reaction_flux, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
-            aggregate_integration_points=False
+            aggregate_integration_points=False,
+            differentiable_parameters=differentiable_parameters,
         )
 
         # assemble time_steps for evaluation
