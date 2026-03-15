@@ -8,7 +8,7 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import newton_solve, sparse_solve
+from .sparse import differentiable_sparse_solve, newton_solve
 
 
 class FEM(ABC):
@@ -705,13 +705,6 @@ class Heat(FEM, ABC):
         # in heat transfer there is no geometric nonlinearity
         nlgeom = False
 
-        if differentiable_parameters is None:
-            differentiable_parameters = tuple()
-        elif isinstance(differentiable_parameters, torch.Tensor):
-            differentiable_parameters = (differentiable_parameters,)
-        else:
-            differentiable_parameters = tuple(differentiable_parameters)
-
         # initial step: we get heat fluxes and temperature gradients for initial
         # conditions enforce initial conditions as boundary conditions
 
@@ -838,20 +831,16 @@ class Heat(FEM, ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
-                du, _ = sparse_solve(
+                du = differentiable_sparse_solve(
                     self.M + 0.5 * dt_n * self.K,
                     -residual,
                     B,
                     stol,
                     device,
                     method,
-                    None,
                 )
 
-                u_guess += du.reshape((-1, self.n_dof_per_node))
-
-                # u_old = u_guess.clone()
-                # f_int_old = f_int.clone()
+                u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
                 raise Exception("Newton-Raphson iteration did not converge.")
@@ -859,17 +848,22 @@ class Heat(FEM, ABC):
             u[n] = u_guess
             f[n] = f_int.reshape((-1, self.n_dof_per_node))
 
+        # Create output views without mutating tensors captured by autograd.
+        out_flux = flux
+        out_grad = grad
+        out_state = state
+
         # Aggregate integration points as mean
         if aggregate_integration_points:
-            grad = grad.mean(dim=1)
-            flux = flux.mean(dim=1)
-            state = state.mean(dim=1)
+            out_grad = out_grad.mean(dim=1)
+            out_flux = out_flux.mean(dim=1)
+            out_state = out_state.mean(dim=1)
         # Squeeze outputs
-        flux = flux.squeeze()
-        grad = grad.squeeze()
+        out_flux = out_flux.squeeze()
+        out_grad = out_grad.squeeze()
         if return_intermediate:
             # Return all intermediate values
-            return u, f, flux, grad, state
+            return u, f, out_flux, out_grad, out_state
         else:
             # Return only the final values
-            return u[-1], f[-1], flux[-1], grad[-1], state[-1]
+            return u[-1], f[-1], out_flux[-1], out_grad[-1], out_state[-1]
