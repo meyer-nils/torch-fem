@@ -531,6 +531,9 @@ class Mechanics(FEM, ABC):
             # Compute displacement gradient increment (Batch, Spatial, Material)
             H_inc = du @ B[i].transpose(-1, -2)
 
+            # Current deformation gradient for this Newton evaluation.
+            F_new = F[n - 1, i] + H_inc
+
             # Evaluate material response
             P, alpha, ddsdde = self.material.step(
                 H_inc,
@@ -542,15 +545,15 @@ class Mechanics(FEM, ABC):
                 iter,
             )
 
+            # Store updated deformation gradient
+            F[n, i] = F_new
+
             # Compute new Cauchy stress
             if nlgeom:
-                J = torch.det(F[n, i])[:, None, None]
-                stress[n, i] = (F[n, i] @ P) / J
+                J = torch.det(F_new)[:, None, None]
+                stress[n, i] = (F_new @ P) / J
             else:
                 stress[n, i] = P
-
-            # Compute new deformation gradient
-            F[n, i] = F[n - 1, i] + H_inc
 
             # Compute new state
             state[n, i] = alpha
