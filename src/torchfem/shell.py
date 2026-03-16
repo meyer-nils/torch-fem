@@ -193,14 +193,11 @@ class Shell(Mechanics):
         D2 = (D2_012 + D2_120 + D2_201) / 3.0
         return torch.cat([D0, D1, D2], dim=-1)
 
-    def eval_shape_functions(
-        self, xi: Tensor, u: Tensor | float = 0.0
-    ) -> tuple[Tensor, Tensor, Tensor]:
+    def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
         # Compute transformation matrix x = T X with element coords x and
         # global coords X
-        nodes = self.nodes + u
-        nodes = nodes[self.elements, :]
+        nodes = self.nodes[self.elements, :]
         edge1 = nodes[:, 1] - nodes[:, 0]
         edge2 = nodes[:, 2] - nodes[:, 1]
         dir1 = torch.nn.functional.normalize(edge1, dim=-1)
