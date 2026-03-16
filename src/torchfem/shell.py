@@ -145,7 +145,7 @@ class Shell(Mechanics):
         D2 = torch.stack([z, z, z, -B[:, 0, :], B[:, 1, :], z], dim=-1).reshape(N, -1)
         return torch.stack([D0, D1, D2], dim=1)
 
-    def _Ds(self, A: Tensor, loc_nodes: Tensor):
+    def _Ds(self, A):
         """Aggregate shear-displacement matrices.
 
         Args:
@@ -185,17 +185,18 @@ class Shell(Mechanics):
             ) / (2.0 * A[:, None, None])
             return D0, D1, D2
 
-        D0_012, D1_012, D2_012 = compute(loc_nodes[:, [0, 1, 2], :])
-        D1_120, D2_120, D0_120 = compute(loc_nodes[:, [1, 2, 0], :])
-        D2_201, D0_201, D1_201 = compute(loc_nodes[:, [2, 0, 1], :])
+        D0_012, D1_012, D2_012 = compute(self.loc_nodes[:, [0, 1, 2], :])
+        D1_120, D2_120, D0_120 = compute(self.loc_nodes[:, [1, 2, 0], :])
+        D2_201, D0_201, D1_201 = compute(self.loc_nodes[:, [2, 0, 1], :])
         D0 = (D0_012 + D0_120 + D0_201) / 3.0
         D1 = (D1_012 + D1_120 + D1_201) / 3.0
         D2 = (D2_012 + D2_120 + D2_201) / 3.0
         return torch.cat([D0, D1, D2], dim=-1)
 
-    def _compute_local_geometry(
-        self, u: Tensor | float = 0.0
+    def eval_shape_functions(
+        self, xi: Tensor, u: Tensor | float = 0.0
     ) -> tuple[Tensor, Tensor, Tensor]:
+        """Gradient operator at integration points xi."""
         # Compute transformation matrix x = T X with element coords x and
         # global coords X
         nodes = self.nodes + u
@@ -205,28 +206,14 @@ class Shell(Mechanics):
         dir1 = torch.nn.functional.normalize(edge1, dim=-1)
         normal = torch.nn.functional.normalize(torch.linalg.cross(edge1, edge2), dim=-1)
         dir2 = torch.nn.functional.normalize(-torch.linalg.cross(edge1, normal), dim=-1)
-        t = torch.stack([dir1, dir2, normal], dim=1)
-        T = torch.func.vmap(torch.block_diag)(*(self.n_dof_per_node * [t]))
-
-        dx = (nodes - nodes[:, 0, None]).transpose(2, 1)
-        loc_nodes = (t[:, 0:2, :] @ dx).transpose(2, 1)
-
-        return t, T, loc_nodes
-
-    def eval_shape_functions(
-        self, xi: Tensor, u: Tensor | float = 0.0
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Gradient operator at integration points xi."""
-        t, T, loc_nodes = self._compute_local_geometry(u)
-
-        # Keep detached tensors for post-processing without holding autograd graphs.
-        self.t = t.detach()
-        self.T = T.detach()
-        self.loc_nodes = loc_nodes.detach()
+        self.t = torch.stack([dir1, dir2, normal], dim=1)
+        self.T = torch.func.vmap(torch.block_diag)(*(self.n_dof_per_node * [self.t]))
 
         # Compute Jacobian and its determinant
         b = self.etype.B(xi)
-        J = torch.einsum("...iN, ANj -> ...Aij", b, loc_nodes)
+        dx = (nodes - nodes[:, 0, None]).transpose(2, 1)
+        self.loc_nodes = (self.t[:, 0:2, :] @ dx).transpose(2, 1)
+        J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
@@ -280,15 +267,14 @@ class Shell(Mechanics):
                 "Geometric nonlinearity is not yet implemented for shells."
             )
 
-        # Compute gradient operators and local geometry tensors.
+        # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
-        t, T, loc_nodes = self._compute_local_geometry()
 
         for i, wi in enumerate(self.etype.iweights):
 
             # Transform displacement increment to local element coordinates
-            du_local = torch.einsum("...ij,...kj->...ki", t, d_u)
-            dw_local = torch.einsum("...ij,...kj->...ki", t, d_w)
+            du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
+            dw_local = torch.einsum("...ij,...kj->...ki", self.t, d_w)
 
             # Initialize local force contributions
             f_loc = torch.zeros(self.n_elem, *self.n_flux)
@@ -363,7 +349,7 @@ class Shell(Mechanics):
                 * self.thickness**2
                 / (self.thickness**2 + alpha * h**2)
             )
-            Ds = self._Ds(A, loc_nodes)
+            Ds = self._Ds(A)
             int_Cs = (A * psi * self.thickness)[:, None, None] * self.Cs
             DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, int_Cs, Ds)
             ks = wi * self.compute_k(detJ[i], DsCsDs)
@@ -379,13 +365,13 @@ class Shell(Mechanics):
             kt = km + kb + ks + kd
 
             # Total element stiffness in global coordinates
-            k[:, :, :] += T.transpose(1, 2) @ kt @ T
+            k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T
 
             # Total force contribution
             disp = u_trial[self.elements, :].reshape(self.n_elem, -1)
-            loc_disp = torch.einsum("...ij,...j->...i", T, disp)
+            loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
             f[:, :] += torch.einsum(
-                "...ki, ...ij,...j->...k", T.transpose(1, 2), kt, loc_disp
+                "...ki, ...ij,...j->...k", self.T.transpose(1, 2), kt, loc_disp
             )
 
         return k, f
