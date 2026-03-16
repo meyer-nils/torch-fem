@@ -34,6 +34,48 @@ except ImportError:
     pass
 
 
+class Solve(Function):
+    """Autograd-aware sparse linear solve for Ax = b.
+
+    Provides backward through both A (sparse) and b, enabling gradient flow
+    through time-stepping loops that depend on the system matrix.
+    """
+
+    @staticmethod
+    def forward(A, b, B, stol, device, method):
+        x, M = sparse_solve(A, b, B, stol, device, method)
+        return x, M
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        A, b, B, stol, device, method = inputs
+        x, M = output
+        ctx.save_for_backward(A, x)
+        ctx.B = B
+        ctx.stol = stol
+        ctx.device = device
+        ctx.method = method
+        ctx.M = M
+
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        grad_x = grad_outputs[0]
+        A, x = ctx.saved_tensors
+
+        # Adjoint solve: A^T lambda = grad_x
+        gradb, _ = sparse_solve(
+            A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M
+        )
+
+        # grad_A: sparse, with values -lambda[row] * x[col] at nonzero positions
+        indices = A._indices()
+        row, col = indices[0], indices[1]
+        val = -gradb[row] * x[col]
+        gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
+
+        return gradA, gradb, None, None, None, None
+
+
 class NewtonRaphsonAdjoint(Function):
 
     @staticmethod
@@ -182,47 +224,6 @@ def newton_solve(
     return du
 
 
-class _DifferentiableSolve(Function):
-    """Autograd-aware sparse linear solve for Ax = b.
-
-    Provides backward through both A (sparse) and b, enabling gradient flow
-    through time-stepping loops that depend on the system matrix.
-    """
-
-    @staticmethod
-    def forward(A, b, B, stol, device, method):
-        x, M = sparse_solve(A, b, B, stol, device, method)
-        return x, M
-
-    @staticmethod
-    def setup_context(ctx, inputs, output):
-        A, b, B, stol, device, method = inputs
-        x, M = output
-        ctx.save_for_backward(A, x)
-        ctx.B = B
-        ctx.stol = stol
-        ctx.device = device
-        ctx.method = method
-        ctx.M = M
-
-    @staticmethod
-    def backward(ctx, grad_x, grad_M):
-        A, x = ctx.saved_tensors
-
-        # Adjoint solve: A^T lambda = grad_x
-        gradb, _ = sparse_solve(
-            A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M
-        )
-
-        # grad_A: sparse, with values -lambda[row] * x[col] at nonzero positions
-        indices = A._indices()
-        row, col = indices[0], indices[1]
-        val = -gradb[row] * x[col]
-        gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
-
-        return gradA, gradb, None, None, None, None
-
-
 def differentiable_sparse_solve(
     A: Tensor,
     b: Tensor,
@@ -232,9 +233,9 @@ def differentiable_sparse_solve(
     method: str | None = None,
 ) -> Tensor:
     """Solve Ax = b with autograd support for backward through A and b."""
-    result, _ = _DifferentiableSolve.apply(A, b, B, stol, device, method)
+    result, _ = Solve.apply(A, b, B, stol, device, method)  # type: ignore[misc]
     if result is None:
-        raise RuntimeError("DifferentiableSolve.apply returned None.")
+        raise RuntimeError("Solve.apply returned None.")
     return result
 
 
