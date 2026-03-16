@@ -115,19 +115,6 @@ class Solve(Function):
         return x, M
 
     @staticmethod
-    def setup_context(ctx, inputs, output):
-        A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
-        x, M = output
-        ctx.save_for_backward(A, x)
-        ctx.B = B
-        ctx.stol = stol
-        ctx.device = device
-        ctx.method = method
-        ctx.M = M
-        ctx.cached_solve = cached_solve
-        ctx.update_cache = update_cache
-
-    @staticmethod
     def backward(ctx, *grad_outputs):
         # Upstream gradient for the solution x
         grad_x = grad_outputs[0]
@@ -156,6 +143,19 @@ class Solve(Function):
             ctx.cached_solve.update_grad(gradb.detach().clone())
 
         return gradA, gradb, None, None, None, None, None, None, None
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
+        x, M = output
+        ctx.save_for_backward(A, x)
+        ctx.B = B
+        ctx.stol = stol
+        ctx.device = device
+        ctx.method = method
+        ctx.M = M
+        ctx.cached_solve = cached_solve
+        ctx.update_cache = update_cache
 
 
 def differentiable_sparse_solve(
