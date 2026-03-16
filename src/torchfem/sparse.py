@@ -34,6 +34,27 @@ except ImportError:
     pass
 
 
+class CachedSolve:
+    """Cache for the previous solution and gradient.
+
+    This is used to warm-start the solver in the next iteration.
+    previous_x is updated during the forward pass,
+    and previous_grad is updated during the backward pass.
+    """
+
+    def __init__(
+        self, previous_x: Tensor | None = None, previous_grad: Tensor | None = None
+    ):
+        self.previous_x = previous_x
+        self.previous_grad = previous_grad
+
+    def update_grad(self, grad: Tensor | None) -> None:
+        self.previous_grad = grad.detach().clone() if grad is not None else None
+
+    def update_x(self, x: Tensor | None) -> None:
+        self.previous_x = x.detach().clone() if x is not None else None
+
+
 class Solve(Function):
     """Autograd-aware sparse linear solve for Ax = b.
 
@@ -42,13 +63,31 @@ class Solve(Function):
     """
 
     @staticmethod
-    def forward(A, b, B, stol, device, method):
-        x, M = sparse_solve(A, b, B, stol, device, method)
+    def forward(
+        A,
+        b,
+        B,
+        stol,
+        device,
+        method,
+        M=None,
+        cached_solve=CachedSolve(),
+        update_cache=False,
+    ):
+        x0 = None
+        if cached_solve is not None and cached_solve.previous_x is not None:
+            x0 = cached_solve.previous_x
+
+        x, M = sparse_solve(A, b, B, stol, device, method, M, x0)
+
+        if update_cache and cached_solve is not None:
+            cached_solve.update_x(x)
+
         return x, M
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        A, b, B, stol, device, method = inputs
+        A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
         x, M = output
         ctx.save_for_backward(A, x)
         ctx.B = B
@@ -56,15 +95,21 @@ class Solve(Function):
         ctx.device = device
         ctx.method = method
         ctx.M = M
+        ctx.cached_solve = cached_solve
+        ctx.update_cache = update_cache
 
     @staticmethod
     def backward(ctx, *grad_outputs):
         grad_x = grad_outputs[0]
         A, x = ctx.saved_tensors
 
+        x0 = None
+        if ctx.cached_solve is not None and ctx.cached_solve.previous_grad is not None:
+            x0 = ctx.cached_solve.previous_grad
+
         # Adjoint solve: A^T lambda = grad_x
         gradb, _ = sparse_solve(
-            A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M
+            A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
         )
 
         # grad_A: sparse, with values -lambda[row] * x[col] at nonzero positions
@@ -73,7 +118,10 @@ class Solve(Function):
         val = -gradb[row] * x[col]
         gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
 
-        return gradA, gradb, None, None, None, None
+        if ctx.update_cache and ctx.cached_solve is not None:
+            ctx.cached_solve.update_grad(gradb)
+
+        return gradA, gradb, None, None, None, None, None, None, None
 
 
 class NewtonRaphsonAdjoint(Function):
@@ -231,9 +279,14 @@ def differentiable_sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
+    M: LinearOperator | None = None,
+    cached_solve=CachedSolve(),
+    update_cache=False,
 ) -> Tensor:
     """Solve Ax = b with autograd support for backward through A and b."""
-    result, _ = Solve.apply(A, b, B, stol, device, method)  # type: ignore[misc]
+    result, _ = Solve.apply(
+        A, b, B, stol, device, method, M, cached_solve, update_cache
+    )  # type: ignore[misc]
     if result is None:
         raise RuntimeError("Solve.apply returned None.")
     return result
