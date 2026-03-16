@@ -147,13 +147,15 @@ class Solve(Function):
     @staticmethod
     def setup_context(ctx, inputs, output):
         A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
-        x, M = output
+        x, M_computed = output
         ctx.save_for_backward(A, x)
+
+        # Save the parameters for backward pass (including the preconditioner)
         ctx.B = B
         ctx.stol = stol
         ctx.device = device
         ctx.method = method
-        ctx.M = M
+        ctx.M = M_computed
         ctx.cached_solve = cached_solve
         ctx.update_cache = update_cache
 
@@ -172,7 +174,7 @@ def differentiable_sparse_solve(
     """Solve Ax = b with autograd support for backward through A and b."""
     result, _ = Solve.apply(
         A, b, B, stol, device, method, M, cached_solve, update_cache
-    )  # type: ignore[misc]
+    )  # type: ignore
     if result is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return result
