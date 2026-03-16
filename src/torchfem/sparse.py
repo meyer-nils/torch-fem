@@ -381,6 +381,7 @@ class NewtonRaphsonAdjoint(Function):
         *parameters: Tensor,
     ) -> Tensor:
         M = None
+        converged_iter = max_iter - 1
 
         # Newton-Raphson iterations
         for i in range(max_iter):
@@ -401,6 +402,7 @@ class NewtonRaphsonAdjoint(Function):
 
             # Check convergence
             if res_norm < rtol * res_norm0 or res_norm < atol:
+                converged_iter = i
                 break
 
             if torch.isnan(res_norm) or torch.isinf(res_norm):
@@ -436,6 +438,7 @@ class NewtonRaphsonAdjoint(Function):
         ctx.cached_solve = cached_solve
         ctx.update_cache = update_cache
         ctx.n_parameters = len(parameters)
+        ctx.converged_iter = converged_iter
 
         return du
 
@@ -453,6 +456,7 @@ class NewtonRaphsonAdjoint(Function):
         eval_residual = ctx.eval_residual
         cached_solve = ctx.cached_solve
         update_cache = ctx.update_cache
+        converged_iter = ctx.converged_iter
 
         x0 = None
         if cached_solve is not None and cached_solve.previous_grad is not None:
@@ -476,7 +480,7 @@ class NewtonRaphsonAdjoint(Function):
         # Recompute the residual with a differentiable local state.
         du_local = du.detach().requires_grad_(True)
         with torch.enable_grad():
-            residual, _ = eval_residual(du_local, 0)
+            residual, _ = eval_residual(du_local, converged_iter)
 
         grad_inputs = (du_local, *parameters)
         grads = torch.autograd.grad(
@@ -486,12 +490,11 @@ class NewtonRaphsonAdjoint(Function):
             allow_unused=True,
             retain_graph=True,
         )
-        grad_du_input = grads[0]
         grad_parameters = grads[1:]
 
         return (
             None,
-            grad_du_input,
+            None,
             None,
             None,
             None,
