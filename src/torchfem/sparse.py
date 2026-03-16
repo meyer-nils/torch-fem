@@ -35,16 +35,21 @@ except ImportError:
 
 
 class CachedSolve:
-    """Cache for the previous solution and gradient.
-
-    This is used to warm-start the solver in the next iteration.
-    previous_x is updated during the forward pass,
-    and previous_grad is updated during the backward pass.
-    """
-
     def __init__(
         self, previous_x: Tensor | None = None, previous_grad: Tensor | None = None
     ):
+        """Cache for the previous solution and gradient.
+
+        This is used to warm-start the solver in the next iteration.
+        previous_x is updated during the forward pass,
+        and previous_grad is updated during the backward pass.
+
+        Args:
+            previous_x (Tensor, optional): Previous solution tensor.
+            previous_grad (Tensor, optional): Previous gradient tensor.
+        If None, the cache is empty.
+        """
+
         self.previous_x = previous_x
         self.previous_grad = previous_grad
 
@@ -56,24 +61,48 @@ class CachedSolve:
 
 
 class Solve(Function):
-    """Autograd-aware sparse linear solve for Ax = b.
-
-    Provides backward through both A (sparse) and b, enabling gradient flow
-    through time-stepping loops that depend on the system matrix.
+    """
+    Inspired by
+    - https://blog.flaport.net/solving-sparse-linear-systems-in-pytorch.html
+    - https://github.com/pytorch/pytorch/issues/69538
+    - https://github.com/cai4cai/torchsparsegradutils
+    - https://doi.org/10.48550/arXiv.2601.13994
     """
 
     @staticmethod
     def forward(
-        A,
-        b,
-        B,
-        stol,
-        device,
-        method,
-        M=None,
+        A: Tensor,
+        b: Tensor,
+        B: Tensor | None = None,
+        stol: float = 1e-10,
+        device: str | None = None,
+        method: str | None = None,
+        M: LinearOperator | None = None,
         cached_solve=CachedSolve(),
         update_cache=False,
     ):
+        """
+        Solve the linear system Ax = b.
+        Args:
+            A (sparse_coo_tensor): Sparse matrix A.
+            b (Tensor): Right-hand side vector b.
+            B (Tensor, optional): Null space rigid body modes for AMG preconditioner.
+            stol (float, optional): Relative solver tolerance for the iterative solver.
+                Defaults to 1e-10.
+            device (str, optional): Device to run the computation on ('cpu' or 'cuda').
+                Defaults to None, which uses the current device.
+            method (str, optional): Method to use for solving ('spsolve', 'minres',
+                'cg', 'pardiso'). Defaults to None for automatic selection based on the
+                input size and available backends.
+            M (LinearOperator, optional): Preconditioner matrix for iterative methods.
+                Defaults to None.
+            cached_solve (CachedSolve, optional): Cache for the previous solution and
+                gradient. Defaults to an empty cache.
+            update_cache (bool, optional): Whether to update the cached solution
+                after the forward pass. Defaults to False.
+        Returns:
+            Tensor: Solution vector x.
+        """
         x0 = None
         if cached_solve is not None and cached_solve.previous_x is not None:
             x0 = cached_solve.previous_x
@@ -100,7 +129,10 @@ class Solve(Function):
 
     @staticmethod
     def backward(ctx, *grad_outputs):
+        # Upstream gradient for the solution x
         grad_x = grad_outputs[0]
+
+        # Access the saved variables
         A, x = ctx.saved_tensors
 
         x0 = None
@@ -112,164 +144,18 @@ class Solve(Function):
             A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
         )
 
-        # grad_A: sparse, with values -lambda[row] * x[col] at nonzero positions
+        # Backprop rule: gradA = -gradb @ x^T, sparse version
         indices = A._indices()
-        row, col = indices[0], indices[1]
+        row = indices[0, :]
+        col = indices[1, :]
         val = -gradb[row] * x[col]
         gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
 
-        if ctx.update_cache and ctx.cached_solve is not None:
-            ctx.cached_solve.update_grad(gradb)
+        # Update storage for next iteration
+        if ctx.update_cache:
+            ctx.cached_solve.update_grad(gradb.detach().clone())
 
         return gradA, gradb, None, None, None, None, None, None, None
-
-
-class NewtonRaphsonAdjoint(Function):
-
-    @staticmethod
-    def forward(
-        ctx,
-        eval_residual: Callable,
-        du: Tensor,
-        B: Tensor,
-        max_iter: int,
-        rtol: float,
-        atol: float,
-        stol: float,
-        verbose: bool,
-        method: str | None = None,
-        device: str | None = None,
-        *parameters: Tensor,
-    ) -> Tensor:
-        M = None
-
-        # Newton-Raphson iterations
-        for i in range(max_iter):
-
-            # Evaluate residual, stiffness matrix, and internal forces
-            residual, K = eval_residual(du, i)
-
-            # Compute residual norm
-            res_norm = torch.linalg.norm(residual)
-
-            # Save initial residual
-            if i == 0:
-                res_norm0 = res_norm
-
-            # Print iteration information
-            if verbose:
-                print(f"Solver iteration {i + 1} | Residual: {res_norm:.5e}")
-
-            # Check convergence
-            if res_norm < rtol * res_norm0 or res_norm < atol:
-                break
-
-            if torch.isnan(res_norm) or torch.isinf(res_norm):
-                raise Exception("Newton-Raphson iteration did not converge")
-
-            # Solve for displacement increment
-            du_i, M = sparse_solve(K, residual, B, stol, device, method, M)
-            du = du - du_i
-
-        # Final convergence check
-        if res_norm > rtol * res_norm0 and res_norm > atol:
-            raise Exception("Newton-Raphson iteration did not converge.")
-
-        ctx.save_for_backward(K, du, *parameters)
-        ctx.B = B
-        ctx.M = M
-        ctx.stol = stol
-        ctx.device = device
-        ctx.method = method
-        ctx.eval_residual = eval_residual
-        ctx.n_parameters = len(parameters)
-
-        return du
-
-    @staticmethod
-    def backward(ctx, *grad_outputs):
-        grad_du = grad_outputs[0]
-
-        K, du, *parameters = ctx.saved_tensors
-
-        B = ctx.B
-        M = ctx.M
-        stol = ctx.stol
-        device = ctx.device
-        method = ctx.method
-        eval_residual = ctx.eval_residual
-
-        # Solve adjoint system.
-        lambda_, _ = sparse_solve(
-            K.T,
-            grad_du,
-            B,
-            stol,
-            device,
-            method,
-            M,
-        )
-
-        # Recompute the residual with a differentiable local state.
-        du_local = du.detach().requires_grad_(True)
-        with torch.enable_grad():
-            residual, _ = eval_residual(du_local, 0)
-
-        grad_inputs = (du_local, *parameters)
-        grads = torch.autograd.grad(
-            residual,
-            grad_inputs,
-            grad_outputs=-lambda_,
-            allow_unused=True,
-            retain_graph=True,
-        )
-        grad_du_input = grads[0]
-        grad_parameters = grads[1:]
-
-        return (
-            None,
-            grad_du_input,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            *grad_parameters,
-        )
-
-
-def newton_solve(
-    eval_residual: Callable,
-    du: Tensor,
-    B: Tensor,
-    max_iter: int,
-    rtol: float,
-    atol: float,
-    stol: float,
-    verbose: bool,
-    method: str | None = None,
-    device: str | None = None,
-    *parameters: Tensor,
-) -> Tensor:
-    du = NewtonRaphsonAdjoint.apply(
-        eval_residual,
-        du,
-        B,
-        max_iter,
-        rtol,
-        atol,
-        stol,
-        verbose,
-        method,
-        device,
-        *parameters,
-    )  # type: ignore
-    if du is None:
-        raise RuntimeError("Solve.apply returned None, expected a Tensor.")
-    return du
 
 
 def differentiable_sparse_solve(
@@ -288,7 +174,7 @@ def differentiable_sparse_solve(
         A, b, B, stol, device, method, M, cached_solve, update_cache
     )  # type: ignore[misc]
     if result is None:
-        raise RuntimeError("Solve.apply returned None.")
+        raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return result
 
 
@@ -465,3 +351,157 @@ def _solve_cpu(A, b, B, method, stol, M, shape, x0):
             raise RuntimeError(f"CG failed with exit code {exit_code}")
 
     return x_xp, M
+
+
+class NewtonRaphsonAdjoint(Function):
+    """
+
+    Inspired by:
+    - https://doi.org/10.48550/arXiv.2601.13994
+
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        eval_residual: Callable,
+        du: Tensor,
+        B: Tensor,
+        max_iter: int,
+        rtol: float,
+        atol: float,
+        stol: float,
+        verbose: bool,
+        method: str | None = None,
+        device: str | None = None,
+        *parameters: Tensor,
+    ) -> Tensor:
+        M = None
+
+        # Newton-Raphson iterations
+        for i in range(max_iter):
+
+            # Evaluate residual, stiffness matrix, and internal forces
+            residual, K = eval_residual(du, i)
+
+            # Compute residual norm
+            res_norm = torch.linalg.norm(residual)
+
+            # Save initial residual
+            if i == 0:
+                res_norm0 = res_norm
+
+            # Print iteration information
+            if verbose:
+                print(f"Solver iteration {i + 1} | Residual: {res_norm:.5e}")
+
+            # Check convergence
+            if res_norm < rtol * res_norm0 or res_norm < atol:
+                break
+
+            if torch.isnan(res_norm) or torch.isinf(res_norm):
+                raise Exception("Newton-Raphson iteration did not converge")
+
+            # Solve for displacement increment
+            du_i, M = sparse_solve(K, residual, B, stol, device, method, M)
+            du = du - du_i
+
+        # Final convergence check
+        if res_norm > rtol * res_norm0 and res_norm > atol:
+            raise Exception("Newton-Raphson iteration did not converge.")
+
+        ctx.save_for_backward(K, du, *parameters)
+        ctx.B = B
+        ctx.M = M
+        ctx.stol = stol
+        ctx.device = device
+        ctx.method = method
+        ctx.eval_residual = eval_residual
+        ctx.n_parameters = len(parameters)
+
+        return du
+
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        grad_du = grad_outputs[0]
+
+        K, du, *parameters = ctx.saved_tensors
+
+        B = ctx.B
+        M = ctx.M
+        stol = ctx.stol
+        device = ctx.device
+        method = ctx.method
+        eval_residual = ctx.eval_residual
+
+        # Solve adjoint system.
+        lambda_, _ = sparse_solve(
+            K.T,
+            grad_du,
+            B,
+            stol,
+            device,
+            method,
+            M,
+        )
+
+        # Recompute the residual with a differentiable local state.
+        du_local = du.detach().requires_grad_(True)
+        with torch.enable_grad():
+            residual, _ = eval_residual(du_local, 0)
+
+        grad_inputs = (du_local, *parameters)
+        grads = torch.autograd.grad(
+            residual,
+            grad_inputs,
+            grad_outputs=-lambda_,
+            allow_unused=True,
+            retain_graph=True,
+        )
+        grad_du_input = grads[0]
+        grad_parameters = grads[1:]
+
+        return (
+            None,
+            grad_du_input,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            *grad_parameters,
+        )
+
+
+def newton_solve(
+    eval_residual: Callable,
+    du: Tensor,
+    B: Tensor,
+    max_iter: int,
+    rtol: float,
+    atol: float,
+    stol: float,
+    verbose: bool,
+    method: str | None = None,
+    device: str | None = None,
+    *parameters: Tensor,
+) -> Tensor:
+    du = NewtonRaphsonAdjoint.apply(
+        eval_residual,
+        du,
+        B,
+        max_iter,
+        rtol,
+        atol,
+        stol,
+        verbose,
+        method,
+        device,
+        *parameters,
+    )  # type: ignore
+    if du is None:
+        raise RuntimeError("Solve.apply returned None, expected a Tensor.")
+    return du
