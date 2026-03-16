@@ -65,7 +65,7 @@ class FEM(ABC):
         else:
             self.material = material.vectorize(self.n_elem)
 
-        # Cache for warm-starting sparse solves across increments.
+        # Cached solve for sparse linear systems
         self.cached_solve = CachedSolve()
 
     @property
@@ -266,7 +266,7 @@ class FEM(ABC):
             device (str): Device to run the linear solve on.
             return_intermediate (bool): Return intermediate values if True.
             aggregate_integration_points (bool): Aggregate integration points if True.
-            use_cached_solve (bool): Use cached sparse solve warm-start where supported.
+            use_cached_solve (bool): Use cached solve, e.g. in topology optimization.
             nlgeom (bool): Use nonlinear geometry if True.
             differentiable_parameters: Explicit parameter(s) to differentiate
                 through the linear solves.
