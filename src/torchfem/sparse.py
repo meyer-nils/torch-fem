@@ -376,6 +376,8 @@ class NewtonRaphsonAdjoint(Function):
         verbose: bool,
         method: str | None = None,
         device: str | None = None,
+        cached_solve=CachedSolve(),
+        update_cache=False,
         *parameters: Tensor,
     ) -> Tensor:
         M = None
@@ -404,8 +406,20 @@ class NewtonRaphsonAdjoint(Function):
             if torch.isnan(res_norm) or torch.isinf(res_norm):
                 raise Exception("Newton-Raphson iteration did not converge")
 
+            x0 = None
+            if (
+                i == 0
+                and cached_solve is not None
+                and cached_solve.previous_x is not None
+            ):
+                x0 = cached_solve.previous_x
+
             # Solve for displacement increment
-            du_i, M = sparse_solve(K, residual, B, stol, device, method, M)
+            du_i, M = sparse_solve(K, residual, B, stol, device, method, M, x0=x0)
+
+            if i == 0 and update_cache and cached_solve is not None:
+                cached_solve.update_x(du_i)
+
             du = du - du_i
 
         # Final convergence check
@@ -419,6 +433,8 @@ class NewtonRaphsonAdjoint(Function):
         ctx.device = device
         ctx.method = method
         ctx.eval_residual = eval_residual
+        ctx.cached_solve = cached_solve
+        ctx.update_cache = update_cache
         ctx.n_parameters = len(parameters)
 
         return du
@@ -435,6 +451,12 @@ class NewtonRaphsonAdjoint(Function):
         device = ctx.device
         method = ctx.method
         eval_residual = ctx.eval_residual
+        cached_solve = ctx.cached_solve
+        update_cache = ctx.update_cache
+
+        x0 = None
+        if cached_solve is not None and cached_solve.previous_grad is not None:
+            x0 = cached_solve.previous_grad
 
         # Solve adjoint system.
         lambda_, _ = sparse_solve(
@@ -445,7 +467,11 @@ class NewtonRaphsonAdjoint(Function):
             device,
             method,
             M,
+            x0=x0,
         )
+
+        if update_cache and cached_solve is not None:
+            cached_solve.update_grad(lambda_)
 
         # Recompute the residual with a differentiable local state.
         du_local = du.detach().requires_grad_(True)
@@ -474,6 +500,8 @@ class NewtonRaphsonAdjoint(Function):
             None,
             None,
             None,
+            None,
+            None,
             *grad_parameters,
         )
 
@@ -489,6 +517,8 @@ def newton_solve(
     verbose: bool,
     method: str | None = None,
     device: str | None = None,
+    cached_solve=CachedSolve(),
+    update_cache=False,
     *parameters: Tensor,
 ) -> Tensor:
     du = NewtonRaphsonAdjoint.apply(
@@ -502,6 +532,8 @@ def newton_solve(
         verbose,
         method,
         device,
+        cached_solve,
+        update_cache,
         *parameters,
     )  # type: ignore
     if du is None:

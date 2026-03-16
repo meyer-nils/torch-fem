@@ -8,7 +8,7 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import differentiable_sparse_solve, newton_solve
+from .sparse import CachedSolve, differentiable_sparse_solve, newton_solve
 
 
 class FEM(ABC):
@@ -64,6 +64,9 @@ class FEM(ABC):
             self.material = material
         else:
             self.material = material.vectorize(self.n_elem)
+
+        # Cache for warm-starting sparse solves across increments.
+        self.cached_solve = CachedSolve()
 
     @property
     @abstractmethod
@@ -246,6 +249,7 @@ class FEM(ABC):
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
+        use_cached_solve: bool = False,
         nlgeom: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -262,6 +266,7 @@ class FEM(ABC):
             device (str): Device to run the linear solve on.
             return_intermediate (bool): Return intermediate values if True.
             aggregate_integration_points (bool): Aggregate integration points if True.
+            use_cached_solve (bool): Use cached sparse solve warm-start where supported.
             nlgeom (bool): Use nonlinear geometry if True.
             differentiable_parameters: Explicit parameter(s) to differentiate
                 through the linear solves.
@@ -362,6 +367,11 @@ class FEM(ABC):
                 return res, self.K
 
             # Solve for increment using Newton-Raphson method
+            if use_cached_solve:
+                cached_solve = self.cached_solve
+            else:
+                cached_solve = CachedSolve()
+
             du = newton_solve(
                 eval_residual,
                 du,
@@ -373,6 +383,8 @@ class FEM(ABC):
                 verbose,
                 method,
                 device,
+                cached_solve,
+                use_cached_solve,
                 *differentiable_parameters,
             )
 
@@ -700,6 +712,7 @@ class Heat(FEM, ABC):
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         aggregate_integration_points: bool = True,
         return_intermediate: bool = False,
+        use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         # in heat transfer there is no geometric nonlinearity
@@ -714,6 +727,7 @@ class Heat(FEM, ABC):
         # solve for initial conditions
         temp_eq, reaction_flux, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
             aggregate_integration_points=False,
+            use_cached_solve=use_cached_solve,
             differentiable_parameters=differentiable_parameters,
         )
 
@@ -831,6 +845,15 @@ class Heat(FEM, ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
+                # Use cached solve from previous increment if available.
+                if it == 0 and use_cached_solve:
+                    cached_solve = self.cached_solve
+                else:
+                    cached_solve = CachedSolve()
+
+                # Keep cache tied to first Newton iteration only.
+                update_cache = it == 0
+
                 du = differentiable_sparse_solve(
                     self.M + 0.5 * dt_n * self.K,
                     -residual,
@@ -838,6 +861,9 @@ class Heat(FEM, ABC):
                     stol,
                     device,
                     method,
+                    None,
+                    cached_solve,
+                    update_cache,
                 )
 
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))
