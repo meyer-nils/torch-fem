@@ -121,16 +121,16 @@ class FEM(ABC):
     @abstractmethod
     def integrate_material(
         self,
-        u: Tensor,
-        grad: Tensor,
-        flux: Tensor,
-        state: Tensor,
-        n: int,
-        iter: int,
+        u_prev: Tensor,
+        grad_prev: Tensor,
+        flux_prev: Tensor,
+        state_prev: Tensor,
         du: Tensor,
         de0: Tensor,
+        iter: int,
         nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Integrate material response over element integration points."""
         raise NotImplementedError
 
     @property
@@ -325,30 +325,31 @@ class FEM(ABC):
 
             # Load increment
             F_ext = increments[n] * self._neumann.ravel()
-            DU = inc * self._dirichlet.clone().ravel()
+            DU = inc * self._dirichlet.ravel()
             de0 = inc * self._external_gradient
 
             # Residual for Newton-Raphson iterations
-            def eval_residual(du, i):
+            def eval_residual(
+                du,
+                i,
+                u_prev=u[n - 1].detach(),
+                grad_prev=grad[n - 1].detach(),
+                flux_prev=flux[n - 1].detach(),
+                state_prev=state[n - 1].detach(),
+            ):
                 # Enforce Dirichlet BCs on increment
                 du_bc = du.clone()
                 du_bc[con] = DU[con]
 
-                u_local = u.detach()
-                grad_local = grad.detach().clone()
-                flux_local = flux.detach().clone()
-                state_local = state.detach().clone()
-
                 # Element-wise integration
-                k, f_i = self.integrate_material(
-                    u_local,
-                    grad_local,
-                    flux_local,
-                    state_local,
-                    n,
-                    i,
+                k, f_i, _, _, _ = self.integrate_material(
+                    u_prev,
+                    grad_prev,
+                    flux_prev,
+                    state_prev,
                     du_bc,
                     de0,
+                    i,
                     nlgeom,
                 )
 
@@ -388,8 +389,15 @@ class FEM(ABC):
             # Evaluate converged state
             du_eval = du.clone()
             du_eval[con] = DU[con]
-            _, f_i = self.integrate_material(
-                u, grad, flux, state, n, max_iter, du_eval, de0, nlgeom
+            _, f_i, grad[n], flux[n], state[n] = self.integrate_material(
+                u[n - 1],
+                grad[n - 1],
+                flux[n - 1],
+                state[n - 1],
+                du_eval,
+                de0,
+                max_iter,
+                nlgeom,
             )
             F_int = self.assemble_rhs(f_i)
 
@@ -477,36 +485,39 @@ class Mechanics(FEM, ABC):
     def k0(self) -> Tensor:
         """Compute element stiffness matrix for zero strain."""
         u = torch.zeros(self.n_nod, self.n_dof_per_node)
-        grad = torch.zeros(2, self.n_int, self.n_elem, *self.n_flux)
-        grad[:, :, :, :, :] = torch.eye(self.n_dim)
-        flux = torch.zeros(2, self.n_int, self.n_elem, *self.n_flux)
-        state = torch.zeros(2, self.n_int, self.n_elem, self.material.n_state)
+        grad = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
+        grad[:] = torch.eye(self.n_dim)
+        flux = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
+        state = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros(self.n_nod, self.n_dof_per_node)
         de0 = torch.zeros(self.n_elem, *self.n_flux)
         self.K = torch.empty(0)
-        k, _ = self.integrate_material(u, grad, flux, state, 1, 0, du, de0, False)
+        k, _, _, _, _ = self.integrate_material(u, grad, flux, state, du, de0, 0, False)
         return k
 
     def integrate_material(
         self,
-        u: Tensor,
-        grad: Tensor,
-        flux: Tensor,
-        state: Tensor,
-        n: int,
-        iter: int,
+        u_prev: Tensor,
+        grad_prev: Tensor,
+        flux_prev: Tensor,
+        state_prev: Tensor,
         du: Tensor,
         de0: Tensor,
+        iter: int,
         nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Perform numerical integrations for the element stiffness matrix and forces
         assuming a total Lagrangian formulation.
-        """
 
-        # Mechanical interpretation of variables
-        F = grad
-        stress = flux
+        Args:
+            grad_prev: Deformation gradient at previous step [n_int, n_elem, *n_flux]
+            flux_prev: Stress at previous step [n_int, n_elem, *n_flux]
+            state_prev: Material state at previous step [n_int, n_elem, n_state]
+
+        Returns:
+            k, f, grad_new, flux_new, state_new
+        """
 
         # Reshape displacement increment
         du = (
@@ -521,6 +532,11 @@ class Mechanics(FEM, ABC):
         f = torch.zeros(self.n_elem, N_dof * N_nod)
         k = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod))
 
+        # Initialize output for new state
+        grad_new = torch.zeros_like(grad_prev)
+        flux_new = torch.zeros_like(flux_prev)
+        state_new = torch.zeros_like(state_prev)
+
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
@@ -529,31 +545,31 @@ class Mechanics(FEM, ABC):
             H_inc = du @ B[i].transpose(-1, -2)
 
             # Current deformation gradient for this Newton evaluation.
-            F_new = F[n - 1, i] + H_inc
+            F_new = grad_prev[i] + H_inc
 
             # Evaluate material response
             P, alpha, ddsdde = self.material.step(
                 H_inc,
-                F[n - 1, i],
-                stress[n - 1, i],
-                state[n - 1, i],
+                grad_prev[i],
+                flux_prev[i],
+                state_prev[i],
                 de0,
                 self.char_lengths,
                 iter,
             )
 
             # Store updated deformation gradient
-            F[n, i] = F_new
+            grad_new[i] = F_new
 
             # Compute new Cauchy stress
             if nlgeom:
                 J = torch.det(F_new)[:, None, None]
-                stress[n, i] = (F_new @ P) / J
+                flux_new[i] = (F_new @ P) / J
             else:
-                stress[n, i] = P
+                flux_new[i] = P
 
-            # Compute new state
-            state[n, i] = alpha
+            # Store new state
+            state_new[i] = alpha
 
             # Compute element internal forces
             force_contrib = self.compute_f(detJ[i], B[i], P)
@@ -565,7 +581,7 @@ class Mechanics(FEM, ABC):
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
                 k += w * self.compute_k(detJ[i], BCB)
 
-        return k, f
+        return k, f, grad_new, flux_new, state_new
 
     def compute_m(self) -> Tensor:
         raise NotImplementedError
@@ -613,44 +629,43 @@ class Heat(FEM, ABC):
         """Compute element stiffness matrix for zero strain."""
         temp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature
         temp_grad = torch.zeros(
-            2, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
+            self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )
         heat_flux = torch.zeros(
-            2, self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
+            self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )  # heat flux
-        state = torch.zeros(
-            2, self.n_int, self.n_elem, self.material.n_state
-        )  # state variables
+        state = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
         dtemp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature increment
         dtemp_grad0 = torch.zeros(
             self.n_elem, self.n_dof_per_node, self.n_dim
         )  # temperature gradient increment
         self.K = torch.empty(0)
-        k, _ = self.integrate_material(
-            temp,
-            temp_grad,
-            heat_flux,
-            state,
-            1,
-            0,
-            dtemp,
-            dtemp_grad0,
+        k, _, _, _, _ = self.integrate_material(
+            temp, temp_grad, heat_flux, state, dtemp, dtemp_grad0, 0, False
         )
         return k
 
     def integrate_material(
         self,
-        u: Tensor,
-        grad: Tensor,
-        flux: Tensor,
-        state: Tensor,
-        n: int,
-        iter: int,
+        u_prev: Tensor,
+        grad_prev: Tensor,
+        flux_prev: Tensor,
+        state_prev: Tensor,
         du: Tensor,
         de0: Tensor,
-        nlgeom: bool = False,
-    ) -> Tuple[Tensor, Tensor]:
-        """Perform numerical integrations for element stiffness matrix."""
+        iter: int,
+        nlgeom: bool,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Perform numerical integrations for element stiffness matrix.
+
+        Args:
+            grad_prev: Previous temp. gradient [n_int, n_elem, n_dof_per_node, n_dim]
+            flux_prev: Previous heat flux [n_int, n_elem, n_dof_per_node, n_dim]
+            state_prev: Previous material state [n_int, n_elem, n_state]
+
+        Returns:
+            k, f, grad_new, flux_new, state_new
+        """
 
         # Reshape temperature increment
         du = du.view(-1, self.n_dof_per_node)[self.elements].reshape(
@@ -664,6 +679,11 @@ class Heat(FEM, ABC):
             (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
         )
 
+        # Initialize output for new state
+        grad_new = torch.zeros_like(grad_prev)
+        flux_new = torch.zeros_like(flux_prev)
+        state_new = torch.zeros_like(state_prev)
+
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
@@ -672,21 +692,21 @@ class Heat(FEM, ABC):
             # Compute temperature gradient increment
             temp_grad_inc = torch.einsum("...ij,...jk->...ki", B[i], du)
             # Update deformation gradient
-            grad[n, i] = grad[n - 1, i] + temp_grad_inc
+            grad_new[i] = grad_prev[i] + temp_grad_inc
 
             # Evaluate material response
-            flux[n, i], state[n, i], ddfddg = self.material.step(
+            flux_new[i], state_new[i], ddfddg = self.material.step(
                 temp_grad_inc,
-                grad[n - 1, i],
-                flux[n - 1, i],
-                state[n - 1, i],
+                grad_prev[i],
+                flux_prev[i],
+                state_prev[i],
                 de0,
                 self.char_lengths,
                 iter,
             )
 
             # Compute element internal forces
-            force_contrib = self.compute_f(detJ[i], B[i], flux[n, i].clone())
+            force_contrib = self.compute_f(detJ[i], B[i], flux_new[i])
             f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
 
             # Compute element stiffness matrix
@@ -697,7 +717,7 @@ class Heat(FEM, ABC):
                     -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
                 )
                 k += w * self.compute_k(detJ[i], BCB)
-        return k, f
+        return k, f, grad_new, flux_new, state_new
 
     def time_integration(
         self,
@@ -715,8 +735,6 @@ class Heat(FEM, ABC):
         use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        # in heat transfer there is no geometric nonlinearity
-        nlgeom = False
 
         # initial step: we get heat fluxes and temperature gradients for initial
         # conditions enforce initial conditions as boundary conditions
@@ -725,7 +743,7 @@ class Heat(FEM, ABC):
         self.constraints[:] = True
 
         # solve for initial conditions
-        temp_eq, reaction_flux, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
+        temp_eq, _, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
             aggregate_integration_points=False,
             use_cached_solve=use_cached_solve,
             differentiable_parameters=differentiable_parameters,
@@ -742,9 +760,7 @@ class Heat(FEM, ABC):
 
         dt = increments[1:] - increments[:-1]  # time step sizes
 
-        N_inc = len(increments)  # number of temporal increments
-        # N_output = len(t_output)  # number of output steps
-        N_output = N_inc  # current design requires to explicitly store all increments.
+        N_output = len(increments)
 
         # release boundary conditions, restore
         self.constraints[:] = bc_constraints
@@ -796,23 +812,22 @@ class Heat(FEM, ABC):
         # updated BCs
         u[0].view(-1)[con] = self._dirichlet.view(-1)[con]
 
-        for n, t_n in enumerate(increments[1:], 1):
+        for n in range(1, N_output):
             u_guess = u[n - 1].clone()
             dt_n = dt[n - 1]
             f_int_old = f[n - 1].clone()
 
             for it in range(max_iter):
                 du = u_guess - u[n - 1]
-                k, f_int = self.integrate_material(
-                    u,
-                    grad,
-                    flux,
-                    state,
-                    n,
-                    it,
+                k, f_int, grad[n], flux[n], state[n] = self.integrate_material(
+                    u[n - 1],
+                    grad[n - 1],
+                    flux[n - 1],
+                    state[n - 1],
                     du,
                     self._external_gradient,
-                    nlgeom,
+                    it,
+                    False,
                 )
                 f_int = self.assemble_rhs(f_int)
                 f_ext = self._neumann.ravel()
