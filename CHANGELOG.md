@@ -2,10 +2,28 @@
 
 ## Unreleased
 
-### Changes 
-- Accelerate assembly by precomputing sparsity pattern. This accelerates iterative applications (property_fields.ipynb example, bracket topology example, etc.) by roughly 30%.
-- Ensure that all tensors are on CPU before plotting.
-- Introduce toggle for meshio compression.
+### Added
+- Added an adjoint Newton-Raphson autograd operator for nonlinear solves via `newton_solve(...)`.
+- Added gradient regression tests in `tests/test_gradients.py` for:
+	- consistency between single-step and incremental gradients in mechanics,
+	- finite and stable gradients for planar heat topology-style parameters.
+
+### Changed
+- Refactored mechanics and heat integration interfaces in `base.py` to use explicit previous-step inputs and return updated integration-point fields instead of mutating global history tensors in-place.
+- Renamed the autograd-enabled sparse linear solve entry point from `sparse_solve(...)` to `differentiable_sparse_solve(...)`, while `sparse_solve(...)` now denotes the backend sparse solve routine used by both forward and adjoint paths.
+- Updated `solve(...)` and `time_integration(...)` to accept `differentiable_parameters` as either a single tensor or an iterable of tensors.
+- Updated nonlinear and transient solve paths to use implicit adjoint logic with cleaner graph handling and optional cached sparse warm starts.
+- Improved API and type annotations in solver internals (`sparse.py`, `base.py`) and expanded solver docstrings.
+- Expanded differentiability documentation (`docs/differentiability.md`) with explicit sections on:
+	- adjoint sparse linear solve,
+	- adjoint Newton-Raphson for nonlinear FEM.
+- Updated usage examples in `README.md` and `docs/getting_started.md` to pass `differentiable_parameters=...` in differentiable solve calls.
+- Updated many notebooks and benchmark scripts/examples to match the current differentiable solve API (single tensor for single-parameter cases, tuple only for multi-parameter cases).
+- Accelerated assembly by precomputing sparsity patterns (notably helping iterative optimization examples).
+- Added meshio compression toggle support.
+
+### Fixed
+- Ensured plotting utilities move tensors to CPU before plotting to avoid backend/device issues.
 
 ## Version 0.5.1 - January 14 2026 
 

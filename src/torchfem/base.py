@@ -358,7 +358,8 @@ class FEM(ABC):
             use_cached_solve: If True, reuses cached linear solver data.
             nlgeom: If True, includes geometric nonlinearity.
             differentiable_parameters: Explicit parameter(s) to differentiate
-                through the linear solves.
+                through implicit Newton/sparse solves. Accepts either a single
+                tensor or an iterable of tensors.
 
         Returns:
             Tuple of displacement, internal force, flux, gradient, and material
@@ -891,7 +892,8 @@ class Heat(FEM, ABC):
             return_intermediate: If True, returns all intermediate increments.
             use_cached_solve: If True, reuses cached linear solver data.
             differentiable_parameters: Explicit parameters that should receive
-                gradients through implicit solves.
+                gradients through implicit solves. Accepts either a single
+                tensor or an iterable of tensors.
 
         Returns:
             Tuple of temperature, internal vector, heat flux, temperature

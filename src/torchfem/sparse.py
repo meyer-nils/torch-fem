@@ -171,7 +171,12 @@ def differentiable_sparse_solve(
     cached_solve=CachedSolve(),
     update_cache=False,
 ) -> Tensor:
-    """Solve Ax = b with autograd support for backward through A and b."""
+    """Solve ``A x = b`` with custom sparse adjoint autograd support.
+
+    The forward pass may use non-differentiable sparse backends (SciPy, CuPy,
+    Pardiso). The backward pass solves the adjoint system and returns gradients
+    with respect to both ``A`` and ``b``.
+    """
     result, _ = Solve.apply(
         A, b, B, stol, device, method, M, cached_solve, update_cache
     )  # type: ignore
@@ -356,11 +361,24 @@ def _solve_cpu(A, b, B, method, stol, M, shape, x0):
 
 
 class NewtonRaphsonAdjoint(Function):
-    """
+    """Custom autograd function for nonlinear Newton-Raphson solves.
+
+    The forward pass performs Newton iterations on the residual callback
+    ``eval_residual(du, iter) -> (residual, tangent)`` and returns the
+    converged increment ``du``.
+
+    In the backward pass, gradients are computed by an implicit adjoint
+    relation at the converged state:
+
+    1) Solve the adjoint linear system ``K^T lambda = grad_du``.
+    2) Recompute the residual with a differentiable local state.
+    3) Differentiate residual with respect to the explicit parameter
+       tensors passed to ``newton_solve``.
+
+    This avoids differentiating through all Newton iterations.
 
     Inspired by:
     - https://doi.org/10.48550/arXiv.2601.13994
-
     """
 
     @staticmethod
@@ -524,6 +542,28 @@ def newton_solve(
     update_cache=False,
     *parameters: Tensor,
 ) -> Tensor:
+    """Solve a nonlinear residual equation with adjoint-safe Newton iterations.
+
+    Args:
+        eval_residual: Callback returning ``(residual, tangent)`` for the
+            current iterate and Newton iteration index.
+        du: Initial guess for the unknown increment.
+        B: Null-space rigid-body basis for AMG preconditioning.
+        max_iter: Maximum Newton iterations.
+        rtol: Relative residual tolerance.
+        atol: Absolute residual tolerance.
+        stol: Linear-solver tolerance used inside Newton steps.
+        verbose: If True, prints iteration residuals.
+        method: Sparse backend method name.
+        device: Optional sparse backend device hint.
+        cached_solve: Optional storage for warm-start vectors.
+        update_cache: If True, updates cached vectors.
+        *parameters: Explicit tensors that should receive gradients via the
+            implicit adjoint backward.
+
+    Returns:
+        Converged increment tensor ``du``.
+    """
     du = NewtonRaphsonAdjoint.apply(
         eval_residual,
         du,
