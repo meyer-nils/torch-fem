@@ -358,6 +358,24 @@ class FEM(ABC):
                     self.K = self.assemble_matrix(k, con)
                 F_int = self.assemble_rhs(f_i)
 
+                # Compute baseline force from previous stress (du=0) to
+                # stop gradient of the parameter-dependent scaling of the
+                # accumulated stress.  This ensures dR/dp only reflects
+                # the incremental stiffness contribution.
+                if has_differentiable_dependency:
+                    _, f_base, _, _, _ = self.integrate_material(
+                        u_prev,
+                        grad_prev,
+                        flux_prev,
+                        state_prev,
+                        torch.zeros_like(du_bc),
+                        torch.zeros_like(de0),
+                        i,
+                        nlgeom,
+                    )
+                    F_int_base = self.assemble_rhs(f_base)
+                    F_int = (F_int - F_int_base) + F_int_base.detach()
+
                 # Compute residual
                 res = F_int - F_ext
                 res[con] = 0.0
@@ -400,9 +418,10 @@ class FEM(ABC):
                 nlgeom,
             )
             F_int = self.assemble_rhs(f_i)
-
-            # Update increment
-            f[n] = F_int.reshape((-1, self.n_dof_per_node))
+            # Detach f[n] to avoid spurious gradient paths through
+            # accumulated stress; for compliance c=f·u, gradients
+            # should flow through u only (adjoint chain).
+            f[n] = F_int.reshape((-1, self.n_dof_per_node)).detach()
             u[n] = u[n - 1] + du_eval.reshape((-1, self.n_dof_per_node))
             du = du_eval
 
