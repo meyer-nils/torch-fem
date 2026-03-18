@@ -139,9 +139,9 @@ As an example, we compute the sensitivity of the compliance with respect to the 
 cantilever.thickness.requires_grad = True
 ```
 
-We then solve the problem again:
+We then solve the problem again and specify the differentiable parameters to tell the solver that we wish to keep an autograd graph for these:
 ```
-u, f, _, _, _ = cantilever.solve()
+u, f, _, _, _ = cantilever.solve(differentiable_parameters=cantilever.thickness)
 ```
 
 The structural compliance is defined as the work of the external forces,

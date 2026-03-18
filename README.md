@@ -168,7 +168,7 @@ If we want to compute gradients through the FEM model, we simply need to define 
 ```python 
 # Enable automatic differentiation
 cantilever.thickness.requires_grad = True
-u, f, _, _, _ = cantilever.solve()
+u, f, _, _, _ = cantilever.solve(differentiable_parameters=cantilever.thickness)
 
 # Compute sensitivity of compliance w.r.t. element thicknesses
 compliance = torch.inner(f.ravel(), u.ravel())
