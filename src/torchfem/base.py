@@ -452,8 +452,10 @@ class FEM(ABC):
                 # Compute baseline force from previous stress (du=0) to
                 # stop gradient of the parameter-dependent scaling of the
                 # accumulated stress.  This ensures dR/dp only reflects
-                # the incremental stiffness contribution.
-                if track_parameter_gradients:
+                # the incremental stiffness contribution. This is only needed
+                # during the adjoint backward replay (where du requires grad),
+                # not during forward Newton iterations.
+                if track_parameter_gradients and du.requires_grad:
                     _, f_base, _, _, _ = self.integrate_material(
                         u_prev,
                         grad_prev,
