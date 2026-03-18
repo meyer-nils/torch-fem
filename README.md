@@ -23,9 +23,9 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install cupy-cuda11x # v11.2 - 11.8
 ```
 
-For CUDA 12.6:
+For CUDA 12.9:
 ```
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
 pip install cupy-cuda12x # v12.x
 ```
 
@@ -164,11 +164,11 @@ This solves the model and plots the result:
 
 ![minimal](https://meyer-nils.github.io/torch-fem/images/minimal_example_solved.png)
 
-If we want to compute gradients through the FEM model, we simply need to define the variables that require gradients. Automatic differentiation is performed through the entire FE solver.
+If we want to compute gradients through the FEM model, we simply need to define the variables that require gradients. Automatic differentiation is performed through the entire FE solver. Rather than differentiating through individual solver iterations or Newton iterations (this would explode in memory and autograd graph size) though, the *implicit function theorem* is used to formulate an adjoint backward for `solve()`.
 ```python 
 # Enable automatic differentiation
 cantilever.thickness.requires_grad = True
-u, f, _, _, _ = cantilever.solve()
+u, f, _, _, _ = cantilever.solve(differentiable_parameters=cantilever.thickness)
 
 # Compute sensitivity of compliance w.r.t. element thicknesses
 compliance = torch.inner(f.ravel(), u.ravel())
@@ -179,32 +179,33 @@ torch.autograd.grad(compliance, cantilever.thickness)[0]
 The following benchmarks were performed on a cube subjected to a one-dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of displacements with respect to forces.
 
 #### Apple M1 Pro (10 cores, 16 GB RAM)
-Python 3.10, SciPy 1.14.1, Apple Accelerate, float64
+Python 3.10, SciPy 1.15.3, Apple Accelerate, float64
 
 |  N  |     DOFs |     Setup | FWD Solve | BWD Solve |   Peak RAM |
 | --- | -------- | --------- | --------- | --------- | ---------- |
-|  10 |     3000 |     0.02s |     0.18s |     0.14s |    448.2MB |
-|  20 |    24000 |     0.15s |     0.78s |     0.21s |    847.1MB |
-|  30 |    81000 |     0.56s |     2.86s |     0.67s |   1979.2MB |
-|  40 |   192000 |     1.31s |     6.94s |     1.17s |   2988.7MB |
-|  50 |   375000 |     2.69s |    15.36s |     2.59s |   4011.4MB |
-|  60 |   648000 |     5.31s |    26.63s |     4.06s |   5760.9MB |
-|  70 |  1029000 |     8.93s |    45.27s |     6.81s |   7885.4MB |
-|  80 |  1536000 |    14.28s |    81.66s |    12.60s |   9360.8MB |
+|  10 |     3000 |     0.02s |     0.16s |     0.37s |    490.4MB |
+|  20 |    24000 |     0.14s |     0.74s |     0.35s |    895.6MB |
+|  30 |    81000 |     0.52s |     2.73s |     0.84s |   1947.5MB |
+|  40 |   192000 |     1.23s |     6.53s |     1.57s |   3060.2MB |
+|  50 |   375000 |     2.63s |    13.02s |     3.22s |   4398.7MB |
+|  60 |   648000 |     4.71s |    26.17s |     5.48s |   5789.2MB |
+|  70 |  1029000 |     9.18s |    46.37s |     9.43s |   7893.5MB |
+|  80 |  1536000 |    13.90s |    73.41s |    17.95s |   9739.0MB |
 
 
-#### NVIDIA GeForce RTX 4090 (16,384 Cuda cores, 24 GB VRAM)
-Python 3.12, CuPy 13.3.0, CUDA 11.8, float64
+#### NVIDIA GeForce RTX 5090 (21,760 Cuda cores, 32 GB VRAM)
+Python 3.13, CuPy 14.0.1, CUDA 12.9, float64
 
-|  N  |     DOFs |  FWD Time |  BWD Time |   Peak RAM |
-| --- | -------- | --------- | --------- | ---------- |
-|  10 |     3000 |     0.68s |     0.17s |   1503.0MB |
-|  20 |    24000 |     0.94s |     0.41s |   1495.1MB |
-|  30 |    81000 |     1.15s |     0.54s |   1496.3MB |
-|  40 |   192000 |     1.46s |     0.73s |   1489.9MB |
-|  50 |   375000 |     1.97s |     1.02s |   1505.1MB |
-|  60 |   648000 |     2.65s |     1.36s |   1506.7MB |
-|  70 |  1029000 |     3.69s |     1.89s |   1496.4MB |
+|  N  |     DOFs |     Setup | FWD Solve | BWD Solve |   Peak RAM |
+| --- | -------- | --------- | --------- | --------- | ---------- |
+|  10 |     3000 |     0.27s |     0.45s |     0.46s |   1682.9MB |
+|  20 |    24000 |     0.24s |     0.49s |     0.49s |   1703.6MB |
+|  30 |    81000 |     0.25s |     0.60s |     0.59s |   1707.4MB |
+|  40 |   192000 |     0.25s |     0.78s |     0.73s |   1738.4MB |
+|  50 |   375000 |     0.28s |     1.08s |     0.94s |   1710.4MB |
+|  60 |   648000 |     0.32s |     1.54s |     1.27s |   1710.8MB |
+|  70 |  1029000 |     0.39s |     2.13s |     1.73s |   1728.7MB |
+|  80 |  1536000 |     0.49s |     3.76s |     3.22s |   2220.5MB |
 
 ## Alternatives
 There are many alternative FEM solvers in Python that you may also consider: 

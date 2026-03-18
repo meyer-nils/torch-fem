@@ -133,15 +133,17 @@ where the first argument `u` visualizes the deformed configuration, while `node_
 
 A central feature of *torch-fem* is differentiability. Since the full formulation is implemented in PyTorch, scalar response quantities can be differentiated with respect to model parameters using `torch.autograd`.
 
+For global solves, gradients are computed with implicit adjoint equations at the converged state (instead of backpropagating through all Newton/linear-solver iterations), which keeps memory use manageable in optimization loops.
+
 As an example, we compute the sensitivity of the compliance with respect to the element thicknesses. First, we enable gradients for the thickness field:
 
 ```py
 cantilever.thickness.requires_grad = True
 ```
 
-We then solve the problem again:
+We then solve the problem again and specify the differentiable parameters to tell the solver that we wish to keep an autograd graph for these:
 ```
-u, f, _, _, _ = cantilever.solve()
+u, f, _, _, _ = cantilever.solve(differentiable_parameters=cantilever.thickness)
 ```
 
 The structural compliance is defined as the work of the external forces,

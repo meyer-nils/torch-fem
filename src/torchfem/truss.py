@@ -46,15 +46,12 @@ class Truss(Mechanics):
         end_nodes = self.nodes[self.elements[:, 1]]
         return torch.linalg.norm(end_nodes - start_nodes, dim=-1)
 
-    def eval_shape_functions(
-        self, xi: Tensor, u: Tensor | float = 0.0
-    ) -> tuple[Tensor, Tensor, Tensor]:
+    def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
 
         # Compute transformation matrix x = T X with element coords x and
         # global coords X
-        nodes = self.nodes + u
-        nodes = nodes[self.elements, :]
+        nodes = self.nodes[self.elements, :]
         dx = nodes[:, 1] - nodes[:, 0]
         l0 = torch.linalg.norm(dx, dim=-1)
         T = dx[:, None, :] / l0[:, None, None]

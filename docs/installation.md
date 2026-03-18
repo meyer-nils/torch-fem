@@ -17,9 +17,9 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install cupy-cuda11x # v11.2 - 11.8
 ```
 
-For CUDA 12.6:
+For CUDA 12.9:
 ``` sh
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
 pip install cupy-cuda12x # v12.x
 ```
 

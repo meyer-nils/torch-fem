@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Callable, Tuple
 
 import numpy as np
 import pyamg
@@ -35,7 +35,9 @@ except ImportError:
 
 
 class CachedSolve:
-    def __init__(self, previous_x=None, previous_grad=None):
+    def __init__(
+        self, previous_x: Tensor | None = None, previous_grad: Tensor | None = None
+    ):
         """Cache for the previous solution and gradient.
 
         This is used to warm-start the solver in the next iteration.
@@ -51,10 +53,10 @@ class CachedSolve:
         self.previous_x = previous_x
         self.previous_grad = previous_grad
 
-    def update_grad(self, grad):
+    def update_grad(self, grad: Tensor | None) -> None:
         self.previous_grad = grad.detach().clone() if grad is not None else None
 
-    def update_x(self, x):
+    def update_x(self, x: Tensor | None) -> None:
         self.previous_x = x.detach().clone() if x is not None else None
 
 
@@ -64,6 +66,7 @@ class Solve(Function):
     - https://blog.flaport.net/solving-sparse-linear-systems-in-pytorch.html
     - https://github.com/pytorch/pytorch/issues/69538
     - https://github.com/cai4cai/torchsparsegradutils
+    - https://doi.org/10.48550/arXiv.2601.13994
     """
 
     @staticmethod
@@ -71,28 +74,27 @@ class Solve(Function):
         A: Tensor,
         b: Tensor,
         B: Tensor | None = None,
-        rtol: float = 1e-10,
+        stol: float = 1e-10,
         device: str | None = None,
         method: str | None = None,
-        M: Tensor | None = None,
+        M: LinearOperator | None = None,
         cached_solve=CachedSolve(),
         update_cache=False,
-    ) -> Tuple[Tensor, LinearOperator | None]:
+    ):
         """
         Solve the linear system Ax = b.
-
         Args:
             A (sparse_coo_tensor): Sparse matrix A.
             b (Tensor): Right-hand side vector b.
             B (Tensor, optional): Null space rigid body modes for AMG preconditioner.
-            rtol (float, optional): Relative tolerance for the iterative solver.
+            stol (float, optional): Relative solver tolerance for the iterative solver.
                 Defaults to 1e-10.
             device (str, optional): Device to run the computation on ('cpu' or 'cuda').
                 Defaults to None, which uses the current device.
             method (str, optional): Method to use for solving ('spsolve', 'minres',
                 'cg', 'pardiso'). Defaults to None for automatic selection based on the
                 input size and available backends.
-            M (Tensor, optional): Preconditioner matrix for iterative methods.
+            M (LinearOperator, optional): Preconditioner matrix for iterative methods.
                 Defaults to None.
             cached_solve (CachedSolve, optional): Cache for the previous solution and
                 gradient. Defaults to an empty cache.
@@ -101,64 +103,32 @@ class Solve(Function):
         Returns:
             Tensor: Solution vector x.
         """
-        # Check the input shape
-        if A.ndim != 2 or (A.shape[0] != A.shape[1]):
-            raise ValueError("A should be a square 2D matrix.")
-        shape = A.size()
-        out_device = b.device
+        x0 = None
+        if cached_solve is not None and cached_solve.previous_x is not None:
+            x0 = cached_solve.previous_x
 
-        # Check the input method
-        if method is not None and method not in ["spsolve", "minres", "cg", "pardiso"]:
-            raise ValueError(
-                f"Method {method} is not supported. "
-                "Choose from 'spsolve', 'minres', 'cg', or 'pardiso'."
-            )
+        x, M = sparse_solve(A, b, B, stol, device, method, M, x0)
 
-        # Move to requested device, if available
-        if device is not None:
-            A = A.to(device)
-            b = b.to(device)
+        if update_cache and cached_solve is not None:
+            cached_solve.update_x(x)
 
-        # Make default solver choice based on shape and available backends
-        if method is None:
-            if shape[0] < 10000:
-                if A.device.type == "cpu" and "pypardiso" in available_backends:
-                    method = "pardiso"
-                else:
-                    method = "spsolve"
-            else:
-                method = "minres"
-
-        # Solve either on CPU or GPU
-        if A.device.type == "cuda":
-            x_xp, M_xp = Solve._solve_gpu(A, b, B, method, rtol, M, shape, cached_solve)
-        else:
-            x_xp, M_xp = Solve._solve_cpu(A, b, B, method, rtol, M, shape, cached_solve)
-
-        # Convert back to torch
-        x = torch.tensor(x_xp, requires_grad=True, dtype=b.dtype, device=out_device)
-
-        # Update cached solve with the current solution
-        if update_cache:
-            cached_solve.update_x(x.detach().clone())
-
-        return x, M_xp
+        return x, M
 
     @staticmethod
     def backward(ctx, *grad_outputs):
+        # Upstream gradient for the solution x
+        grad_x = grad_outputs[0]
+
         # Access the saved variables
         A, x = ctx.saved_tensors
 
-        # Backprop rule: gradb = A^T @ grad
-        gradb = sparse_solve(
-            A.T,
-            grad_outputs[0],
-            ctx.B,
-            ctx.rtol,
-            ctx.device,
-            ctx.method,
-            ctx.M,
-            CachedSolve(previous_x=ctx.cached_solve.previous_grad),
+        x0 = None
+        if ctx.cached_solve is not None and ctx.cached_solve.previous_grad is not None:
+            x0 = ctx.cached_solve.previous_grad
+
+        # Adjoint solve: A^T lambda = grad_x
+        gradb, _ = sparse_solve(
+            A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
         )
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
@@ -176,137 +146,439 @@ class Solve(Function):
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        A, b, B, rtol, device, method, M, cached_solve, update_cache = inputs
+        A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
         x, M_computed = output
         ctx.save_for_backward(A, x)
 
         # Save the parameters for backward pass (including the preconditioner)
-        ctx.rtol = rtol
+        ctx.B = B
+        ctx.stol = stol
         ctx.device = device
         ctx.method = method
-        ctx.B = B
         ctx.M = M_computed
         ctx.cached_solve = cached_solve
         ctx.update_cache = update_cache
 
-    @staticmethod
-    def _solve_gpu(A, b, B, method, rtol, M, shape, cached_solve):
-        if "cupy" not in available_backends:
-            raise RuntimeError(
-                "CuPy is not available.\n\n"
-                "Please install CuPy to use GPU acceleration:\n"
-                "> pip install cupy-cuda11x # v11.2 - 11.8\n"
-                "> pip install cupy-cuda12x # v12.x"
-            )
-        A_cp = cupy_coo_matrix(
-            (
-                cupy.asarray(A._values()),
-                (cupy.asarray(A._indices()[0]), cupy.asarray(A._indices()[1])),
-            ),
-            shape=shape,
-        ).tocsr()
-        b_cp = cupy.asarray(b.data)
 
-        if cached_solve.previous_x is not None:
-            x0_cp = cupy.asarray(cached_solve.previous_x.data)
-        else:
-            x0_cp = None
+def differentiable_sparse_solve(
+    A: Tensor,
+    b: Tensor,
+    B: Tensor | None = None,
+    stol: float = 1e-10,
+    device: str | None = None,
+    method: str | None = None,
+    M: LinearOperator | None = None,
+    cached_solve=CachedSolve(),
+    update_cache=False,
+) -> Tensor:
+    """Solve ``A x = b`` with custom sparse adjoint autograd support.
 
-        if method == "pardiso":
-            raise RuntimeError("Pardiso backend is not available on GPU.")
-        elif method == "spsolve":
-            x_xp = cupy_spsolve(A_cp, b_cp)
-            M = None
-        elif method == "minres":
-            # Jacobi preconditioner
-            M = cupy_diags(1.0 / A_cp.diagonal())
-            # Solve with minres
-            x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
-            if exit_code != 0:
-                raise RuntimeError(f"minres failed with exit code {exit_code}")
-        elif method == "cg":
-            # Jacobi preconditioner
-            M = cupy_diags(1.0 / A_cp.diagonal())
-            # Solve with conjugated gradients
-            x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, tol=rtol, x0=x0_cp)
-            if exit_code != 0:
-                raise RuntimeError(f"CG failed with exit code {exit_code}")
-
-        return x_xp, M
-
-    @staticmethod
-    def _solve_cpu(A, b, B, method, rtol, M, shape, cached_solve):
-        A_np = scipy_coo_matrix(
-            (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
-        ).tocsr()
-        b_np = b.data.numpy()
-        if B is None:
-            B_np = None
-        else:
-            B_np = B.data.numpy()
-        if cached_solve.previous_x is not None:
-            x0_np = cached_solve.previous_x.data.numpy()
-        else:
-            x0_np = None
-
-        if method == "pardiso":
-            if "pypardiso" not in available_backends:
-                raise RuntimeError(
-                    "PyPardiso is not available.\n\n"
-                    "Please install Pypardiso seperately:\n"
-                    "> pip install pypardiso"
-                )
-            # Reorder the matrix using reverse Cuthill-McKee algorithm
-            rcm_order = csgraph.reverse_cuthill_mckee(A_np)
-            A_rcm = A_np[np.ix_(rcm_order, rcm_order)]
-            b_rcm = b_np[rcm_order]
-            # Solve with pypardiso
-            x_rcm = pypardiso.spsolve(A_rcm, b_rcm)
-            # Restore the original order
-            inv_rcm_order = np.argsort(rcm_order)
-            x_xp = x_rcm[inv_rcm_order]
-            M = None
-        elif method == "spsolve":
-            x_xp = scipy_spsolve(A_np, b_np)
-            M = None
-        elif method == "minres":
-            # AMG preconditioner with Jacobi smoother
-            if M is None:
-                ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
-                M = ml.aspreconditioner()
-
-            # Solve with minres
-            x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=rtol, x0=x0_np)
-            if exit_code != 0:
-                raise RuntimeError(f"minres failed with exit code {exit_code}")
-        elif method == "cg":
-            # AMG preconditioner with Jacobi smoother
-            if M is None:
-                ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
-                M = ml.aspreconditioner()
-
-            # Solve with minres
-            x_xp, exit_code = scipy_cg(A_np, b_np, M=M, rtol=rtol, x0=x0_np)
-            if exit_code != 0:
-                raise RuntimeError(f"CG failed with exit code {exit_code}")
-
-        return x_xp, M
+    The forward pass may use non-differentiable sparse backends (SciPy, CuPy,
+    Pardiso). The backward pass solves the adjoint system and returns gradients
+    with respect to both ``A`` and ``b``.
+    """
+    result, _ = Solve.apply(
+        A, b, B, stol, device, method, M, cached_solve, update_cache
+    )  # type: ignore
+    if result is None:
+        raise RuntimeError("Solve.apply returned None, expected a Tensor.")
+    return result
 
 
 def sparse_solve(
     A: Tensor,
     b: Tensor,
     B: Tensor | None = None,
-    rtol: float = 1e-10,
+    stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
-    M: Tensor | None = None,
+    M: LinearOperator | None = None,
+    x0: Tensor | None = None,
+) -> Tuple[Tensor, LinearOperator | None]:
+    """
+    Solve the linear system Ax = b.
+
+    Args:
+        A (sparse_coo_tensor): Sparse matrix A.
+        b (Tensor): Right-hand side vector b.
+        B (Tensor, optional): Null space rigid body modes for AMG preconditioner.
+        stol (float, optional): Relative solver tolerance for the iterative solver.
+            Defaults to 1e-10.
+        device (str, optional): Device to run the computation on ('cpu' or 'cuda').
+            Defaults to None, which uses the current device.
+        method (str, optional): Method to use for solving ('spsolve', 'minres',
+            'cg', 'pardiso'). Defaults to None for automatic selection based on the
+            input size and available backends.
+        M (Tensor, optional): Preconditioner matrix for iterative methods.
+            Defaults to None.
+        x0 (Tensor, optional): Initial guess for iterative solvers. Defaults to None.
+    Returns:
+        Tuple[Tensor, LinearOperator | None]: Solution vector x and preconditioner  M.
+    """
+    # Check the input shape
+    if A.ndim != 2 or (A.shape[0] != A.shape[1]):
+        raise ValueError("A should be a square 2D matrix.")
+    shape = A.size()
+    out_device = b.device
+
+    # Check the input method
+    if method is not None and method not in ["spsolve", "minres", "cg", "pardiso"]:
+        raise ValueError(
+            f"Method {method} is not supported. "
+            "Choose from 'spsolve', 'minres', 'cg', or 'pardiso'."
+        )
+
+    # Move to requested device, if available
+    if device is not None:
+        A = A.to(device)
+        b = b.to(device)
+
+    # Make default solver choice based on shape and available backends
+    if method is None:
+        if shape[0] < 10000:
+            if A.device.type == "cpu" and "pypardiso" in available_backends:
+                method = "pardiso"
+            else:
+                method = "spsolve"
+        else:
+            method = "minres"
+
+    # Solve either on CPU or GPU
+    if A.device.type == "cuda":
+        x_xp, M_xp = _solve_gpu(A, b, B, method, stol, M, shape, x0)
+    else:
+        x_xp, M_xp = _solve_cpu(A, b, B, method, stol, M, shape, x0)
+
+    # Convert back to torch
+    x = torch.tensor(x_xp, dtype=b.dtype, device=out_device)
+
+    return x, M_xp
+
+
+def _solve_gpu(A, b, B, method, stol, M, shape, x0):
+    if "cupy" not in available_backends:
+        raise RuntimeError(
+            "CuPy is not available.\n\n"
+            "Please install CuPy to use GPU acceleration:\n"
+            "> pip install cupy-cuda11x # v11.2 - 11.8\n"
+            "> pip install cupy-cuda12x # v12.x"
+        )
+    A_cp = cupy_coo_matrix(
+        (
+            cupy.asarray(A._values()),
+            (cupy.asarray(A._indices()[0]), cupy.asarray(A._indices()[1])),
+        ),
+        shape=shape,
+    ).tocsr()
+    b_cp = cupy.asarray(b.data)
+
+    if x0 is not None:
+        x0_cp = cupy.asarray(x0)
+    else:
+        x0_cp = None
+
+    if method == "pardiso":
+        raise RuntimeError("Pardiso backend is not available on GPU.")
+    elif method == "spsolve":
+        x_xp = cupy_spsolve(A_cp, b_cp)
+        M = None
+    elif method == "minres":
+        # Jacobi preconditioner
+        M = cupy_diags(1.0 / A_cp.diagonal())
+        # Solve with minres
+        x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
+        if exit_code != 0:
+            raise RuntimeError(f"minres failed with exit code {exit_code}")
+    elif method == "cg":
+        # Jacobi preconditioner
+        M = cupy_diags(1.0 / A_cp.diagonal())
+        # Solve with conjugated gradients
+        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
+        if exit_code != 0:
+            raise RuntimeError(f"CG failed with exit code {exit_code}")
+
+    return x_xp, M
+
+
+def _solve_cpu(A, b, B, method, stol, M, shape, x0):
+    A_np = scipy_coo_matrix(
+        (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
+    ).tocsr()
+    b_np = b.data.numpy()
+
+    if x0 is not None:
+        x0_np = x0.data.numpy()
+    else:
+        x0_np = None
+
+    if B is None:
+        B_np = None
+    else:
+        B_np = B.data.numpy()
+
+    if method == "pardiso":
+        if "pypardiso" not in available_backends:
+            raise RuntimeError(
+                "PyPardiso is not available.\n\n"
+                "Please install Pypardiso seperately:\n"
+                "> pip install pypardiso"
+            )
+        # Reorder the matrix using reverse Cuthill-McKee algorithm
+        rcm_order = csgraph.reverse_cuthill_mckee(A_np)
+        A_rcm = A_np[np.ix_(rcm_order, rcm_order)]
+        b_rcm = b_np[rcm_order]
+        # Solve with pypardiso
+        x_rcm = pypardiso.spsolve(A_rcm, b_rcm)
+        # Restore the original order
+        inv_rcm_order = np.argsort(rcm_order)
+        x_xp = x_rcm[inv_rcm_order]
+        M = None
+    elif method == "spsolve":
+        x_xp = scipy_spsolve(A_np, b_np)
+        M = None
+    elif method == "minres":
+        # AMG preconditioner with Jacobi smoother
+        if M is None:
+            ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
+            M = ml.aspreconditioner()
+
+        # Solve with minres
+        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol, x0=x0_np)
+        if exit_code != 0:
+            raise RuntimeError(f"minres failed with exit code {exit_code}")
+    elif method == "cg":
+        # AMG preconditioner with Jacobi smoother
+        if M is None:
+            ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
+            M = ml.aspreconditioner()
+
+        # Solve with cg
+        x_xp, exit_code = scipy_cg(A_np, b_np, M=M, rtol=stol, x0=x0_np)
+        if exit_code != 0:
+            raise RuntimeError(f"CG failed with exit code {exit_code}")
+
+    return x_xp, M
+
+
+class NewtonRaphsonAdjoint(Function):
+    """Custom autograd function for nonlinear Newton-Raphson solves.
+
+    The forward pass performs Newton iterations on the residual callback
+    ``eval_residual(du, iter) -> (residual, tangent)`` and returns the
+    converged increment ``du``.
+
+    In the backward pass, gradients are computed by an implicit adjoint
+    relation at the converged state:
+
+    1) Solve the adjoint linear system ``K^T lambda = grad_du``.
+    2) Recompute the residual with a differentiable local state.
+    3) Differentiate residual with respect to the explicit parameter
+       tensors passed to ``newton_solve``.
+
+    This avoids differentiating through all Newton iterations.
+
+    Inspired by:
+    - https://doi.org/10.48550/arXiv.2601.13994
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        eval_residual: Callable,
+        du: Tensor,
+        B: Tensor,
+        max_iter: int,
+        rtol: float,
+        atol: float,
+        stol: float,
+        verbose: bool,
+        method: str | None = None,
+        device: str | None = None,
+        cached_solve=CachedSolve(),
+        update_cache=False,
+        *parameters: Tensor,
+    ) -> Tensor:
+        M = None
+        converged_iter = max_iter - 1
+
+        # Newton-Raphson iterations
+        for i in range(max_iter):
+
+            # Evaluate residual, stiffness matrix, and internal forces
+            residual, K = eval_residual(du, i)
+
+            # Compute residual norm
+            res_norm = torch.linalg.norm(residual)
+
+            # Save initial residual
+            if i == 0:
+                res_norm0 = res_norm
+
+            # Print iteration information
+            if verbose:
+                print(f"Solver iteration {i + 1} | Residual: {res_norm:.5e}")
+
+            # Check convergence
+            if res_norm < rtol * res_norm0 or res_norm < atol:
+                converged_iter = i
+                break
+
+            if torch.isnan(res_norm) or torch.isinf(res_norm):
+                raise Exception("Newton-Raphson iteration did not converge")
+
+            x0 = None
+            if (
+                i == 0
+                and cached_solve is not None
+                and cached_solve.previous_x is not None
+            ):
+                x0 = cached_solve.previous_x
+
+            # Solve for displacement increment
+            du_i, M = sparse_solve(K, residual, B, stol, device, method, M, x0=x0)
+
+            if i == 0 and update_cache and cached_solve is not None:
+                cached_solve.update_x(du_i)
+
+            du = du - du_i
+
+        # Final convergence check
+        if res_norm > rtol * res_norm0 and res_norm > atol:
+            raise Exception("Newton-Raphson iteration did not converge.")
+
+        ctx.save_for_backward(K, du, *parameters)
+        ctx.B = B
+        ctx.M = M
+        ctx.stol = stol
+        ctx.device = device
+        ctx.method = method
+        ctx.eval_residual = eval_residual
+        ctx.cached_solve = cached_solve
+        ctx.update_cache = update_cache
+        ctx.n_parameters = len(parameters)
+        ctx.converged_iter = converged_iter
+
+        return du
+
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        grad_du = grad_outputs[0]
+
+        K, du, *parameters = ctx.saved_tensors
+
+        B = ctx.B
+        M = ctx.M
+        stol = ctx.stol
+        device = ctx.device
+        method = ctx.method
+        eval_residual = ctx.eval_residual
+        cached_solve = ctx.cached_solve
+        update_cache = ctx.update_cache
+        converged_iter = ctx.converged_iter
+
+        x0 = None
+        if cached_solve is not None and cached_solve.previous_grad is not None:
+            x0 = cached_solve.previous_grad
+
+        # Solve adjoint system.
+        lambda_, _ = sparse_solve(
+            K.T,
+            grad_du,
+            B,
+            stol,
+            device,
+            method,
+            M,
+            x0=x0,
+        )
+
+        if update_cache and cached_solve is not None:
+            cached_solve.update_grad(lambda_)
+
+        # Recompute the residual with a differentiable local state.
+        du_local = du.detach().requires_grad_(True)
+        with torch.enable_grad():
+            residual, _ = eval_residual(du_local, converged_iter)
+
+        grad_inputs = (du_local, *parameters)
+        grads = torch.autograd.grad(
+            residual,
+            grad_inputs,
+            grad_outputs=-lambda_,
+            allow_unused=True,
+            retain_graph=True,
+        )
+        grad_parameters = grads[1:]
+
+        return (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            *grad_parameters,
+        )
+
+
+def newton_solve(
+    eval_residual: Callable,
+    du: Tensor,
+    B: Tensor,
+    max_iter: int,
+    rtol: float,
+    atol: float,
+    stol: float,
+    verbose: bool,
+    method: str | None = None,
+    device: str | None = None,
     cached_solve=CachedSolve(),
     update_cache=False,
+    *parameters: Tensor,
 ) -> Tensor:
-    result, _ = Solve.apply(
-        A, b, B, rtol, device, method, M, cached_solve, update_cache
+    """Solve a nonlinear residual equation with adjoint-safe Newton iterations.
+
+    Args:
+        eval_residual: Callback returning ``(residual, tangent)`` for the
+            current iterate and Newton iteration index.
+        du: Initial guess for the unknown increment.
+        B: Null-space rigid-body basis for AMG preconditioning.
+        max_iter: Maximum Newton iterations.
+        rtol: Relative residual tolerance.
+        atol: Absolute residual tolerance.
+        stol: Linear-solver tolerance used inside Newton steps for iterative solvers.
+        verbose: If True, prints iteration residuals.
+        method: Sparse backend method name.
+        device: Optional sparse backend device hint.
+        cached_solve: Optional storage for warm-start vectors.
+        update_cache: If True, updates cached vectors.
+        *parameters: Explicit tensors that should receive gradients via the
+            implicit adjoint backward.
+
+    Returns:
+        Converged increment tensor ``du``.
+    """
+    du = NewtonRaphsonAdjoint.apply(
+        eval_residual,
+        du,
+        B,
+        max_iter,
+        rtol,
+        atol,
+        stol,
+        verbose,
+        method,
+        device,
+        cached_solve,
+        update_cache,
+        *parameters,
     )  # type: ignore
-    if result is None:
+    if du is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
-    return result
+    return du

@@ -329,16 +329,17 @@ class Hyperelastic3D(Material):
                 - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
                 Shape: `(..., 3, 3, 3, 3)`.
         """
-        # Compute deformation gradient
-        F_new = F + H_inc
-        F_new.requires_grad_(True)
-        # Compute first Piola-Kirchhoff stress tensor
-        P_new = vmap(jacrev(self.psi))(F_new, self.params)
-        # Update internal state
+        with torch.enable_grad():
+            # Compute deformation gradient.
+            F_new = (F + H_inc).requires_grad_(True)
+            # Compute first Piola-Kirchhoff stress tensor.
+            P_new = vmap(jacrev(self.psi))(F_new, self.params)
+            # Compute algorithmic tangent stiffness.
+            ddsdde = vmap(jacrev(jacrev(self.psi)))(F_new, self.params)
+
+        # Hyperelastic materials have no internal state update.
         state_new = state
-        # Compute algorithmic tangent stiffness
-        ddsdde = vmap(jacrev(jacrev(self.psi)))(F_new, self.params)
-        return P_new.detach(), state_new.detach(), ddsdde.detach()
+        return P_new, state_new, ddsdde
 
 
 class IsotropicDamage3D(IsotropicElasticity3D):

@@ -249,7 +249,7 @@ class Planar(Mechanics):
             )
 
         # Plot limits (collections do not autoscale)
-        margin = 0.1 * size 
+        margin = 0.1 * size
         ax.set_xlim(pos[:, 0].min() - margin, pos[:, 0].max() + margin)
         ax.set_ylim(pos[:, 1].min() - margin, pos[:, 1].max() + margin)
         ax.set_aspect("equal", adjustable="box")
@@ -257,7 +257,6 @@ class Planar(Mechanics):
         if title:
             ax.set_title(title)
 
-        
         if not axes:
             ax.set_axis_off()
 

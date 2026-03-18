@@ -193,14 +193,11 @@ class Shell(Mechanics):
         D2 = (D2_012 + D2_120 + D2_201) / 3.0
         return torch.cat([D0, D1, D2], dim=-1)
 
-    def eval_shape_functions(
-        self, xi: Tensor, u: Tensor | float = 0.0
-    ) -> tuple[Tensor, Tensor, Tensor]:
+    def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
         # Compute transformation matrix x = T X with element coords x and
         # global coords X
-        nodes = self.nodes + u
-        nodes = nodes[self.elements, :]
+        nodes = self.nodes[self.elements, :]
         edge1 = nodes[:, 1] - nodes[:, 0]
         edge2 = nodes[:, 2] - nodes[:, 1]
         dir1 = torch.nn.functional.normalize(edge1, dim=-1)
@@ -231,24 +228,33 @@ class Shell(Mechanics):
 
     def integrate_material(
         self,
-        u: Tensor,
-        grad: Tensor,
-        flux: Tensor,
-        state: Tensor,
-        n: int,
-        iter: int,
+        u_prev: Tensor,
+        grad_prev: Tensor,
+        flux_prev: Tensor,
+        state_prev: Tensor,
         du: Tensor,
         de0: Tensor,
+        iter: int,
         nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor]:
-        """Perform numerical integrations for element stiffness matrix."""
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Perform numerical integrations for element stiffness matrix.
 
-        # Mechanical interpretation of variables
-        F = grad
-        stress = flux
+        Args:
+            grad_prev: Deformation gradient at previous step [n_int, n_elem, *n_flux]
+            flux_prev: Stress at previous step [n_int, n_elem, *n_flux]
+            state_prev: Material state at previous step [n_int, n_elem, n_state]
+
+        Returns:
+            k, f, grad_new, flux_new, state_new
+        """
+
+        # Initialize output for new state
+        grad_new = torch.zeros_like(grad_prev)
+        flux_new = torch.zeros_like(flux_prev)
+        state_new = torch.zeros_like(state_prev)
 
         # Compute updated configuration
-        u_trial = u[n - 1] + du.view((-1, self.n_dof_per_node))
+        u_trial = u_prev + du.view((-1, self.n_dof_per_node))
 
         # Reshape displacement increment and rotation increment
         du = du.view(-1, self.n_dof_per_node)[self.elements]
@@ -310,25 +316,28 @@ class Shell(Mechanics):
                 H_inc = dudxi[..., 0:2] + z * dkappa
 
                 # Evaluate material response
-                stress[n, ip], state[n, ip], ddsdde = self.material.step(
+                flux_new[ip], state_new[ip], ddsdde = self.material.step(
                     H_inc,
-                    F[n - 1, ip],
-                    stress[n - 1, ip],
-                    state[n - 1, ip],
+                    grad_prev[ip],
+                    flux_prev[ip],
+                    state_prev[ip],
                     de0,
                     self.char_lengths,
                     iter,
                 )
 
                 # Compute local internal forces
-                f_loc += wz * stress[n, ip].clone()
-                m_loc += wz * z * stress[n, ip].clone()
+                f_loc += wz * flux_new[ip].clone()
+                m_loc += wz * z * flux_new[ip].clone()
 
                 # Compute ABD matrix contributions
                 C = stiffness2voigt(ddsdde)
                 A_matrix += C * wz * self.thickness[:, None, None]
                 B_matrix += C * wz * z * self.thickness[:, None, None]
                 D_matrix += C * wz * z**2 * self.thickness[:, None, None]
+
+            # Copy grad from grad_prev (shells don't update deformation gradient)
+            grad_new[:] = grad_prev
 
             # Element membrane stiffness
             Dm = self._Dm(B[i])
@@ -374,7 +383,7 @@ class Shell(Mechanics):
                 "...ki, ...ij,...j->...k", self.T.transpose(1, 2), kt, loc_disp
             )
 
-        return k, f
+        return k, f, grad_new, flux_new, state_new
 
     @torch.no_grad()
     def plot(
