@@ -4,8 +4,6 @@ from torchfem import Planar, PlanarHeat
 from torchfem.materials import IsotropicConductivity2D, IsotropicElasticityPlaneStress
 from torchfem.mesh import rect_quad
 
-torch.set_default_dtype(torch.float64)
-
 
 def _build_minimal_planar_cantilever() -> Planar:
     material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
@@ -20,7 +18,7 @@ def _build_minimal_planar_cantilever() -> Planar:
     return cantilever
 
 
-def test_gradients_incremental_final_matches_single_step():
+def test_gradients_incremental_final_matches_single_step(float64):
     cantilever = _build_minimal_planar_cantilever()
     cantilever.thickness.requires_grad = True
 
@@ -44,7 +42,7 @@ def test_gradients_incremental_final_matches_single_step():
     assert torch.allclose(grad_final, grad_single, atol=1e-9, rtol=1e-7)
 
 
-def test_gradients_planar_heat_topology_parameter_autograd():
+def test_gradients_planar_heat_topology_parameter_autograd(float64):
     model = PlanarHeat(*rect_quad(5, 5, 1.0, 1.0), IsotropicConductivity2D(kappa=400.0))
     west = torch.isclose(model.nodes[:, 0], model.nodes[:, 0].min())
     north = torch.isclose(model.nodes[:, 1], model.nodes[:, 1].max())
