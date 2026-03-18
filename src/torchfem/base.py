@@ -803,9 +803,7 @@ class Heat(FEM, ABC):
             self.n_dof_per_node,
             self.n_dim,
         )
-        state = torch.zeros(
-            N_output, self.n_int, self.n_int, self.n_elem, self.material.n_state
-        )
+        state = torch.zeros(N_output, self.n_int, self.n_elem, self.material.n_state)
 
         # fill initial conditions
         u[0] = temp_eq
