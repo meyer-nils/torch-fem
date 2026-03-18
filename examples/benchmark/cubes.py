@@ -52,7 +52,7 @@ if __name__ == "__main__":
     print(f"SETUP_DONE:{time.time()}")
 
     # Forward pass
-    u, f, sigma, epsilon, state = box.solve(differentiable_parameters=(box.forces,))
+    u, f, sigma, epsilon, state = box.solve(differentiable_parameters=box.forces)
     print(f"FWD_DONE:{time.time()}")
 
     # Backward pass
