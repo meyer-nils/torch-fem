@@ -189,7 +189,7 @@ def sparse_solve(
     A: Tensor,
     b: Tensor,
     B: Tensor | None = None,
-    rtol: float = 1e-10,
+    stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
     M: LinearOperator | None = None,
@@ -202,7 +202,7 @@ def sparse_solve(
         A (sparse_coo_tensor): Sparse matrix A.
         b (Tensor): Right-hand side vector b.
         B (Tensor, optional): Null space rigid body modes for AMG preconditioner.
-        rtol (float, optional): Relative tolerance for the iterative solver.
+        stol (float, optional): Relative solver tolerance for the iterative solver.
             Defaults to 1e-10.
         device (str, optional): Device to run the computation on ('cpu' or 'cuda').
             Defaults to None, which uses the current device.
@@ -245,9 +245,9 @@ def sparse_solve(
 
     # Solve either on CPU or GPU
     if A.device.type == "cuda":
-        x_xp, M_xp = _solve_gpu(A, b, B, method, rtol, M, shape, x0)
+        x_xp, M_xp = _solve_gpu(A, b, B, method, stol, M, shape, x0)
     else:
-        x_xp, M_xp = _solve_cpu(A, b, B, method, rtol, M, shape, x0)
+        x_xp, M_xp = _solve_cpu(A, b, B, method, stol, M, shape, x0)
 
     # Convert back to torch
     x = torch.tensor(x_xp, dtype=b.dtype, device=out_device)
@@ -552,7 +552,7 @@ def newton_solve(
         max_iter: Maximum Newton iterations.
         rtol: Relative residual tolerance.
         atol: Absolute residual tolerance.
-        stol: Linear-solver tolerance used inside Newton steps.
+        stol: Linear-solver tolerance used inside Newton steps for iterative solvers.
         verbose: If True, prints iteration residuals.
         method: Sparse backend method name.
         device: Optional sparse backend device hint.
