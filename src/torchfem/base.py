@@ -212,6 +212,7 @@ class FEM(ABC):
             ValueError: If any element has non-positive Jacobian determinant.
         """
         nodes = self.nodes[self.elements, :]
+        xi = xi.to(nodes.device)
         b = self.etype.B(xi)
         J = torch.einsum("...iN, ANj -> ...Aij", b, nodes)
         detJ = torch.linalg.det(J)
@@ -317,7 +318,7 @@ class FEM(ABC):
         """
 
         # Initialize global right hand side vector
-        F = torch.zeros((self.n_dofs))
+        F = torch.zeros((self.n_dofs), device=f.device)
 
         # Ravel indices and values
         indices = self.idx.ravel()
@@ -646,8 +647,10 @@ class Mechanics(FEM, ABC):
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
         N_dof = self.n_dof_per_node
-        f = torch.zeros(self.n_elem, N_dof * N_nod)
-        k = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod))
+        f = torch.zeros(self.n_elem, N_dof * N_nod, device=du.device)
+        k = torch.zeros(
+            (self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device
+        )
 
         # Initialize output for new state
         grad_new = torch.zeros_like(grad_prev)
