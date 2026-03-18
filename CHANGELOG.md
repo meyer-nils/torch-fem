@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## Version 0.6.0 - March 18 2026 
+
 ### Added
 - Added an adjoint Newton-Raphson autograd operator for nonlinear solves via `newton_solve(...)`.
 - Added gradient regression tests in `tests/test_gradients.py` for:
