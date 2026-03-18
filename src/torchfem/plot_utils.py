@@ -36,7 +36,7 @@ def embed_animation_gif(ani, fps=20):
     return HTML(f'<img src="data:image/gif;base64,{gif_base64}">')
 
 
-def emebed_pyvista_animation(
+def embed_pyvista_animation(
     plotter, update_plotter, frames, framerate=24, plotter_args=()
 ):
     tmp = tempfile.NamedTemporaryFile(suffix=".gif", delete=False)
