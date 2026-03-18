@@ -371,13 +371,13 @@ class FEM(ABC):
 
         # Determine differentiable dependencies for this solve call.
         if differentiable_parameters is None:
-            differentiable_parameters = tuple()
+            differentiable_parameters = ()
         elif isinstance(differentiable_parameters, torch.Tensor):
             differentiable_parameters = (differentiable_parameters,)
         else:
             differentiable_parameters = tuple(differentiable_parameters)
 
-        has_differentiable_dependency = any(
+        track_parameter_gradients = any(
             param.requires_grad for param in differentiable_parameters
         )
 
@@ -420,16 +420,13 @@ class FEM(ABC):
             F_ext = increments[n] * self._neumann.ravel()
             DU = inc * self._dirichlet.ravel()
             de0 = inc * self._external_gradient
+            u_prev = u[n - 1].detach()
+            grad_prev = grad[n - 1].detach()
+            flux_prev = flux[n - 1].detach()
+            state_prev = state[n - 1].detach()
 
             # Residual for Newton-Raphson iterations
-            def eval_residual(
-                du,
-                i,
-                u_prev=u[n - 1].detach(),
-                grad_prev=grad[n - 1].detach(),
-                flux_prev=flux[n - 1].detach(),
-                state_prev=state[n - 1].detach(),
-            ):
+            def eval_residual(du, i):
                 # Enforce Dirichlet BCs on increment
                 du_bc = du.clone()
                 du_bc[con] = DU[con]
@@ -447,7 +444,7 @@ class FEM(ABC):
                 )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
-                if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
+                if self.K.numel() == 0 or self.material.n_state != 0 or nlgeom:
                     self.K = self.assemble_matrix(k, con)
                 F_int = self.assemble_rhs(f_i)
 
@@ -455,7 +452,7 @@ class FEM(ABC):
                 # stop gradient of the parameter-dependent scaling of the
                 # accumulated stress.  This ensures dR/dp only reflects
                 # the incremental stiffness contribution.
-                if has_differentiable_dependency:
+                if track_parameter_gradients:
                     _, f_base, _, _, _ = self.integrate_material(
                         u_prev,
                         grad_prev,
@@ -511,9 +508,7 @@ class FEM(ABC):
                 nlgeom,
             )
             F_int = self.assemble_rhs(f_i)
-            # Detach f[n] to avoid spurious gradient paths through
-            # accumulated stress; for compliance c=f·u, gradients
-            # should flow through u only (adjoint chain).
+            # Detach f[n] to avoid spurious gradient paths through accumulated stress
             f[n] = F_int.reshape((-1, self.n_dof_per_node)).detach()
             u[n] = u[n - 1] + du_eval.reshape((-1, self.n_dof_per_node))
             du = du_eval
@@ -523,19 +518,15 @@ class FEM(ABC):
         out_grad = grad
         out_state = state
 
-        # Aggregate integration points as mean
         if aggregate_integration_points:
             out_grad = out_grad.mean(dim=1)
             out_flux = out_flux.mean(dim=1)
             out_state = out_state.mean(dim=1)
 
-        # Squeeze outputs
         out_flux = out_flux.squeeze()
         out_grad = out_grad.squeeze()
 
-        # In pure forward evaluations, detach output fields
-        # (gradients may come from hyperelasticity)
-        if not has_differentiable_dependency:
+        if not track_parameter_gradients:
             out_flux = out_flux.detach()
             out_grad = out_grad.detach()
             out_state = out_state.detach()
@@ -699,7 +690,7 @@ class Mechanics(FEM, ABC):
             f += w * force_contrib.reshape(-1, N_dof * N_nod)
 
             # Compute element stiffness matrix
-            if self.K.numel() == 0 or not self.material.n_state == 0 or nlgeom:
+            if self.K.numel() == 0 or self.material.n_state != 0 or nlgeom:
                 BCB = torch.einsum("...Jp,...iJkL,...Lq->...piqk", B[i], ddsdde, B[i])
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
                 k += w * self.compute_k(detJ[i], BCB)
@@ -846,7 +837,7 @@ class Heat(FEM, ABC):
             f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
 
             # Compute element stiffness matrix
-            if self.K.numel() == 0 or not self.material.n_state == 0:
+            if self.K.numel() == 0 or self.material.n_state != 0:
                 # Material stiffness
                 BCB = torch.einsum("...ij,...iN,...jM->...NM", ddfddg, B[i], B[i])
                 BCB = BCB.reshape(
@@ -1059,14 +1050,14 @@ class Heat(FEM, ABC):
         out_grad = grad
         out_state = state
 
-        # Aggregate integration points as mean
         if aggregate_integration_points:
             out_grad = out_grad.mean(dim=1)
             out_flux = out_flux.mean(dim=1)
             out_state = out_state.mean(dim=1)
-        # Squeeze outputs
+
         out_flux = out_flux.squeeze()
         out_grad = out_grad.squeeze()
+
         if return_intermediate:
             # Return all intermediate values
             return u, f, out_flux, out_grad, out_state
