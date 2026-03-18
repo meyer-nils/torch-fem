@@ -23,9 +23,9 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install cupy-cuda11x # v11.2 - 11.8
 ```
 
-For CUDA 12.6:
+For CUDA 12.9:
 ```
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
 pip install cupy-cuda12x # v12.x
 ```
 
@@ -193,18 +193,19 @@ Python 3.10, SciPy 1.15.3, Apple Accelerate, float64
 |  80 |  1536000 |    13.90s |    73.41s |    17.95s |   9739.0MB |
 
 
-#### NVIDIA GeForce RTX 4090 (16,384 Cuda cores, 24 GB VRAM)
-Python 3.12, CuPy 13.3.0, CUDA 11.8, float64
+#### NVIDIA GeForce RTX 5090 (21,760 Cuda cores, 32 GB VRAM)
+Python 3.13, CuPy 14.0.1, CUDA 12.9, float64
 
-|  N  |     DOFs |  FWD Time |  BWD Time |   Peak RAM |
-| --- | -------- | --------- | --------- | ---------- |
-|  10 |     3000 |     0.68s |     0.17s |   1503.0MB |
-|  20 |    24000 |     0.94s |     0.41s |   1495.1MB |
-|  30 |    81000 |     1.15s |     0.54s |   1496.3MB |
-|  40 |   192000 |     1.46s |     0.73s |   1489.9MB |
-|  50 |   375000 |     1.97s |     1.02s |   1505.1MB |
-|  60 |   648000 |     2.65s |     1.36s |   1506.7MB |
-|  70 |  1029000 |     3.69s |     1.89s |   1496.4MB |
+|  N  |     DOFs |     Setup | FWD Solve | BWD Solve |   Peak RAM |
+| --- | -------- | --------- | --------- | --------- | ---------- |
+|  10 |     3000 |     0.27s |     0.45s |     0.46s |   1682.9MB |
+|  20 |    24000 |     0.24s |     0.49s |     0.49s |   1703.6MB |
+|  30 |    81000 |     0.25s |     0.60s |     0.59s |   1707.4MB |
+|  40 |   192000 |     0.25s |     0.78s |     0.73s |   1738.4MB |
+|  50 |   375000 |     0.28s |     1.08s |     0.94s |   1710.4MB |
+|  60 |   648000 |     0.32s |     1.54s |     1.27s |   1710.8MB |
+|  70 |  1029000 |     0.39s |     2.13s |     1.73s |   1728.7MB |
+|  80 |  1536000 |     0.49s |     3.76s |     3.22s |   2220.5MB |
 
 ## Alternatives
 There are many alternative FEM solvers in Python that you may also consider: 
