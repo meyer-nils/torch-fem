@@ -152,7 +152,7 @@ class FEM(ABC):
         J = torch.einsum("...iN, ANj -> ...Aij", b, nodes)
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
-            raise Exception("Negative Jacobian. Check element numbering.")
+            raise ValueError("Negative Jacobian. Check element numbering.")
         B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
         return self.etype.N(xi), B, detJ
 
@@ -901,7 +901,7 @@ class Heat(FEM, ABC):
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
-                raise Exception("Newton-Raphson iteration did not converge.")
+                raise RuntimeError("Newton-Raphson iteration did not converge.")
 
             u[n] = u_guess
             f[n] = f_int.reshape((-1, self.n_dof_per_node))
