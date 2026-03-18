@@ -807,9 +807,16 @@ class Heat(FEM, ABC):
 
         # Initialize nodal heat fluxes and conductivity matrix
         N_nod = self.etype.nodes
-        f = torch.zeros(self.n_elem, self.n_dof_per_node * N_nod)
+        f = torch.zeros(
+            self.n_elem,
+            self.n_dof_per_node * N_nod,
+            device=du.device,
+            dtype=du.dtype,
+        )
         k = torch.zeros(
-            (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
+            (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod),
+            device=du.device,
+            dtype=du.dtype,
         )
 
         grad_new = []
