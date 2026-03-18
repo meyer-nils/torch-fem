@@ -806,10 +806,9 @@ class Heat(FEM, ABC):
             (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
         )
 
-        # Initialize output for new state
-        grad_new = torch.zeros_like(grad_prev)
-        flux_new = torch.zeros_like(flux_prev)
-        state_new = torch.zeros_like(state_prev)
+        grad_new = []
+        flux_new = []
+        state_new = []
 
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
@@ -819,10 +818,10 @@ class Heat(FEM, ABC):
             # Compute temperature gradient increment
             temp_grad_inc = torch.einsum("...ij,...jk->...ki", B[i], du)
             # Update deformation gradient
-            grad_new[i] = grad_prev[i] + temp_grad_inc
+            grad_new.append(grad_prev[i] + temp_grad_inc)
 
             # Evaluate material response
-            flux_new[i], state_new[i], ddfddg = self.material.step(
+            flux_i, state_i, ddfddg = self.material.step(
                 temp_grad_inc,
                 grad_prev[i],
                 flux_prev[i],
@@ -831,9 +830,11 @@ class Heat(FEM, ABC):
                 self.char_lengths,
                 iter,
             )
+            flux_new.append(flux_i)
+            state_new.append(state_i)
 
             # Compute element internal forces
-            force_contrib = self.compute_f(detJ[i], B[i], flux_new[i])
+            force_contrib = self.compute_f(detJ[i], B[i], flux_i)
             f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
 
             # Compute element stiffness matrix
@@ -844,7 +845,14 @@ class Heat(FEM, ABC):
                     -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
                 )
                 k += w * self.compute_k(detJ[i], BCB)
-        return k, f, grad_new, flux_new, state_new
+
+        return (
+            k,
+            f,
+            torch.stack(grad_new),
+            torch.stack(flux_new),
+            torch.stack(state_new),
+        )
 
     def time_integration(
         self,

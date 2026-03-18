@@ -1,7 +1,8 @@
 import torch
 
-from torchfem import Planar
-from torchfem.materials import IsotropicElasticityPlaneStress
+from torchfem import Planar, PlanarHeat
+from torchfem.materials import IsotropicConductivity2D, IsotropicElasticityPlaneStress
+from torchfem.mesh import rect_quad
 
 torch.set_default_dtype(torch.float64)
 
@@ -41,3 +42,33 @@ def test_gradients_incremental_final_matches_single_step():
     grad_final = torch.autograd.grad(compliance_final, cantilever.thickness)[0]
 
     assert torch.allclose(grad_final, grad_single, atol=1e-9, rtol=1e-7)
+
+
+def test_gradients_planar_heat_topology_parameter_autograd():
+    model = PlanarHeat(*rect_quad(5, 5, 1.0, 1.0), IsotropicConductivity2D(kappa=400.0))
+    west = torch.isclose(model.nodes[:, 0], model.nodes[:, 0].min())
+    north = torch.isclose(model.nodes[:, 1], model.nodes[:, 1].max())
+    model.constraints[west | north] = True
+    model.displacements[west | north] = 0.0
+
+    element_volume = model.integrate_field()
+    model.forces[:, 0] = (
+        model.assemble_rhs(
+            (1000.0 * element_volume / element_volume.sum())
+            .unsqueeze(1)
+            .repeat(1, model.etype.nodes)
+        )
+        / model.etype.nodes
+    )
+
+    rho_nodes = 0.4 * torch.ones(len(model.nodes), requires_grad=True)
+    N, _, _ = model.eval_shape_functions(model.etype.ipoints.sum(dim=0))
+    model.thickness = torch.einsum("EN, N -> E", rho_nodes[model.elements], N) ** 3.0
+
+    temperature, internal_force, _, _, _ = model.solve(
+        differentiable_parameters=rho_nodes
+    )
+    compliance = torch.inner(internal_force.ravel(), temperature.ravel())
+    sensitivity = torch.autograd.grad(compliance, rho_nodes)[0]
+
+    assert torch.isfinite(sensitivity).all()
