@@ -13,7 +13,14 @@ from .sparse import CachedSolve, differentiable_sparse_solve, newton_solve
 
 class FEM(ABC):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
-        """Initialize a general FEM problem."""
+        """Initialize a finite-element model.
+
+        Args:
+            nodes: Nodal coordinates with shape [n_nod, n_dim].
+            elements: Connectivity with shape [n_elem, n_nodes_per_element].
+            material: Material model. If not vectorized, it is vectorized over
+                elements during initialization.
+        """
 
         # Store nodes and elements
         self.nodes = nodes
@@ -77,45 +84,76 @@ class FEM(ABC):
     @property
     @abstractmethod
     def n_dof_per_node(self) -> int:
-        """Number of DOFs per node"""
+        """Number of degrees of freedom per node."""
         raise NotImplementedError
 
     @property
     @abstractmethod
     def etype(self) -> type[Element]:
-        """Element type."""
+        """Finite-element type implementation used by this problem."""
         raise NotImplementedError
 
     @cached_property
     @abstractmethod
     def char_lengths(self) -> Tensor:
-        """Characteristic lengths of the elements."""
+        """Characteristic element lengths.
+
+        Returns:
+            Tensor with one characteristic length per element.
+        """
         raise NotImplementedError
 
     @property
     @abstractmethod
     def initial_grad(self) -> Tensor:
-        """Initial gradient at integration points."""
+        """Initial gradient field value at integration points."""
         raise NotImplementedError
 
     @abstractmethod
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
+        """Compute element stiffness contribution.
+
+        Args:
+            detJ: Jacobian determinant at the current integration point.
+            BCB: Material tangent transformed by gradient operators.
+
+        Returns:
+            Element stiffness contribution tensor.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
+        """Compute element internal force contribution.
+
+        Args:
+            detJ: Jacobian determinant at the current integration point.
+            B: Gradient operator at the current integration point.
+            S: Stress or flux-like constitutive quantity.
+
+        Returns:
+            Element internal nodal force contribution.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def plot(self, u: float | Tensor = 0.0, **kwargs):
+        """Visualize the model and optionally a solution field.
+
+        Args:
+            u: Optional nodal field or scale factor, depending on subclass.
+            **kwargs: Backend-specific plotting keyword arguments.
+        """
         raise NotImplementedError
 
     @abstractmethod
     def compute_m(self) -> Tensor:
+        """Compute element mass matrix contributions."""
         raise NotImplementedError
 
     @abstractmethod
     def k0(self) -> Tensor:
+        """Compute element stiffness for the reference configuration."""
         raise NotImplementedError
 
     @abstractmethod
@@ -130,7 +168,22 @@ class FEM(ABC):
         iter: int,
         nlgeom: bool,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Integrate material response over element integration points."""
+        """Integrate constitutive response over all integration points.
+
+        Args:
+            u_prev: Nodal field at previous converged step.
+            grad_prev: Previous gradient field at integration points.
+            flux_prev: Previous flux or stress at integration points.
+            state_prev: Previous material internal variables.
+            du: Incremental nodal unknown for the current Newton evaluation.
+            de0: Incremental external gradient-like loading term.
+            iter: Newton iteration index.
+            nlgeom: If True, evaluate with geometric nonlinearity.
+
+        Returns:
+            Tuple of element stiffness, element internal forces, updated
+            gradients, updated fluxes, and updated material state.
+        """
         raise NotImplementedError
 
     @property
@@ -146,7 +199,18 @@ class FEM(ABC):
         self._constraints = value.to(self.nodes.device)
 
     def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Gradient operator at integration points xi."""
+        """Evaluate shape functions and gradients at local coordinates.
+
+        Args:
+            xi: Local element coordinates where quantities are evaluated.
+
+        Returns:
+            Tuple of shape functions N, gradient operators B, and Jacobian
+            determinants detJ.
+
+        Raises:
+            ValueError: If any element has non-positive Jacobian determinant.
+        """
         nodes = self.nodes[self.elements, :]
         b = self.etype.B(xi)
         J = torch.einsum("...iN, ANj -> ...Aij", b, nodes)
@@ -157,7 +221,11 @@ class FEM(ABC):
         return self.etype.N(xi), B, detJ
 
     def compute_B(self) -> Tensor:
-        """Null space representing rigid body modes."""
+        """Build rigid-body null-space modes for linear solvers.
+
+        Returns:
+            Dense basis matrix with one column per rigid-body mode.
+        """
         if self.n_dof_per_node == 3:
             B = torch.zeros((self.n_dof_per_node * self.n_nod, 6))
             B[0::3, 0] = 1
@@ -183,7 +251,15 @@ class FEM(ABC):
         return B
 
     def integrate_field(self, field: Tensor | None = None) -> Tensor:
-        """Integrate scalar field over elements."""
+        """Integrate a nodal scalar field over each element.
+
+        Args:
+            field: Nodal scalar values with shape [n_nod]. If None, integrates
+                a unit field and therefore returns element volumes or areas.
+
+        Returns:
+            Per-element integral values with shape [n_elem].
+        """
 
         # Default field is ones (to integrate volume)
         if field is None:
@@ -202,7 +278,15 @@ class FEM(ABC):
         return torch.einsum("i,ie,ie->e", weights, f_ip, detJ)
 
     def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
-        """Assemble global generalized stiffness matrix."""
+        """Assemble a global sparse matrix from element contributions.
+
+        Args:
+            k: Element matrix contributions.
+            con: Flattened indices of constrained global degrees of freedom.
+
+        Returns:
+            Global sparse matrix with Dirichlet constraints enforced.
+        """
 
         # Fill in stiffness matrix values at appropriate indices
         val = torch.zeros(self.glob_idx.shape[1])
@@ -223,7 +307,14 @@ class FEM(ABC):
         return K
 
     def assemble_rhs(self, f: Tensor) -> Tensor:
-        """Assemble global right hand side vector."""
+        """Assemble a global right-hand-side vector from element values.
+
+        Args:
+            f: Element nodal vector contributions.
+
+        Returns:
+            Global vector with shape [n_dofs].
+        """
 
         # Initialize global right hand side vector
         F = torch.zeros((self.n_dofs))
@@ -250,27 +341,29 @@ class FEM(ABC):
         nlgeom: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Solve the FEM problem with the Newton-Raphson method.
+        """Solve the quasi-static finite-element problem by load increments.
 
         Args:
-            increments (Tensor): Load increment stepping.
-            max_iter (int): Maximum number of iterations during Newton-Raphson.
-            rtol (float): Relative tolerance for Newton-Raphson convergence.
-            atol (float): Absolute tolerance for Newton-Raphson convergence.
-            stol (float): Solver tolerance for iterative methods.
-            verbose (bool): Print iteration information.
-            method (str): Method for linear solve ('spsolve','minres','cg','pardiso').
-            device (str): Device to run the linear solve on.
-            return_intermediate (bool): Return intermediate values if True.
-            aggregate_integration_points (bool): Aggregate integration points if True.
-            use_cached_solve (bool): Use cached solve, e.g. in topology optimization.
-            nlgeom (bool): Use nonlinear geometry if True.
+            increments: Monotonic load scale factors, typically [0, 1].
+            max_iter: Maximum Newton iterations per load increment.
+            rtol: Relative residual tolerance for Newton convergence.
+            atol: Absolute residual tolerance for Newton convergence.
+            stol: Tolerance used by iterative linear solvers.
+            verbose: If True, prints per-increment progress.
+            method: Linear solver backend name.
+            device: Optional device hint for the linear solver backend.
+            return_intermediate: If True, returns values for all increments.
+            aggregate_integration_points: If True, averages flux, gradient, and
+                state over integration points.
+            use_cached_solve: If True, reuses cached linear solver data.
+            nlgeom: If True, includes geometric nonlinearity.
             differentiable_parameters: Explicit parameter(s) to differentiate
                 through the linear solves.
 
         Returns:
-                Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]: Final displacements,
-                internal forces, flux, deformation gradient, and material state.
+            Tuple of displacement, internal force, flux, gradient, and material
+            state. If return_intermediate is True, each tensor includes an
+            increment dimension as the leading axis.
 
         """
         # Number of increments
@@ -456,6 +549,7 @@ class FEM(ABC):
 
 
 class Mechanics(FEM, ABC):
+    """Base class for solid and structural mechanics formulations."""
 
     @property
     def n_dof_per_node(self) -> int:
@@ -502,7 +596,7 @@ class Mechanics(FEM, ABC):
         self._external_gradient = value.to(self.nodes.device)
 
     def k0(self) -> Tensor:
-        """Compute element stiffness matrix for zero strain."""
+        """Compute element stiffness matrix in the reference state."""
         u = torch.zeros(self.n_nod, self.n_dof_per_node)
         grad = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
         grad[:] = torch.eye(self.n_dim)
@@ -526,16 +620,26 @@ class Mechanics(FEM, ABC):
         nlgeom: bool,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
-        Perform numerical integrations for the element stiffness matrix and forces
-        assuming a total Lagrangian formulation.
+        Integrate mechanics material response over all integration points.
 
         Args:
-            grad_prev: Deformation gradient at previous step [n_int, n_elem, *n_flux]
-            flux_prev: Stress at previous step [n_int, n_elem, *n_flux]
-            state_prev: Material state at previous step [n_int, n_elem, n_state]
+            u_prev: Nodal displacement field at previous converged step.
+            grad_prev: Deformation gradient at previous step
+                [n_int, n_elem, *n_flux].
+            flux_prev: Stress tensor at previous step [n_int, n_elem, *n_flux].
+            state_prev: Internal variables at previous step
+                [n_int, n_elem, n_state].
+            du: Displacement increment used for the current Newton evaluation.
+            de0: External strain-like increment per element.
+            iter: Newton iteration index.
+            nlgeom: If True, computes Cauchy stress from first Piola stress.
 
         Returns:
-            k, f, grad_new, flux_new, state_new
+            k: Element stiffness contributions.
+            f: Element internal nodal forces.
+            grad_new: Updated deformation gradient.
+            flux_new: Updated stress tensor.
+            state_new: Updated internal material state.
         """
 
         # Reshape displacement increment
@@ -607,13 +711,15 @@ class Mechanics(FEM, ABC):
 
 
 class Heat(FEM, ABC):
+    """Base class for steady and transient heat conduction formulations."""
+
     @property
     def n_dof_per_node(self) -> int:
         return 1
 
     @property
     def n_flux(self) -> list[int]:
-        """Shape of the heat flux tensor."""
+        """Heat flux tensor shape per integration point."""
         return [1, self.n_dim]
 
     @property
@@ -645,7 +751,7 @@ class Heat(FEM, ABC):
         self._dirichlet = value.to(self.nodes.device)
 
     def k0(self) -> Tensor:
-        """Compute element stiffness matrix for zero strain."""
+        """Compute element conductivity matrix in the reference state."""
         temp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature
         temp_grad = torch.zeros(
             self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
@@ -675,15 +781,26 @@ class Heat(FEM, ABC):
         iter: int,
         nlgeom: bool,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Perform numerical integrations for element stiffness matrix.
+        """Integrate thermal constitutive response over all integration points.
 
         Args:
-            grad_prev: Previous temp. gradient [n_int, n_elem, n_dof_per_node, n_dim]
-            flux_prev: Previous heat flux [n_int, n_elem, n_dof_per_node, n_dim]
-            state_prev: Previous material state [n_int, n_elem, n_state]
+            u_prev: Previous nodal temperature field.
+            grad_prev: Previous temperature gradient
+                [n_int, n_elem, n_dof_per_node, n_dim].
+            flux_prev: Previous heat flux
+                [n_int, n_elem, n_dof_per_node, n_dim].
+            state_prev: Previous internal variables [n_int, n_elem, n_state].
+            du: Temperature increment for the current Newton evaluation.
+            de0: External temperature-gradient increment per element.
+            iter: Newton iteration index.
+            nlgeom: Unused for heat, kept for API compatibility.
 
         Returns:
-            k, f, grad_new, flux_new, state_new
+            k: Element conductivity contributions.
+            f: Element internal nodal heat-flux vector contributions.
+            grad_new: Updated temperature gradient.
+            flux_new: Updated heat flux.
+            state_new: Updated internal material state.
         """
 
         # Reshape temperature increment
@@ -754,6 +871,37 @@ class Heat(FEM, ABC):
         use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Integrate the heat equation in time with implicit increments.
+
+        The routine first computes a consistent equilibrium state at the
+        initial time under the current boundary conditions, then advances the
+        solution over the requested output times.
+
+        Args:
+            t_output: Requested output times.
+            delta_t: Maximum internal time step.
+            max_iter: Maximum Newton iterations per time step.
+            verbose: If True, prints per-step Newton residuals.
+            rtol: Relative residual tolerance for Newton convergence.
+            atol: Absolute residual tolerance for Newton convergence.
+            stol: Tolerance used by iterative linear solvers.
+            device: Optional device hint for the linear solver backend.
+            method: Linear solver backend name.
+            aggregate_integration_points: If True, averages flux, gradient, and
+                state over integration points.
+            return_intermediate: If True, returns all intermediate increments.
+            use_cached_solve: If True, reuses cached linear solver data.
+            differentiable_parameters: Explicit parameters that should receive
+                gradients through implicit solves.
+
+        Returns:
+            Tuple of temperature, internal vector, heat flux, temperature
+            gradient, and material state. If return_intermediate is True, each
+            tensor includes a time-increment dimension as the leading axis.
+
+        Raises:
+            RuntimeError: If Newton iterations do not converge for a time step.
+        """
 
         # initial step: we get heat fluxes and temperature gradients for initial
         # conditions enforce initial conditions as boundary conditions
