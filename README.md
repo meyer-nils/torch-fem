@@ -179,18 +179,18 @@ torch.autograd.grad(compliance, cantilever.thickness)[0]
 The following benchmarks were performed on a cube subjected to a one-dimensional extension. The cube is discretized with N x N x N linear hexahedral elements, has a side length of 1.0 and is made of a material with Young's modulus of 1000.0 and Poisson's ratio of 0.3. The cube is fixed at one end and a displacement of 0.1 is applied at the other end. The benchmark measures the forward time to assemble the stiffness matrix and the time to solve the linear system. In addition, it measures the backward time to compute the sensitivities of the sum of displacements with respect to forces.
 
 #### Apple M1 Pro (10 cores, 16 GB RAM)
-Python 3.10, SciPy 1.14.1, Apple Accelerate, float64
+Python 3.10, SciPy 1.15.3, Apple Accelerate, float64
 
 |  N  |     DOFs |     Setup | FWD Solve | BWD Solve |   Peak RAM |
 | --- | -------- | --------- | --------- | --------- | ---------- |
-|  10 |     3000 |     0.02s |     0.18s |     0.14s |    448.2MB |
-|  20 |    24000 |     0.15s |     0.78s |     0.21s |    847.1MB |
-|  30 |    81000 |     0.56s |     2.86s |     0.67s |   1979.2MB |
-|  40 |   192000 |     1.31s |     6.94s |     1.17s |   2988.7MB |
-|  50 |   375000 |     2.69s |    15.36s |     2.59s |   4011.4MB |
-|  60 |   648000 |     5.31s |    26.63s |     4.06s |   5760.9MB |
-|  70 |  1029000 |     8.93s |    45.27s |     6.81s |   7885.4MB |
-|  80 |  1536000 |    14.28s |    81.66s |    12.60s |   9360.8MB |
+|  10 |     3000 |     0.03s |     0.19s |     0.40s |    489.0MB |
+|  20 |    24000 |     0.16s |     0.85s |     0.37s |    868.7MB |
+|  30 |    81000 |     0.58s |     3.04s |     0.89s |   1571.7MB |
+|  40 |   192000 |     1.39s |     7.77s |     1.78s |   2177.3MB |
+|  50 |   375000 |     3.36s |    15.79s |     3.97s |   3143.7MB |
+|  60 |   648000 |     7.05s |    30.07s |     6.24s |   5280.9MB |
+|  70 |  1029000 |     9.50s |    53.24s |     9.86s |   7507.5MB |
+|  80 |  1536000 |    16.65s |    84.94s |    25.36s |   9428.3MB |
 
 
 #### NVIDIA GeForce RTX 4090 (16,384 Cuda cores, 24 GB VRAM)
