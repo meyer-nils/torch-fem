@@ -302,9 +302,10 @@ class FEM(ABC):
         val[self.diag_map[con]] = 1.0
 
         # Create sparse global stiffness matrix
-        K = torch.sparse_coo_tensor(
-            self.glob_idx, val, size=(self.n_dofs, self.n_dofs), is_coalesced=True
-        )
+        with torch.sparse.check_sparse_tensor_invariants(False):
+            K = torch.sparse_coo_tensor(
+                self.glob_idx, val, size=(self.n_dofs, self.n_dofs), is_coalesced=True
+            )
         return K
 
     def assemble_rhs(self, f: Tensor) -> Tensor:
@@ -648,9 +649,7 @@ class Mechanics(FEM, ABC):
         N_nod = self.etype.nodes
         N_dof = self.n_dof_per_node
         f = torch.zeros(self.n_elem, N_dof * N_nod, device=du.device)
-        k = torch.zeros(
-            (self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device
-        )
+        k = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device)
 
         # Initialize output for new state
         grad_new = torch.zeros_like(grad_prev)
