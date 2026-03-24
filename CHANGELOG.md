@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## Version 0.6.1 - March 24 2026 
+
+### Fixed
+- Silence warning on sparse invariant checks.
+- Fix initial gradient shape in k0 for topology optimization.
+
 ## Version 0.6.0 - March 18 2026 
 
 ### Added
