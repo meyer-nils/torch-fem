@@ -595,7 +595,7 @@ class Mechanics(FEM, ABC):
         """Compute element stiffness matrix in the reference state."""
         u = torch.zeros(self.n_nod, self.n_dof_per_node)
         grad = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
-        grad[:] = torch.eye(self.n_dim)
+        grad[:] = self.initial_grad
         flux = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
         state = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
         du = torch.zeros(self.n_nod, self.n_dof_per_node)
