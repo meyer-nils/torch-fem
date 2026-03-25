@@ -326,9 +326,9 @@ class Shell(Mechanics):
                     iter,
                 )
 
-                # Compute local internal forces
-                f_loc += wz * flux_new[ip].clone()
-                m_loc += wz * z * flux_new[ip].clone()
+                # Thickness integration of membrane forces and bending moments.
+                f_loc += wz * self.thickness[:, None, None] * flux_new[ip].clone()
+                m_loc += wz * z * self.thickness[:, None, None] * flux_new[ip].clone()
 
                 # Compute ABD matrix contributions
                 C = stiffness2voigt(ddsdde)
