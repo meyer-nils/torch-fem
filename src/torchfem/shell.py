@@ -16,7 +16,7 @@ from torch import Tensor
 from .base import Mechanics
 from .elements import Element, Tria1
 from .materials import Material
-from .utils import stiffness2voigt
+from .utils import stiffness2voigt, stress2voigt
 
 
 class Shell(Mechanics):
@@ -379,8 +379,16 @@ class Shell(Mechanics):
             # Total force contribution
             disp = u_trial[self.elements, :].reshape(self.n_elem, -1)
             loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
+            n_loc = stress2voigt(f_loc)
+            m_loc_voigt = stress2voigt(m_loc)
+            f_membrane = wi * torch.einsum("...,...ji,...j->...i", detJ[i], Dm, n_loc)
+            f_bending = wi * torch.einsum(
+                "...,...ji,...j->...i", detJ[i], Db, m_loc_voigt
+            )
+            f_shear_drill = torch.einsum("...ij,...j->...i", ks + kd, loc_disp)
+            f_loc_total = f_membrane + f_bending + f_shear_drill
             f[:, :] += torch.einsum(
-                "...ki, ...ij,...j->...k", self.T.transpose(1, 2), kt, loc_disp
+                "...ij,...j->...i", self.T.transpose(1, 2), f_loc_total
             )
 
         return k, f, grad_new, flux_new, state_new
