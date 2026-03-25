@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## Version 0.6.2 - March 25 2026 
+
+### Fixed
+- Critical fix for trusses. 
+
 ## Version 0.6.1 - March 24 2026 
 
 ### Fixed
