@@ -365,8 +365,8 @@ class Shell(Mechanics):
 
             # Element drilling stiffness
             kd = torch.zeros_like(km)
-            for i in range(self.etype.nodes):
-                kd[:, i * self.n_dof_per_node - 1, i * self.n_dof_per_node - 1] = (
+            for z in range(self.etype.nodes):
+                kd[:, z * self.n_dof_per_node - 1, z * self.n_dof_per_node - 1] = (
                     self.drill_penalty
                 )
 
