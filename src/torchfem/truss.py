@@ -58,7 +58,7 @@ class Truss(Mechanics):
 
         # Compute Jacobian and its determinant
         J = 0.5 * l0[:, None, None]
-        detJ = J.squeeze(-1)
+        detJ = 0.5 * l0[None, :]
         if torch.any(detJ <= 0.0):
             raise Exception("Negative Jacobian. Check element numbering.")
 
