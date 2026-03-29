@@ -83,7 +83,7 @@ We solve the FEM problem with this exact field to get a synthetic ground truth o
 
 ### Direct solution of the inverse problem
 
-Let's solve the inverse problem now, i.e, we want to estimate the property field leading to the observed deformation field $u_\textrm{ref}$. Hence, we solve
+Let's solve the inverse problem now, i.e., we want to estimate the property field leading to the observed deformation field $u_\textrm{ref}$. Hence, we solve
 
 $$
     \min_E \left( u(E) - u_\textrm{ref} +  u_\textrm{noise} \right)^2

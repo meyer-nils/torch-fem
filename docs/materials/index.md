@@ -18,7 +18,7 @@ The material model is responsible for advancing the material state. Given the st
 $$
 \mathbb{C}_{n+1} = \frac{\partial \Delta \pmb{\sigma}}{\partial \Delta \mathbf{H}}
 $$
-for convergence speed ot the underlying incremental Newton-Raphson solver. 
+for convergence speed of the underlying incremental Newton-Raphson solver.
 In `torch-fem`, this logic is encapsulated in the `step()` method of each material inherited from the abstract `Material` base class:
 
 ::: torchfem.materials.Material.step

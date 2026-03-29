@@ -156,7 +156,7 @@ Finally, the sensitivity with respect to the element thicknesses is obtained via
 sens = torch.autograd.grad(compliance, cantilever.thickness)[0]
 ```
 
-The result is a vector with two entries containing the sensitivity of compliance w.r.t. to each of those two elements. This mechanism generalizes to material parameters, loads, geometric variables, or any other differentiable model attribute.
+The result is a vector with two entries containing the sensitivity of compliance w.r.t. each of those two elements. This mechanism generalizes to material parameters, loads, geometric variables, or any other differentiable model attribute.
 
 [View example on GitHub :fontawesome-brands-github:](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/planar/minimal.ipynb){ .md-button }
 [Open in Google Colab :fontawesome-brands-google-drive:](https://colab.research.google.com/github/meyer-nils/torch-fem/blob/main/examples/basic/planar/minimal.ipynb){ .md-button }

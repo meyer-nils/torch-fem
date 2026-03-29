@@ -10,7 +10,7 @@ Simple GPU accelerated differentiable finite elements for solid mechanics with P
 PyTorch enables efficient computation of sensitivities via automatic differentiation and using them in optimization tasks.
 
 ## Installation
-Your may install torch-fem via pip with
+You may install torch-fem via pip with
 ```
 pip install torch-fem
 ```
@@ -51,7 +51,7 @@ pip install cupy-cuda12x # v12.x
   - I/O to and from other mesh formats via meshio
 
 ## Basic examples
-The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demonstrating the use of torch-fem for trusses, planar problems, shells and solids. You may click on the examples to check out the notebooks online.
+The subdirectory `examples/basic` contains a couple of Jupyter notebooks demonstrating the use of torch-fem for trusses, planar problems, shells, and solids. You may click on the examples to check out the notebooks online.
 
 <table>
     <tbody>
@@ -81,7 +81,7 @@ The subdirectory `examples->basic` contains a couple of Jupyter Notebooks demons
 </table>
 
 ## Optimization examples
-The subdirectory `examples->optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization). You may click on the examples to check out the notebooks online.
+The subdirectory `examples/optimization` demonstrates the use of torch-fem for optimization of structures (e.g. topology optimization, composite orientation optimization). You may click on the examples to check out the notebooks online.
 
 <table>
     <tbody>
