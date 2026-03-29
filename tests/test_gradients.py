@@ -4,8 +4,6 @@ from torchfem import Planar, PlanarHeat
 from torchfem.materials import IsotropicConductivity2D, IsotropicElasticityPlaneStress
 from torchfem.mesh import rect_quad
 
-torch.set_default_dtype(torch.float64)
-
 
 def _build_minimal_planar_cantilever() -> Planar:
     material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
