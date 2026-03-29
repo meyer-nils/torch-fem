@@ -23,7 +23,6 @@ dependencies = [
     "ipywidgets",
     "ipykernel",
     "matplotlib",
-    "memory_profiler",
     "meshio",
     "pyamg",
     "pyvista",
