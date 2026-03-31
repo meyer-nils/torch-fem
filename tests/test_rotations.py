@@ -2,14 +2,7 @@ import pytest
 import torch
 
 from torchfem.materials import OrthotropicElasticity3D, OrthotropicElasticityPlaneStress
-from torchfem.rotations import (
-    axis_rotation,
-    euler_rotation,
-    planar_rotation,
-    voigt_strain_rotation,
-    voigt_stress_rotation,
-)
-from torchfem.utils import strain2voigt, stress2voigt, voigt2strain, voigt2stress
+from torchfem.rotations import axis_rotation, euler_rotation, planar_rotation
 
 mat_2D = OrthotropicElasticityPlaneStress(1.0, 2.0, 0.3, 1.0)
 mat_2D_rot = OrthotropicElasticityPlaneStress(2.0, 1.0, 0.6, 1.0)
@@ -42,29 +35,4 @@ def test_orthogonality(R):
 def test_stiffness_rotation(mat, mat_rot, R):
     rotated_material = mat.rotate(R)
     assert torch.allclose(rotated_material.C, mat_rot.C, atol=1e-6)
-
-
-@pytest.mark.parametrize(
-    "voigt, R",
-    [
-        (torch.rand(6), axis_rotation(X, torch.rand(1))),
-        (torch.rand(3), planar_rotation(torch.rand(1))),
-    ],
-)
-def test_stress_rotation(voigt, R):
-    voigt_rot = voigt_stress_rotation(R) @ voigt
-    sigma_rot = stress2voigt(R @ voigt2stress(voigt) @ R.transpose(-1, -2))
-    assert torch.allclose(sigma_rot, voigt_rot, atol=1e-6)
-
-
-@pytest.mark.parametrize(
-    "voigt, R",
-    [
-        (torch.rand(6), axis_rotation(X, torch.rand(1))),
-        (torch.rand(3), planar_rotation(torch.rand(1))),
-    ],
-)
-def test_strain_rotation(voigt, R):
-    voigt_rot = voigt_strain_rotation(R) @ voigt
-    sigma_rot = strain2voigt(R @ voigt2strain(voigt) @ R.transpose(-1, -2))
-    assert torch.allclose(sigma_rot, voigt_rot, atol=1e-6)
+    assert torch.allclose(rotated_material.C, mat_rot.C, atol=1e-6)

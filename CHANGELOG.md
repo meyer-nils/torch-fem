@@ -2,10 +2,17 @@
 
 ## Unreleased
 
+### Added
+- Alternative text for images in README.md
+
 ### Changed 
 - Improved documentation in truss shape optimization example.
 - Integrate shell forces and moments from integration points to enable non-linear materials
 - Add basic `shell/plasticity.ipynb` example.
+
+### Removed 
+- The utility functions `voigt_strain_rotation` and `voigt_stress_rotation` are not used anywhere. They are removed.
+- Dependency on unused `memory_profiler`. This was replaced by a custom profiling function for benchmarking earlier.
 
 ## Version 0.6.2 - March 25 2026 
 
