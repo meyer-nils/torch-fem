@@ -4,6 +4,7 @@
 
 ### Added
 - Alternative text for images in README.md
+- Test for example files.
 
 ### Changed 
 - Improved documentation in truss shape optimization example.
