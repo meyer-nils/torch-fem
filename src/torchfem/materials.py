@@ -243,17 +243,57 @@ class IsotropicElasticity3D(Material):
 
 
 class Hyperelastic3D(Material):
-    """Hyperelastic material.
+    """Hyperelastic material in 3D.
 
-    This class implements a hyperelastic material model suitable for large
-    deformations, e.g., for rubber-like materials.
+    This class implements a hyperelastic material model for large deformations
+    using automatic differentiation. The user provides a strain energy density
+    function $\\psi(\\mathbf{F}, \\texttt{params})$ and the model computes
+    stress and tangent stiffness automatically via `torch.func`.
 
-    Attributes:
-        psi (Callable): Function that computes the strain energy density.
-        params (list | Tensor): Material parameters for the strain energy density.
-        n_state (int): Number of internal state variables (here: 0).
-        is_vectorized (bool): `True` if `psi` accepts batch dimensions.
+    Args:
+        psi (Callable): Strain energy density function
+            $\\psi(\\mathbf{F}, \\texttt{params})$ that takes the deformation
+            gradient and material parameters and returns a scalar energy density.
+        params (list | Tensor): Material parameters passed to `psi`.
+            *Shape:* `(p,)` for a scalar or `(N, p)` for a batch of materials.
+        rho (Tensor | float): Mass density. Default is `1.0`.
 
+    Notes:
+        - Finite-strain (large deformation) framework.
+        - No internal state variables (``n_state = 0``).
+        - Stress and tangent are computed via automatic differentiation of $\\psi$.
+
+    Info: Hyperelastic constitutive law
+        A hyperelastic material is defined by a strain energy density function
+        $\\psi(\\mathbf{F})$ of the deformation gradient $\\mathbf{F}$. The first
+        Piola-Kirchhoff stress is obtained as
+        $$
+            \\mathbf{P} = \\frac{\\partial \\psi}{\\partial \\mathbf{F}}
+        $$
+        and the material tangent as
+        $$
+            C_{iJkL}
+                = \\frac{\\partial^2 \\psi}{\\partial F_{iJ} \\partial F_{kL}}.
+        $$
+        Both derivatives are computed automatically using `torch.func.jacrev`.
+
+        Common choices for $\\psi$ include the Neo-Hookean model
+        $$
+            \\psi(\\mathbf{F}) = \\frac{\\mu}{2}
+                \\left( \\text{tr}(\\mathbb{C}) - 3 \\right)
+                - \\mu \\ln J
+                + \\frac{\\lambda}{2} (\\ln J)^2
+        $$
+        with $\\mathbb{C} = \\mathbf{F}^\\top \\mathbf{F}$,
+        $J = \\det(\\mathbf{F})$, and Lam\u00e9 parameters $\\mu, \\lambda$,
+        or the Saint Venant-Kirchhoff model
+        $$
+            \\psi(\\mathbf{F}) = \\frac{\\lambda}{2}
+                \\left( \\text{tr}(\\mathbf{E}) \\right)^2
+                + \\mu \\, \\text{tr}(\\mathbf{E}^2)
+        $$
+        with the Green-Lagrange strain $\\mathbf{E} = \\frac{1}{2}
+        (\\mathbb{C} - \\mathbb{I})$.
     """
 
     def __init__(self, psi: Callable, params: list | Tensor, rho: Tensor | float = 1.0):
@@ -343,24 +383,50 @@ class Hyperelastic3D(Material):
 
 
 class IsotropicDamage3D(IsotropicElasticity3D):
-    """Isotropic damage material model.
+    """Isotropic damage material model in 3D.
 
-    This class extends `IsotropicElasticity3D` to incorporate isotropic damage with a
-    single damage variable.
+    This class extends `IsotropicElasticity3D` to incorporate isotropic damage
+    with a scalar damage variable $D \\in [0, 1]$.
 
-    Attributes:
-        E (Tensor | float): Young's modulus. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor | float): Poisson's ratio. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        rho (Tensor | float): Mass density. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        n_state (int): Number of internal state variables (here: 2).
-        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-        d (Callable): Function that defines the damage evolution.
-        d_prime (Callable): Function that defines the derivative of damage evolution.
-        eq_strain (Literal["rankine", "mises"]): Type of equivalent strain used for
-            damage.
+    Args:
+        E (Tensor | float): Young's modulus.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor | float): Poisson's ratio.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        d (Callable): Damage evolution function $D(\\kappa, l_c)$.
+        d_prime (Callable): Derivative of the damage evolution
+            $D'(\\kappa, l_c)$.
+        eq_strain (Literal["rankine", "mises"]): Type of equivalent strain
+            measure used for damage driving.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption.
+        - Two internal state variables (``n_state = 2``):
+          $\\kappa$ (damage driving variable) and $D$ (damage variable).
+        - Supports batched/vectorized material parameters.
+
+    Info: Isotropic damage model
+        The stress is degraded by a scalar damage variable $D$ as
+
+        $$
+            \\pmb{\\sigma} = (1 - D) \\, \\mathbb{C} : \\pmb{\\varepsilon}
+        $$
+
+        where $\\mathbb{C}$ is the undamaged elastic stiffness tensor.
+
+        The damage is driven by an equivalent strain measure
+        $\\tilde{\\varepsilon}$. For ``eq_strain="rankine"``, this is the
+        largest principal strain. The history variable $\\kappa$ tracks the
+        maximum equivalent strain ever reached:
+
+        $$
+            \\kappa_{n+1} = \\max(\\kappa_n,\\, \\tilde{\\varepsilon}_{n+1})
+        $$
+
+        and the damage evolves irreversibly as $D = d(\\kappa, l_c)$, where
+        the characteristic length $l_c$ is used for fracture energy
+        regularization.
     """
 
     def __init__(
@@ -410,7 +476,20 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Perform a strain increment with an isotropic damage model for small strains.
+        """Performs a strain increment with the isotropic damage model.
+
+        The stress is computed as
+        $\\pmb{\\sigma} = (1 - D) \\, \\mathbb{C} : \\pmb{\\varepsilon}$
+        and the algorithmic tangent stiffness is
+
+        $$
+            C^{\\text{alg}}_{ijkl} = (1 - D)  C_{ijkl}
+                - D'(\\kappa, l_c) \\, \\sigma^{\\text{trial}}_{ij} \\,
+                  n_k \\, n_l
+        $$
+
+        where $\\mathbf{n}$ is the direction of the damage-driving
+        principal strain.
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
@@ -484,30 +563,29 @@ class IsotropicDamage3D(IsotropicElasticity3D):
 
 
 class IsotropicPlasticity3D(IsotropicElasticity3D):
-    """Isotropic elastoplastic material model.
+    """Isotropic elastoplastic material model in 3D.
 
-    This class extends `IsotropicElasticity3D` to incorporate isotropic plasticity
-    with a von Mises yield criterion. The model follows a return-mapping algorithm
-    for small strains and enforces associative plastic flow with a given yield function
-    and its derivative.
+    This class extends `IsotropicElasticity3D` to incorporate isotropic
+    plasticity with a von Mises yield criterion and associative flow rule.
 
-    Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        rho (Tensor): Mass density. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        n_state (int): Number of internal state variables (here: 1).
-        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-        sigma_f (Callable): Function that defines the yield stress as a function
-            of the equivalent plastic strain.
-        sigma_f_prime (Callable): Derivative of the yield function with respect to
-            the equivalent plastic strain.
-        tolerance (float, optional): Convergence tolerance for the plasticity
-            return-mapping algorithm. Default is `1e-5`.
-        max_iter (int, optional): Maximum number of iterations for the local Newton
-            solver in plasticity correction. Default is `10`.
+    Args:
+        E (Tensor | float): Young's modulus.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor | float): Poisson's ratio.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        sigma_f (Callable): Yield stress function $\\sigma_f(q)$ of the
+            equivalent plastic strain $q$.
+        sigma_f_prime (Callable): Derivative $\\sigma_f'(q)$.
+        tolerance (float): Convergence tolerance for the local Newton solver.
+            Default is `1e-5`.
+        max_iter (int): Maximum number of Newton iterations. Default is `10`.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption.
+        - One internal state variable (``n_state = 1``): equivalent plastic
+          strain $q$.
+        - Supports batched/vectorized material parameters.
     """
 
     def __init__(
@@ -567,12 +645,52 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Perform a strain increment with an elastoplastic model using small strains.
+        """Performs a strain increment with the radial return-mapping algorithm.
 
-        This function updates the deformation gradient, computes the small strain
-        tensor, evaluates trial stress, and updates the stress based on the yield
-        condition and flow rule. The algorithm uses a local Newton solver to find the
-        plastic strain increment and adjusts the stress and internal state accordingly.
+        In each increment, a trial stress is computed as
+
+        $$
+            \\pmb{\\sigma}_{\\text{trial}} = \\pmb{\\sigma}_n
+                + \\mathbb{C} : \\Delta\\pmb{\\varepsilon}
+        $$
+
+        and the yield condition is checked via the flow potential
+
+        $$
+            f = \\|\\pmb{\\sigma}'_{\\text{trial}}\\|
+                - \\sqrt{\\tfrac{2}{3}} \\, \\sigma_f(q)
+        $$
+
+        where $\\pmb{\\sigma}'$ denotes the deviatoric stress.
+
+        **Elastic step** ($f \\le 0$): The trial stress is accepted.
+
+        **Plastic step** ($f > 0$): The flow direction is
+        $\\mathbf{n} = \\pmb{\\sigma}'_{\\text{trial}}
+        / \\|\\pmb{\\sigma}'_{\\text{trial}}\\|$
+        and the updates are
+
+        $$
+            \\pmb{\\sigma}_{n+1} = \\pmb{\\sigma}_{\\text{trial}}
+                - 2 G \\, \\Delta\\gamma \\, \\mathbf{n}, \\quad
+            q_{n+1} = q_n + \\sqrt{\\tfrac{2}{3}} \\, \\Delta\\gamma.
+        $$
+
+        The consistent (algorithmic) tangent is
+
+        $$
+            \\mathbb{C}^{\\text{alg}} = \\mathbb{C}
+                - \\frac{2 G}{1 + \\frac{\\sigma_f'}{3 G}}
+                  \\, \\mathbf{n} \\otimes \\mathbf{n}
+                - \\frac{4 G^2 \\Delta\\gamma}
+                  {\\|\\pmb{\\sigma}'_{\\text{trial}}\\|}
+                  \\left( \\mathbb{I}^{\\text{dev}}
+                  - \\mathbf{n} \\otimes \\mathbf{n} \\right)
+        $$
+
+        with $\\mathbb{I}^{\\text{dev}}_{ijkl} = \\frac{1}{2}(
+        \\delta_{ik}\\delta_{jl} + \\delta_{il}\\delta_{jk})
+        - \\frac{1}{3}\\delta_{ij}\\delta_{kl}$.
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
@@ -750,17 +868,47 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
 class HyperelasticPlaneStress(Hyperelastic3D):
     """Hyperelastic plane stress material.
 
-    This class implements a hyperelastic material model suitable for large
-    deformations, e.g., for rubber-like materials.
+    This class extends `Hyperelastic3D` for plane stress problems by enforcing
+    the out-of-plane stress condition $P_{33} = 0$ through a local Newton
+    iteration on the out-of-plane stretch $\\lambda_3$.
 
-    Attributes:
-        psi (Callable): Function that computes the strain energy density.
-        params (list | Tensor): Material parameters for the strain energy density.
+    Args:
+        psi (Callable): Strain energy density function
+            $\\psi(\\mathbf{F}, \\texttt{params})$. This must be a 3D energy;
+            the plane stress condensation is performed internally.
+        params (list | Tensor): Material parameters passed to `psi`.
+            *Shape:* `(p,)` for a scalar or `(N, p)` for a batch of materials.
+        rho (Tensor | float): Mass density. Default is `1.0`.
         tolerance (float): Convergence tolerance for the local Newton solver.
+            Default is `1e-5`.
         max_iter (int): Maximum number of iterations for the local Newton solver.
-        n_state (int): Number of internal state variables (here: 0).
-        is_vectorized (bool): `True` if `psi` accepts batch dimensions.
+            Default is `10`.
 
+    Notes:
+        - Finite-strain (large deformation) framework.
+        - One internal state variable (``n_state = 1``): the out-of-plane
+          stretch increment $\\lambda_3 - 1$.
+        - The 3D deformation gradient is reconstructed as
+          $\\mathbf{F} = \\text{diag}(\\mathbf{F}^{2D},\\, \\lambda_3)$.
+
+    Info: Plane stress condensation
+        Given a 3D strain energy $\\psi(\\mathbf{F})$, the plane stress
+        condition requires $P_{33} = 0$. The out-of-plane stretch $\\lambda_3$
+        is found iteratively by solving
+        $$
+            P_{33} (\\mathbf{F}^{\\text{2D}}, \\lambda_3) = 0
+        $$
+        with a Newton update
+        $$
+            \\lambda_3 \\leftarrow \\lambda_3
+                - \\frac{P_{33}}{C_{3333}}.
+        $$
+        The in-plane tangent is obtained via static condensation:
+        $$
+            C_{ijkl}^{\\text{2D}}
+                = C_{ijkl}
+                - \\frac{C_{ij33}\\,C_{33kl}}{C_{3333}}.
+        $$
     """
 
     def __init__(
@@ -789,7 +937,7 @@ class HyperelasticPlaneStress(Hyperelastic3D):
             n_elem (int): Number of elements to vectorize the material for.
 
         Returns:
-            HyperelasticPlaneStrain: A new material instance with vectorized properties.
+            HyperelasticPlaneStress: A new material instance with vectorized properties.
         """
         if self.is_vectorized:
             print("Material is already vectorized.")
@@ -884,29 +1032,33 @@ class HyperelasticPlaneStress(Hyperelastic3D):
 
 
 class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
-    """Isotropic elastoplastic material model for planar stress problems.
+    """Isotropic elastoplastic material for plane stress problems.
 
-    This class extends `IsotropicElasticityPlaneStress` to incorporate isotropic
-    plasticity with a von Mises yield criterion. The model follows a return-mapping
-    algorithm for small strains and enforces associative plastic flow with a given yield
-    function and its derivative.
+    This class extends `IsotropicElasticityPlaneStress` to incorporate
+    isotropic plasticity with a von Mises yield criterion under the plane
+    stress constraint.
 
-    Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        n_state (int): Number of internal state variables (here: 1).
-        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-        sigma_f (Callable): Function that defines the yield stress as a function
-            of the equivalent plastic strain.
-        sigma_f_prime (Callable): Derivative of the yield function with respect to
-            the equivalent plastic strain.
-        tolerance (float, optional): Convergence tolerance for the plasticity
-            return-mapping algorithm. Default is `1e-5`.
-        max_iter (int, optional): Maximum number of iterations for the local Newton
-            solver in plasticity correction. Default is `10`.
-        rho (float | Tensor, optional): Mass density. Default is `1.0`.
+    Args:
+        E (Tensor | float): Young's modulus.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor | float): Poisson's ratio.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        sigma_f (Callable): Yield stress function $\\sigma_f(q)$.
+        sigma_f_prime (Callable): Derivative $\\sigma_f'(q)$.
+        tolerance (float): Convergence tolerance. Default is `1e-5`.
+        max_iter (int): Maximum Newton iterations. Default is `10`.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption with plane stress condition.
+        - One internal state variable (``n_state = 1``): equivalent plastic
+          strain $q$.
+        - Implementation follows de Souza Neto et al. , Box 9.3-9.6.
+
+    References:
+        de Souza Neto, E. A., Peri, D., Owen, D. R. J.
+        *Computational Methods for Plasticity*, Chapter 9,
+        https://doi.org/10.1002/9780470694626.ch9, 2008.
     """
 
     def __init__(
@@ -969,12 +1121,42 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Perform a strain increment assuming small strains in Voigt notation.
+        """Performs a strain increment with the plane stress return-mapping algorithm.
 
-        See: de Souza Neto, E. A., Peri, D., Owen, D. R. J. *Computational Methods for
-        Plasticity*, Chapter 9: Plane Stress Plasticity, 2008.
-        https://doi.org/10.1002/9780470694626.ch9
+        A trial stress is computed as
+        $\\pmb{\\sigma}_{\\text{trial}} = \\pmb{\\sigma}_n
+        + \\mathbb{C} : \\Delta\\pmb{\\varepsilon}$
+        and the squared flow potential in Voigt notation is evaluated as
 
+        $$
+            \\Psi = \\tfrac{1}{2} \\pmb{\\sigma}_{\\text{trial}}^\\top
+                    \\mathbf{P} \\, \\pmb{\\sigma}_{\\text{trial}}
+                    - \\tfrac{1}{3} \\sigma_f(q)^2
+        $$
+
+        with
+
+        $$
+            \\mathbf{P} = \\frac{1}{3}
+                \\begin{bmatrix} 2 & -1 & 0 \\\\ -1 & 2 & 0 \\\\ 0 & 0 & 6
+                \\end{bmatrix}.
+        $$
+
+        If $\\Psi > 0$, the stress is updated via
+
+        $$
+            \\pmb{\\sigma}_{n+1}
+                = [\\mathbb{S} + \\Delta\\gamma \\, \\mathbf{P}]^{-1}
+                  \\, \\mathbb{S} \\, \\pmb{\\sigma}_{\\text{trial}}
+        $$
+
+        and the algorithmic tangent is
+
+        $$
+            \\mathbb{C}^{\\text{alg}}
+                = [\\mathbb{S} + \\Delta\\gamma \\, \\mathbf{P}]^{-1}
+                - \\alpha \\, \\mathbf{n} \\otimes \\mathbf{n}.
+        $$
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
@@ -1181,16 +1363,38 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
 class HyperelasticPlaneStrain(Hyperelastic3D):
     """Hyperelastic plane strain material.
 
-    This class implements a hyperelastic material model suitable for large
-    deformations, e.g., for rubber-like materials.
+    This class extends `Hyperelastic3D` for plane strain problems by enforcing
+    $F_{33} = 1$ (no out-of-plane deformation). The 3D energy function is
+    evaluated with an extended deformation gradient.
 
-    Attributes:
-        psi (Callable): Function that computes the strain energy density.
-        params (list | Tensor): Material parameters for the strain energy density.
-        rho (Tensor | float): Mass density. If a float is provided, it is converted
-        n_state (int): Number of internal state variables (here: 0).
-        is_vectorized (bool): `True` if `psi` accepts batch dimensions.
+    Args:
+        psi (Callable): Strain energy density function
+            $\\psi(\\mathbf{F}, \\texttt{params})$. This must be a 3D energy;
+            the plane strain constraint is enforced internally.
+        params (list | Tensor): Material parameters passed to `psi`.
+            *Shape:* `(p,)` for a scalar or `(N, p)` for a batch of materials.
+        rho (Tensor | float): Mass density. Default is `1.0`.
 
+    Notes:
+        - Finite-strain (large deformation) framework.
+        - No internal state variables (``n_state = 0``).
+        - The 3D deformation gradient is reconstructed as
+          $\\mathbf{F} = \\text{diag}(\\mathbf{F}^\\text{2D},\\, 1)$.
+
+    Info: Plane strain constraint
+        The plane strain condition fixes the out-of-plane component to
+        $F_{33} = 1$ and $H_{33} = 0$. The 3D deformation gradient is
+        extended as
+        $$
+            \\mathbf{F}
+              = \\begin{bmatrix}
+                F_{11} & F_{12} & 0 \\cr
+                F_{21} & F_{22} & 0 \\cr
+                0 & 0 & 1
+            \\end{bmatrix}
+        $$
+        and the in-plane stress and tangent are extracted from the 3D
+        response.
     """
 
     def vectorize(self, n_elem: int) -> HyperelasticPlaneStrain:
@@ -1265,29 +1469,28 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
 
 
 class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
-    """Isotropic elastoplastic material model for planar strain problems.
+    """Isotropic elastoplastic material for plane strain problems.
 
-    This class extends `IsotropicElasticityPlaneStrain` to incorporate isotropic
-    plasticity with a von Mises yield criterion. The model follows a return-mapping
-    algorithm for small strains and enforces associative plastic flow with a given yield
-    function and its derivative.
+    This class extends `IsotropicElasticityPlaneStrain` to incorporate
+    isotropic plasticity with a von Mises yield criterion under the plane
+    strain constraint.
 
-    Attributes:
-        E (Tensor): Young's modulus. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        nu (Tensor): Poisson's ratio. If a float is provided, it is converted.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
-        n_state (int): Number of internal state variables (here: 2).
-        is_vectorized (bool): `True` if `E` and `nu` have batch dimensions.
-        sigma_f (Callable): Function that defines the yield stress as a function
-            of the equivalent plastic strain.
-        sigma_f_prime (Callable): Derivative of the yield function with respect to
-            the equivalent plastic strain.
-        tolerance (float, optional): Convergence tolerance for the plasticity
-            return-mapping algorithm. Default is `1e-5`.
-        max_iter (int, optional): Maximum number of iterations for the local Newton
-            solver in plasticity correction. Default is `10`.
-        rho (float | Tensor, optional): Mass density. Default is `1.0`.
+    Args:
+        E (Tensor | float): Young's modulus.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        nu (Tensor | float): Poisson's ratio.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        sigma_f (Callable): Yield stress function $\\sigma_f(q)$.
+        sigma_f_prime (Callable): Derivative $\\sigma_f'(q)$.
+        tolerance (float): Convergence tolerance. Default is `1e-5`.
+        max_iter (int): Maximum Newton iterations. Default is `10`.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption with plane strain condition.
+        - Two internal state variables (``n_state = 2``): equivalent plastic
+          strain $q$ and out-of-plane plastic strain $\\varepsilon_z^p$.
+        - Supports batched/vectorized material parameters.
     """
 
     def __init__(
@@ -1308,7 +1511,15 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         self.max_iter = max_iter
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicPlasticityPlaneStrain: A new material instance with vectorized
+                properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -1336,8 +1547,15 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Perform a strain increment assuming small strains.
+        """Performs a strain increment with the plane strain return-mapping algorithm.
 
+        The return mapping expands the in-plane stress to a full 3D tensor
+        with the out-of-plane stress
+        $$
+            \\sigma_{zz} = \\nu (\\sigma_{xx} + \\sigma_{yy})
+                - E \\, \\varepsilon_z^p
+        $$
+        and performs the deviatoric yield check and radial return in 3D.
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
@@ -1441,6 +1659,22 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
 
 class IsotropicElasticity1D(Material):
+    """Isotropic elastic material in 1D.
+
+    Args:
+        E (Tensor | float): Young's modulus.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption.
+        - No internal state variables (``n_state = 0``).
+        - The stiffness "tensor" is simply $C_{0000} = E$.
+
+    Info: 1D stiffness tensor
+        The 1D stiffness "tensor" is simply $C_{0000} = E$.
+    """
+
     def __init__(self, E: float | Tensor, rho: float | Tensor = 1.0):
         # Convert float inputs to tensors
         self.E = torch.as_tensor(E)
@@ -1456,7 +1690,14 @@ class IsotropicElasticity1D(Material):
         self.C = self.E[..., None, None, None, None]
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicElasticity1D: A new material instance with vectorized properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -1475,7 +1716,39 @@ class IsotropicElasticity1D(Material):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Perform a strain increment."""
+        """Performs an incremental step for the 1D elastic material.
+
+        The stress is updated as
+        $$
+            \\sigma_{n+1} = \\sigma_n + E \\, (\\Delta\\varepsilon
+                - \\Delta\\varepsilon^0)
+        $$
+        with algorithmic tangent $\\frac{\\partial \\Delta\\sigma}
+        {\\partial \\Delta H} = E$.
+
+        Args:
+            H_inc (Tensor): Incremental displacement gradient.
+                *Shape:* `(..., 1, 1)`.
+            F (Tensor): Current deformation gradient.
+                *Shape:* `(..., 1, 1)`.
+            stress (Tensor): Current stress tensor.
+                *Shape:* `(..., 1, 1)`.
+            state (Tensor): Internal state variables (unused).
+                *Shape:* `(..., 0)`.
+            de0 (Tensor): External strain increment (e.g., thermal).
+                *Shape:* `(..., 1, 1)`.
+            cl (Tensor): Characteristic lengths.
+                *Shape:* `(..., 1)`.
+            iter (int): Current iteration number.
+
+        Returns:
+            stress_new (Tensor): Updated stress tensor.
+                *Shape:* `(..., 1, 1)`.
+            state_new (Tensor): Updated internal state (unchanged).
+                *Shape:* `(..., 0)`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 1, 1, 1, 1)`.
+        """
         stress_new = stress + torch.einsum("...ijkl,...kl->...ij", self.C, H_inc - de0)
         state_new = state
         ddsdde = self.C
@@ -1483,7 +1756,24 @@ class IsotropicElasticity1D(Material):
 
 
 class IsotropicPlasticity1D(IsotropicElasticity1D):
-    """Isotropic plasticity with isotropic hardening"""
+    """Isotropic elastoplastic material in 1D.
+
+    This class extends `IsotropicElasticity1D` with isotropic hardening
+    plasticity using a return-mapping algorithm.
+
+    Args:
+        E (Tensor | float): Young's modulus.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        sigma_f (Callable): Yield stress function $\\sigma_f(q)$.
+        sigma_f_prime (Callable): Derivative $\\sigma_f'(q)$.
+        tolerance (float): Convergence tolerance. Default is `1e-5`.
+        max_iter (int): Maximum Newton iterations. Default is `10`.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - One internal state variable (``n_state = 1``): equivalent plastic
+          strain $q$.
+    """
 
     def __init__(
         self,
@@ -1502,7 +1792,14 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         self.max_iter = max_iter
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            IsotropicPlasticity1D: A new material instance with vectorized properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -1523,7 +1820,52 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Perform a strain increment."""
+        """Performs a strain increment with the 1D return-mapping algorithm.
+
+        A trial stress is computed as
+        $\\sigma_{\\text{trial}} = \\sigma_n + E \\, \\Delta\\varepsilon$.
+        The yield condition is $|\\sigma_{\\text{trial}}| \\le \\sigma_f(q)$.
+
+        If yielding occurs, the plastic multiplier $\\Delta\\gamma$ is found
+        by Newton's method on
+        $$
+            |\\sigma_{\\text{trial}}| - E \\, \\Delta\\gamma
+                - \\sigma_f(q) = 0
+        $$
+        and the stress is updated as
+        $$
+            \\sigma_{n+1} = \\left(1
+                - \\frac{E \\, \\Delta\\gamma}
+                  {|\\sigma_{\\text{trial}}|}\\right)
+                \\sigma_{\\text{trial}}, \\quad
+            q_{n+1} = q_n + \\Delta\\gamma.
+        $$
+        The algorithmic tangent in the plastic regime is
+        $\\frac{E \\, \\sigma_f'}{E + \\sigma_f'}$.
+
+        Args:
+            H_inc (Tensor): Incremental displacement gradient.
+                *Shape:* `(..., 1, 1)`.
+            F (Tensor): Current deformation gradient.
+                *Shape:* `(..., 1, 1)`.
+            stress (Tensor): Current stress tensor.
+                *Shape:* `(..., 1, 1)`.
+            state (Tensor): Internal state variables (equivalent plastic strain $q$).
+                *Shape:* `(..., 1)`.
+            de0 (Tensor): External strain increment (e.g., thermal).
+                *Shape:* `(..., 1, 1)`.
+            cl (Tensor): Characteristic lengths.
+                *Shape:* `(..., 1)`.
+            iter (int): Current iteration number.
+
+        Returns:
+            stress_new (Tensor): Updated stress tensor.
+                *Shape:* `(..., 1, 1)`.
+            state_new (Tensor): Updated internal state with updated plastic strain.
+                *Shape:* `(..., 1)`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 1, 1, 1, 1)`.
+        """
         # Solution variables
         stress_new = stress.clone()
         state_new = state.clone()
@@ -1574,7 +1916,46 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
 
 
 class OrthotropicElasticity3D(Material):
-    """Orthotropic material."""
+    """Orthotropic elastic material in 3D.
+
+    Args:
+        E_1 (Tensor | float): Young's modulus in direction 1.
+        E_2 (Tensor | float): Young's modulus in direction 2.
+        E_3 (Tensor | float): Young's modulus in direction 3.
+        nu_12 (Tensor | float): Poisson's ratio $\\nu_{12}$.
+        nu_13 (Tensor | float): Poisson's ratio $\\nu_{13}$.
+        nu_23 (Tensor | float): Poisson's ratio $\\nu_{23}$.
+        G_12 (Tensor | float): Shear modulus $G_{12}$.
+        G_13 (Tensor | float): Shear modulus $G_{13}$.
+        G_23 (Tensor | float): Shear modulus $G_{23}$.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption.
+        - No internal state variables (``n_state = 0``).
+        - Supports batched/vectorized material parameters.
+        - Supports rotation of the material coordinate system via `rotate()`.
+
+    Info: Orthotropic stiffness tensor
+        The orthotropic stiffness tensor in Voigt notation has the structure
+        $$
+            \\mathbb{C} =
+            \\begin{bmatrix}
+                C_{11} & C_{12} & C_{13} & 0 & 0 & 0 \\cr
+                C_{12} & C_{22} & C_{23} & 0 & 0 & 0 \\cr
+                C_{13} & C_{23} & C_{33} & 0 & 0 & 0 \\cr
+                0 & 0 & 0 & G_{23} & 0 & 0 \\cr
+                0 & 0 & 0 & 0 & G_{13} & 0 \\cr
+                0 & 0 & 0 & 0 & 0 & G_{12}
+            \\end{bmatrix}
+        $$
+        where the upper-left block contains the normal stiffness components
+        and the lower-right block contains the shear moduli. The nine independent
+        components are derived from nine independent engineering constants
+        ($E_1, E_2, E_3, \\nu_{12}, \\nu_{13}, \\nu_{23},
+        G_{12}, G_{13}, G_{23}$). The actual stiffness tensor $C_{ijkl}$ is stored as
+        full 4th-order tensor with major and minor symmetries.
+    """
 
     def __init__(
         self,
@@ -1645,7 +2026,14 @@ class OrthotropicElasticity3D(Material):
         self.C[..., 2, 1, 1, 2] = self.G_23
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            OrthotropicElasticity3D: A new material instance with vectorized properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -1674,7 +2062,37 @@ class OrthotropicElasticity3D(Material):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Perform a strain increment."""
+        """Performs an incremental step in the orthotropic elasticity model.
+
+        The stress is updated as
+        $$
+            \\pmb{\\sigma}_{n+1} = \\pmb{\\sigma}_n + \\mathbb{C} :
+                (\\Delta \\pmb{\\varepsilon} - \\Delta \\pmb{\\varepsilon}^0)
+        $$
+
+        Args:
+            H_inc (Tensor): Incremental displacement gradient.
+                *Shape:* `(..., 3, 3)`.
+            F (Tensor): Current deformation gradient.
+                *Shape:* `(..., 3, 3)`.
+            stress (Tensor): Current Cauchy stress tensor.
+                *Shape:* `(..., 3, 3)`.
+            state (Tensor): Internal state variables (unused).
+                *Shape:* `(..., 0)`.
+            de0 (Tensor): External small strain increment (e.g., thermal).
+                *Shape:* `(..., 3, 3)`.
+            cl (Tensor): Characteristic lengths.
+                *Shape:* `(..., 1)`.
+            iter (int): Current iteration number.
+
+        Returns:
+            stress_new (Tensor): Updated Cauchy stress tensor.
+                *Shape:* `(..., 3, 3)`.
+            state_new (Tensor): Updated internal state (unchanged).
+                *Shape:* `(..., 0)`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 3, 3, 3, 3)`.
+        """
         # Compute small strain tensor
         de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
         # Compute new stress
@@ -1686,7 +2104,19 @@ class OrthotropicElasticity3D(Material):
         return stress_new, state_new, ddsdde
 
     def rotate(self, R):
-        """Rotate the material with rotation matrix R."""
+        """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
+
+        The rotated stiffness tensor is computed as
+        $C'_{mnop} = R_{mi} R_{nj} R_{ok} R_{pl} \\, C_{ijkl}$
+        and the engineering constants are re-extracted from the compliance matrix.
+
+        Args:
+            R (Tensor): Rotation matrix.
+                *Shape:* `(..., 3, 3)`.
+
+        Returns:
+            OrthotropicElasticity3D: The material itself with rotated properties.
+        """
         if R.shape[-2] != 3 or R.shape[-1] != 3:
             raise ValueError("Rotation matrix must be a 3x3 tensor.")
 
@@ -1710,7 +2140,27 @@ class OrthotropicElasticity3D(Material):
 
 
 class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
-    """Transversely isotropic material."""
+    """Transversely isotropic elastic material in 3D.
+
+    A special case of `OrthotropicElasticity3D` where one direction (the
+    longitudinal direction 1) is the axis of symmetry and the transverse
+    plane (2-3) is isotropic.
+
+    Args:
+        E_L (Tensor | float): Longitudinal Young's modulus.
+        E_T (Tensor | float): Transverse Young's modulus.
+        nu_L (Tensor | float): Longitudinal Poisson's ratio
+            $\\nu_L = \\nu_{12} = \\nu_{13}$.
+        nu_T (Tensor | float): Transverse Poisson's ratio $\\nu_T = \\nu_{23}$.
+        G_L (Tensor | float): Longitudinal shear modulus $G_L = G_{12} = G_{13}$.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Only five independent constants: $E_L, E_T, \\nu_L, \\nu_T, G_L$.
+        - The transverse shear modulus is derived as
+          $G_T = E_T / (2(1 + \\nu_T))$.
+        - Raises `ValueError` if $G_L > E_L / (2(1 + \\nu_L))$.
+    """
 
     def __init__(
         self,
@@ -1739,7 +2189,32 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
 
 
 class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
-    """Orthotropic 2D plane stress material."""
+    """Orthotropic elastic material for plane stress problems.
+
+    Args:
+        E_1 (Tensor | float): Young's modulus in direction 1.
+        E_2 (Tensor | float): Young's modulus in direction 2.
+        nu_12 (Tensor | float): Poisson's ratio $\\nu_{12}$.
+        G_12 (Tensor | float): In-plane shear modulus $G_{12}$.
+        G_13 (Tensor | float): Transverse shear modulus $G_{13}$. Default is `0.0`.
+        G_23 (Tensor | float): Transverse shear modulus $G_{23}$. Default is `0.0`.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption with plane stress condition.
+        - No internal state variables (``n_state = 0``).
+        - Supports rotation of the material coordinate system via `rotate()`.
+
+    Info: Plane stress orthotropic stiffness
+        The in-plane stiffness components are
+        $$
+            C_{1111} = \\frac{E_1}{1 - \\nu_{12} \\nu_{21}}, \\quad
+            C_{2222} = \\frac{E_2}{1 - \\nu_{12} \\nu_{21}}, \\quad
+            C_{1122} = \\frac{\\nu_{12} E_2}{1 - \\nu_{12} \\nu_{21}}
+        $$
+        with $\\nu_{21} = \\nu_{12} E_2 / E_1$ and
+        $C_{1212} = G_{12}$.
+    """
 
     def __init__(
         self,
@@ -1783,7 +2258,15 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.C[..., 1, 0, 1, 0] = G_12
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            OrthotropicElasticityPlaneStress: A new material instance with vectorized
+                properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -1800,7 +2283,16 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
             )
 
     def rotate(self, R):
-        """Rotate the material with rotation matrix R."""
+        """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
+
+        Args:
+            R (Tensor): Rotation matrix.
+                *Shape:* `(..., 2, 2)`.
+
+        Returns:
+            OrthotropicElasticityPlaneStress: The material itself with rotated
+                properties.
+        """
         if R.shape[-2] != 2 or R.shape[-1] != 2:
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
 
@@ -1819,7 +2311,33 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
 
 
 class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
-    """Orthotropic 2D plane strain material."""
+    """Orthotropic elastic material for plane strain problems.
+
+    Args:
+        E_1 (Tensor | float): Young's modulus in direction 1.
+        E_2 (Tensor | float): Young's modulus in direction 2.
+        E_3 (Tensor | float): Young's modulus in direction 3.
+        nu_12 (Tensor | float): Poisson's ratio $\\nu_{12}$.
+        nu_13 (Tensor | float): Poisson's ratio $\\nu_{13}$.
+        nu_23 (Tensor | float): Poisson's ratio $\\nu_{23}$.
+        G_12 (Tensor | float): In-plane shear modulus $G_{12}$.
+        G_13 (Tensor | float): Transverse shear modulus $G_{13}$. Default is `0.0`.
+        G_23 (Tensor | float): Transverse shear modulus $G_{23}$. Default is `0.0`.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption with plane strain condition ($\\varepsilon_{33} = 0$).
+        - No internal state variables (``n_state = 0``).
+        - Supports rotation of the material coordinate system via `rotate()`.
+
+    Info: Plane strain orthotropic stiffness
+        The in-plane stiffness tensor is derived from the full 3D orthotropic
+        stiffness by enforcing $\\varepsilon_{33} = 0$. The in-plane
+        components are populated using the same reciprocal relations as the
+        3D case, with the full factor
+        $F = (1 - \\nu_{12}\\nu_{21} - \\nu_{13}\\nu_{31}
+        - \\nu_{23}\\nu_{32} - 2\\nu_{21}\\nu_{32}\\nu_{13})^{-1}$.
+    """
 
     def __init__(
         self,
@@ -1877,7 +2395,15 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = self.G_12
 
     def vectorize(self, n_elem: int):
-        """Create a vectorized copy of the material for `n_elm` elements."""
+        """Returns a vectorized copy of the material for `n_elem` elements.
+
+        Args:
+            n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            OrthotropicElasticityPlaneStrain: A new material instance with vectorized
+                properties.
+        """
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -1897,7 +2423,16 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
             )
 
     def rotate(self, R):
-        """Rotate the material with rotation matrix R."""
+        """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
+
+        Args:
+            R (Tensor): Rotation matrix.
+                *Shape:* `(..., 2, 2)`.
+
+        Returns:
+            OrthotropicElasticityPlaneStrain: The material itself with rotated
+                properties.
+        """
         if R.shape[-2] != 2 or R.shape[-1] != 2:
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
 

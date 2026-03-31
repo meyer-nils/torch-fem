@@ -16,9 +16,30 @@ nav = [
   #{ "Theory" = "theory.md" },
   { "Materials" = [
     { "Base" = "materials/index.md" },
-    { "Isotropic Elasticity 3D" = "materials/isotropic_elasticity_3D.md" },
-    { "Isotropic Elasticity Plane Strain" = "materials/isotropic_elasticity_plane_strain.md" },
-    { "Isotropic Elasticity Plane Stress" = "materials/isotropic_elasticity_plane_stress.md" },
+    { "Elasticity" = [
+      { "Isotropic Elasticity 3D" = "materials/elasticity/isotropic_elasticity_3D.md" },
+      { "Isotropic Elasticity Plane Stress" = "materials/elasticity/isotropic_elasticity_plane_stress.md" },
+      { "Isotropic Elasticity Plane Strain" = "materials/elasticity/isotropic_elasticity_plane_strain.md" },
+      { "Isotropic Elasticity 1D" = "materials/elasticity/isotropic_elasticity_1D.md" },
+      { "Orthotropic Elasticity 3D" = "materials/elasticity/orthotropic_elasticity_3D.md" },
+      { "Transverse Isotropic Elasticity 3D" = "materials/elasticity/transverse_isotropic_elasticity_3D.md" },
+      { "Orthotropic Elasticity Plane Stress" = "materials/elasticity/orthotropic_elasticity_plane_stress.md" },
+      { "Orthotropic Elasticity Plane Strain" = "materials/elasticity/orthotropic_elasticity_plane_strain.md" },
+    ] },
+    { "Hyperelasticity" = [
+      { "Hyperelastic 3D" = "materials/hyperelasticity/hyperelastic_3D.md" },
+      { "Hyperelastic Plane Stress" = "materials/hyperelasticity/hyperelastic_plane_stress.md" },
+      { "Hyperelastic Plane Strain" = "materials/hyperelasticity/hyperelastic_plane_strain.md" },
+    ] },
+    { "Plasticity" = [
+      { "Isotropic Plasticity 3D" = "materials/plasticity/isotropic_plasticity_3D.md" },
+      { "Isotropic Plasticity Plane Stress" = "materials/plasticity/isotropic_plasticity_plane_stress.md" },
+      { "Isotropic Plasticity Plane Strain" = "materials/plasticity/isotropic_plasticity_plane_strain.md" },
+      { "Isotropic Plasticity 1D" = "materials/plasticity/isotropic_plasticity_1D.md" },
+    ] },
+    { "Damage" = [
+      { "Isotropic Damage 3D" = "materials/damage/isotropic_damage_3D.md" },
+    ] },
   ] },
 ]
 
