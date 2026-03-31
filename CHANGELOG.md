@@ -10,6 +10,7 @@
 - Improved documentation in truss shape optimization example.
 - Integrate shell forces and moments from integration points to enable non-linear materials
 - Add basic `shell/plasticity.ipynb` example.
+- Significantly enhanced material testing coverage.
 
 ### Removed 
 - The utility functions `voigt_strain_rotation` and `voigt_stress_rotation` are not used anywhere. They are removed.
