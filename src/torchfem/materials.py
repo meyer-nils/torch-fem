@@ -444,7 +444,7 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         self.n_state = 2
         self.eq_strain: Literal["rankine", "mises"] = eq_strain
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicDamage3D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         This function creates a batched version of the material properties. If the
@@ -605,7 +605,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicPlasticity3D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         This function creates a batched version of the material properties. If the
@@ -1080,7 +1080,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicPlasticityPlaneStress:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         This function creates a batched version of the material properties. If the
@@ -1510,7 +1510,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicPlasticityPlaneStrain:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         Args:
@@ -1689,7 +1689,7 @@ class IsotropicElasticity1D(Material):
         # Stiffness tensor (in 1D, this is a 1x1x1x1 "tensor")
         self.C = self.E[..., None, None, None, None]
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicElasticity1D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         Args:
@@ -1791,7 +1791,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> IsotropicPlasticity1D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         Args:
@@ -2025,7 +2025,7 @@ class OrthotropicElasticity3D(Material):
         self.C[..., 1, 2, 2, 1] = self.G_23
         self.C[..., 2, 1, 1, 2] = self.G_23
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> OrthotropicElasticity3D:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         Args:
@@ -2103,7 +2103,7 @@ class OrthotropicElasticity3D(Material):
         ddsdde = self.C
         return stress_new, state_new, ddsdde
 
-    def rotate(self, R):
+    def rotate(self, R: Tensor) -> OrthotropicElasticity3D:
         """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
 
         The rotated stiffness tensor is computed as
@@ -2257,7 +2257,7 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = G_12
         self.C[..., 1, 0, 1, 0] = G_12
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> OrthotropicElasticityPlaneStress:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         Args:
@@ -2282,7 +2282,7 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
                 E_1, E_2, nu_12, G_12, G_13, G_23, rho
             )
 
-    def rotate(self, R):
+    def rotate(self, R: Tensor) -> OrthotropicElasticityPlaneStress:
         """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
 
         Args:
@@ -2394,7 +2394,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.C[..., 0, 1, 1, 0] = self.G_12
         self.C[..., 1, 0, 0, 1] = self.G_12
 
-    def vectorize(self, n_elem: int):
+    def vectorize(self, n_elem: int) -> OrthotropicElasticityPlaneStrain:
         """Returns a vectorized copy of the material for `n_elem` elements.
 
         Args:
@@ -2422,7 +2422,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
                 E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho
             )
 
-    def rotate(self, R):
+    def rotate(self, R: Tensor) -> OrthotropicElasticityPlaneStrain:
         """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
 
         Args:
@@ -2625,7 +2625,7 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
                 self.rho.repeat(n_elem),
             )
 
-    def rotate(self, R):
+    def rotate(self, R: Tensor) -> OrthotropicConductivity3D:
         """Rotate the material with rotation matrix R."""
         if R.shape[-2] != 3 or R.shape[-1] != 3:
             raise ValueError("Rotation matrix must be a 3x3 tensor.")
@@ -2670,7 +2670,7 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
                 self.rho.repeat(n_elem),
             )
 
-    def rotate(self, R):
+    def rotate(self, R: Tensor) -> OrthotropicConductivity2D:
         """Rotate the material with rotation matrix R."""
         if R.shape[-2] != 2 or R.shape[-1] != 2:
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
