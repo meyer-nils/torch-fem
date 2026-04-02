@@ -7,7 +7,7 @@ icon: lucide/cuboid
 Material models describe how the stress in a material depends on its deformation. In a general sense, we can formulate this for an isothermal material abstractly as 
 
 $$
- \pmb{\sigma} = \mathcal{F}(\mathbf{F}, \pmb{\alpha})
+ \mathbf{P} = \mathcal{F}(\mathbf{F}, \pmb{\alpha})
 $$
 
 with a function $\mathcal{F}$ that maps a deformation gradient $\mathbf{F}$ and material state vector $\pmb{\alpha}$ to a stress. 
