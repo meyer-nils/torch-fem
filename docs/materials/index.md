@@ -1,5 +1,5 @@
 ---
-icon: lucide/cuboid
+icon: lucide/lens-concave
 ---
 
 # Materials
