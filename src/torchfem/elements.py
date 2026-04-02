@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from math import sqrt
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -161,6 +162,28 @@ class Bar1(Element):
     def ipoints(cls) -> Tensor:
         return torch.tensor([[0.0]])
 
+    @classmethod
+    def plot(cls, n_points: int = 100):
+        import matplotlib.pyplot as plt
+
+        # Compute shape functions at evenly spaced points in reference space
+        xi = torch.linspace(-1.0, 1.0, n_points).unsqueeze(-1)
+        N = cls.N(xi)
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for i in range(cls.nodes):
+            ax.plot(xi, N[:, i], linewidth=2.0, label=f"$N_{i}$")
+        ax.set_xlabel("$\\xi$")
+        ax.set_ylabel("$N_i(\\xi)$")
+        ax.grid(alpha=0.3)
+        ax.legend()
+
+        # Save plot to docs/images directory
+        root = Path(__file__).resolve().parents[2] / "docs" / "images"
+        save_path = root / "Bar1_shape_functions.png"
+        fig.savefig(save_path, dpi=200, bbox_inches="tight")
+
 
 class Bar2(Bar1):
     """Three-node quadratic line element.
@@ -208,6 +231,28 @@ class Bar2(Bar1):
     @classproperty
     def ipoints(cls) -> Tensor:
         return torch.tensor([[-1.0 / sqrt(3.0)], [1.0 / sqrt(3.0)]])
+
+    @classmethod
+    def plot(cls, n_points: int = 100):
+        import matplotlib.pyplot as plt
+
+        # Compute shape functions at evenly spaced points in reference space
+        xi = torch.linspace(-1.0, 1.0, n_points).unsqueeze(-1)
+        N = cls.N(xi)
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for i in range(cls.nodes):
+            ax.plot(xi, N[:, i], linewidth=2.0, label=f"$N_{i}$")
+        ax.set_xlabel("$\\xi$")
+        ax.set_ylabel("$N_i(\\xi)$")
+        ax.grid(alpha=0.3)
+        ax.legend()
+
+        # Save plot to docs/images directory
+        root = Path(__file__).resolve().parents[2] / "docs" / "images"
+        save_path = root / "Bar2_shape_functions.png"
+        fig.savefig(save_path, dpi=200, bbox_inches="tight")
 
 
 class Tria1(Element):
