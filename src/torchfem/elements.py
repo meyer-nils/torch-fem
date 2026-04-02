@@ -23,6 +23,19 @@ def classproperty(func):
 
 
 class Element(ABC):
+    """Abstract base class for isoparametric finite elements.
+
+    Concrete element types define interpolation and integration on a reference
+    (isoparametric) domain.
+
+    Attributes:
+        iso_volume (float): Measure of the reference element
+            (length/area/volume).
+        iso_dim (int): Reference-space dimension.
+        nodes (int): Number of nodes per element.
+        meshio_type (Literal): Mesh cell type used for meshio I/O.
+    """
+
     iso_volume: float
     iso_dim: int
     nodes: int
@@ -47,30 +60,76 @@ class Element(ABC):
     @classmethod
     @abstractmethod
     def N(cls, xi: Tensor) -> Tensor:
+        """Evaluate shape functions at reference coordinates.
+
+        Args:
+            xi (Tensor): Reference coordinates.
+                *Shape:* `(iso_dim,)` or `(n_points, iso_dim)`.
+
+        Returns:
+            Tensor: Shape function values.
+                *Shape:* `(nodes,)` or `(n_points, nodes)`.
+        """
         pass
 
     @classmethod
     @abstractmethod
     def B(cls, xi: Tensor) -> Tensor:
+        """Evaluate reference-space derivatives of shape functions.
+
+        Args:
+            xi (Tensor): Reference coordinates.
+                *Shape:* `(iso_dim,)` or `(n_points, iso_dim)`.
+
+        Returns:
+            Tensor: Derivatives `dN/dxi`.
+                *Shape:* `(iso_dim, nodes)` or `(n_points, iso_dim, nodes)`.
+        """
         pass
 
     @classproperty
     @abstractmethod
     def iso_coords(cls) -> Tensor:
+        """Return reference coordinates of element nodes.
+
+        Returns:
+            Tensor: Node coordinates in reference space.
+                *Shape:* `(nodes, iso_dim)`.
+        """
         pass
 
     @classproperty
     @abstractmethod
     def ipoints(cls) -> Tensor:
+        """Return integration points in reference coordinates.
+
+        Returns:
+            Tensor: Integration points.
+                *Shape:* `(n_ip, iso_dim)`.
+        """
         pass
 
     @classproperty
     @abstractmethod
     def iweights(cls) -> Tensor:
+        """Return integration weights associated with `ipoints`.
+
+        Returns:
+            Tensor: Integration weights.
+                *Shape:* `(n_ip,)`.
+        """
         pass
 
 
 class Bar1(Element):
+    """Two-node linear line element.
+
+    Notes:
+        Node ordering:
+
+            0 ---- 1
+    """
+
     iso_volume = 2.0
     iso_dim = 1
     nodes = 2
@@ -104,6 +163,14 @@ class Bar1(Element):
 
 
 class Bar2(Bar1):
+    """Three-node quadratic line element.
+
+    Notes:
+        Node ordering:
+
+            0 -- 2 -- 1
+    """
+
     nodes = 3
     meshio_type = "line"
 
@@ -144,6 +211,17 @@ class Bar2(Bar1):
 
 
 class Tria1(Element):
+    r"""Three-node linear triangle element.
+
+    Notes:
+        Node ordering:
+
+            2
+            | \
+            |   \
+            0 --- 1
+    """
+
     iso_volume = 0.5
     iso_dim = 2
     nodes = 3
@@ -178,6 +256,18 @@ class Tria1(Element):
 
 
 class Tria2(Tria1):
+    r"""Six-node quadratic triangle element with midside nodes.
+
+    Notes:
+        Node ordering:
+
+            2
+            | \
+            5   4
+            |     \
+            0 - 3 - 1
+    """
+
     nodes = 6
     meshio_type = "triangle6"
 
@@ -245,6 +335,17 @@ class Tria2(Tria1):
 
 
 class Quad1(Element):
+    """Four-node bilinear quadrilateral element.
+
+    Notes:
+        Node ordering:
+
+            3 ---- 2
+            |      |
+            |      |
+            0 ---- 1
+    """
+
     iso_volume = 4.0
     iso_dim = 2
     nodes = 4
@@ -304,6 +405,18 @@ class Quad1(Element):
 
 
 class Quad2(Quad1):
+    """Eight-node quadratic quadrilateral element with midside nodes.
+
+    Notes:
+        Node ordering:
+
+            3 -- 6 -- 2
+            |         |
+            7         5
+            |         |
+            0 -- 4 -- 1
+    """
+
     nodes = 8
     meshio_type = "quad8"
 
@@ -386,6 +499,22 @@ class Quad2(Quad1):
 
 
 class Tetra1(Element):
+    r"""Four-node linear tetrahedral element.
+
+    Notes:
+        Node ordering:
+
+                3
+               /|\
+              / | \
+             /  |  \
+            0---|---1
+             \  |  /
+              \ | /
+               \|/
+                2
+    """
+
     iso_volume = 1.0 / 6.0
     iso_dim = 3
     nodes = 4
@@ -427,6 +556,24 @@ class Tetra1(Element):
 
 
 class Tetra2(Tetra1):
+    r"""Ten-node quadratic tetrahedral element with midside nodes.
+
+    Notes:
+        Node ordering:
+
+                3
+               /|\
+             7/ | \8
+             /  |  \
+            0---4---1
+             \  |  /
+            6 \ | / 5
+               \|/
+                2
+
+        Node 9 lies on the edge between nodes 2 and 3.
+    """
+
     nodes = 10
     meshio_type = "tetra10"
 
@@ -536,6 +683,19 @@ class Tetra2(Tetra1):
 
 
 class Hexa1(Element):
+    r"""Eight-node trilinear hexahedral element.
+
+    Notes:
+        Node ordering:
+
+              7 ---- 6
+             /|     /|
+            4 ---- 5 |
+            | 3 --|- 2
+            |/     |/
+            0 ---- 1
+    """
+
     iso_volume = 8.0
     iso_dim = 3
     nodes = 8
@@ -632,6 +792,23 @@ class Hexa1(Element):
 
 
 class Hexa2(Hexa1):
+    r"""Twenty-node quadratic serendipity hexahedral element.
+
+    Notes:
+        Node ordering:
+
+                7 -- 14 --  6
+               /|          /|
+             15 19       13 18
+             /  |        /  |
+            4 -- 12 -- 5    |
+            |   3 -- 10 |-- 2
+            16 /        17 /
+            | 11        | 9
+            |/          |/
+            0 --  8 --  1
+    """
+
     iso_dim = 3
     nodes = 20
     meshio_type = "hexahedron20"
@@ -913,6 +1090,31 @@ class Hexa2(Hexa1):
 
 
 def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor]:
+    """Convert supported linear meshes to quadratic meshes.
+
+    Supported topologies are:
+
+    - 2-node bars to 3-node bars
+    - 3-node triangles to 6-node triangles
+    - 4-node quadrilaterals to 8-node quadrilaterals
+    - 4-node tetrahedra to 10-node tetrahedra
+    - 8-node hexahedra to 20-node hexahedra
+
+    New nodes are created at edge midpoints and appended to `nodes`.
+
+    Args:
+        nodes (Tensor): Nodal coordinates.
+            *Shape:* `(n_nodes, dim)`.
+        elements (Tensor): Connectivity of linear elements.
+            *Shape:* `(n_elem, n_nodes_per_elem)`.
+
+    Returns:
+        new_nodes (Tensor): Extended nodal coordinates with edge midpoints.
+            *Shape:* `(n_nodes + n_unique_edges, dim)`.
+        new_elements (Tensor): Quadratic element connectivity.
+            *Shape:* `(n_elem, n_quadratic_nodes_per_elem)`.
+    """
+
     if elements.shape[1] == 2:
         # Bar1 element
         edges = torch.tensor([[0, 1]])
