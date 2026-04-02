@@ -6,6 +6,7 @@
 - Alternative text for images in README.md
 - Test for example files.
 - Test for utils.
+- Markdown files to declare contribution, governance, code of conduct, and support.
 
 ### Changed 
 - Improved documentation in truss shape optimization example.

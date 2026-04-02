@@ -2,6 +2,10 @@
 
 Thank you for considering contributing to torch-fem! We appreciate your time and effort. Here’s a quick guide to help you get started.
 
+Please review `CODE_OF_CONDUCT.md` before participating.
+
+For usage questions and support requests, see `SUPPORT.md`.
+
 ## Reporting Issues
 - If you find a bug or have a feature request, please open an issue in the [Issues](https://github.com/meyer-nils/torch-fem/issues) section.
 - Provide as much detail as possible (screenshot, minimal working example, etc.) to help us understand and reproduce the issue.
