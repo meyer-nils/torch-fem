@@ -12,6 +12,7 @@
 - Integrate shell forces and moments from integration points to enable non-linear materials
 - Add basic `shell/plasticity.ipynb` example.
 - Significantly enhanced material testing coverage.
+- Renamed data helper API from `torchfem.examples.get_example_file(...)` to `torchfem.data.get_data(...)` and moved the module from `examples.py` to `data.py`.
 
 ### Removed 
 - The utility functions `voigt_strain_rotation` and `voigt_stress_rotation` are not used anywhere. They are removed.
