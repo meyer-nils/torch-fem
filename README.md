@@ -208,12 +208,17 @@ Python 3.13, CuPy 14.0.1, CUDA 12.9, float64
 |  80 |  1536000 |     0.49s |     3.76s |     3.22s |   2220.5MB |
 
 ## Alternatives
-There are many alternative FEM solvers in Python that you may also consider: 
+There are many alternative Python FEM tools that you may also consider, 
+depending on your needs:
 
-- Non-differentiable 
-  - [scikit-fem](https://github.com/kinnala/scikit-fem)
-  - [nutils](https://github.com/evalf/nutils) 
-  - [felupe](https://github.com/adtzlr/felupe)
-- Differentiable 
-  - [jaxfem](https://github.com/deepmodeling/jax-fem)
-  - [PyTorch FEA](https://github.com/liangbright/pytorch_fea)
+- General-purpose FEM/PDE frameworks
+    - [FEniCSx (DOLFINx)](https://github.com/FEniCS/dolfinx) ![GitHub stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square)
+    - [SfePy](https://github.com/sfepy/sfepy) ![GitHub stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square)
+    - [scikit-fem](https://github.com/kinnala/scikit-fem) ![GitHub stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square)
+    - [FElupe](https://github.com/adtzlr/felupe) ![GitHub stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square)
+    - [Nutils](https://github.com/evalf/nutils) ![GitHub stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) 
+- Differentiable or adjoint-capable FEM
+    - [JAX-FEM](https://github.com/deepmodeling/jax-fem) ![GitHub stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square)
+    - [dolfin-adjoint](https://github.com/dolfin-adjoint/pyadjoint) ![GitHub stars](https://img.shields.io/github/stars/dolfin-adjoint/pyadjoint?style=flat-square)
+    - [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) ![GitHub stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square)
+    
