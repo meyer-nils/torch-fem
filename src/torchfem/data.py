@@ -1,8 +1,6 @@
 from importlib import resources
-from os import PathLike
 
 
-def get_example_file(file: str) -> PathLike:
-    with resources.path("torchfem.data", file) as f:
-        data_file_path = f
-    return data_file_path
+def get_data(file: str) -> str:
+    data_dir = resources.files("torchfem").joinpath("data")
+    return str(data_dir.joinpath(file))
