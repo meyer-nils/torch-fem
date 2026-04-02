@@ -14,7 +14,7 @@ with a function $\mathcal{F}$ that maps a deformation gradient $\mathbf{F}$ and 
 
 In general, this relation is non-linear and often path-dependent. To solve the global equilibrium equations, the material model must be implemented incrementally. Instead of a total mapping, we evaluate the material response over a discrete load step from time $t_n$ to $t_{n+1}$.
 
-The material model is responsible for advancing the material state. Given the state at the beginning of the step ($\mathbf{F}_n,\pmb{\sigma}_n, \pmb{\alpha}_n$) and an increment of deformation $\Delta \mathbf{H}$, the model must determine the new stress and updated internal variables ($\pmb{\sigma}_{n+1}, \pmb{\alpha}_{n+1}$). In addition, it must provide an algorithmic tangent stiffness 
+The material model is responsible for advancing the material state. Given the state at the beginning of the step ($\mathbf{F}_n,\mathbf{P}_n, \pmb{\alpha}_n$) and an increment of deformation $\Delta \mathbf{H}$, the model must determine the new stress and updated internal variables ($\mathbf{P}_{n+1}, \pmb{\alpha}_{n+1}$). In addition, it must provide an algorithmic tangent stiffness 
 $$
 \mathbb{C}_{n+1} = \frac{\partial \Delta \pmb{\sigma}}{\partial \Delta \mathbf{H}}
 $$
