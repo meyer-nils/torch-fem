@@ -299,6 +299,29 @@ class Tria1(Element):
     def ipoints(cls) -> Tensor:
         return torch.tensor([[1.0 / 3.0, 1.0 / 3.0]])
 
+    @classmethod
+    def plot(cls, n_points: int = 30):
+        import matplotlib.pyplot as plt
+
+        # Sample inside triangular reference domain (ξ₁ ≥ 0, ξ₂ ≥ 0, ξ₁+ξ₂ ≤ 1)
+        t = np.linspace(0.0, 1.0, n_points)
+        xi1, xi2 = np.meshgrid(t, t)
+        mask = (xi1 + xi2) <= 1.0
+        xi1f, xi2f = xi1[mask], xi2[mask]
+        xi = torch.tensor(np.stack([xi1f, xi2f], axis=-1), dtype=torch.float32)
+        N = cls.N(xi).detach().cpu().numpy()
+
+        fig, axes = plt.subplots(1, 3, figsize=(10, 4), subplot_kw={"projection": "3d"})
+        for i, ax in enumerate(axes):
+            ax.plot_trisurf(xi1f, xi2f, N[:, i], color=f"C{i}", alpha=0.9)
+            ax.set_xlabel("$\\xi_1$")
+            ax.set_ylabel("$\\xi_2$")
+            ax.set_title(f"$N_{i}$")
+
+        fig.tight_layout()
+        root = Path(__file__).resolve().parents[2] / "docs" / "images"
+        fig.savefig(root / "Tria1_shape_functions.png", dpi=200, bbox_inches="tight")
+
 
 class Tria2(Tria1):
     r"""Six-node quadratic triangle element with midside nodes.
@@ -378,6 +401,29 @@ class Tria2(Tria1):
     def ipoints(cls) -> Tensor:
         return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
 
+    @classmethod
+    def plot(cls, n_points: int = 30):
+        import matplotlib.pyplot as plt
+
+        # Sample inside triangular reference domain (ξ₁ ≥ 0, ξ₂ ≥ 0, ξ₁+ξ₂ ≤ 1)
+        t = np.linspace(0.0, 1.0, n_points)
+        xi1, xi2 = np.meshgrid(t, t)
+        mask = (xi1 + xi2) <= 1.0
+        xi1f, xi2f = xi1[mask], xi2[mask]
+        xi = torch.tensor(np.stack([xi1f, xi2f], axis=-1), dtype=torch.float32)
+        N = cls.N(xi).detach().cpu().numpy()
+
+        fig, axes = plt.subplots(2, 3, figsize=(10, 8), subplot_kw={"projection": "3d"})
+        for i, ax in enumerate(axes.ravel()):
+            ax.plot_trisurf(xi1f, xi2f, N[:, i], color=f"C{i}", alpha=0.9)
+            ax.set_xlabel("$\\xi_1$")
+            ax.set_ylabel("$\\xi_2$")
+            ax.set_title(f"$N_{i}$")
+
+        fig.tight_layout()
+        root = Path(__file__).resolve().parents[2] / "docs" / "images"
+        fig.savefig(root / "Tria2_shape_functions.png", dpi=200, bbox_inches="tight")
+
 
 class Quad1(Element):
     """Four-node bilinear quadrilateral element.
@@ -447,6 +493,36 @@ class Quad1(Element):
                 for xi_1 in [-1, 1]
             ]
         )
+
+    @classmethod
+    def plot(cls, n_points: int = 30):
+        import matplotlib.pyplot as plt
+
+        # Sample on the square reference domain (ξ₁, ξ₂ ∈ [-1, 1])
+        t = np.linspace(-1.0, 1.0, n_points)
+        xi1, xi2 = np.meshgrid(t, t)
+        xi = torch.tensor(
+            np.stack([xi1.ravel(), xi2.ravel()], axis=-1), dtype=torch.float32
+        )
+        N = cls.N(xi).detach().cpu().numpy()
+
+        fig, axes = plt.subplots(2, 2, figsize=(8, 8), subplot_kw={"projection": "3d"})
+        for i, ax in enumerate(axes.ravel()):
+            ax.plot_surface(
+                xi1,
+                xi2,
+                N[:, i].reshape(n_points, n_points),
+                color=f"C{i}",
+                alpha=0.9,
+                linewidth=0,
+            )
+            ax.set_xlabel("$\\xi_1$")
+            ax.set_ylabel("$\\xi_2$")
+            ax.set_title(f"$N_{i}$")
+
+        fig.tight_layout()
+        root = Path(__file__).resolve().parents[2] / "docs" / "images"
+        fig.savefig(root / "Quad1_shape_functions.png", dpi=200, bbox_inches="tight")
 
 
 class Quad2(Quad1):
@@ -541,6 +617,36 @@ class Quad2(Quad1):
                 for xi_1 in [-1, 1]
             ]
         )
+
+    @classmethod
+    def plot(cls, n_points: int = 30):
+        import matplotlib.pyplot as plt
+
+        # Sample on the square reference domain (ξ₁, ξ₂ ∈ [-1, 1])
+        t = np.linspace(-1.0, 1.0, n_points)
+        xi1, xi2 = np.meshgrid(t, t)
+        xi = torch.tensor(
+            np.stack([xi1.ravel(), xi2.ravel()], axis=-1), dtype=torch.float32
+        )
+        N = cls.N(xi).detach().cpu().numpy()
+
+        fig, axes = plt.subplots(2, 4, figsize=(14, 8), subplot_kw={"projection": "3d"})
+        for i, ax in enumerate(axes.ravel()):
+            ax.plot_surface(
+                xi1,
+                xi2,
+                N[:, i].reshape(n_points, n_points),
+                color=f"C{i}",
+                alpha=0.9,
+                linewidth=0,
+            )
+            ax.set_xlabel("$\\xi_1$")
+            ax.set_ylabel("$\\xi_2$")
+            ax.set_title(f"$N_{i}$")
+
+        fig.tight_layout()
+        root = Path(__file__).resolve().parents[2] / "docs" / "images"
+        fig.savefig(root / "Quad2_shape_functions.png", dpi=200, bbox_inches="tight")
 
 
 class Tetra1(Element):

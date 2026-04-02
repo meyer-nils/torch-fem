@@ -1,7 +1,8 @@
 import pytest
 import torch
+from matplotlib import pyplot as plt
 
-from torchfem.elements import ELEMENT_REGISTRY
+from torchfem.elements import ELEMENT_REGISTRY, Bar1, Bar2, Quad1, Quad2, Tria1, Tria2
 
 
 @pytest.mark.parametrize(
@@ -48,3 +49,9 @@ def test_quadrature_weights(elem):
     assert torch.allclose(
         elem.iweights.sum() - torch.tensor(elem.iso_volume), torch.zeros(1), atol=1e-5
     )
+
+
+@pytest.mark.parametrize("elem", [Bar1, Bar2, Tria1, Tria2, Quad1, Quad2])
+def test_plot(elem):
+    elem.plot()
+    plt.close("all")
