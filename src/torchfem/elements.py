@@ -10,6 +10,8 @@ from torch import Tensor
 # Registry of all concrete Element subclasses
 ELEMENT_REGISTRY: list[type["Element"]] = []
 
+FIGURE_ROOT = Path(__file__).resolve().parents[2] / "docs" / "images"
+
 
 class ClassPropertyDescriptor:
     def __init__(self, fget):
@@ -163,7 +165,7 @@ class Bar1(Element):
         return torch.tensor([[0.0]])
 
     @classmethod
-    def plot(cls, n_points: int = 100):
+    def plot(cls, n_points: int = 100, path: Path = FIGURE_ROOT):
         import matplotlib.pyplot as plt
 
         # Compute shape functions at evenly spaced points in reference space
@@ -180,8 +182,7 @@ class Bar1(Element):
         ax.legend()
 
         # Save plot to docs/images directory
-        root = Path(__file__).resolve().parents[2] / "docs" / "images"
-        save_path = root / "Bar1_shape_functions.png"
+        save_path = path / f"{cls.__name__}_shape_functions.png"
         fig.savefig(save_path, dpi=200, bbox_inches="tight")
 
 
@@ -233,7 +234,7 @@ class Bar2(Bar1):
         return torch.tensor([[-1.0 / sqrt(3.0)], [1.0 / sqrt(3.0)]])
 
     @classmethod
-    def plot(cls, n_points: int = 100):
+    def plot(cls, n_points: int = 100, path: Path = FIGURE_ROOT):
         import matplotlib.pyplot as plt
 
         # Compute shape functions at evenly spaced points in reference space
@@ -250,8 +251,7 @@ class Bar2(Bar1):
         ax.legend()
 
         # Save plot to docs/images directory
-        root = Path(__file__).resolve().parents[2] / "docs" / "images"
-        save_path = root / "Bar2_shape_functions.png"
+        save_path = path / f"{cls.__name__}_shape_functions.png"
         fig.savefig(save_path, dpi=200, bbox_inches="tight")
 
 
@@ -300,7 +300,7 @@ class Tria1(Element):
         return torch.tensor([[1.0 / 3.0, 1.0 / 3.0]])
 
     @classmethod
-    def plot(cls, n_points: int = 30):
+    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT):
         import matplotlib.pyplot as plt
 
         # Sample inside triangular reference domain (ξ₁ ≥ 0, ξ₂ ≥ 0, ξ₁+ξ₂ ≤ 1)
@@ -319,8 +319,8 @@ class Tria1(Element):
             ax.set_title(f"$N_{i}$")
 
         fig.tight_layout()
-        root = Path(__file__).resolve().parents[2] / "docs" / "images"
-        fig.savefig(root / "Tria1_shape_functions.png", dpi=200, bbox_inches="tight")
+        filename = path / f"{cls.__name__}_shape_functions.png"
+        fig.savefig(filename, dpi=200, bbox_inches="tight")
 
 
 class Tria2(Tria1):
@@ -402,7 +402,7 @@ class Tria2(Tria1):
         return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
 
     @classmethod
-    def plot(cls, n_points: int = 30):
+    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT):
         import matplotlib.pyplot as plt
 
         # Sample inside triangular reference domain (ξ₁ ≥ 0, ξ₂ ≥ 0, ξ₁+ξ₂ ≤ 1)
@@ -421,8 +421,8 @@ class Tria2(Tria1):
             ax.set_title(f"$N_{i}$")
 
         fig.tight_layout()
-        root = Path(__file__).resolve().parents[2] / "docs" / "images"
-        fig.savefig(root / "Tria2_shape_functions.png", dpi=200, bbox_inches="tight")
+        filename = path / f"{cls.__name__}_shape_functions.png"
+        fig.savefig(filename, dpi=200, bbox_inches="tight")
 
 
 class Quad1(Element):
@@ -495,7 +495,7 @@ class Quad1(Element):
         )
 
     @classmethod
-    def plot(cls, n_points: int = 30):
+    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT):
         import matplotlib.pyplot as plt
 
         # Sample on the square reference domain (ξ₁, ξ₂ ∈ [-1, 1])
@@ -521,8 +521,8 @@ class Quad1(Element):
             ax.set_title(f"$N_{i}$")
 
         fig.tight_layout()
-        root = Path(__file__).resolve().parents[2] / "docs" / "images"
-        fig.savefig(root / "Quad1_shape_functions.png", dpi=200, bbox_inches="tight")
+        filename = path / f"{cls.__name__}_shape_functions.png"
+        fig.savefig(filename, dpi=200, bbox_inches="tight")
 
 
 class Quad2(Quad1):
@@ -619,7 +619,7 @@ class Quad2(Quad1):
         )
 
     @classmethod
-    def plot(cls, n_points: int = 30):
+    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT):
         import matplotlib.pyplot as plt
 
         # Sample on the square reference domain (ξ₁, ξ₂ ∈ [-1, 1])
@@ -645,8 +645,8 @@ class Quad2(Quad1):
             ax.set_title(f"$N_{i}$")
 
         fig.tight_layout()
-        root = Path(__file__).resolve().parents[2] / "docs" / "images"
-        fig.savefig(root / "Quad2_shape_functions.png", dpi=200, bbox_inches="tight")
+        filename = path / f"{cls.__name__}_shape_functions.png"
+        fig.savefig(filename, dpi=200, bbox_inches="tight")
 
 
 class Tetra1(Element):

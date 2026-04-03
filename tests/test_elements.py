@@ -1,3 +1,6 @@
+import tempfile
+from pathlib import Path
+
 import pytest
 import torch
 from matplotlib import pyplot as plt
@@ -53,5 +56,9 @@ def test_quadrature_weights(elem):
 
 @pytest.mark.parametrize("elem", [Bar1, Bar2, Tria1, Tria2, Quad1, Quad2])
 def test_plot(elem):
-    elem.plot()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir)
+        elem.plot(path=path)
+        result = path / f"{elem.__name__}_shape_functions.png"
+        assert result.exists()
     plt.close("all")
