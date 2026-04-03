@@ -41,6 +41,25 @@ nav = [
       { "Isotropic 3D" = "materials/damage/isotropic_damage_3D.md" },
     ] },
   ] },
+    { "Elements" = [
+    { "Base" = "elements/index.md" },
+    { "1D" = [
+      { "Bar1" = "elements/1d/bar1.md" },
+      { "Bar2" = "elements/1d/bar2.md" },
+    ] },
+    { "2D" = [
+      { "Tria1" = "elements/2d/tria1.md" },
+      { "Tria2" = "elements/2d/tria2.md" },
+      { "Quad1" = "elements/2d/quad1.md" },
+      { "Quad2" = "elements/2d/quad2.md" },
+    ] },
+    { "3D" = [
+      { "Tetra1" = "elements/3d/tetra1.md" },
+      { "Tetra2" = "elements/3d/tetra2.md" },
+      { "Hexa1" = "elements/3d/hexa1.md" },
+      { "Hexa2" = "elements/3d/hexa2.md" },
+    ] },
+  ] },
 ]
 
 extra_javascript = [

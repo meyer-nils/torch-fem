@@ -721,8 +721,6 @@ class Tetra2(Tetra1):
             6 \ | / 5
                \|/
                 2
-
-        Node 9 lies on the edge between nodes 2 and 3.
     """
 
     nodes = 10
