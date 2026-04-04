@@ -58,13 +58,12 @@ def main():
             str(args.order),
         ]
         mem_data, clock = profile_and_capture(cmd, args.device)
-        ram_vals = [r for _, r, _ in mem_data]
-        vram_vals = [v for _, _, v in mem_data if v is not None]
+        ram_vals = [r for _, r in mem_data]
         setup_t = clock["SETUP_DONE"] - clock["START"]
         fwd_t = clock["FWD_DONE"] - clock["SETUP_DONE"]
         bwd_t = clock["BWD_DONE"] - clock["FWD_DONE"]
         peak_ram = max(ram_vals) if ram_vals else 0.0
-        peak_vram = max(vram_vals) if vram_vals else None
+        peak_vram = clock.get("PEAK_VRAM_MB") if use_cuda else None
         dofs = 3 * N**3
         mem_str = (
             f"{peak_vram:8.1f}MB"

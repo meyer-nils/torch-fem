@@ -42,13 +42,15 @@ if __name__ == "__main__":
 
     torch.set_default_device(args.device)
 
+    # Reset peak memory stats before computation
+    if args.device == "cuda":
+        torch.cuda.reset_peak_memory_stats()
+
     # Start timing
-    snapshots = []
     print(f"START:{time.time()}")
 
     # Setup
     box = get_cube(args.N, args.order)
-    dofs = box.n_dofs
     print(f"SETUP_DONE:{time.time()}")
 
     # Forward pass
@@ -58,3 +60,9 @@ if __name__ == "__main__":
     # Backward pass
     u.sum().backward(retain_graph=True)
     print(f"BWD_DONE:{time.time()}")
+
+    # Report peak VRAM if on CUDA
+    if args.device == "cuda":
+        torch.cuda.synchronize()
+        peak_vram_mb = torch.cuda.max_memory_reserved() / (1024 * 1024)
+        print(f"PEAK_VRAM_MB:{peak_vram_mb:.4f}")
