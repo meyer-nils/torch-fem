@@ -1,0 +1,75 @@
+{
+    "hardware": "NVIDIA GeForce RTX 5090 (21,760 Cuda cores, 32 GB VRAM)",
+    "device": "cuda",
+    "python": "3.13",
+    "libraries": "CuPy 14.0.1, CUDA 12.9",
+    "dtype": "float64",
+    "problem": "cube_hexa_extension",
+    "order": 1,
+    "rows": [
+        {
+            "N": 10,
+            "dofs": 3000,
+            "setup_s": 0.27,
+            "fwd_s": 0.45,
+            "bwd_s": 0.46,
+            "peak_ram_mb": 1682.9
+        },
+        {
+            "N": 20,
+            "dofs": 24000,
+            "setup_s": 0.24,
+            "fwd_s": 0.49,
+            "bwd_s": 0.49,
+            "peak_ram_mb": 1703.6
+        },
+        {
+            "N": 30,
+            "dofs": 81000,
+            "setup_s": 0.25,
+            "fwd_s": 0.60,
+            "bwd_s": 0.59,
+            "peak_ram_mb": 1707.4
+        },
+        {
+            "N": 40,
+            "dofs": 192000,
+            "setup_s": 0.25,
+            "fwd_s": 0.78,
+            "bwd_s": 0.73,
+            "peak_ram_mb": 1738.4
+        },
+        {
+            "N": 50,
+            "dofs": 375000,
+            "setup_s": 0.28,
+            "fwd_s": 1.08,
+            "bwd_s": 0.94,
+            "peak_ram_mb": 1710.4
+        },
+        {
+            "N": 60,
+            "dofs": 648000,
+            "setup_s": 0.32,
+            "fwd_s": 1.54,
+            "bwd_s": 1.27,
+            "peak_ram_mb": 1710.8
+        },
+        {
+            "N": 70,
+            "dofs": 1029000,
+            "setup_s": 0.39,
+            "fwd_s": 2.13,
+            "bwd_s": 1.73,
+            "peak_ram_mb": 1728.7
+        },
+        {
+            "N": 80,
+            "dofs": 1536000,
+            "setup_s": 0.49,
+            "fwd_s": 3.76,
+            "bwd_s": 3.22,
+            "peak_ram_mb": 2220.5
+        }
+    ]
+}
