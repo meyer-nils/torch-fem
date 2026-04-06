@@ -54,9 +54,8 @@ def _setup_ax(ax, title: str, ylabel: str) -> None:
 def plot_ram(datasets: list[dict], out_path: Path) -> None:
     cpu_ds = [ds for ds in datasets if ds["device"] != "cuda"]
     gpu_ds = [ds for ds in datasets if ds["device"] == "cuda"]
-    n_plots = bool(cpu_ds) + bool(gpu_ds)
 
-    fig, axes = plt.subplots(1, n_plots, figsize=(6 * n_plots, 4), squeeze=False)
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4), squeeze=False)
     axes = axes[0]
 
     if cpu_ds:

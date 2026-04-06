@@ -7,8 +7,10 @@
 - Test for example files.
 - Test for utils.
 - Markdown files to declare contribution, governance, code of conduct, and support.
+- Documentation of elements with shape function plots.
 
 ### Changed 
+- Refactored benchmarks with plots and added them to documentation.
 - Improved documentation in truss shape optimization example.
 - Integrate shell forces and moments from integration points to enable non-linear materials
 - Add basic `shell/plasticity.ipynb` example.
