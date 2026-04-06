@@ -8,9 +8,8 @@ import psutil
 
 
 def profile_and_capture(
-    cmd: list[str], device: str = "cpu"
+    cmd: list[str],
 ) -> tuple[list[tuple[float, float]], dict[str, float]]:
-    _ = device
 
     # Start process
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)

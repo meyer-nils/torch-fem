@@ -57,7 +57,7 @@ def main():
             "-order",
             str(args.order),
         ]
-        mem_data, clock = profile_and_capture(cmd, args.device)
+        mem_data, clock = profile_and_capture(cmd)
         ram_vals = [r for _, r in mem_data]
         setup_t = clock["SETUP_DONE"] - clock["START"]
         fwd_t = clock["FWD_DONE"] - clock["SETUP_DONE"]
