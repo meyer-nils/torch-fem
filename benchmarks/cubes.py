@@ -58,7 +58,7 @@ if __name__ == "__main__":
     print(f"FWD_DONE:{time.time()}")
 
     # Backward pass
-    u.sum().backward(retain_graph=True)
+    u.sum().backward()
     print(f"BWD_DONE:{time.time()}")
 
     # Report peak VRAM if on CUDA
