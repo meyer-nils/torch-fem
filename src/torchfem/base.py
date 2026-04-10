@@ -465,7 +465,7 @@ class FEM(ABC):
                 )
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
-                if self.K.numel() == 0 or self.material.n_state != 0 or nlgeom:
+                if k is not None:
                     self.K = self.assemble_matrix(k, con)
                 F_int = self.assemble_rhs(f_i)
 
@@ -485,6 +485,7 @@ class FEM(ABC):
                         torch.zeros_like(de0),
                         i,
                         nlgeom,
+                        compute_stiffness=False,
                     )
                     F_int_base = self.assemble_rhs(f_base)
                     F_int = (F_int - F_int_base) + F_int_base.detach()
@@ -632,7 +633,8 @@ class Mechanics(FEM, ABC):
         de0: Tensor,
         iter: int,
         nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        compute_stiffness: bool = True,
+    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """
         Integrate mechanics material response over all integration points.
 
@@ -647,9 +649,12 @@ class Mechanics(FEM, ABC):
             de0: External strain-like increment per element.
             iter: Newton iteration index.
             nlgeom: If True, computes Cauchy stress from first Piola stress.
+            compute_stiffness: If True, compute and return element stiffness k.
+                When only forces are needed, pass False to avoid allocating the
+                large k tensor.
 
         Returns:
-            k: Element stiffness contributions.
+            k: Element stiffness contributions (None when compute_stiffness is False).
             f: Element internal nodal forces.
             grad_new: Updated deformation gradient.
             flux_new: Updated stress tensor.
@@ -667,7 +672,16 @@ class Mechanics(FEM, ABC):
         N_nod = self.etype.nodes
         N_dof = self.n_dof_per_node
         f = torch.zeros(self.n_elem, N_dof * N_nod, device=du.device)
-        k = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device)
+        need_k = compute_stiffness and (
+            self.K.numel() == 0 or self.material.n_state != 0 or nlgeom
+        )
+        k = (
+            torch.zeros(
+                (self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device
+            )
+            if need_k
+            else None
+        )
 
         # Initialize output for new state
         grad_new = torch.zeros_like(grad_prev)
@@ -713,14 +727,10 @@ class Mechanics(FEM, ABC):
             f += w * force_contrib.reshape(-1, N_dof * N_nod)
 
             # Compute element stiffness matrix
-            if self.K.numel() == 0 or self.material.n_state != 0 or nlgeom:
+            if need_k:
                 BCB = torch.einsum("...Jp,...iJkL,...Lq->...piqk", B[i], ddsdde, B[i])
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
                 k += w * self.compute_k(detJ[i], BCB)
-            
-            #if torch.cuda.is_available(): 
-            #    torch.cuda.synchronize()
-            #    torch.cuda.empty_cache()
 
         return k, f, grad_new, flux_new, state_new
 
@@ -798,7 +808,8 @@ class Heat(FEM, ABC):
         de0: Tensor,
         iter: int,
         nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        compute_stiffness: bool = True,
+    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Integrate thermal constitutive response over all integration points.
 
         Args:
@@ -828,16 +839,27 @@ class Heat(FEM, ABC):
 
         # Initialize nodal heat fluxes and conductivity matrix
         N_nod = self.etype.nodes
+        need_k = compute_stiffness and (
+            self.K.numel() == 0 or self.material.n_state != 0
+        )
         f = torch.zeros(
             self.n_elem,
             self.n_dof_per_node * N_nod,
             device=du.device,
             dtype=du.dtype,
         )
-        k = torch.zeros(
-            (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod),
-            device=du.device,
-            dtype=du.dtype,
+        k = (
+            torch.zeros(
+                (
+                    self.n_elem,
+                    self.n_dof_per_node * N_nod,
+                    self.n_dof_per_node * N_nod,
+                ),
+                device=du.device,
+                dtype=du.dtype,
+            )
+            if need_k
+            else None
         )
 
         grad_new = []
@@ -872,8 +894,7 @@ class Heat(FEM, ABC):
             f += w * force_contrib.reshape(-1, self.n_dof_per_node * N_nod)
 
             # Compute element stiffness matrix
-            if self.K.numel() == 0 or self.material.n_state != 0:
-                # Material stiffness
+            if need_k:
                 BCB = torch.einsum("...ij,...iN,...jM->...NM", ddfddg, B[i], B[i])
                 BCB = BCB.reshape(
                     -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
@@ -1032,7 +1053,7 @@ class Heat(FEM, ABC):
                 f_ext = self._neumann.ravel()
 
                 # assemble stiffness and mass matrices
-                if self.K.numel() == 0:
+                if k is not None:
                     self.K = self.assemble_matrix(k, con)
                 if self.M.numel() == 0:
                     self.M = self.assemble_matrix(m, con)
