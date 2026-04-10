@@ -1,5 +1,5 @@
 {
-    "hardware": "Apple M1 Pro (10 cores, 16 GB RAM)",
+    "hardware": "Apple M1 Pro",
     "device": "cpu",
     "python": "3.10",
     "libraries": "SciPy 1.15.3, Apple Accelerate",

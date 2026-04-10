@@ -1,8 +1,8 @@
 {
-  "hardware": "AMD Ryzen Threadripper PRO 9975WX 32-Cores",
+  "hardware": "Threadripper PRO 9975WX",
   "device": "cpu",
   "python": "3.13.12",
-  "libraries": "SciPy 1.15.3, PyTorch 2.11.0+cu128",
+  "libraries": "SciPy 1.15.3, PyTorch 2.11.0",
   "dtype": "float64",
   "problem": "cube_hexa_extension",
   "order": 1,

@@ -1,0 +1,56 @@
+{
+  "hardware": "RTX 4060 Ti",
+  "device": "cuda",
+  "python": "3.12.12",
+  "libraries": "CuPy 13.6.0, CUDA 12.8",
+  "dtype": "float64",
+  "problem": "cube_hexa_extension",
+  "order": 1,
+  "rows": [
+    {
+      "N": 10,
+      "dofs": 3000,
+      "setup_s": 0.2252,
+      "fwd_s": 0.4841,
+      "bwd_s": 0.6577,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 326.0
+    },
+    {
+      "N": 20,
+      "dofs": 24000,
+      "setup_s": 0.2038,
+      "fwd_s": 0.5718,
+      "bwd_s": 0.7436,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 579.0
+    },
+    {
+      "N": 30,
+      "dofs": 81000,
+      "setup_s": 0.2168,
+      "fwd_s": 0.9518,
+      "bwd_s": 0.9866,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1507.0
+    },
+    {
+      "N": 40,
+      "dofs": 192000,
+      "setup_s": 0.2921,
+      "fwd_s": 1.7095,
+      "bwd_s": 1.4732,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 3956.0
+    },
+    {
+      "N": 50,
+      "dofs": 375000,
+      "setup_s": 0.4282,
+      "fwd_s": 3.0662,
+      "bwd_s": 2.4355,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 7322.0
+    }
+  ]
+}

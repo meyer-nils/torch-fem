@@ -24,11 +24,24 @@ def _label(ds: dict) -> str:
 def plot_timing(datasets: list[dict], out_path: Path) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True)
 
-    for ds in datasets:
+    for i, ds in enumerate(datasets):
         dofs = [r["dofs"] for r in ds["rows"]]
         lbl = _label(ds)
-        axes[0].loglog(dofs, [r["fwd_s"] for r in ds["rows"]], marker="o", label=lbl)
-        axes[1].loglog(dofs, [r["bwd_s"] for r in ds["rows"]], marker="o", label=lbl)
+        color = f"C{i}"
+        axes[0].loglog(
+            dofs,
+            [r["fwd_s"] for r in ds["rows"]],
+            marker="o",
+            label=lbl,
+            color=color,
+        )
+        axes[1].loglog(
+            dofs,
+            [r["bwd_s"] for r in ds["rows"]],
+            marker="o",
+            label=lbl,
+            color=color,
+        )
 
     for ax, title in zip(axes, ["Forward solve", "Backward solve"]):
         _setup_ax(ax, title, "Time (s)")
@@ -54,6 +67,7 @@ def _setup_ax(ax, title: str, ylabel: str) -> None:
 def plot_ram(datasets: list[dict], out_path: Path) -> None:
     cpu_ds = [ds for ds in datasets if ds["device"] != "cuda"]
     gpu_ds = [ds for ds in datasets if ds["device"] == "cuda"]
+    colors = {_label(ds): f"C{i}" for i, ds in enumerate(datasets)}
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), squeeze=False)
     axes = axes[0]
@@ -61,11 +75,13 @@ def plot_ram(datasets: list[dict], out_path: Path) -> None:
     if cpu_ds:
         ax = axes[0]
         for ds in cpu_ds:
+            lbl = _label(ds)
             ax.loglog(
                 [r["dofs"] for r in ds["rows"]],
                 [r["peak_ram_mb"] for r in ds["rows"]],
                 marker="o",
-                label=_label(ds),
+                label=lbl,
+                color=colors[lbl],
             )
         _setup_ax(ax, "Peak RAM — CPU runs", "Peak RAM (MB)")
 
@@ -78,7 +94,8 @@ def plot_ram(datasets: list[dict], out_path: Path) -> None:
             if not pairs:
                 continue
             x, y = zip(*pairs)
-            ax.loglog(x, y, marker="o", label=_label(ds))
+            lbl = _label(ds)
+            ax.loglog(x, y, marker="o", label=lbl, color=colors[lbl])
         _setup_ax(ax, "Peak VRAM — GPU runs", "Peak VRAM (MB)")
 
     fig.suptitle("Cube extension benchmark — memory", fontweight="bold")
