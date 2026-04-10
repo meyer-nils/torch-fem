@@ -21,32 +21,41 @@ def _label(ds: dict) -> str:
     return f"{ds['hardware']} ({ds['device'].upper()})"
 
 
-def plot_timing(datasets: list[dict], out_path: Path) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True)
+def plot_timing(datasets: list[dict], out_path: Path, metric: str, title: str) -> None:
+    cpu_ds = [ds for ds in datasets if ds["device"] != "cuda"]
+    gpu_ds = [ds for ds in datasets if ds["device"] == "cuda"]
+    colors = {_label(ds): f"C{i}" for i, ds in enumerate(datasets)}
 
-    for i, ds in enumerate(datasets):
-        dofs = [r["dofs"] for r in ds["rows"]]
-        lbl = _label(ds)
-        color = f"C{i}"
-        axes[0].loglog(
-            dofs,
-            [r["fwd_s"] for r in ds["rows"]],
-            marker="o",
-            label=lbl,
-            color=color,
-        )
-        axes[1].loglog(
-            dofs,
-            [r["bwd_s"] for r in ds["rows"]],
-            marker="o",
-            label=lbl,
-            color=color,
-        )
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4), squeeze=False)
+    axes = axes[0]
 
-    for ax, title in zip(axes, ["Forward solve", "Backward solve"]):
-        _setup_ax(ax, title, "Time (s)")
+    if cpu_ds:
+        ax = axes[0]
+        for ds in cpu_ds:
+            lbl = _label(ds)
+            ax.loglog(
+                [r["dofs"] for r in ds["rows"]],
+                [r[metric] for r in ds["rows"]],
+                marker="o",
+                label=lbl,
+                color=colors[lbl],
+            )
+        _setup_ax(ax, f"{title} (CPU)", "Time (s)")
 
-    fig.suptitle("Cube extension benchmark — solve times", fontweight="bold")
+    if gpu_ds:
+        ax = axes[-1]
+        for ds in gpu_ds:
+            lbl = _label(ds)
+            ax.loglog(
+                [r["dofs"] for r in ds["rows"]],
+                [r[metric] for r in ds["rows"]],
+                marker="o",
+                label=lbl,
+                color=colors[lbl],
+            )
+        _setup_ax(ax, f"{title} (GPU)", "Time (s)")
+
+    fig.suptitle(f"Cube extension benchmark — {title.lower()}", fontweight="bold")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -83,7 +92,7 @@ def plot_ram(datasets: list[dict], out_path: Path) -> None:
                 label=lbl,
                 color=colors[lbl],
             )
-        _setup_ax(ax, "Peak RAM — CPU runs", "Peak RAM (MB)")
+        _setup_ax(ax, "Peak RAM (CPU)", "Peak RAM (MB)")
 
     if gpu_ds:
         ax = axes[-1]
@@ -96,7 +105,7 @@ def plot_ram(datasets: list[dict], out_path: Path) -> None:
             x, y = zip(*pairs)
             lbl = _label(ds)
             ax.loglog(x, y, marker="o", label=lbl, color=colors[lbl])
-        _setup_ax(ax, "Peak VRAM — GPU runs", "Peak VRAM (MB)")
+        _setup_ax(ax, "Peak VRAM (GPU)", "Peak VRAM (MB)")
 
     fig.suptitle("Cube extension benchmark — memory", fontweight="bold")
     fig.tight_layout()
@@ -108,7 +117,10 @@ def plot_ram(datasets: list[dict], out_path: Path) -> None:
 def main():
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     datasets = load_results()
-    plot_timing(datasets, IMAGES_DIR / "benchmark_timing.png")
+    plot_timing(datasets, IMAGES_DIR / "benchmark_timing.png", "fwd_s", "Forward solve")
+    plot_timing(
+        datasets, IMAGES_DIR / "benchmark_backward.png", "bwd_s", "Backward solve"
+    )
     plot_ram(datasets, IMAGES_DIR / "benchmark_ram.png")
 
 

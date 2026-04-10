@@ -21,7 +21,9 @@ A unit cube is subjected to one-dimensional extension:
 
 ## Results
 
-![Solve time scaling (forward and backward)](images/benchmark_timing.png)
+![Solve time scaling (forward)](images/benchmark_timing.png)
+
+![Solve time scaling (backward)](images/benchmark_backward.png)
 
 ![Peak RAM scaling](images/benchmark_ram.png)
 
@@ -37,8 +39,7 @@ The scripts live in `benchmarks/` at the repository root. For interactive memory
 python benchmarks/run.py
 
 # CUDA
-python benchmarks/run.py -device cuda --label rtx5090_cuda \
-    --hardware "NVIDIA GeForce RTX 5090 (21,760 CUDA cores, 32 GB VRAM)"
+python benchmarks/run.py -device cuda --label rtx5090_cuda --hardware "RTX 5090"
 ```
 
 Results are written to `benchmarks/results/<label>.json`.
@@ -49,5 +50,5 @@ Results are written to `benchmarks/results/<label>.json`.
 python benchmarks/plot.py
 ```
 
-This reads all JSON files in `benchmarks/results/` and writes `docs/images/benchmark_timing.png` and `docs/images/benchmark_ram.png`.
+This reads all JSON files in `benchmarks/results/` and writes `docs/images/benchmark_timing.png`, `docs/images/benchmark_backward.png`, and `docs/images/benchmark_ram.png`.
 
