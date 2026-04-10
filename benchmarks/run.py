@@ -13,7 +13,7 @@ from pathlib import Path
 
 import scipy
 import torch
-from utils import profile_and_capture
+from utils import profile_and_capture_cpu, profile_and_capture_gpu
 
 
 def main():
@@ -57,19 +57,15 @@ def main():
             "-order",
             str(args.order),
         ]
-        mem_data, clock = profile_and_capture(cmd)
-        ram_vals = [r for _, r in mem_data]
+        profiler = profile_and_capture_gpu if use_cuda else profile_and_capture_cpu
+        mem_data, clock = profiler(cmd)
+        mem_vals = [m for _, m in mem_data]
         setup_t = clock["SETUP_DONE"] - clock["START"]
         fwd_t = clock["FWD_DONE"] - clock["SETUP_DONE"]
         bwd_t = clock["BWD_DONE"] - clock["FWD_DONE"]
-        peak_ram = max(ram_vals) if ram_vals else 0.0
-        peak_vram = clock.get("PEAK_VRAM_MB") if use_cuda else None
+        peak_mem = max(mem_vals) if mem_vals else 0.0
         dofs = 3 * N**3
-        mem_str = (
-            f"{peak_vram:8.1f}MB"
-            if (use_cuda and peak_vram is not None)
-            else "     n/aMB" if use_cuda else f"{peak_ram:8.1f}MB"
-        )
+        mem_str = f"{peak_mem:8.1f}MB"
         print(
             f"| {N:3d} | {dofs:8d} | {setup_t:8.2f}s | {fwd_t:8.2f}s "
             f"| {bwd_t:8.2f}s | {mem_str} |"
@@ -81,8 +77,8 @@ def main():
                 "setup_s": round(setup_t, 4),
                 "fwd_s": round(fwd_t, 4),
                 "bwd_s": round(bwd_t, 4),
-                "peak_ram_mb": round(peak_ram, 1),
-                "peak_vram_mb": round(peak_vram, 1) if peak_vram is not None else None,
+                "peak_ram_mb": round(peak_mem, 1) if not use_cuda else None,
+                "peak_vram_mb": round(peak_mem, 1) if use_cuda else None,
             }
         )
 

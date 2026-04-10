@@ -60,9 +60,3 @@ if __name__ == "__main__":
     # Backward pass
     u.sum().backward()
     print(f"BWD_DONE:{time.time()}")
-
-    # Report peak VRAM if on CUDA
-    if args.device == "cuda":
-        torch.cuda.synchronize()
-        peak_vram_mb = torch.cuda.max_memory_reserved() / (1024 * 1024)
-        print(f"PEAK_VRAM_MB:{peak_vram_mb:.4f}")
