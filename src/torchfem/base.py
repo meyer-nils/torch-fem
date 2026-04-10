@@ -47,24 +47,42 @@ class FEM(ABC):
         )
         self.idx = idx.reshape(self.n_elem, -1)
 
-        # Precompute global index mapping for sparse matrix assembly
+        # Precompute global index mapping for sparse matrix assembly 
         n = self.idx.shape[1]
-        cols = self.idx.unsqueeze(1).expand(self.n_elem, n, -1).ravel()
-        rows = self.idx.unsqueeze(-1).expand(self.n_elem, -1, n).ravel()
+        chunk = max(1, min(self.n_elem, (16 * 1024 * 1024) // (n * n)))
+        # Phase 1: find unique (row, col) index pairs
+        parts = []
+        for s in range(0, self.n_elem, chunk):
+            ic = self.idx[s : s + chunk]
+            parts.append(torch.unique(
+                ((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1)
+            ))
         diag = torch.arange(self.n_dofs, dtype=torch.int64)
-        packed = torch.cat([(rows << 32) | cols, (diag << 32) | diag])
-        glob_idx_packed, inverse = torch.unique(packed, return_inverse=True)
+        parts.append((diag << 32) | diag)
+        glob_idx_packed = torch.unique(torch.cat(parts))
+        del parts
+        # Phase 2: map element entries to global sparse indices
+        k_parts = []
+        for s in range(0, self.n_elem, chunk):
+            ic = self.idx[s : s + chunk]
+            k_parts.append(torch.searchsorted(
+                glob_idx_packed,
+                ((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1),
+            ).to(torch.int32))
+        self.k_map = torch.cat(k_parts)
+        del k_parts
+        self.diag_map = torch.searchsorted(
+            glob_idx_packed, (diag << 32) | diag
+        ).to(torch.int32)
+        del diag
         self.glob_idx = torch.stack(
             [
                 torch.div(glob_idx_packed, 2**32, rounding_mode="floor"),
                 glob_idx_packed % 2**32,
             ]
         ).to(torch.int32)
+        del glob_idx_packed
         self.idx = self.idx.to(torch.int32)
-        inverse = inverse.to(torch.int32)
-        m = rows.numel()
-        self.k_map = inverse[:m]
-        self.diag_map = inverse[m:]
 
         # Vectorize material
         if material.is_vectorized:
@@ -699,6 +717,10 @@ class Mechanics(FEM, ABC):
                 BCB = torch.einsum("...Jp,...iJkL,...Lq->...piqk", B[i], ddsdde, B[i])
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
                 k += w * self.compute_k(detJ[i], BCB)
+            
+            #if torch.cuda.is_available(): 
+            #    torch.cuda.synchronize()
+            #    torch.cuda.empty_cache()
 
         return k, f, grad_new, flux_new, state_new
 
