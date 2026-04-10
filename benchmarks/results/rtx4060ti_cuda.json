@@ -6,60 +6,60 @@
   "dtype": "float64",
   "problem": "cube_hexa_extension",
   "order": 1,
-  "rows": [
+ "rows": [
     {
       "N": 10,
       "dofs": 3000,
-      "setup_s": 0.2187,
-      "fwd_s": 0.492,
-      "bwd_s": 0.6624,
+      "setup_s": 0.2352,
+      "fwd_s": 0.4883,
+      "bwd_s": 0.6621,
       "peak_ram_mb": null,
-      "peak_vram_mb": 31.4
+      "peak_vram_mb": 34.0
     },
     {
       "N": 20,
       "dofs": 24000,
-      "setup_s": 0.1989,
-      "fwd_s": 0.6222,
-      "bwd_s": 0.7463,
+      "setup_s": 0.231,
+      "fwd_s": 0.5997,
+      "bwd_s": 0.7486,
       "peak_ram_mb": null,
-      "peak_vram_mb": 179.8
+      "peak_vram_mb": 151.1
     },
     {
       "N": 30,
       "dofs": 81000,
-      "setup_s": 0.22,
-      "fwd_s": 1.0045,
-      "bwd_s": 1.014,
+      "setup_s": 0.2404,
+      "fwd_s": 0.9673,
+      "bwd_s": 0.9893,
       "peak_ram_mb": null,
-      "peak_vram_mb": 725.2
+      "peak_vram_mb": 509.7
     },
     {
       "N": 40,
       "dofs": 192000,
-      "setup_s": 0.2398,
-      "fwd_s": 1.8451,
-      "bwd_s": 1.4582,
+      "setup_s": 0.2502,
+      "fwd_s": 1.686,
+      "bwd_s": 1.4704,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1728.4
+      "peak_vram_mb": 1207.1
     },
     {
       "N": 50,
       "dofs": 375000,
-      "setup_s": 0.3107,
-      "fwd_s": 3.4292,
-      "bwd_s": 2.2938,
+      "setup_s": 0.3119,
+      "fwd_s": 2.8797,
+      "bwd_s": 2.2806,
       "peak_ram_mb": null,
-      "peak_vram_mb": 3610.7
+      "peak_vram_mb": 2511.0
     },
     {
       "N": 60,
       "dofs": 648000,
-      "setup_s": 0.4135,
-      "fwd_s": 5.651,
-      "bwd_s": 3.581,
+      "setup_s": 0.4022,
+      "fwd_s": 4.7246,
+      "bwd_s": 3.5627,
       "peak_ram_mb": null,
-      "peak_vram_mb": 6167.5
+      "peak_vram_mb": 4243.3
     }
   ]
 }
