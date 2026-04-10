@@ -236,13 +236,15 @@ class Shell(Mechanics):
         de0: Tensor,
         iter: int,
         nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        compute_stiffness: bool = True,
+    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix.
 
         Args:
             grad_prev: Deformation gradient at previous step [n_int, n_elem, *n_flux]
             flux_prev: Stress at previous step [n_int, n_elem, *n_flux]
             state_prev: Material state at previous step [n_int, n_elem, n_state]
+            compute_stiffness: If True, assemble and return element stiffness.
 
         Returns:
             k, f, grad_new, flux_new, state_new
@@ -264,8 +266,19 @@ class Shell(Mechanics):
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
         f = torch.zeros(self.n_elem, self.n_dof_per_node * N_nod)
-        k = torch.zeros(
-            (self.n_elem, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod)
+        need_k = compute_stiffness and (
+            self.K.numel() == 0 or self.material.n_state != 0 or nlgeom
+        )
+        k = (
+            torch.zeros(
+                (
+                    self.n_elem,
+                    self.n_dof_per_node * N_nod,
+                    self.n_dof_per_node * N_nod,
+                )
+            )
+            if need_k
+            else None
         )
 
         if nlgeom:
@@ -370,11 +383,12 @@ class Shell(Mechanics):
                     self.drill_penalty
                 )
 
-            # Total element stiffness in local coordinates
-            kt = km + kb + ks + kd
+            if k is not None:
+                # Total element stiffness in local coordinates
+                kt = km + kb + ks + kd
 
-            # Total element stiffness in global coordinates
-            k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T
+                # Total element stiffness in global coordinates
+                k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T
 
             # Total force contribution
             disp = u_trial[self.elements, :].reshape(self.n_elem, -1)

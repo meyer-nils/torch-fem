@@ -47,16 +47,16 @@ class FEM(ABC):
         )
         self.idx = idx.reshape(self.n_elem, -1)
 
-        # Precompute global index mapping for sparse matrix assembly 
+        # Precompute global index mapping for sparse matrix assembly
         n = self.idx.shape[1]
         chunk = max(1, min(self.n_elem, (16 * 1024 * 1024) // (n * n)))
         # Phase 1: find unique (row, col) index pairs
         parts = []
         for s in range(0, self.n_elem, chunk):
             ic = self.idx[s : s + chunk]
-            parts.append(torch.unique(
-                ((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1)
-            ))
+            parts.append(
+                torch.unique(((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1))
+            )
         diag = torch.arange(self.n_dofs, dtype=torch.int64)
         parts.append((diag << 32) | diag)
         glob_idx_packed = torch.unique(torch.cat(parts))
@@ -65,15 +65,17 @@ class FEM(ABC):
         k_parts = []
         for s in range(0, self.n_elem, chunk):
             ic = self.idx[s : s + chunk]
-            k_parts.append(torch.searchsorted(
-                glob_idx_packed,
-                ((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1),
-            ).to(torch.int32))
+            k_parts.append(
+                torch.searchsorted(
+                    glob_idx_packed,
+                    ((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1),
+                ).to(torch.int32)
+            )
         self.k_map = torch.cat(k_parts)
         del k_parts
-        self.diag_map = torch.searchsorted(
-            glob_idx_packed, (diag << 32) | diag
-        ).to(torch.int32)
+        self.diag_map = torch.searchsorted(glob_idx_packed, (diag << 32) | diag).to(
+            torch.int32
+        )
         del diag
         self.glob_idx = torch.stack(
             [
@@ -185,7 +187,8 @@ class FEM(ABC):
         de0: Tensor,
         iter: int,
         nlgeom: bool,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        compute_stiffness: bool = True,
+    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Integrate constitutive response over all integration points.
 
         Args:
@@ -197,10 +200,12 @@ class FEM(ABC):
             de0: Incremental external gradient-like loading term.
             iter: Newton iteration index.
             nlgeom: If True, evaluate with geometric nonlinearity.
+            compute_stiffness: If True, compute and return stiffness.
 
         Returns:
-            Tuple of element stiffness, element internal forces, updated
-            gradients, updated fluxes, and updated material state.
+            Tuple of element stiffness (or None when skipped), element
+            internal forces, updated gradients, updated fluxes, and updated
+            material state.
         """
         raise NotImplementedError
 
@@ -621,6 +626,8 @@ class Mechanics(FEM, ABC):
         de0 = torch.zeros(self.n_elem, *self.n_flux)
         self.K = torch.empty(0)
         k, _, _, _, _ = self.integrate_material(u, grad, flux, state, du, de0, 0, False)
+        if k is None:
+            raise RuntimeError("Expected stiffness tensor in k0().")
         return k
 
     def integrate_material(
@@ -676,9 +683,7 @@ class Mechanics(FEM, ABC):
             self.K.numel() == 0 or self.material.n_state != 0 or nlgeom
         )
         k = (
-            torch.zeros(
-                (self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device
-            )
+            torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device)
             if need_k
             else None
         )
@@ -796,6 +801,8 @@ class Heat(FEM, ABC):
         k, _, _, _, _ = self.integrate_material(
             temp, temp_grad, heat_flux, state, dtemp, dtemp_grad0, 0, False
         )
+        if k is None:
+            raise RuntimeError("Expected conductivity tensor in k0().")
         return k
 
     def integrate_material(
