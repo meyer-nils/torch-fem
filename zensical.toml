@@ -15,6 +15,7 @@ nav = [
   { "Differentiability" = "differentiability.md" },
   { "Theory" = "theory.md" },
   { "Performance" = "performance.md" },
+  { "Publications" = "publications.md" },
   { "Materials" = [
     { "Base" = "materials/index.md" },
     { "Elasticity" = [

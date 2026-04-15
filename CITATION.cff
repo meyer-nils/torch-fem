@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+title: torch-fem
+message: If you use torch-fem in your research, please cite this software.
+type: software
+authors:
+  - family-names: Meyer
+    given-names: Nils
+    email: nils.meyer@uni-a.de
+repository-code: https://github.com/meyer-nils/torch-fem
+url: https://meyer-nils.github.io/torch-fem/
+license: MIT
+version: 0.6.2
+date-released: 2026-03-25
+keywords:
+  - finite elements
+  - differentiable simulation
+  - pytorch
+  - topology optimization
