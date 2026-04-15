@@ -1,0 +1,83 @@
+{
+  "hardware": "Apple M5",
+  "device": "cpu",
+  "python": "3.13.12",
+  "libraries": "SciPy 1.15.3, PyTorch 2.11.0",
+  "dtype": "float64",
+  "problem": "cube_hexa_extension",
+  "order": 1,
+  "rows": [
+    {
+      "N": 10,
+      "dofs": 3000,
+      "setup_s": 0.0319,
+      "fwd_s": 0.1468,
+      "bwd_s": 0.2801,
+      "peak_ram_mb": 498.0,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 20,
+      "dofs": 24000,
+      "setup_s": 0.1191,
+      "fwd_s": 0.5016,
+      "bwd_s": 0.2139,
+      "peak_ram_mb": 870.1,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 30,
+      "dofs": 81000,
+      "setup_s": 0.4037,
+      "fwd_s": 1.7755,
+      "bwd_s": 0.5223,
+      "peak_ram_mb": 1942.6,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 40,
+      "dofs": 192000,
+      "setup_s": 0.8502,
+      "fwd_s": 4.2282,
+      "bwd_s": 0.9431,
+      "peak_ram_mb": 2801.1,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 50,
+      "dofs": 375000,
+      "setup_s": 1.9163,
+      "fwd_s": 8.5966,
+      "bwd_s": 2.0341,
+      "peak_ram_mb": 4078.9,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 60,
+      "dofs": 648000,
+      "setup_s": 3.9743,
+      "fwd_s": 15.9819,
+      "bwd_s": 3.2853,
+      "peak_ram_mb": 5450.4,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 70,
+      "dofs": 1029000,
+      "setup_s": 6.2504,
+      "fwd_s": 28.5125,
+      "bwd_s": 5.9127,
+      "peak_ram_mb": 7170.3,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 80,
+      "dofs": 1536000,
+      "setup_s": 9.9305,
+      "fwd_s": 49.6254,
+      "bwd_s": 8.9812,
+      "peak_ram_mb": 10565.2,
+      "peak_vram_mb": null
+    }
+  ]
+}
