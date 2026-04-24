@@ -188,15 +188,3 @@ class SolidHeat(Heat, Solid):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
-
-    def compute_m(self) -> Tensor:
-        ipoints = self.etype.ipoints
-        weights = self.etype.iweights
-
-        N, _, detJ = self.eval_shape_functions(ipoints)
-
-        # This is a thermal mass (rho * c), but we only have rho here.
-        rho = self.material.rho
-
-        m = torch.einsum("I, IN, IM, E, IE -> ENM", weights, N, N, rho, detJ)
-        return m
