@@ -43,12 +43,17 @@ class Solid(Mechanics):
         return vols ** (1 / 3)
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        """Element stiffness matrix"""
+        """Element stiffness matrix contribution."""
         return torch.einsum("j,jkl->jkl", detJ, BCB)
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
         """Element internal force vector."""
         return torch.einsum("..., ...iI,...Ai->...IA", detJ, B, S)
+
+
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Element mass matrix contribution."""
+        return rho * detJ
 
     @torch.no_grad()
     def plot(

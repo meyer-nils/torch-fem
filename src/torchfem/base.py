@@ -166,9 +166,18 @@ class FEM(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def compute_m(self) -> Tensor:
-        """Compute element mass matrix contributions."""
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Compute element mass contribution.
+
+        Args:
+            detJ: Jacobian determinant at the current integration point.
+            rho: Material density at the current integration point.
+
+        Returns:
+            Element mass contribution tensor.
+        """
+        raise NotImplementedError
+
         raise NotImplementedError
 
     @abstractmethod
@@ -301,7 +310,26 @@ class FEM(ABC):
         # Integration
         return torch.einsum("i,ie,ie->e", weights, f_ip, detJ)
 
-    def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
+    def integrate_mass(self) -> Tensor:
+        """Integrate mass matrix.
+
+        Returns:
+            Element mass matrix tensor with shape [n_elem, n_dof_elem, n_dof_elem].
+        """
+        N_nod = self.etype.nodes
+        N_dof = self.n_dof_per_node
+        m = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod))
+
+        N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
+        I_dof = torch.eye(N_dof)
+
+        for i, w in enumerate(self.etype.iweights):
+            m_i = self.compute_m(detJ[i], self.material.rho)
+            m_scalar = torch.einsum("N,M,E->ENM", N[i], N[i], m_i)
+            m_block = torch.einsum("Enm,ij->Enimj", m_scalar, I_dof)
+            m += w * m_block.reshape(self.n_elem, N_dof * N_nod, N_dof * N_nod)
+
+        return m
         """Assemble a global sparse matrix from element contributions.
 
         Args:
@@ -1031,7 +1059,7 @@ class Heat(FEM, ABC):
         self.M = torch.empty(0)
 
         # compute element mass matrices
-        m = self.compute_m()
+        m = self.integrate_mass()
 
         # Initialize displacement increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()

@@ -226,6 +226,22 @@ class Shell(Mechanics):
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         raise NotImplementedError
 
+    def integrate_mass(self) -> Tensor:
+        """Mass matrix (translational: ρh, rotational: ρh³/12)."""
+        n = self.n_dof_per_node * self.etype.nodes
+        m = torch.zeros((self.n_elem, n, n))
+        rho_trans = self.material.rho * self.thickness
+        rho_rot = self.material.rho * self.thickness**3 / 12
+        D = torch.diag_embed(torch.stack([rho_trans] * 3 + [rho_rot] * 3, dim=-1))
+        N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
+        for i, w in enumerate(self.etype.iweights):
+            m_loc = w * torch.einsum(
+                "ENM,Eij->ENiMj", torch.einsum("N,M,E->ENM", N[i], N[i], detJ[i]), D
+            )
+            m_loc = m_loc.reshape(self.n_elem, n, n)
+            m += self.T.transpose(1, 2) @ m_loc @ self.T
+        return m
+
     def integrate_material(
         self,
         u_prev: Tensor,

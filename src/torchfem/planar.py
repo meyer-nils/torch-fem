@@ -63,12 +63,16 @@ class Planar(Mechanics):
         return areas ** (1 / 2)
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
-        """Element stiffness matrix."""
+        """Element stiffness matrix contribution."""
         return torch.einsum("...,...,...kl->...kl", self.thickness, detJ, BCB)
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         """Element internal force vector."""
         return torch.einsum("...,...,...iI,...Ai->...IA", self.thickness, detJ, B, S)
+
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Element mass matrix contribution."""
+        return rho * self.thickness * detJ
 
     @torch.no_grad()
     def plot(
@@ -266,17 +270,3 @@ class PlanarHeat(Heat, Planar):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
-
-    def compute_m(self) -> Tensor:
-        ipoints = self.etype.ipoints
-        weights = self.etype.iweights
-
-        N, _, detJ = self.eval_shape_functions(ipoints)
-
-        # This is a thermal mass (rho * c), but we only have rho here.
-        rho = self.material.rho
-
-        m = torch.einsum(
-            "I, IN, IM, E, IE, E -> ENM", weights, N, N, rho, detJ, self.thickness
-        )
-        return m

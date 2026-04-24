@@ -77,6 +77,11 @@ class Truss(Mechanics):
         """Element internal force vector."""
         return torch.einsum("...,...,...ik,...ij->...kj", self.areas, detJ, B, S)
 
+
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Element mass matrix contribution."""
+        return rho * self.areas * detJ
+
     def plot(self, u: float | Tensor = 0.0, **kwargs):
         if self.n_dim == 2:
             self.plot2d(u=u, **kwargs)
