@@ -328,6 +328,8 @@ class FEM(ABC):
             m += w * m_block.reshape(self.n_elem, N_dof * N_nod, N_dof * N_nod)
 
         return m
+
+    def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
         """Assemble a global sparse matrix from element contributions.
 
         Args:
