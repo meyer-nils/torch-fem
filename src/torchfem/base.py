@@ -178,8 +178,6 @@ class FEM(ABC):
         """
         raise NotImplementedError
 
-        raise NotImplementedError
-
     @abstractmethod
     def k0(self) -> Tensor:
         """Compute element stiffness for the reference configuration."""
