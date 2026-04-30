@@ -8,7 +8,12 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import CachedSolve, differentiable_sparse_solve, newton_solve
+from .sparse import (
+    CachedSolve,
+    differentiable_modal_eigsolve,
+    differentiable_sparse_solve,
+    newton_solve,
+)
 
 
 class FEM(ABC):
@@ -767,8 +772,41 @@ class Mechanics(FEM, ABC):
 
         return k, f, grad_new, flux_new, state_new
 
-    def compute_m(self) -> Tensor:
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
         raise NotImplementedError
+
+    def solve_modes(self, n_modes: int) -> Tuple[Tensor, Tensor]:
+        """Compute the natural frequencies and mode shapes.
+
+        Solves the generalized eigenvalue problem
+        $$\\mathbf{K}\\boldsymbol{\\phi} = \\omega^2 \\mathbf{M}\\boldsymbol{\\phi}$$
+
+        Args:
+            n_modes: Number of eigenpairs to compute.
+
+        Returns:
+            Tuple ``(omega_sq, modes)`` where ``omega_sq`` has shape
+            ``[n_modes]`` (squared angular frequencies, differentiable) and
+            ``modes`` has shape ``[n_modes, n_nod, n_dof_per_node]`` (detached).
+        """
+        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
+        free_indices = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
+
+        k = self.k0()
+        K = self.assemble_matrix(k, con)
+
+        m = self.integrate_mass()
+        M = self.assemble_matrix(m, con)
+
+        # free_indices restricts eigsh to the free-DOF subspace to avoid
+        # spurious eigenvalues from the K_ii = M_ii = 1 penalty on constrained
+        # DOFs.  Gradients still flow through the full K and M.
+        omega_sq, phis = differentiable_modal_eigsolve(
+            K, M, n_modes, free_indices=free_indices
+        )
+
+        modes = phis.T.reshape(n_modes, self.n_nod, self.n_dof_per_node)
+        return omega_sq, modes
 
 
 class Heat(FEM, ABC):
