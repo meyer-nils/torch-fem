@@ -50,7 +50,6 @@ class Solid(Mechanics):
         """Element internal force vector."""
         return torch.einsum("..., ...iI,...Ai->...IA", detJ, B, S)
 
-
     def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
         """Element mass matrix contribution."""
         return rho * detJ
