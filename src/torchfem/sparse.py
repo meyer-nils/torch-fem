@@ -596,7 +596,7 @@ def _eigsolve_cpu(K, M, n_modes, free_indices, shape, n_dofs):
 
     fi = free_indices.cpu().numpy()
     eigenvalues, evecs_free = scipy_eigsh(
-        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], which="SM"
+        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
     )
     eigenvectors = np.zeros((n_dofs, n_modes))
     eigenvectors[fi] = evecs_free
@@ -624,7 +624,7 @@ def _eigsolve_gpu(K, M, n_modes, free_indices, shape, n_dofs):
 
     fi = free_indices.cpu().numpy()
     eigenvalues, evecs_free = cupy_eigsh(
-        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], which="SM"
+        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
     )
     eigenvectors = cupy.zeros((n_dofs, n_modes), dtype=eigenvalues.dtype)
     eigenvectors[fi] = evecs_free
