@@ -58,7 +58,8 @@ class FEM(ABC):
         # Phase 1: find unique (row, col) index pairs
         parts = []
         for s in range(0, self.n_elem, chunk):
-            ic = self.idx[s : s + chunk]
+            e = s + chunk
+            ic = self.idx[s:e]
             parts.append(
                 torch.unique(((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1))
             )
@@ -69,7 +70,8 @@ class FEM(ABC):
         # Phase 2: map element entries to global sparse indices
         k_parts = []
         for s in range(0, self.n_elem, chunk):
-            ic = self.idx[s : s + chunk]
+            e = s + chunk
+            ic = self.idx[s:e]
             k_parts.append(
                 torch.searchsorted(
                     glob_idx_packed,
