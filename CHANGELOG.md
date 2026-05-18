@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.6.3 - May 18 2026 
 
 ### Added
 - Alternative text for images in README.md
@@ -8,6 +8,9 @@
 - Test for utils.
 - Markdown files to declare contribution, governance, code of conduct, and support.
 - Documentation of elements with shape function plots.
+- Publications page in docs.
+- Theory chapter in docs.
+- New publication on C/C-SiC plates added to docs.
 
 ### Changed 
 - Refactored benchmarks with plots and added them to documentation.
@@ -16,10 +19,17 @@
 - Add basic `shell/plasticity.ipynb` example.
 - Significantly enhanced material testing coverage.
 - Renamed data helper API from `torchfem.examples.get_example_file(...)` to `torchfem.data.get_data(...)` and moved the module from `examples.py` to `data.py`.
+- Skip unnecessary stiffness matrix construction during the backward pass to reduce memory and compute overhead.
+- Reduce initial GPU memory peaks with chunked index mapping in `__init__`.
 
 ### Removed 
 - The utility functions `voigt_strain_rotation` and `voigt_stress_rotation` are not used anywhere. They are removed.
 - Dependency on unused `memory_profiler`. This was replaced by a custom profiling function for benchmarking earlier.
+
+### Fixed 
+- The FPP example was not working correctly after removing `retain_graph=True` from the sparse solver. Also, detaching `f` in base was introducing an error here. This is now fixed.
+- Fixed bug where external strains were validated against `n_nodes` instead of `n_elem` (Thanks to @JulGre).
+- Fixed `compute_stiffness` argument not being properly propagated in `integrate_material`.
 
 ## Version 0.6.2 - March 25 2026 
 
