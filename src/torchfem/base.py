@@ -537,8 +537,7 @@ class FEM(ABC):
                 nlgeom,
             )
             F_int = self.assemble_rhs(f_i)
-            # Detach f[n] to avoid spurious gradient paths through accumulated stress
-            f[n] = F_int.reshape((-1, self.n_dof_per_node)).detach()
+            f[n] = F_int.reshape((-1, self.n_dof_per_node))
             u[n] = u[n - 1] + du_eval.reshape((-1, self.n_dof_per_node))
             du = du_eval
 
