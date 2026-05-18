@@ -508,7 +508,11 @@ class NewtonRaphsonAdjoint(Function):
 
         grad_inputs = (du_local, *parameters)
         grads = torch.autograd.grad(
-            residual, grad_inputs, grad_outputs=-lambda_, allow_unused=True
+            residual,
+            grad_inputs,
+            grad_outputs=-lambda_,
+            allow_unused=True,
+            retain_graph=True,
         )
         grad_parameters = grads[1:]
 

@@ -572,8 +572,7 @@ class FEM(ABC):
                 nlgeom,
             )
             F_int = self.assemble_rhs(f_i)
-            # Detach f[n] to avoid spurious gradient paths through accumulated stress
-            f[n] = F_int.reshape((-1, self.n_dof_per_node)).detach()
+            f[n] = F_int.reshape((-1, self.n_dof_per_node))
             u[n] = u[n - 1] + du_eval.reshape((-1, self.n_dof_per_node))
             du = du_eval
 
@@ -644,7 +643,7 @@ class Mechanics(FEM, ABC):
 
     @ext_strain.setter
     def ext_strain(self, value: Tensor):
-        if not value.shape == (self.n_nod, self.n_dof_per_node, self.n_dim):
+        if not value.shape == (self.n_elem, self.n_dof_per_node, self.n_dim):
             raise ValueError("External strain must have the same shape as strains.")
         if not torch.is_floating_point(value):
             raise TypeError("External strain must be a floating-point tensor.")
