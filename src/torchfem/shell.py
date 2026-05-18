@@ -414,7 +414,7 @@ class Shell(Mechanics):
         node_property: dict[str, Tensor] | None = None,
         element_property: dict[str, Tensor] | None = None,
         thickness: bool = False,
-        mirror: list[bool] = [False, False, False],
+        mirror: tuple[bool, bool, bool] = (False, False, False),
         **kwargs,
     ):
         try:
@@ -449,7 +449,8 @@ class Shell(Mechanics):
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()
 
-        # Plot as seperate top and bottom surface
+        # Plot as separate top and bottom surface
+        base_meshes = []
         if thickness:
             nodal_thickness = np.zeros((len(self.nodes)))
             count = np.zeros((len(self.nodes)))
@@ -466,18 +467,24 @@ class Shell(Mechanics):
 
             pl.add_mesh(top, show_edges=True)
             pl.add_mesh(bottom, show_edges=True)
+            base_meshes.extend([top, bottom])
         else:
             pl.add_mesh(mesh, show_edges=True)
+            base_meshes.append(mesh)
 
-        if mirror[0]:
-            for msh in pl.meshes:
-                pl.add_mesh(msh.reflect((1, 0, 0)), show_edges=True, opacity=0.5)
-
-        if mirror[1]:
-            for msh in pl.meshes:
-                pl.add_mesh(msh.reflect((0, 1, 0)), show_edges=True, opacity=0.5)
-
-        if mirror[2]:
-            for msh in pl.meshes:
-                pl.add_mesh(msh.reflect((0, 0, 1)), show_edges=True, opacity=0.5)
+        # Mirror meshes across specified planes
+        sx_values = [1.0, -1.0] if mirror[0] else [1.0]
+        sy_values = [1.0, -1.0] if mirror[1] else [1.0]
+        sz_values = [1.0, -1.0] if mirror[2] else [1.0]
+        for sx in sx_values:
+            for sy in sy_values:
+                for sz in sz_values:
+                    if sx == 1.0 and sy == 1.0 and sz == 1.0:
+                        continue
+                    for msh in base_meshes:
+                        mirrored = msh.copy()
+                        mirrored.points[:, 0] *= sx
+                        mirrored.points[:, 1] *= sy
+                        mirrored.points[:, 2] *= sz
+                        pl.add_mesh(mirrored, show_edges=True, opacity=0.5)
         pl.show(jupyter_backend="html")
