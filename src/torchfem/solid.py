@@ -43,12 +43,16 @@ class Solid(Mechanics):
         return vols ** (1 / 3)
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        """Element stiffness matrix"""
+        """Element stiffness matrix contribution."""
         return torch.einsum("j,jkl->jkl", detJ, BCB)
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
         """Element internal force vector."""
         return torch.einsum("..., ...iI,...Ai->...IA", detJ, B, S)
+
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Element mass matrix contribution."""
+        return rho * detJ
 
     @torch.no_grad()
     def plot(
@@ -183,15 +187,3 @@ class SolidHeat(Heat, Solid):
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         super().__init__(nodes, elements, material)
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
-
-    def compute_m(self) -> Tensor:
-        ipoints = self.etype.ipoints
-        weights = self.etype.iweights
-
-        N, _, detJ = self.eval_shape_functions(ipoints)
-
-        # This is a thermal mass (rho * c), but we only have rho here.
-        rho = self.material.rho
-
-        m = torch.einsum("I, IN, IM, E, IE -> ENM", weights, N, N, rho, detJ)
-        return m

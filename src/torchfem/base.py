@@ -8,7 +8,12 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .sparse import CachedSolve, differentiable_sparse_solve, newton_solve
+from .sparse import (
+    CachedSolve,
+    differentiable_modal_eigsolve,
+    differentiable_sparse_solve,
+    newton_solve,
+)
 
 
 class FEM(ABC):
@@ -53,7 +58,8 @@ class FEM(ABC):
         # Phase 1: find unique (row, col) index pairs
         parts = []
         for s in range(0, self.n_elem, chunk):
-            ic = self.idx[s : s + chunk]
+            e = s + chunk
+            ic = self.idx[s:e]
             parts.append(
                 torch.unique(((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1))
             )
@@ -64,7 +70,8 @@ class FEM(ABC):
         # Phase 2: map element entries to global sparse indices
         k_parts = []
         for s in range(0, self.n_elem, chunk):
-            ic = self.idx[s : s + chunk]
+            e = s + chunk
+            ic = self.idx[s:e]
             k_parts.append(
                 torch.searchsorted(
                     glob_idx_packed,
@@ -166,9 +173,16 @@ class FEM(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def compute_m(self) -> Tensor:
-        """Compute element mass matrix contributions."""
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Compute element mass contribution.
+
+        Args:
+            detJ: Jacobian determinant at the current integration point.
+            rho: Material density at the current integration point.
+
+        Returns:
+            Element mass contribution tensor.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -300,6 +314,27 @@ class FEM(ABC):
 
         # Integration
         return torch.einsum("i,ie,ie->e", weights, f_ip, detJ)
+
+    def integrate_mass(self) -> Tensor:
+        """Integrate mass matrix.
+
+        Returns:
+            Element mass matrix tensor with shape [n_elem, n_dof_elem, n_dof_elem].
+        """
+        N_nod = self.etype.nodes
+        N_dof = self.n_dof_per_node
+        m = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod))
+
+        N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
+        I_dof = torch.eye(N_dof)
+
+        for i, w in enumerate(self.etype.iweights):
+            m_i = self.compute_m(detJ[i], self.material.rho)
+            m_scalar = torch.einsum("N,M,E->ENM", N[i], N[i], m_i)
+            m_block = torch.einsum("Enm,ij->Enimj", m_scalar, I_dof)
+            m += w * m_block.reshape(self.n_elem, N_dof * N_nod, N_dof * N_nod)
+
+        return m
 
     def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
         """Assemble a global sparse matrix from element contributions.
@@ -738,8 +773,41 @@ class Mechanics(FEM, ABC):
 
         return k, f, grad_new, flux_new, state_new
 
-    def compute_m(self) -> Tensor:
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
         raise NotImplementedError
+
+    def solve_modes(self, n_modes: int) -> Tuple[Tensor, Tensor]:
+        """Compute the natural frequencies and mode shapes.
+
+        Solves the generalized eigenvalue problem
+        $$\\mathbf{K}\\boldsymbol{\\phi} = \\omega^2 \\mathbf{M}\\boldsymbol{\\phi}$$
+
+        Args:
+            n_modes: Number of eigenpairs to compute.
+
+        Returns:
+            Tuple ``(omega_sq, modes)`` where ``omega_sq`` has shape
+            ``[n_modes]`` (squared angular frequencies, differentiable) and
+            ``modes`` has shape ``[n_modes, n_nod, n_dof_per_node]`` (detached).
+        """
+        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
+        free_indices = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
+
+        k = self.k0()
+        K = self.assemble_matrix(k, con)
+
+        m = self.integrate_mass()
+        M = self.assemble_matrix(m, con)
+
+        # free_indices restricts eigsh to the free-DOF subspace to avoid
+        # spurious eigenvalues from the K_ii = M_ii = 1 penalty on constrained
+        # DOFs.  Gradients still flow through the full K and M.
+        omega_sq, phis = differentiable_modal_eigsolve(
+            K, M, n_modes, free_indices=free_indices
+        )
+
+        modes = phis.T.reshape(n_modes, self.n_nod, self.n_dof_per_node)
+        return omega_sq, modes
 
 
 class Heat(FEM, ABC):
@@ -1030,7 +1098,7 @@ class Heat(FEM, ABC):
         self.M = torch.empty(0)
 
         # compute element mass matrices
-        m = self.compute_m()
+        m = self.integrate_mass()
 
         # Initialize displacement increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()

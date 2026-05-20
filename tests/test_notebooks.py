@@ -36,6 +36,11 @@ def test_planar_thermal_transient_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/planar/modal.ipynb", execute=True)
+def test_planar_modal_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/shell/cantilever.ipynb", execute=True)
 def test_shell_cantilever_notebook(tb):
     tb.execute()
@@ -43,6 +48,11 @@ def test_shell_cantilever_notebook(tb):
 
 @testbook("examples/basic/shell/plate.ipynb", execute=True)
 def test_shell_plate_notebook(tb):
+    tb.execute()
+
+
+@testbook("examples/basic/shell/modal.ipynb", execute=True)
+def test_shell_modal_notebook(tb):
     tb.execute()
 
 
@@ -58,6 +68,11 @@ def test_truss_elasticity3d_notebook(tb):
 
 @testbook("examples/basic/truss/plasticity_2D.ipynb", execute=True)
 def test_truss_plasticity2d_notebook(tb):
+    tb.execute()
+
+
+@testbook("examples/basic/truss/modal.ipynb", execute=True)
+def test_truss_modal_notebook(tb):
     tb.execute()
 
 
@@ -93,6 +108,11 @@ def test_solid_large_stretch_notebook(tb):
 
 @testbook("examples/basic/solid/plasticity.ipynb", execute=True)
 def test_solid_plasticity_notebook(tb):
+    tb.execute()
+
+
+@testbook("examples/basic/solid/modal.ipynb", execute=True)
+def test_solid_modal_notebook(tb):
     tb.execute()
 
 

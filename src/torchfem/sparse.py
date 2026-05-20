@@ -7,10 +7,24 @@ from scipy.sparse import coo_matrix as scipy_coo_matrix
 from scipy.sparse import csgraph
 from scipy.sparse.linalg import LinearOperator
 from scipy.sparse.linalg import cg as scipy_cg
+from scipy.sparse.linalg import eigsh as scipy_eigsh
 from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
 from torch.autograd import Function
+
+ERR_CUPY_MISSING = (
+    "CuPy is not available.\n\n"
+    "Please install CuPy to use GPU acceleration:\n"
+    "> pip install cupy-cuda11x # v11.2 - 11.8\n"
+    "> pip install cupy-cuda12x # v12.x"
+)
+
+ERR_PYPARDISO_MISSING = (
+    "PyPardiso is not available.\n\n"
+    "Please install Pypardiso separately:\n"
+    "> pip install pypardiso"
+)
 
 available_backends = ["scipy"]
 
@@ -19,6 +33,7 @@ try:
     from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
     from cupyx.scipy.sparse import diags as cupy_diags
     from cupyx.scipy.sparse.linalg import cg as cupy_cg
+    from cupyx.scipy.sparse.linalg import eigsh as cupy_eigsh
     from cupyx.scipy.sparse.linalg import minres as cupy_minres
     from cupyx.scipy.sparse.linalg import spsolve as cupy_spsolve
 
@@ -257,12 +272,7 @@ def sparse_solve(
 
 def _solve_gpu(A, b, B, method, stol, M, shape, x0):
     if "cupy" not in available_backends:
-        raise RuntimeError(
-            "CuPy is not available.\n\n"
-            "Please install CuPy to use GPU acceleration:\n"
-            "> pip install cupy-cuda11x # v11.2 - 11.8\n"
-            "> pip install cupy-cuda12x # v12.x"
-        )
+        raise RuntimeError(ERR_CUPY_MISSING)
     A_cp = cupy_coo_matrix(
         (
             cupy.asarray(A._values()),
@@ -292,7 +302,7 @@ def _solve_gpu(A, b, B, method, stol, M, shape, x0):
     elif method == "cg":
         # Jacobi preconditioner
         M = cupy_diags(1.0 / A_cp.diagonal())
-        # Solve with conjugated gradients
+        # Solve with conjugate gradients
         x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
         if exit_code != 0:
             raise RuntimeError(f"CG failed with exit code {exit_code}")
@@ -318,11 +328,7 @@ def _solve_cpu(A, b, B, method, stol, M, shape, x0):
 
     if method == "pardiso":
         if "pypardiso" not in available_backends:
-            raise RuntimeError(
-                "PyPardiso is not available.\n\n"
-                "Please install Pypardiso seperately:\n"
-                "> pip install pypardiso"
-            )
+            raise RuntimeError(ERR_PYPARDISO_MISSING)
         # Reorder the matrix using reverse Cuthill-McKee algorithm
         rcm_order = csgraph.reverse_cuthill_mckee(A_np)
         A_rcm = A_np[np.ix_(rcm_order, rcm_order)]
@@ -424,7 +430,7 @@ class NewtonRaphsonAdjoint(Function):
                 break
 
             if torch.isnan(res_norm) or torch.isinf(res_norm):
-                raise Exception("Newton-Raphson iteration did not converge")
+                raise RuntimeError("Newton-Raphson iteration did not converge")
 
             x0 = None
             if (
@@ -444,7 +450,7 @@ class NewtonRaphsonAdjoint(Function):
 
         # Final convergence check
         if res_norm > rtol * res_norm0 and res_norm > atol:
-            raise Exception("Newton-Raphson iteration did not converge.")
+            raise RuntimeError("Newton-Raphson iteration did not converge.")
 
         ctx.save_for_backward(K, du, *parameters)
         ctx.B = B
@@ -582,3 +588,175 @@ def newton_solve(
     if du is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return du
+
+
+def _eigsolve_cpu(K, M, n_modes, free_indices, shape, n_dofs):
+    K_csr = scipy_coo_matrix(
+        (K._values(), (K._indices()[0], K._indices()[1])), shape=shape
+    ).tocsr()
+    M_csr = scipy_coo_matrix(
+        (M._values(), (M._indices()[0], M._indices()[1])), shape=shape
+    ).tocsr()
+
+    fi = free_indices.cpu().numpy()
+    eigenvalues, evecs_free = scipy_eigsh(
+        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
+    )
+    eigenvectors = np.zeros((n_dofs, n_modes))
+    eigenvectors[fi] = evecs_free
+    order = np.argsort(eigenvalues)
+    return eigenvalues[order], eigenvectors[:, order]
+
+
+def _eigsolve_gpu(K, M, n_modes, free_indices, shape, n_dofs):
+    if "cupy" not in available_backends:
+        raise RuntimeError(ERR_CUPY_MISSING)
+    K_csr = cupy_coo_matrix(
+        (
+            cupy.asarray(K._values()),
+            (cupy.asarray(K._indices()[0]), cupy.asarray(K._indices()[1])),
+        ),
+        shape=shape,
+    ).tocsr()
+    M_csr = cupy_coo_matrix(
+        (
+            cupy.asarray(M._values()),
+            (cupy.asarray(M._indices()[0]), cupy.asarray(M._indices()[1])),
+        ),
+        shape=shape,
+    ).tocsr()
+
+    fi = free_indices.cpu().numpy()
+    eigenvalues, evecs_free = cupy_eigsh(
+        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
+    )
+    eigenvectors = cupy.zeros((n_dofs, n_modes), dtype=eigenvalues.dtype)
+    eigenvectors[fi] = evecs_free
+    order = cupy.argsort(eigenvalues)
+    return eigenvalues[order], eigenvectors[:, order]
+
+
+def modal_eigsolve(
+    K: Tensor,
+    M: Tensor,
+    n_modes: int,
+    free_indices: Tensor,
+) -> Tuple[Tensor, Tensor]:
+    """Solve the generalized eigenvalue problem ``K φ = ω² M φ``.
+
+    Args:
+        K (sparse_coo_tensor): Stiffness matrix K.
+        M (sparse_coo_tensor): Mass matrix M.
+        n_modes (int): Number of eigenpairs to compute.
+        free_indices (Tensor): Free DOF indices for subspace extraction.
+            The eigenproblem is solved in the free-DOF subspace to avoid
+            spurious eigenvalues from the Dirichlet penalty
+            (``K_ii = M_ii = 1  =>  ω² = 1``).
+
+    Returns:
+        Tuple[Tensor, Tensor]: Eigenvalues ``[n_modes]`` and eigenvectors
+        ``[n_dofs, n_modes]``, sorted by ascending eigenvalue.
+    """
+    shape = K.size()
+    n_dofs = shape[0]
+
+    if K.device.type == "cuda":
+        vals, vecs = _eigsolve_gpu(K, M, n_modes, free_indices, shape, n_dofs)
+    else:
+        vals, vecs = _eigsolve_cpu(K, M, n_modes, free_indices, shape, n_dofs)
+
+    return (
+        torch.tensor(vals, dtype=K.dtype, device=K.device),
+        torch.tensor(vecs, dtype=K.dtype, device=K.device),
+    )
+
+
+class Eigensolve(Function):
+    """Differentiable eigenvalue solver for K v = ω² M v.
+
+    Gradients are computed via the Rayleigh-quotient sensitivity formula.
+    Only eigenvalue gradients are supported; eigenvector gradients are not.
+    """
+
+    @staticmethod
+    def forward(
+        K: Tensor,
+        M: Tensor,
+        n_modes: int,
+        free_indices: Tensor,
+    ) -> Tuple[Tensor, Tensor]:
+        return modal_eigsolve(K, M, n_modes, free_indices)
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        K, M, n_modes, free_indices = inputs
+        lambdas, phis = output
+        ctx.save_for_backward(K, M, lambdas, phis)
+
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        grad_lambdas = grad_outputs[0]
+        K, M, lambdas, phis = ctx.saved_tensors
+
+        # Re-normalise eigenvectors to unit norm in the M-metric.
+        # (eigsh returns M-normalised vectors, but we re-normalise for safety)
+        M_phis = torch.sparse.mm(M.coalesce(), phis)  # [n_dofs, n_modes]
+        denom = (phis * M_phis).sum(0).abs()  # [n_modes]
+        phi_hat = phis / denom.sqrt().unsqueeze(0)  # [n_dofs, n_modes]
+
+        grad_K = None
+        grad_M = None
+
+        if grad_lambdas is not None:
+            # dL/dK_ij = sum_k dL/dlambda_k * phi_hat_i_k * phi_hat_j_k
+            if K.requires_grad:
+                idx = K._indices()
+                row, col = idx[0], idx[1]
+                weighted = phi_hat[row] * phi_hat[col]
+                grad_K_vals = (weighted * grad_lambdas.unsqueeze(0)).sum(-1)
+                with torch.sparse.check_sparse_tensor_invariants(False):
+                    grad_K = torch.sparse_coo_tensor(
+                        idx, grad_K_vals, K.shape, is_coalesced=True
+                    )
+
+            # dL/dM_ij = -sum_k dL/dlambda_k * lambda_k * phi_hat_i_k * phi_hat_j_k
+            if M.requires_grad:
+                idx = M._indices()
+                row, col = idx[0], idx[1]
+                weighted_lam = phi_hat[row] * phi_hat[col]
+                grad_M_vals = -(
+                    weighted_lam * (lambdas * grad_lambdas).unsqueeze(0)
+                ).sum(-1)
+                with torch.sparse.check_sparse_tensor_invariants(False):
+                    grad_M = torch.sparse_coo_tensor(
+                        idx, grad_M_vals, M.shape, is_coalesced=True
+                    )
+
+        # Return None for n_modes and free_indices (non-tensor inputs)
+        return grad_K, grad_M, None, None
+
+
+def differentiable_modal_eigsolve(
+    K: Tensor,
+    M: Tensor,
+    n_modes: int,
+    free_indices: Tensor,
+) -> Tuple[Tensor, Tensor]:
+    """Solve the modal eigenvalue problem ``K φ = ω² M φ``.
+
+    Args:
+        K (sparse_coo_tensor): Stiffness matrix K.
+        M (sparse_coo_tensor): Mass matrix M.
+        n_modes (int): Number of eigenpairs to compute.
+        free_indices (Tensor): Free (unconstrained) DOF indices.
+            The eigenproblem is solved in the free-DOF subspace to avoid
+            spurious eigenvalues from the Dirichlet penalty (K_ii = M_ii = 1).
+
+    Returns:
+        Tuple[Tensor, Tensor]: Squared frequencies ``[n_modes]``
+        (differentiable) and mode shapes ``[n_dofs, n_modes]`` (detached).
+    """
+    lambdas, phis = Eigensolve.apply(K, M, n_modes, free_indices)  # type: ignore
+    if lambdas is None:
+        raise RuntimeError("Eigensolve.apply returned None.")
+    return lambdas, phis.detach()
