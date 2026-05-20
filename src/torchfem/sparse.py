@@ -700,7 +700,7 @@ class Eigensolve(Function):
 
         # Re-normalise eigenvectors to unit norm in the M-metric.
         # (eigsh returns M-normalised vectors, but we re-normalise for safety)
-        M_phis = torch.mm(M.to_dense(), phis)  # [n_dofs, n_modes]
+        M_phis = torch.sparse.mm(M.coalesce(), phis)  # [n_dofs, n_modes]
         denom = (phis * M_phis).sum(0).abs()  # [n_modes]
         phi_hat = phis / denom.sqrt().unsqueeze(0)  # [n_dofs, n_modes]
 
