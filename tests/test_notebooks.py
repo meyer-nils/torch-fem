@@ -51,6 +51,11 @@ def test_shell_plate_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/shell/modal.ipynb", execute=True)
+def test_shell_modal_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/truss/elasticity_2D.ipynb", execute=True)
 def test_truss_elasticity2d_notebook(tb):
     tb.execute()
