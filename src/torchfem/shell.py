@@ -15,6 +15,7 @@ from torch import Tensor
 
 from .base import Mechanics
 from .elements import Element, Tria1
+from .laminate import Laminate
 from .materials import Material
 from .utils import stiffness2voigt, stress2voigt
 
@@ -24,7 +25,7 @@ class Shell(Mechanics):
         self,
         nodes: Tensor,
         elements: Tensor,
-        material: Material,
+        material: Material | Laminate,
         thickness: Tensor | float = 1.0,
         transverse_nu: float = 0.5,
         transverse_kappa: float = 5.0 / 6.0,
@@ -32,61 +33,117 @@ class Shell(Mechanics):
         drill_penalty: float = 1.0,
         n_simpson: int = 3,
     ):
-        """Initialize the planar FEM problem."""
+        """Initialize the shell FEM problem.
+
+        Args:
+            material: Either a single plane-stress `Material` (homogeneous
+                shell) or a `Laminate` describing a layered stacking sequence.
+                When a `Laminate` is passed, `thickness` and `n_simpson` are
+                taken from the laminate and the corresponding arguments here are
+                ignored.
+        """
 
         super().__init__(nodes, elements, material)
-
-        # Set up thickness
-        if isinstance(thickness, float):
-            self.thickness = torch.full((self.n_elem,), thickness)
-        else:
-            self.thickness = torch.as_tensor(thickness)
 
         # Drill penalty
         self.drill_penalty = drill_penalty
 
-        # Thickness integration points
-        if n_simpson % 2 == 0:
-            raise ValueError("n_simpson must be an odd integer.")
-        else:
-            self.n_simpson = n_simpson
-
-        # Update number of integration points to account for thickness integration
-        self.n_int = self.n_int * n_simpson
-
-        # Compute Simpson points in thickness direction
-        self.z_simpson = torch.linspace(-0.5, 0.5, n_simpson)
-
-        # Simpson weights for thickness integration
-        self.w_simpson = torch.ones(n_simpson)
-        self.w_simpson[1:-1:2] = 4.0
-        self.w_simpson[2:-2:2] = 2.0
-        self.w_simpson *= 1.0 / (n_simpson - 1) / 3.0
-
         # Transverse shear properties
         self.transverse_nu = transverse_nu
         self.transverse_kappa = transverse_kappa
-        z = torch.zeros(self.n_elem)
-        if transverse_G is None:
-            if hasattr(self.material, "G"):
-                self.G = [self.material.G, self.material.G]  # type: ignore
+
+        if isinstance(self.material, Laminate):
+            # Layered shell: take thickness, stations, and shear from laminate.
+            self.n_simpson = self.material.n_simpson
+            self.n_z = self.material.n_z
+            self.thickness = self.material.thickness
+            if transverse_G is None:
+                self.As = self.material.As
             else:
-                raise ValueError(
-                    "Material must have shear modulus 'G' defined or "
-                    "transverse_G must be provided."
-                )
+                self.As = self._build_As(transverse_G)
         else:
-            self.G = [
-                torch.as_tensor(transverse_G[0]).repeat(self.n_elem),
-                torch.as_tensor(transverse_G[1]).repeat(self.n_elem),
-            ]
-        self.Cs = torch.stack(
+            # Homogeneous shell (unchanged behavior).
+            if isinstance(thickness, float):
+                self.thickness = torch.full((self.n_elem,), thickness)
+            else:
+                self.thickness = torch.as_tensor(thickness)
+
+            # Thickness integration points
+            if n_simpson % 2 == 0:
+                raise ValueError("n_simpson must be an odd integer.")
+            self.n_simpson = n_simpson
+            self.n_z = n_simpson
+
+            # Simpson points (normalized) and weights (summing to 1)
+            self.z_simpson = torch.linspace(-0.5, 0.5, n_simpson)
+            self.w_simpson = torch.ones(n_simpson)
+            self.w_simpson[1:-1:2] = 4.0
+            self.w_simpson[2:-2:2] = 2.0
+            self.w_simpson *= 1.0 / (n_simpson - 1) / 3.0
+
+            # Effective through-thickness transverse shear stiffness
+            if transverse_G is None:
+                if hasattr(self.material, "G"):
+                    G = [self.material.G, self.material.G]  # type: ignore
+                else:
+                    raise ValueError(
+                        "Material must have shear modulus 'G' defined or "
+                        "transverse_G must be provided."
+                    )
+                z = torch.zeros(self.n_elem)
+                Cs = torch.stack(
+                    [
+                        torch.stack([G[0], z], dim=-1),
+                        torch.stack([z, G[1]], dim=-1),
+                    ],
+                    dim=-1,
+                )
+                self.As = self.thickness[:, None, None] * Cs
+            else:
+                self.As = self._build_As(transverse_G)
+
+        # Update number of integration points to account for thickness
+        # integration over the through-thickness stations.
+        self.n_int = self.n_int * self.n_z
+
+    def _build_As(self, transverse_G: list[float] | list[Tensor]) -> Tensor:
+        """Build the integrated transverse shear stiffness from a user override.
+
+        Args:
+            transverse_G: Pair ``[G_xz, G_yz]`` of effective transverse shear
+                moduli. The values are integrated over the total thickness.
+
+        Returns:
+            Tensor of shape `(n_elem, 2, 2)`.
+        """
+        g0 = torch.as_tensor(transverse_G[0]).repeat(self.n_elem)
+        g1 = torch.as_tensor(transverse_G[1]).repeat(self.n_elem)
+        z = torch.zeros(self.n_elem)
+        Cs = torch.stack(
             [
-                torch.stack([self.G[0], z], dim=-1),
-                torch.stack([z, self.G[1]], dim=-1),
+                torch.stack([g0, z], dim=-1),
+                torch.stack([z, g1], dim=-1),
             ],
             dim=-1,
         )
+        return self.thickness[:, None, None] * Cs
+
+    def _thickness_stations(self) -> tuple[list[Material], Tensor, Tensor]:
+        """Through-thickness integration stations.
+
+        Returns:
+            Tuple ``(materials, z, w)`` where ``materials`` is a list of length
+            ``n_z`` giving the material active at each station, ``z`` has shape
+            `(n_z, n_elem)` with absolute through-thickness coordinates, and
+            ``w`` has shape `(n_z, n_elem)` with absolute integration weights
+            (such that ``sum_j w_j f_j`` approximates ``integral f dz``).
+        """
+        if isinstance(self.material, Laminate):
+            return self.material.materials_per_station, self.material.z, self.material.w
+        else:
+            z = self.z_simpson[:, None] * self.thickness[None, :]
+            w = self.w_simpson[:, None] * self.thickness[None, :]
+            return [self.material] * self.n_simpson, z, w
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
@@ -227,11 +284,15 @@ class Shell(Mechanics):
         raise NotImplementedError
 
     def integrate_mass(self) -> Tensor:
-        """Mass matrix (translational: ρh, rotational: ρh³/12)."""
+        """Mass matrix (translational: ∫ρ dz, rotational: ∫ρz² dz)."""
         n = self.n_dof_per_node * self.etype.nodes
         m = torch.zeros((self.n_elem, n, n))
-        rho_trans = self.material.rho * self.thickness
-        rho_rot = self.material.rho * self.thickness**3 / 12
+        if isinstance(self.material, Laminate):
+            rho_trans = self.material.rho_h
+            rho_rot = self.material.rho_zz
+        else:
+            rho_trans = self.material.rho * self.thickness
+            rho_rot = self.material.rho * self.thickness**3 / 12
         D = torch.diag_embed(torch.stack([rho_trans] * 3 + [rho_rot] * 3, dim=-1))
         N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
         for i, w in enumerate(self.etype.iweights):
@@ -305,6 +366,9 @@ class Shell(Mechanics):
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
+        # Through-thickness integration stations (layer-aware for laminates)
+        materials, z_stations, w_stations = self._thickness_stations()
+
         for i, wi in enumerate(self.etype.iweights):
 
             # Transform displacement increment to local element coordinates
@@ -321,12 +385,13 @@ class Shell(Mechanics):
             D_matrix = torch.zeros((self.n_elem, 3, 3))
 
             # Thickness integration of membrane and bending stresses
-            for j, (wz, z) in enumerate(zip(self.w_simpson, self.z_simpson)):
+            for j, material in enumerate(materials):
                 # Compute integration point index
-                ip = i * self.n_simpson + j
+                ip = i * self.n_z + j
 
-                # Compute integration point position
-                z = z * self.thickness[:, None, None]
+                # Absolute through-thickness position and integration weight
+                z = z_stations[j][:, None, None]
+                wz = w_stations[j][:, None, None]
 
                 # Compute gradient of displacement increment and rotation increment
                 dudxi = B[i] @ du_local
@@ -345,7 +410,7 @@ class Shell(Mechanics):
                 H_inc = dudxi[..., 0:2] + z * dkappa
 
                 # Evaluate material response
-                flux_new[ip], state_new[ip], ddsdde = self.material.step(
+                flux_new[ip], state_new[ip], ddsdde = material.step(
                     H_inc,
                     grad_prev[ip],
                     flux_prev[ip],
@@ -356,14 +421,14 @@ class Shell(Mechanics):
                 )
 
                 # Thickness integration of membrane forces and bending moments.
-                f_loc += wz * self.thickness[:, None, None] * flux_new[ip].clone()
-                m_loc += wz * z * self.thickness[:, None, None] * flux_new[ip].clone()
+                f_loc += wz * flux_new[ip].clone()
+                m_loc += wz * z * flux_new[ip].clone()
 
                 # Compute ABD matrix contributions
                 C = stiffness2voigt(ddsdde)
-                A_matrix += C * wz * self.thickness[:, None, None]
-                B_matrix += C * wz * z * self.thickness[:, None, None]
-                D_matrix += C * wz * z**2 * self.thickness[:, None, None]
+                A_matrix += C * wz
+                B_matrix += C * wz * z
+                D_matrix += C * wz * z**2
 
             # Copy grad from grad_prev (shells don't update deformation gradient)
             grad_new[:] = grad_prev
@@ -388,7 +453,7 @@ class Shell(Mechanics):
                 / (self.thickness**2 + alpha * h**2)
             )
             Ds = self._Ds(A)
-            int_Cs = (A * psi * self.thickness)[:, None, None] * self.Cs
+            int_Cs = (A * psi)[:, None, None] * self.As
             DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, int_Cs, Ds)
             ks = wi * self.compute_k(detJ[i], DsCsDs)
 
@@ -431,6 +496,7 @@ class Shell(Mechanics):
         element_property: dict[str, Tensor] | None = None,
         thickness: bool = False,
         mirror: tuple[bool, bool, bool] = (False, False, False),
+        screenshot: str | None = None,
         **kwargs,
     ):
         try:
@@ -440,8 +506,10 @@ class Shell(Mechanics):
             raise Exception("Plotting 3D requires pyvista.")
 
         pyvista.set_plot_theme("document")
-        pyvista.set_jupyter_backend("client")
-        pl = pyvista.Plotter()
+        off_screen = screenshot is not None
+        if not off_screen:
+            pyvista.set_jupyter_backend("client")
+        pl = pyvista.Plotter(off_screen=off_screen)
         pl.enable_anti_aliasing("ssaa")
 
         # VTK element list
@@ -503,4 +571,7 @@ class Shell(Mechanics):
                         mirrored.points[:, 1] *= sy
                         mirrored.points[:, 2] *= sz
                         pl.add_mesh(mirrored, show_edges=True, opacity=0.5)
-        pl.show(jupyter_backend="html")
+        if screenshot:
+            pl.screenshot(screenshot)
+        else:
+            pl.show(jupyter_backend="html")
