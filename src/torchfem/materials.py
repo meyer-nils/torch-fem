@@ -1251,7 +1251,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             print("Local Newton iteration did not converge.")
 
         # Compute inverse operator
-        inv = torch.linalg.inv(self._S[fm] + dGamma[None, :, None, None] * P)
+        inv = torch.linalg.inv(self._S[fm] + dGamma[:, None, None] * P)
 
         # Update stress
         stress_new[~fm] = s_trial[~fm]
@@ -1261,18 +1261,15 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         q[fm] = qq
         state_new[..., 0] = q
 
-        # Update algorithmic tangent
-        xi = (
-            stress_new[fm][:, :, None].transpose(-1, -2)
-            @ P
-            @ stress_new[fm][:, :, None]
-        )
+        # Update algorithmic tangent.
+        s = stress_new[fm][:, :, None]
+        xi = (s.transpose(-1, -2) @ P @ s).squeeze(-1).squeeze(-1)
         H = self.sigma_f_prime(q[fm])
-        n = inv @ P @ stress_new[fm][:, :, None]
-        alpha = 1.0 / (
-            stress_new[fm][:, :, None].transpose(-1, -2) @ P @ n
-            + 2 * xi * H / (3 - 2 * H * dGamma[:, None, None])
+        n = inv @ P @ s
+        denom = (s.transpose(-1, -2) @ P @ n).squeeze(-1).squeeze(-1) + 2 * xi * H / (
+            3 - 2 * H * dGamma
         )
+        alpha = (1.0 / denom)[:, None, None]
         ddsdde[fm] = inv - alpha * n @ n.transpose(-1, -2)
 
         return voigt2stress(stress_new), state_new, voigt2stiffness(ddsdde)
