@@ -443,6 +443,11 @@ class Shell(Mechanics):
             DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, D_matrix, Db)
             kb = wi * self.compute_k(detJ[i], DbCDb)
 
+            # Element membrane-bending coupling stiffness.
+            DmCDb = torch.einsum("...ji,...jk,...kl->...il", Dm, B_matrix, Db)
+            DbCDm = torch.einsum("...ji,...jk,...kl->...il", Db, B_matrix, Dm)
+            kc = wi * self.compute_k(detJ[i], DmCDb + DbCDm)
+
             # Element transverse stiffness
             A = detJ[i] / 2.0
             h = sqrt(2) * A
@@ -466,7 +471,7 @@ class Shell(Mechanics):
 
             if k is not None:
                 # Total element stiffness in local coordinates
-                kt = km + kb + ks + kd
+                kt = km + kb + kc + ks + kd
 
                 # Total element stiffness in global coordinates
                 k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T

@@ -139,3 +139,43 @@ def test_laminate_gradient_flows():
     obj.backward()
     assert t.grad is not None
     assert torch.isfinite(t.grad)
+
+
+def test_unsymmetric_tangent_is_consistent():
+    """Adjoint gradient matches finite differences for an unsymmetric layup.
+
+    An unsymmetric stacking sequence has a nonzero coupling matrix B, so the
+    element tangent must include the membrane-bending coupling block. Without
+    it the assembled stiffness is inconsistent with the internal force and the
+    adjoint sensitivity (used by autograd) is wrong, which this test detects by
+    comparing against a central finite difference.
+    """
+    nodes, elements = square_plate()
+    gfrp = OrthotropicElasticityPlaneStress(
+        E_1=40000.0, E_2=10000.0, nu_12=0.3, G_12=5000.0, G_13=5000.0, G_23=4000.0
+    )
+
+    def tip_objective(t_top):
+        layup = Laminate(
+            materials=[gfrp, gfrp],
+            thicknesses=[torch.tensor(0.5), t_top],
+            angles=[0.0, torch.pi / 2],
+        )
+        shell = Shell(nodes, elements, layup)
+        u = cantilever_tip_displacement(shell, differentiable_parameters=t_top)
+        return u.abs().sum()
+
+    # Autograd gradient through the adjoint solve
+    t = torch.tensor(0.5, requires_grad=True)
+    obj = tip_objective(t)
+    obj.backward()
+    g_autograd = t.grad.item()
+
+    # Central finite difference reference
+    h = 1e-4
+    with torch.no_grad():
+        f_plus = tip_objective(torch.tensor(0.5 + h)).item()
+        f_minus = tip_objective(torch.tensor(0.5 - h)).item()
+    g_fd = (f_plus - f_minus) / (2.0 * h)
+
+    assert abs(g_autograd - g_fd) <= 1e-4 * abs(g_fd)
