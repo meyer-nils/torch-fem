@@ -501,7 +501,6 @@ class Shell(Mechanics):
         element_property: dict[str, Tensor] | None = None,
         thickness: bool = False,
         mirror: tuple[bool, bool, bool] = (False, False, False),
-        screenshot: str | None = None,
         **kwargs,
     ):
         try:
@@ -511,10 +510,8 @@ class Shell(Mechanics):
             raise Exception("Plotting 3D requires pyvista.")
 
         pyvista.set_plot_theme("document")
-        off_screen = screenshot is not None
-        if not off_screen:
-            pyvista.set_jupyter_backend("client")
-        pl = pyvista.Plotter(off_screen=off_screen)
+        pyvista.set_jupyter_backend("client")
+        pl = pyvista.Plotter()
         pl.enable_anti_aliasing("ssaa")
 
         # VTK element list
@@ -576,7 +573,4 @@ class Shell(Mechanics):
                         mirrored.points[:, 1] *= sy
                         mirrored.points[:, 2] *= sz
                         pl.add_mesh(mirrored, show_edges=True, opacity=0.5)
-        if screenshot:
-            pl.screenshot(screenshot)
-        else:
-            pl.show(jupyter_backend="html")
+        pl.show(jupyter_backend="html")
