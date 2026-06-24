@@ -32,6 +32,7 @@ class Shell(Mechanics):
         transverse_G: list[float] | list[Tensor] | None = None,
         drill_penalty: float = 1.0,
         n_simpson: int = 3,
+        orientation: Tensor | None = None,
     ):
         """Initialize the shell FEM problem.
 
@@ -41,9 +42,22 @@ class Shell(Mechanics):
                 When a `Laminate` is passed, `thickness` and `n_simpson` are
                 taken from the laminate and the corresponding arguments here are
                 ignored.
+            orientation: Global reference direction from which material/ply
+                angles are measured. It is projected onto each element's surface
+                to define the element's local material 0°-axis. Accepts
+                a single `(3,)` vector (shared by all elements) or a per-element
+                `(n_elem, 3)` tensor. Defaults to the global x-direction.
         """
 
         super().__init__(nodes, elements, material)
+
+        # Material reference orientation
+        if orientation is None:
+            orientation = torch.tensor([1.0, 0.0, 0.0])
+        orientation = torch.as_tensor(orientation, dtype=self.nodes.dtype)
+        if orientation.dim() == 1:
+            orientation = orientation.unsqueeze(0).expand(self.n_elem, 3)
+        self.orientation = orientation
 
         # Drill penalty
         self.drill_penalty = drill_penalty
@@ -257,9 +271,15 @@ class Shell(Mechanics):
         nodes = self.nodes[self.elements, :]
         edge1 = nodes[:, 1] - nodes[:, 0]
         edge2 = nodes[:, 2] - nodes[:, 1]
-        dir1 = torch.nn.functional.normalize(edge1, dim=-1)
         normal = torch.nn.functional.normalize(torch.linalg.cross(edge1, edge2), dim=-1)
-        dir2 = torch.nn.functional.normalize(-torch.linalg.cross(edge1, normal), dim=-1)
+        # Material x-axis: the global reference orientation projected onto the
+        # element surface. Fall back to the first edge where the orientation is
+        # (nearly) normal to the element and the projection vanishes.
+        o = self.orientation
+        proj = o - (o * normal).sum(dim=-1, keepdim=True) * normal
+        degen = (proj.norm(dim=-1) < 1e-8).unsqueeze(-1)
+        dir1 = torch.nn.functional.normalize(torch.where(degen, edge1, proj), dim=-1)
+        dir2 = torch.nn.functional.normalize(torch.linalg.cross(normal, dir1), dim=-1)
         self.t = torch.stack([dir1, dir2, normal], dim=1)
         self.T = torch.func.vmap(torch.block_diag)(*(self.n_dof_per_node * [self.t]))
 
