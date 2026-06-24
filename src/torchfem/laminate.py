@@ -2,8 +2,10 @@
 
 A `Laminate` describes a stacking sequence of (possibly rotated) plane-stress
 layers. It owns the through-thickness integration stations used by the `Shell`
-element and precomputes the classical laminate ABD matrices, the transverse
-shear stiffness, and the mass integrals.
+element and precomputes the transverse shear stiffness and the mass integrals.
+The section response (the equivalent of the classical ABD matrices) is
+integrated over these stations by the `Shell` during the analysis, so it
+remains valid for nonlinear, state-bearing layers.
 
 The convention follows classical lamination theory (CLT): the laminate
 mid-surface is located at ``z = 0`` and layers are stacked from bottom
@@ -15,14 +17,12 @@ material counter-clockwise (consistent with `planar_rotation`).
 from __future__ import annotations
 
 import copy
-from functools import cached_property
 
 import torch
 from torch import Tensor
 
 from .materials import Material
 from .rotations import planar_rotation
-from .utils import stiffness2voigt
 
 
 class Laminate:
@@ -39,8 +39,11 @@ class Laminate:
             the thickness. Must be an odd integer (default `3`).
 
     Notes:
-        - Only linear-elastic layers are supported in this version
-          (``n_state == 0`` for every layer).
+        - Layers may carry internal state (e.g. an elastoplastic metal ply in a
+          fiber-metal laminate). The laminate state width is the maximum over
+          layers; the through-thickness stations are integrated during the
+          analysis, so state-bearing layers are supported without precomputed
+          ABD matrices.
         - The laminate behaves like a `Material` from the point of view of the
           finite-element base class: it implements `is_vectorized`,
           `vectorize`, and `n_state`, so it can be passed straight to `Shell`.
@@ -75,14 +78,12 @@ class Laminate:
         # The laminate is considered vectorized once all layer materials are.
         self.is_vectorized = all(m.is_vectorized for m in self.materials)
 
-        # Only elastic layers (n_state == 0) are supported for now; we still
-        # expose the maximum so future state-bearing layers slot in cleanly.
+        # State width is the maximum over layers, so the shared per-station
+        # state slice is wide enough for the most state-bearing layer (e.g. an
+        # elastoplastic metal ply). Each layer's `step` only touches the slots
+        # it needs and returns the full-width state, so mixing elastic and
+        # state-bearing layers needs no per-layer bookkeeping here.
         self.n_state = max(m.n_state for m in self.materials)
-        if self.n_state != 0:
-            raise NotImplementedError(
-                "Laminate currently supports linear-elastic layers only "
-                "(n_state == 0 for every layer)."
-            )
 
     def __repr__(self) -> str:
         return (
@@ -94,8 +95,8 @@ class Laminate:
         """Returns a vectorized copy of the laminate for `n_elem` elements.
 
         Each layer material is vectorized and rotated by its layer angle, and
-        the through-thickness stations, ABD inputs, transverse shear stiffness,
-        and mass integrals are precomputed.
+        the through-thickness stations, transverse shear stiffness, and mass
+        integrals are precomputed.
 
         Args:
             n_elem: Number of elements to vectorize the laminate for.
@@ -111,7 +112,6 @@ class Laminate:
         new.n_layers = self.n_layers
         new.n_z = self.n_z
         new.n_state = self.n_state
-        new.n_elem = n_elem
         new.angles = self.angles
         new.is_vectorized = True
 
@@ -126,12 +126,12 @@ class Laminate:
             new.materials.append(m)
             new.thicknesses.append(t.expand(n_elem) if t.dim() == 0 else t)
 
-        new._build()
+        new._build(n_elem)
         return new
 
-    def _build(self) -> None:
+    def _build(self, n_elem: int) -> None:
         """Precompute stations, transverse shear, and mass integrals."""
-        n_elem = self.n_elem
+        self.n_elem = n_elem
 
         # Per-layer thickness stacked as [n_layers, n_elem]
         t = torch.stack(self.thicknesses, dim=0)
@@ -210,36 +210,8 @@ class Laminate:
             Gs[:, 0, 0] = g13
             Gs[:, 1, 1] = g23
             R = planar_rotation(self.angles[k])
-            Gs_rot = torch.einsum("mi,eij,nj->emn", R, Gs, R)
+            if R.dim() == 2:
+                R = R.expand(n_elem, 2, 2)
+            Gs_rot = torch.einsum("emi,eij,enj->emn", R, Gs, R)
             As = As + Gs_rot * t[k][:, None, None]
         return As
-
-    @cached_property
-    def abd(self) -> tuple[Tensor, Tensor, Tensor]:
-        """Classical lamination theory ABD matrices.
-
-        Returns:
-            Tuple ``(A, B, D)`` of extensional, coupling, and bending stiffness
-            matrices, each of shape `(n_elem, 3, 3)` in Voigt notation
-            (ordering ``[11, 22, 12]``).
-
-        $$
-            \\mathbf{A} = \\sum_k \\mathbf{Q}_k (z_{k+1} - z_k), \\quad
-            \\mathbf{B} = \\tfrac{1}{2}\\sum_k \\mathbf{Q}_k (z_{k+1}^2 - z_k^2),
-            \\quad
-            \\mathbf{D} = \\tfrac{1}{3}\\sum_k \\mathbf{Q}_k (z_{k+1}^3 - z_k^3)
-        $$
-        """
-        if not self.is_vectorized:
-            raise RuntimeError("Vectorize the laminate before computing 'abd'.")
-        A = torch.zeros(self.n_elem, 3, 3)
-        B = torch.zeros(self.n_elem, 3, 3)
-        D = torch.zeros(self.n_elem, 3, 3)
-        for k in range(self.n_layers):
-            Q = stiffness2voigt(self.materials[k].C)
-            zt = self._layer_top[k]
-            zb = self._layer_bot[k]
-            A = A + Q * (zt - zb)[:, None, None]
-            B = B + Q * 0.5 * (zt**2 - zb**2)[:, None, None]
-            D = D + Q * (zt**3 - zb**3)[:, None, None] / 3.0
-        return A, B, D

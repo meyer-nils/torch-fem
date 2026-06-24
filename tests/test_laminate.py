@@ -3,6 +3,7 @@ import torch
 from torchfem import Laminate, Shell
 from torchfem.materials import (
     IsotropicElasticityPlaneStress,
+    IsotropicPlasticityPlaneStress,
     OrthotropicElasticityPlaneStress,
 )
 
@@ -59,54 +60,39 @@ def test_single_layer_mass_matches_homogeneous():
     assert torch.allclose(homog.integrate_mass(), lam.integrate_mass(), atol=1e-12)
 
 
-def test_abd_against_clt_reference():
-    """Closed-form ABD of an isotropic single layer about the mid-plane."""
-    E, nu, t = 70000.0, 0.3, 2.0
-    mat = IsotropicElasticityPlaneStress(E=E, nu=nu)
-    lam = Laminate([mat], [t], [0.0]).vectorize(1)
-    A, B, D = lam.abd
+def test_symmetric_laminate_decouples_membrane_and_bending():
+    """Symmetric stacks have no membrane-bending coupling; unsymmetric ones do.
 
-    # Isotropic plane-stress in-plane stiffness
-    q = E / (1 - nu**2)
-    A_ref = t * torch.tensor(
-        [[q, nu * q, 0.0], [nu * q, q, 0.0], [0.0, 0.0, 0.5 * (1 - nu) * q]]
-    )
-    D_ref = (t**3 / 12.0) * torch.tensor(
-        [[q, nu * q, 0.0], [nu * q, q, 0.0], [0.0, 0.0, 0.5 * (1 - nu) * q]]
-    )
-
-    assert torch.allclose(A[0], A_ref, atol=1e-6)
-    assert torch.allclose(B[0], torch.zeros(3, 3), atol=1e-8)
-    assert torch.allclose(D[0], D_ref, atol=1e-6)
-
-
-def test_symmetric_laminate_has_zero_coupling():
-    """A symmetric stacking sequence has B = 0."""
+    Validated through the assembled shell response rather than a precomputed
+    coupling matrix: an in-plane stretch produces essentially no out-of-plane
+    deflection for a symmetric laminate, but a clearly nonzero one for an
+    unsymmetric laminate (nonzero coupling).
+    """
+    nodes, elements = square_plate()
     gfrp = OrthotropicElasticityPlaneStress(
         E_1=40000.0, E_2=10000.0, nu_12=0.3, G_12=5000.0, G_13=5000.0, G_23=4000.0
     )
-    # Symmetric [0 / 90 / 90 / 0]
-    lam = Laminate(
-        materials=[gfrp, gfrp, gfrp, gfrp],
-        thicknesses=[0.25, 0.25, 0.25, 0.25],
-        angles=[0.0, torch.pi / 2, torch.pi / 2, 0.0],
-    ).vectorize(1)
-    _, B, _ = lam.abd
-    assert torch.allclose(B[0], torch.zeros(3, 3), atol=1e-6)
 
+    def out_of_plane_under_stretch(angles, thicknesses):
+        layup = Laminate(
+            materials=[gfrp] * len(angles),
+            thicknesses=thicknesses,
+            angles=angles,
+        )
+        plate = Shell(nodes, elements, layup)
+        plate.constraints[[0, 3]] = True  # clamp x = 0 edge (all 6 dofs)
+        plate.constraints[[1, 2], 0] = True  # prescribe in-plane u_x on x = 1 edge
+        plate.displacements[[1, 2], 0] = 0.01
+        u, _, _, _, _ = plate.solve()
+        return u[:, 2].abs().max()
 
-def test_unsymmetric_laminate_has_coupling():
-    """An unsymmetric stacking sequence has nonzero B."""
-    gfrp = OrthotropicElasticityPlaneStress(
-        E_1=40000.0, E_2=10000.0, nu_12=0.3, G_12=5000.0, G_13=5000.0, G_23=4000.0
+    uz_sym = out_of_plane_under_stretch(
+        [0.0, torch.pi / 2, torch.pi / 2, 0.0], [0.25, 0.25, 0.25, 0.25]
     )
-    lam = Laminate(
-        materials=[gfrp, gfrp],
-        thicknesses=[0.5, 0.5],
-        angles=[0.0, torch.pi / 2],
-    ).vectorize(1)
-    _, B, _ = lam.abd
-    assert B[0].abs().max() > 1e-3
+    uz_unsym = out_of_plane_under_stretch([0.0, torch.pi / 2], [0.5, 0.5])
+
+    assert uz_sym < 1e-9
+    assert uz_unsym > 1e-4
 
 
 def test_glare_style_laminate_solves():
@@ -139,6 +125,57 @@ def test_laminate_gradient_flows():
     obj.backward()
     assert t.grad is not None
     assert torch.isfinite(t.grad)
+
+
+def test_metal_ply_plasticizes():
+    """A fiber-metal laminate yields in its metal plies under in-plane stretch.
+
+    The elastoplastic aluminium layers accumulate equivalent plastic strain and
+    soften the membrane response relative to a purely elastic laminate. This
+    exercises state-bearing layers integrated through the thickness during the
+    analysis (no precomputed ABD).
+    """
+    nodes, elements = square_plate()
+
+    sigma_y, hardening = 200.0, 1000.0
+    alu = IsotropicPlasticityPlaneStress(
+        E=70000.0,
+        nu=0.33,
+        sigma_f=lambda q: sigma_y + hardening * q,
+        sigma_f_prime=lambda q: hardening * torch.ones_like(q),
+    )
+    alu_elastic = IsotropicElasticityPlaneStress(E=70000.0, nu=0.33)
+    gfrp = OrthotropicElasticityPlaneStress(
+        E_1=54000.0, E_2=9400.0, nu_12=0.33, G_12=5500.0, G_13=5500.0, G_23=3000.0
+    )
+
+    def stretch(metal):
+        # Al / 0 deg GFRP / Al fiber-metal laminate
+        layup = Laminate(
+            materials=[metal, gfrp, metal],
+            thicknesses=[0.4, 0.25, 0.4],
+            angles=[0.0, 0.0, 0.0],
+        )
+        plate = Shell(nodes, elements, layup)
+        # Clamp x = 0 edge, prescribe in-plane stretch on the x = 1 edge
+        plate.constraints[[0, 3]] = True
+        plate.constraints[[1, 2], 0] = True
+        plate.displacements[[1, 2], 0] = 0.02  # ~2% strain, well past yield
+        u, f, _, _, state = plate.solve(
+            increments=torch.linspace(0.0, 1.0, 6),
+            aggregate_integration_points=False,
+        )
+        reaction = f[[1, 2], 0].sum()
+        return u, state, reaction
+
+    u, state, reaction_plastic = stretch(alu)
+    _, _, reaction_elastic = stretch(alu_elastic)
+
+    assert torch.all(torch.isfinite(u))
+    # Equivalent plastic strain accumulated in the metal plies
+    assert state.abs().max() > 0.0
+    # Plastic laminate carries less load than the elastic one (yield softening)
+    assert reaction_plastic < reaction_elastic
 
 
 def test_unsymmetric_tangent_is_consistent():
