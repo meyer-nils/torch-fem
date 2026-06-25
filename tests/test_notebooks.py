@@ -56,6 +56,11 @@ def test_shell_modal_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/shell/cantilever_fml.ipynb", execute=True)
+def test_shell_cantilever_fml_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/shell/cantilever_laminate.ipynb", execute=True)
 def test_shell_cantilever_laminate_notebook(tb):
     tb.execute()
