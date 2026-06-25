@@ -216,3 +216,69 @@ def test_unsymmetric_tangent_is_consistent():
     g_fd = (f_plus - f_minus) / (2.0 * h)
 
     assert abs(g_autograd - g_fd) <= 1e-4 * abs(g_fd)
+
+
+def _anisotropic_shell(nodes, elements, orientation=None):
+    mat = OrthotropicElasticityPlaneStress(
+        E_1=130000.0, E_2=8000.0, nu_12=0.3, G_12=4000.0, G_13=4000.0, G_23=3000.0
+    )
+    return Shell(
+        nodes,
+        elements,
+        mat,
+        thickness=1.0,
+        transverse_G=[4000.0, 3000.0],
+        orientation=orientation,
+    )
+
+
+def test_shell_orientation_node_ordering_invariant():
+    """A global material orientation makes anisotropic shell results independent
+    of the per-element node ordering.
+
+    The element material frame is built from the global ``orientation`` projected
+    onto each element, not from the first edge, so cyclically permuting the nodes
+    of every element must not change the solution.
+    """
+    nodes, elements = square_plate()
+    u0 = cantilever_tip_displacement(_anisotropic_shell(nodes, elements))
+    u1 = cantilever_tip_displacement(_anisotropic_shell(nodes, elements[:, [1, 2, 0]]))
+    assert torch.allclose(u0, u1, atol=1e-10)
+
+
+def test_shell_orientation_rotates_response():
+    """The orientation argument rotates the anisotropic stiffness, and passing
+    the stiff axis along x vs y changes the bending response."""
+    nodes, elements = square_plate()
+    u_x = cantilever_tip_displacement(
+        _anisotropic_shell(nodes, elements, orientation=torch.tensor([1.0, 0.0, 0.0]))
+    )
+    u_y = cantilever_tip_displacement(
+        _anisotropic_shell(nodes, elements, orientation=torch.tensor([0.0, 1.0, 0.0]))
+    )
+    assert not torch.allclose(u_x, u_y, atol=1e-6)
+    # A per-element orientation tensor is also accepted and matches the shared one
+    per_elem = torch.tensor([1.0, 0.0, 0.0]).expand(len(elements), 3)
+    u_pe = cantilever_tip_displacement(
+        _anisotropic_shell(nodes, elements, orientation=per_elem)
+    )
+    assert torch.allclose(u_x, u_pe, atol=1e-12)
+
+
+def test_laminate_is_section_not_material():
+    """A laminate is stored as the shell's section; self.material stays a real
+    (pointwise) Material and is None for a layered shell."""
+    nodes, elements = square_plate()
+    gfrp = OrthotropicElasticityPlaneStress(
+        E_1=40000.0, E_2=10000.0, nu_12=0.3, G_12=5000.0, G_13=5000.0, G_23=4000.0
+    )
+    layered = Shell(nodes, elements, Laminate([gfrp], [1.0], [0.0]))
+    assert layered.material is None
+    assert isinstance(layered.section, Laminate)
+    assert layered.n_state == 0  # provided via the section
+
+    homogeneous = Shell(
+        nodes, elements, IsotropicElasticityPlaneStress(E=70000.0, nu=0.3), thickness=1.0
+    )
+    assert homogeneous.section is None
+    assert homogeneous.material is not None
