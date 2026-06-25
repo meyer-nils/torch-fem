@@ -49,7 +49,16 @@ class Shell(Mechanics):
                 `(n_elem, 3)` tensor. Defaults to the global x-direction.
         """
 
-        super().__init__(nodes, elements, material)
+        # A Laminate is the shell's section, not a pointwise material: keep it
+        # in self.section and give the base no material.
+        if isinstance(material, Laminate):
+            super().__init__(nodes, elements, None)
+            self.section: Laminate | None = (
+                material if material.is_vectorized else material.vectorize(self.n_elem)
+            )
+        else:
+            super().__init__(nodes, elements, material)
+            self.section = None
 
         # Material reference orientation
         if orientation is None:
@@ -66,17 +75,18 @@ class Shell(Mechanics):
         self.transverse_nu = transverse_nu
         self.transverse_kappa = transverse_kappa
 
-        if isinstance(self.material, Laminate):
-            # Layered shell: take thickness, stations, and shear from laminate.
-            self.n_simpson = self.material.n_simpson
-            self.n_z = self.material.n_z
-            self.thickness = self.material.thickness
+        if self.section is not None:
+            # Layered shell: take thickness, stations, and shear from the section.
+            self.n_simpson = self.section.n_simpson
+            self.n_z = self.section.n_z
+            self.thickness = self.section.thickness
             if transverse_G is None:
-                self.As = self.material.As
+                self.As = self.section.As
             else:
                 self.As = self._build_As(transverse_G)
         else:
             # Homogeneous shell (unchanged behavior).
+            assert self.material is not None
             if isinstance(thickness, float):
                 self.thickness = torch.full((self.n_elem,), thickness)
             else:
@@ -152,9 +162,10 @@ class Shell(Mechanics):
             ``w`` has shape `(n_z, n_elem)` with absolute integration weights
             (such that ``sum_j w_j f_j`` approximates ``integral f dz``).
         """
-        if isinstance(self.material, Laminate):
-            return self.material.materials_per_station, self.material.z, self.material.w
+        if self.section is not None:
+            return self.section.materials_per_station, self.section.z, self.section.w
         else:
+            assert self.material is not None
             z = self.z_simpson[:, None] * self.thickness[None, :]
             w = self.w_simpson[:, None] * self.thickness[None, :]
             return [self.material] * self.n_simpson, z, w
@@ -162,6 +173,14 @@ class Shell(Mechanics):
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
         return f"<torch-fem shell ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
+
+    @property
+    def n_state(self) -> int:
+        """Number of internal state variables per through-thickness station."""
+        if self.section is not None:
+            return self.section.n_state
+        assert self.material is not None
+        return self.material.n_state
 
     @property
     def n_dof_per_node(self) -> int:
@@ -307,10 +326,11 @@ class Shell(Mechanics):
         """Mass matrix (translational: ∫ρ dz, rotational: ∫ρz² dz)."""
         n = self.n_dof_per_node * self.etype.nodes
         m = torch.zeros((self.n_elem, n, n))
-        if isinstance(self.material, Laminate):
-            rho_trans = self.material.rho_h
-            rho_rot = self.material.rho_zz
+        if self.section is not None:
+            rho_trans = self.section.rho_h
+            rho_rot = self.section.rho_zz
         else:
+            assert self.material is not None
             rho_trans = self.material.rho * self.thickness
             rho_rot = self.material.rho * self.thickness**3 / 12
         D = torch.diag_embed(torch.stack([rho_trans] * 3 + [rho_rot] * 3, dim=-1))
@@ -364,7 +384,7 @@ class Shell(Mechanics):
         N_nod = self.etype.nodes
         f = torch.zeros(self.n_elem, self.n_dof_per_node * N_nod)
         need_k = compute_stiffness and (
-            self.K.numel() == 0 or self.material.n_state != 0 or nlgeom
+            self.K.numel() == 0 or self.n_state != 0 or nlgeom
         )
         k = (
             torch.zeros(
