@@ -215,3 +215,56 @@ class Laminate:
             Gs_rot = torch.einsum("emi,eij,enj->emn", R, Gs, R)
             As = As + Gs_rot * t[k][:, None, None]
         return As
+
+    def plot(self):
+        """Illustrate the stacking sequence.
+
+        Each ply is drawn as a band through the thickness (height proportional
+        to the ply thickness) with the ply angle annotated.
+        """
+        import matplotlib.pyplot as plt
+
+        t = torch.stack(self.thicknesses)
+        angles = torch.rad2deg(torch.stack(self.angles))
+        z = torch.concatenate([torch.tensor([0.0]), torch.cumsum(t, 0)]) - t.sum() / 2
+        width = t.sum().item()
+
+        # One color per material class and orientation
+        layer_keys = [
+            f"{type(m).__name__}_{angles[i]:.0f}°" for i, m in enumerate(self.materials)
+        ]
+        unique_combos = list(dict.fromkeys(layer_keys))
+        cmap = plt.get_cmap("Pastel1")
+        color = {name: cmap(i % 9) for i, name in enumerate(unique_combos)}
+
+        _, ax = plt.subplots(figsize=(4, 5))
+
+        for k in range(self.n_layers):
+            z0 = z[k].item()
+            z1 = z[k + 1].item()
+            ax.add_patch(
+                plt.Rectangle(
+                    (0.0, z0),
+                    width,
+                    z1 - z0,
+                    facecolor=color[layer_keys[k]],
+                    edgecolor="black",
+                    lw=2.0,
+                )
+            )
+            ax.text(
+                0.5 * width,
+                0.5 * (z0 + z1),
+                f"{angles[k]:.0f}°",
+                va="center",
+                ha="center",
+                fontsize=8,
+            )
+
+        ax.set_xlim(0.0, 1.3 * width)
+        ax.set_ylim(z[0].item(), z[-1].item())
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_ylabel("Stacking direction")
+        ax.spines[["top", "right", "bottom"]].set_visible(False)
+        plt.show()
