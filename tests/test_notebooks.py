@@ -66,6 +66,11 @@ def test_shell_cantilever_laminate_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/shell/copv.ipynb", execute=True)
+def test_shell_copv_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/truss/elasticity_2D.ipynb", execute=True)
 def test_truss_elasticity2d_notebook(tb):
     tb.execute()
