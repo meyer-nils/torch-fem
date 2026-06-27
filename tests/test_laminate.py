@@ -278,7 +278,94 @@ def test_laminate_is_section_not_material():
     assert layered.n_state == 0  # provided via the section
 
     homogeneous = Shell(
-        nodes, elements, IsotropicElasticityPlaneStress(E=70000.0, nu=0.3), thickness=1.0
+        nodes,
+        elements,
+        IsotropicElasticityPlaneStress(E=70000.0, nu=0.3),
+        thickness=1.0,
     )
     assert homogeneous.section is None
     assert homogeneous.material is not None
+
+
+def _gfrp():
+    return OrthotropicElasticityPlaneStress(
+        E_1=40000.0, E_2=10000.0, nu_12=0.3, G_12=5000.0, G_13=5000.0, G_23=4000.0
+    )
+
+
+def _uz_under_inplane_stretch(layup):
+    """Tip out-of-plane deflection of a clamped plate under in-plane stretch."""
+    nodes, elements = square_plate()
+    plate = Shell(nodes, elements, layup)
+    plate.constraints[[0, 3]] = True  # clamp x = 0 edge (all 6 dofs)
+    plate.constraints[[1, 2], 0] = True  # prescribe in-plane u_x on x = 1 edge
+    plate.displacements[[1, 2], 0] = 0.01
+    u, _, _, _, _ = plate.solve()
+    return u[:, 2]
+
+
+def test_offset_induces_membrane_bending_coupling():
+    """An offset shifts the stations, so an in-plane stretch bends the plate.
+
+    A single-layer laminate has no membrane-bending coupling when centered, but
+    offsetting the reference surface to the top vs. the bottom produces
+    out-of-plane deflections of equal magnitude and opposite sign.
+    """
+    uz0 = _uz_under_inplane_stretch(Laminate([_gfrp()], [1.0], [0.0], offset=0.0))
+    uz_top = _uz_under_inplane_stretch(Laminate([_gfrp()], [1.0], [0.0], offset=0.5))
+    uz_bot = _uz_under_inplane_stretch(Laminate([_gfrp()], [1.0], [0.0], offset=-0.5))
+
+    assert uz0.abs().max() < 1e-9
+    assert uz_top.abs().max() > 1e-5
+    assert torch.allclose(uz_top, -uz_bot, atol=1e-9)
+
+
+def test_offset_string_aliases_match_floats():
+    """The "mid"/"top"/"bottom" aliases match their fractional equivalents."""
+    for name, frac in [("mid", 0.0), ("top", 0.5), ("bottom", -0.5)]:
+        u_name = _uz_under_inplane_stretch(
+            Laminate([_gfrp()], [1.0], [0.0], offset=name)
+        )
+        u_frac = _uz_under_inplane_stretch(
+            Laminate([_gfrp()], [1.0], [0.0], offset=frac)
+        )
+        assert torch.allclose(u_name, u_frac, atol=1e-12)
+
+
+def test_symmetric_expands_to_full_stack():
+    """`symmetric=True` mirrors the half-stack into the full laminate."""
+    gfrp = _gfrp()
+    half = Laminate([gfrp, gfrp], [0.25, 0.25], [0.0, torch.pi / 2], symmetric=True)
+    full = Laminate([gfrp] * 4, [0.25] * 4, [0.0, torch.pi / 2, torch.pi / 2, 0.0])
+
+    assert half.n_layers == 4
+    u_half = cantilever_tip_displacement(Shell(*square_plate(), half))
+    u_full = cantilever_tip_displacement(Shell(*square_plate(), full))
+    assert torch.allclose(u_half, u_full, atol=1e-12)
+
+
+def test_symmetric_accepts_tensor_inputs():
+    """`symmetric=True` mirrors tensor thicknesses and angles, not just lists."""
+    gfrp = _gfrp()
+    lam = Laminate(
+        [gfrp, gfrp],
+        torch.tensor([0.3, 0.125]),
+        torch.tensor([0.0, torch.pi / 2]),
+        symmetric=True,
+    )
+
+    assert lam.n_layers == 4
+    assert [round(float(torch.rad2deg(a))) for a in lam.angles] == [0, 90, 90, 0]
+    assert [float(t) for t in lam.thicknesses] == [0.3, 0.125, 0.125, 0.3]
+
+
+def test_symmetric_offset_recouples():
+    """A symmetric stack is decoupled; offsetting it restores the coupling."""
+    gfrp = _gfrp()
+    centered = Laminate([gfrp, gfrp], [0.25, 0.25], [0.0, torch.pi / 2], symmetric=True)
+    offset = Laminate(
+        [gfrp, gfrp], [0.25, 0.25], [0.0, torch.pi / 2], symmetric=True, offset=0.3
+    )
+
+    assert _uz_under_inplane_stretch(centered).abs().max() < 1e-9
+    assert _uz_under_inplane_stretch(offset).abs().max() > 1e-5
