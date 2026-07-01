@@ -15,6 +15,7 @@ from torch import Tensor
 
 from .base import Mechanics
 from .elements import Element, Tria1
+from .laminate import Laminate
 from .materials import Material
 from .utils import stiffness2voigt, stress2voigt
 
@@ -24,73 +25,162 @@ class Shell(Mechanics):
         self,
         nodes: Tensor,
         elements: Tensor,
-        material: Material,
+        material: Material | Laminate,
         thickness: Tensor | float = 1.0,
         transverse_nu: float = 0.5,
         transverse_kappa: float = 5.0 / 6.0,
         transverse_G: list[float] | list[Tensor] | None = None,
         drill_penalty: float = 1.0,
         n_simpson: int = 3,
+        orientation: Tensor | None = None,
     ):
-        """Initialize the planar FEM problem."""
+        """Initialize the shell FEM problem.
 
-        super().__init__(nodes, elements, material)
+        Args:
+            material: Either a single plane-stress `Material` (homogeneous
+                shell) or a `Laminate` describing a layered stacking sequence.
+                When a `Laminate` is passed, `thickness` and `n_simpson` are
+                taken from the laminate and the corresponding arguments here are
+                ignored.
+            orientation: Global reference direction from which material/ply
+                angles are measured. It is projected onto each element's surface
+                to define the element's local material 0°-axis. Accepts
+                a single `(3,)` vector (shared by all elements) or a per-element
+                `(n_elem, 3)` tensor. Defaults to the global x-direction.
+        """
 
-        # Set up thickness
-        if isinstance(thickness, float):
-            self.thickness = torch.full((self.n_elem,), thickness)
+        # A Laminate is the shell's section, not a pointwise material: keep it
+        # in self.section and give the base no material.
+        if isinstance(material, Laminate):
+            super().__init__(nodes, elements, None)
+            self.section: Laminate | None = (
+                material if material.is_vectorized else material.vectorize(self.n_elem)
+            )
         else:
-            self.thickness = torch.as_tensor(thickness)
+            super().__init__(nodes, elements, material)
+            self.section = None
+
+        # Material reference orientation
+        if orientation is None:
+            orientation = torch.tensor([1.0, 0.0, 0.0])
+        orientation = torch.as_tensor(orientation, dtype=self.nodes.dtype)
+        if orientation.dim() == 1:
+            orientation = orientation.unsqueeze(0).expand(self.n_elem, 3)
+        self.orientation = orientation
 
         # Drill penalty
         self.drill_penalty = drill_penalty
 
-        # Thickness integration points
-        if n_simpson % 2 == 0:
-            raise ValueError("n_simpson must be an odd integer.")
-        else:
-            self.n_simpson = n_simpson
-
-        # Update number of integration points to account for thickness integration
-        self.n_int = self.n_int * n_simpson
-
-        # Compute Simpson points in thickness direction
-        self.z_simpson = torch.linspace(-0.5, 0.5, n_simpson)
-
-        # Simpson weights for thickness integration
-        self.w_simpson = torch.ones(n_simpson)
-        self.w_simpson[1:-1:2] = 4.0
-        self.w_simpson[2:-2:2] = 2.0
-        self.w_simpson *= 1.0 / (n_simpson - 1) / 3.0
-
         # Transverse shear properties
         self.transverse_nu = transverse_nu
         self.transverse_kappa = transverse_kappa
-        z = torch.zeros(self.n_elem)
-        if transverse_G is None:
-            if hasattr(self.material, "G"):
-                self.G = [self.material.G, self.material.G]  # type: ignore
+
+        if self.section is not None:
+            # Layered shell: take thickness, stations, and shear from the section.
+            self.n_simpson = self.section.n_simpson
+            self.n_z = self.section.n_z
+            self.thickness = self.section.thickness
+            if transverse_G is None:
+                self.As = self.section.As
             else:
-                raise ValueError(
-                    "Material must have shear modulus 'G' defined or "
-                    "transverse_G must be provided."
-                )
+                self.As = self._build_As(transverse_G)
         else:
-            self.G = [
-                torch.as_tensor(transverse_G[0]).repeat(self.n_elem),
-                torch.as_tensor(transverse_G[1]).repeat(self.n_elem),
-            ]
-        self.Cs = torch.stack(
+            # Homogeneous shell (unchanged behavior).
+            assert self.material is not None
+            if isinstance(thickness, float):
+                self.thickness = torch.full((self.n_elem,), thickness)
+            else:
+                self.thickness = torch.as_tensor(thickness)
+
+            # Thickness integration points
+            if n_simpson % 2 == 0:
+                raise ValueError("n_simpson must be an odd integer.")
+            self.n_simpson = n_simpson
+            self.n_z = n_simpson
+
+            # Simpson points (normalized) and weights (summing to 1)
+            self.z_simpson = torch.linspace(-0.5, 0.5, n_simpson)
+            self.w_simpson = torch.ones(n_simpson)
+            self.w_simpson[1:-1:2] = 4.0
+            self.w_simpson[2:-2:2] = 2.0
+            self.w_simpson *= 1.0 / (n_simpson - 1) / 3.0
+
+            # Effective through-thickness transverse shear stiffness
+            if transverse_G is None:
+                if hasattr(self.material, "G"):
+                    G = [self.material.G, self.material.G]  # type: ignore
+                else:
+                    raise ValueError(
+                        "Material must have shear modulus 'G' defined or "
+                        "transverse_G must be provided."
+                    )
+                z = torch.zeros(self.n_elem)
+                Cs = torch.stack(
+                    [
+                        torch.stack([G[0], z], dim=-1),
+                        torch.stack([z, G[1]], dim=-1),
+                    ],
+                    dim=-1,
+                )
+                self.As = self.thickness[:, None, None] * Cs
+            else:
+                self.As = self._build_As(transverse_G)
+
+        # Update number of integration points to account for thickness
+        # integration over the through-thickness stations.
+        self.n_int = self.n_int * self.n_z
+
+    def _build_As(self, transverse_G: list[float] | list[Tensor]) -> Tensor:
+        """Build the integrated transverse shear stiffness from a user override.
+
+        Args:
+            transverse_G: Pair ``[G_xz, G_yz]`` of effective transverse shear
+                moduli. The values are integrated over the total thickness.
+
+        Returns:
+            Tensor of shape `(n_elem, 2, 2)`.
+        """
+        g0 = torch.as_tensor(transverse_G[0]).repeat(self.n_elem)
+        g1 = torch.as_tensor(transverse_G[1]).repeat(self.n_elem)
+        z = torch.zeros(self.n_elem)
+        Cs = torch.stack(
             [
-                torch.stack([self.G[0], z], dim=-1),
-                torch.stack([z, self.G[1]], dim=-1),
+                torch.stack([g0, z], dim=-1),
+                torch.stack([z, g1], dim=-1),
             ],
             dim=-1,
         )
+        return self.thickness[:, None, None] * Cs
+
+    def _thickness_stations(self) -> tuple[list[Material], Tensor, Tensor]:
+        """Through-thickness integration stations.
+
+        Returns:
+            Tuple ``(materials, z, w)`` where ``materials`` is a list of length
+            ``n_z`` giving the material active at each station, ``z`` has shape
+            `(n_z, n_elem)` with absolute through-thickness coordinates, and
+            ``w`` has shape `(n_z, n_elem)` with absolute integration weights
+            (such that ``sum_j w_j f_j`` approximates ``integral f dz``).
+        """
+        if self.section is not None:
+            return self.section.materials_per_station, self.section.z, self.section.w
+        else:
+            assert self.material is not None
+            z = self.z_simpson[:, None] * self.thickness[None, :]
+            w = self.w_simpson[:, None] * self.thickness[None, :]
+            return [self.material] * self.n_simpson, z, w
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
         return f"<torch-fem shell ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
+
+    @property
+    def n_state(self) -> int:
+        """Number of internal state variables per through-thickness station."""
+        if self.section is not None:
+            return self.section.n_state
+        assert self.material is not None
+        return self.material.n_state
 
     @property
     def n_dof_per_node(self) -> int:
@@ -200,9 +290,15 @@ class Shell(Mechanics):
         nodes = self.nodes[self.elements, :]
         edge1 = nodes[:, 1] - nodes[:, 0]
         edge2 = nodes[:, 2] - nodes[:, 1]
-        dir1 = torch.nn.functional.normalize(edge1, dim=-1)
         normal = torch.nn.functional.normalize(torch.linalg.cross(edge1, edge2), dim=-1)
-        dir2 = torch.nn.functional.normalize(-torch.linalg.cross(edge1, normal), dim=-1)
+        # Material x-axis: the global reference orientation projected onto the
+        # element surface. Fall back to the first edge where the orientation is
+        # (nearly) normal to the element and the projection vanishes.
+        o = self.orientation
+        proj = o - (o * normal).sum(dim=-1, keepdim=True) * normal
+        degen = (proj.norm(dim=-1) < 1e-8).unsqueeze(-1)
+        dir1 = torch.nn.functional.normalize(torch.where(degen, edge1, proj), dim=-1)
+        dir2 = torch.nn.functional.normalize(torch.linalg.cross(normal, dir1), dim=-1)
         self.t = torch.stack([dir1, dir2, normal], dim=1)
         self.T = torch.func.vmap(torch.block_diag)(*(self.n_dof_per_node * [self.t]))
 
@@ -227,11 +323,16 @@ class Shell(Mechanics):
         raise NotImplementedError
 
     def integrate_mass(self) -> Tensor:
-        """Mass matrix (translational: ρh, rotational: ρh³/12)."""
+        """Mass matrix (translational: ∫ρ dz, rotational: ∫ρz² dz)."""
         n = self.n_dof_per_node * self.etype.nodes
         m = torch.zeros((self.n_elem, n, n))
-        rho_trans = self.material.rho * self.thickness
-        rho_rot = self.material.rho * self.thickness**3 / 12
+        if self.section is not None:
+            rho_trans = self.section.rho_h
+            rho_rot = self.section.rho_zz
+        else:
+            assert self.material is not None
+            rho_trans = self.material.rho * self.thickness
+            rho_rot = self.material.rho * self.thickness**3 / 12
         D = torch.diag_embed(torch.stack([rho_trans] * 3 + [rho_rot] * 3, dim=-1))
         N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
         for i, w in enumerate(self.etype.iweights):
@@ -283,7 +384,7 @@ class Shell(Mechanics):
         N_nod = self.etype.nodes
         f = torch.zeros(self.n_elem, self.n_dof_per_node * N_nod)
         need_k = compute_stiffness and (
-            self.K.numel() == 0 or self.material.n_state != 0 or nlgeom
+            self.K.numel() == 0 or self.n_state != 0 or nlgeom
         )
         k = (
             torch.zeros(
@@ -305,6 +406,9 @@ class Shell(Mechanics):
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
+        # Through-thickness integration stations (layer-aware for laminates)
+        materials, z_stations, w_stations = self._thickness_stations()
+
         for i, wi in enumerate(self.etype.iweights):
 
             # Transform displacement increment to local element coordinates
@@ -321,12 +425,13 @@ class Shell(Mechanics):
             D_matrix = torch.zeros((self.n_elem, 3, 3))
 
             # Thickness integration of membrane and bending stresses
-            for j, (wz, z) in enumerate(zip(self.w_simpson, self.z_simpson)):
+            for j, material in enumerate(materials):
                 # Compute integration point index
-                ip = i * self.n_simpson + j
+                ip = i * self.n_z + j
 
-                # Compute integration point position
-                z = z * self.thickness[:, None, None]
+                # Absolute through-thickness position and integration weight
+                z = z_stations[j][:, None, None]
+                wz = w_stations[j][:, None, None]
 
                 # Compute gradient of displacement increment and rotation increment
                 dudxi = B[i] @ du_local
@@ -345,7 +450,7 @@ class Shell(Mechanics):
                 H_inc = dudxi[..., 0:2] + z * dkappa
 
                 # Evaluate material response
-                flux_new[ip], state_new[ip], ddsdde = self.material.step(
+                flux_new[ip], state_new[ip], ddsdde = material.step(
                     H_inc,
                     grad_prev[ip],
                     flux_prev[ip],
@@ -356,14 +461,14 @@ class Shell(Mechanics):
                 )
 
                 # Thickness integration of membrane forces and bending moments.
-                f_loc += wz * self.thickness[:, None, None] * flux_new[ip].clone()
-                m_loc += wz * z * self.thickness[:, None, None] * flux_new[ip].clone()
+                f_loc += wz * flux_new[ip].clone()
+                m_loc += wz * z * flux_new[ip].clone()
 
                 # Compute ABD matrix contributions
                 C = stiffness2voigt(ddsdde)
-                A_matrix += C * wz * self.thickness[:, None, None]
-                B_matrix += C * wz * z * self.thickness[:, None, None]
-                D_matrix += C * wz * z**2 * self.thickness[:, None, None]
+                A_matrix += C * wz
+                B_matrix += C * wz * z
+                D_matrix += C * wz * z**2
 
             # Copy grad from grad_prev (shells don't update deformation gradient)
             grad_new[:] = grad_prev
@@ -378,6 +483,11 @@ class Shell(Mechanics):
             DbCDb = torch.einsum("...ji,...jk,...kl->...il", Db, D_matrix, Db)
             kb = wi * self.compute_k(detJ[i], DbCDb)
 
+            # Element membrane-bending coupling stiffness.
+            DmCDb = torch.einsum("...ji,...jk,...kl->...il", Dm, B_matrix, Db)
+            DbCDm = torch.einsum("...ji,...jk,...kl->...il", Db, B_matrix, Dm)
+            kc = wi * self.compute_k(detJ[i], DmCDb + DbCDm)
+
             # Element transverse stiffness
             A = detJ[i] / 2.0
             h = sqrt(2) * A
@@ -388,7 +498,7 @@ class Shell(Mechanics):
                 / (self.thickness**2 + alpha * h**2)
             )
             Ds = self._Ds(A)
-            int_Cs = (A * psi * self.thickness)[:, None, None] * self.Cs
+            int_Cs = (A * psi)[:, None, None] * self.As
             DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, int_Cs, Ds)
             ks = wi * self.compute_k(detJ[i], DsCsDs)
 
@@ -401,7 +511,7 @@ class Shell(Mechanics):
 
             if k is not None:
                 # Total element stiffness in local coordinates
-                kt = km + kb + ks + kd
+                kt = km + kb + kc + ks + kd
 
                 # Total element stiffness in global coordinates
                 k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T

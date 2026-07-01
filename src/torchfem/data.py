@@ -1,6 +1,7 @@
 from importlib import resources
+from pathlib import Path
 
 
-def get_data(file: str) -> str:
+def get_data(file: str) -> Path:
     data_dir = resources.files("torchfem").joinpath("data")
-    return str(data_dir.joinpath(file))
+    return Path(str(data_dir.joinpath(file)))

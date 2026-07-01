@@ -16,6 +16,7 @@ from torchfem.materials import (
     OrthotropicElasticityPlaneStress,
     TransverseIsotropicElasticity3D,
 )
+from torchfem.utils import stiffness2voigt, stress2voigt
 
 N_ELEM = 10
 
@@ -266,6 +267,55 @@ class TestIsotropicPlasticityPlaneStress:
         assert s_new.shape == (n, 2, 2)
         assert torch.allclose(st_new, torch.zeros_like(st_new), atol=1e-8)
         assert torch.isfinite(s_new).all()
+
+    def test_plastic_step_batched(self):
+        """All points in a batch yield together and the consistent tangent
+        matches a finite difference.
+
+        This exercises the plastic return-mapping branch with more than one
+        yielding point, using a nonlinear hardening law whose slope
+        ``sigma_f_prime(q)`` returns one value per point. The algorithmic
+        tangent must broadcast that per-point slope correctly over the batch.
+        """
+        n = N_ELEM
+
+        # Nonlinear (saturating) hardening: sigma_f_prime varies per point
+        def sigma_f_nl(q):
+            return 200.0 + 50.0 * q + 100.0 * (1.0 - torch.exp(-10.0 * q))
+
+        def sigma_f_prime_nl(q):
+            return 50.0 + 1000.0 * torch.exp(-10.0 * q)
+
+        mat = IsotropicPlasticityPlaneStress(
+            210e3, 0.3, sigma_f_nl, sigma_f_prime_nl
+        ).vectorize(n)
+        _, F, stress, state, de0, cl = _make_step_args_2d(n, n_state=1)
+        # Uniform strain increment that yields every point
+        H_inc = torch.zeros(n, 2, 2)
+        H_inc[:, 0, 0] = 0.01
+        H_inc[:, 1, 1] = 0.002
+
+        s_new, st_new, C = mat.step(H_inc, F, stress, state, de0, cl, 1)
+        assert torch.isfinite(s_new).all() and torch.isfinite(C).all()
+        # Plastic strain has accumulated at every point
+        assert (st_new[:, 0] > 0.0).all()
+
+        # Consistent tangent vs. central finite difference (Voigt)
+        Cv = stiffness2voigt(C)
+        fd = torch.zeros(n, 3, 3)
+        eps = 1e-8
+        for j, (a, b) in enumerate([(0, 0), (1, 1), (0, 1)]):
+            dp, dm = H_inc.clone(), H_inc.clone()
+            dp[:, a, b] += eps
+            dm[:, a, b] -= eps
+            if a != b:
+                dp[:, b, a] += eps
+                dm[:, b, a] -= eps
+            sp, _, _ = mat.step(dp, F, stress, state, de0, cl, 1)
+            sm, _, _ = mat.step(dm, F, stress, state, de0, cl, 1)
+            col = (stress2voigt(sp) - stress2voigt(sm)) / (2 * eps)
+            fd[:, :, j] = col if a == b else col / 2.0
+        assert torch.allclose(Cv, fd, rtol=1e-4, atol=1e-3)
 
 
 class TestIsotropicPlasticityPlaneStrain:

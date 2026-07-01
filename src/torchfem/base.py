@@ -17,14 +17,15 @@ from .sparse import (
 
 
 class FEM(ABC):
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+    def __init__(self, nodes: Tensor, elements: Tensor, material: Material | None):
         """Initialize a finite-element model.
 
         Args:
             nodes: Nodal coordinates with shape [n_nod, n_dim].
             elements: Connectivity with shape [n_elem, n_nodes_per_element].
             material: Material model. If not vectorized, it is vectorized over
-                elements during initialization.
+                elements during initialization. May be ``None`` for shells that
+                use a laminate section instead.
         """
 
         # Store nodes and elements
@@ -94,13 +95,20 @@ class FEM(ABC):
         self.idx = self.idx.to(torch.int32)
 
         # Vectorize material
-        if material.is_vectorized:
+        self.material: Material | None
+        if material is None or material.is_vectorized:
             self.material = material
         else:
             self.material = material.vectorize(self.n_elem)
 
         # Cached solve for sparse linear systems
         self.cached_solve = CachedSolve()
+
+    @property
+    def n_state(self) -> int:
+        """Number of internal state variables per integration point."""
+        assert self.material is not None
+        return self.material.n_state
 
     @property
     @abstractmethod
@@ -321,6 +329,7 @@ class FEM(ABC):
         Returns:
             Element mass matrix tensor with shape [n_elem, n_dof_elem, n_dof_elem].
         """
+        assert self.material is not None
         N_nod = self.etype.nodes
         N_dof = self.n_dof_per_node
         m = torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod))
@@ -454,7 +463,7 @@ class FEM(ABC):
         flux = torch.zeros(N, self.n_int, self.n_elem, *self.n_flux)
         grad = torch.zeros(N, self.n_int, self.n_elem, *self.n_flux)
         grad[:, :, :, :, :] = self.initial_grad
-        state = torch.zeros(N, self.n_int, self.n_elem, self.material.n_state)
+        state = torch.zeros(N, self.n_int, self.n_elem, self.n_state)
 
         if verbose and u.dtype != torch.float64:
             print(
@@ -655,7 +664,7 @@ class Mechanics(FEM, ABC):
         grad = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
         grad[:] = self.initial_grad
         flux = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
-        state = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
+        state = torch.zeros(self.n_int, self.n_elem, self.n_state)
         du = torch.zeros(self.n_nod, self.n_dof_per_node)
         de0 = torch.zeros(self.n_elem, *self.n_flux)
         self.K = torch.empty(0)
@@ -714,7 +723,7 @@ class Mechanics(FEM, ABC):
         N_dof = self.n_dof_per_node
         f = torch.zeros(self.n_elem, N_dof * N_nod, device=du.device)
         need_k = compute_stiffness and (
-            self.K.numel() == 0 or self.material.n_state != 0 or nlgeom
+            self.K.numel() == 0 or self.n_state != 0 or nlgeom
         )
         k = (
             torch.zeros((self.n_elem, N_dof * N_nod, N_dof * N_nod), device=du.device)
@@ -726,6 +735,8 @@ class Mechanics(FEM, ABC):
         grad_new = torch.zeros_like(grad_prev)
         flux_new = torch.zeros_like(flux_prev)
         state_new = torch.zeros_like(state_prev)
+
+        assert self.material is not None
 
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
@@ -859,7 +870,7 @@ class Heat(FEM, ABC):
         heat_flux = torch.zeros(
             self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )  # heat flux
-        state = torch.zeros(self.n_int, self.n_elem, self.material.n_state)
+        state = torch.zeros(self.n_int, self.n_elem, self.n_state)
         dtemp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature increment
         dtemp_grad0 = torch.zeros(
             self.n_elem, self.n_dof_per_node, self.n_dim
@@ -913,9 +924,7 @@ class Heat(FEM, ABC):
 
         # Initialize nodal heat fluxes and conductivity matrix
         N_nod = self.etype.nodes
-        need_k = compute_stiffness and (
-            self.K.numel() == 0 or self.material.n_state != 0
-        )
+        need_k = compute_stiffness and (self.K.numel() == 0 or self.n_state != 0)
         f = torch.zeros(
             self.n_elem,
             self.n_dof_per_node * N_nod,
@@ -935,6 +944,8 @@ class Heat(FEM, ABC):
             if need_k
             else None
         )
+
+        assert self.material is not None
 
         grad_new = []
         flux_new = []
@@ -1080,7 +1091,7 @@ class Heat(FEM, ABC):
             self.n_dof_per_node,
             self.n_dim,
         )
-        state = torch.zeros(N_output, self.n_int, self.n_elem, self.material.n_state)
+        state = torch.zeros(N_output, self.n_int, self.n_elem, self.n_state)
 
         # fill initial conditions
         u[0] = temp_eq
