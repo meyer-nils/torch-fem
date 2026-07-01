@@ -48,6 +48,7 @@ pip install cupy-cuda12x # v12.x
 
 - Utilities
   - Homogenization of orthotropic elasticity for composites
+  - Composite laminates for shells
   - Simple structured meshing
   - I/O to and from other mesh formats via meshio
 

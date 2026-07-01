@@ -1,5 +1,21 @@
 # Changelog 
 
+## Version 0.7.0 - July 1 2026 
+
+### Added
+- Composite laminates for shells via a new `Laminate` section: per-layer material, thickness, and angle, symmetric layups, reference-surface `offset`, per-layer Simpson integration, transverse shear and mass integrals, and nonlinear (state-bearing) plies integrated through the thickness. (Thanks to @yvanblanchard)
+- Examples `shell/cantilever_laminate.ipynb`, `shell/cantilever_fml.ipynb` (GLARE fiber-metal laminate), and `shell/copv.ipynb` (composite overwrapped pressure vessel).
+
+### Changed
+- `torchfem.data.get_data()` now returns a `pathlib.Path` instead of `str`.
+
+### Fixed
+- Plane-stress plasticity: the algorithmic tangent now broadcasts a per-point hardening slope `sigma_f_prime(q)` correctly across a batch.
+- Global material `orientation` for `Shell`, projected onto each element to define the ply-angle reference axis (independent of element node ordering).
+
+### Removed
+- Unused failure-criteria module.
+
 ## Version 0.6.3 - May 18 2026 
 
 ### Added
