@@ -36,9 +36,17 @@ def main():
     out_path = results_dir / f"{label}.json"
 
     hardware = args.hardware or platform.processor() or platform.machine()
-    libraries = f"SciPy {scipy.__version__}, PyTorch {torch.__version__}"
 
     use_cuda = args.device == "cuda"
+    if use_cuda:
+        import cupy
+
+        cuda_ver = cupy.cuda.runtime.runtimeGetVersion()
+        cuda_str = f"{cuda_ver // 1000}.{cuda_ver % 1000 // 10}"
+        libraries = f"CuPy {cupy.__version__}, CUDA {cuda_str}"
+    else:
+        libraries = f"SciPy {scipy.__version__}, PyTorch {torch.__version__}"
+
     header_mem = " Peak VRAM" if use_cuda else "  Peak RAM"
     rows = []
     print(f"Running benchmark on device={args.device}, order={args.order}")
@@ -58,12 +66,11 @@ def main():
             str(args.order),
         ]
         profiler = profile_and_capture_gpu if use_cuda else profile_and_capture_cpu
-        mem_data, clock = profiler(cmd)
-        mem_vals = [m for _, m in mem_data]
+        mem, clock = profiler(cmd)
         setup_t = clock["SETUP_DONE"] - clock["START"]
         fwd_t = clock["FWD_DONE"] - clock["SETUP_DONE"]
         bwd_t = clock["BWD_DONE"] - clock["FWD_DONE"]
-        peak_mem = max(mem_vals) if mem_vals else 0.0
+        peak_mem = mem["peak_vram_mb"] if use_cuda else mem["peak_ram_mb"]
         dofs = 3 * N**3
         mem_str = f"{peak_mem:8.1f}MB"
         print(
@@ -77,7 +84,7 @@ def main():
                 "setup_s": round(setup_t, 4),
                 "fwd_s": round(fwd_t, 4),
                 "bwd_s": round(bwd_t, 4),
-                "peak_ram_mb": round(peak_mem, 1) if not use_cuda else None,
+                "peak_ram_mb": round(mem["peak_ram_mb"], 1) if not use_cuda else None,
                 "peak_vram_mb": round(peak_mem, 1) if use_cuda else None,
             }
         )
