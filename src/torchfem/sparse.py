@@ -31,6 +31,7 @@ available_backends = ["scipy"]
 try:
     import cupy
     from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
+    from cupyx.scipy.sparse import csr_matrix as cupy_csr_matrix
     from cupyx.scipy.sparse import diags as cupy_diags
     from cupyx.scipy.sparse.linalg import cg as cupy_cg
     from cupyx.scipy.sparse.linalg import eigsh as cupy_eigsh
@@ -273,13 +274,17 @@ def sparse_solve(
 def _solve_gpu(A, b, B, method, stol, M, shape, x0):
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
-    A_cp = cupy_coo_matrix(
-        (
-            cupy.asarray(A._values()),
-            (cupy.asarray(A._indices()[0]), cupy.asarray(A._indices()[1])),
-        ),
-        shape=shape,
-    ).tocsr()
+
+    # Copy tensors to CuPy
+    A = A.coalesce()
+    idx = A._indices()
+    data = cupy.asarray(A._values())
+    indices = cupy.asarray(idx[1]).astype(cupy.int32)
+    counts = cupy.bincount(cupy.asarray(idx[0]), minlength=shape[0])
+    indptr = cupy.zeros(shape[0] + 1, dtype=cupy.int32)
+    indptr[1:] = cupy.cumsum(counts)
+    A_cp = cupy_csr_matrix((data, indices, indptr), shape=shape)
+    A_cp.has_sorted_indices = True
     b_cp = cupy.asarray(b.data)
 
     if x0 is not None:
