@@ -780,7 +780,7 @@ class Mechanics(FEM, ABC):
             if need_k:
                 BCB = torch.einsum("...Jp,...iJkL,...Lq->...piqk", B[i], ddsdde, B[i])
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
-                k += w * self.compute_k(detJ[i], BCB)
+                k += self.compute_k(detJ[i], BCB).mul_(w)
 
         return k, f, grad_new, flux_new, state_new
 
@@ -984,7 +984,7 @@ class Heat(FEM, ABC):
                 BCB = BCB.reshape(
                     -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod
                 )
-                k += w * self.compute_k(detJ[i], BCB)
+                k += self.compute_k(detJ[i], BCB).mul_(w)
 
         return (
             k,
