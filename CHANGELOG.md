@@ -10,6 +10,7 @@
 - A `notebook` pytest marker so the slow example-notebook tests can be split from the fast unit tests (`pytest -m "not notebook"`).
 
 ### Changed
+- Split the monolithic `materials.py` into a `torchfem.materials` subpackage (`base`, `elasticity`, `hyperelasticity`, `plasticity`, `damage`, `conductivity`) mirroring the documentation structure. All material classes remain importable from `torchfem.materials`, so existing imports are unaffected.
 - Fixed VRAM tracking and updated GPU benchmarks.
 - Made torch to cupy handoff in `sparse.py` more memory friendly to reduce VRAM. 
 - Slimmed core dependencies: the packages above are only used by the example notebooks.
