@@ -8,6 +8,12 @@ You may install torch-fem via pip with
 pip install torch-fem
 ```
 
+## Example notebooks (optional)
+The core package ships only with the dependencies required to build and solve models. To run the example notebooks, install with the `notebook` extra to include Jupyter widgets, interactive PyVista rendering, and animation support:
+``` sh
+pip install torch-fem[notebook]
+```
+
 ## GPU support (optional)
 For optional GPU support, install CUDA, PyTorch for CUDA, and the corresponding CuPy version.
 
@@ -32,7 +38,8 @@ git clone <repo_url>
 
 In the root of the cloned project, make the installation editable as 
 ``` sh 
-pip install -e .
+pip install -e ".[all]"
 ```
+The `all` extra combines the `notebook` extra with the development tools (`pytest`, `testbook`, `flake8`) in the `dev` extra. Both are required to run the test suite, which executes the example notebooks.
 
 Now, the package is linked to this local directory and whenever you use `import torchfem`, it will use the latest code.

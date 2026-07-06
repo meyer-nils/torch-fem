@@ -1,5 +1,19 @@
 # Changelog 
 
+## Unreleased
+
+### Added
+- New optional dependency group `notebook` for running the example notebooks.
+- New optional dependency group `dev` with the development tools.
+- Binder configuration (`.binder/requirements.txt`) so the Binder badge installs the package with the `notebook` extra.
+
+### Changed
+- Fixed VRAM tracking and updated GPU benchmarks.
+- Made torch to cupy handoff in `sparse.py` more memory friendly to reduce VRAM. 
+- Slimmed core dependencies: the packages above are only used by the example notebooks.
+- Relaxed the SciPy pin from `scipy~=1.15.0` to `scipy>=1.14` and added an explicit `torch>=2.0` lower bound.
+- Declared `numpy` as an explicit dependency.
+
 ## Version 0.7.0 - July 1 2026 
 
 ### Added

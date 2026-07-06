@@ -20,19 +20,33 @@ classifiers = [
     'Programming Language :: Python :: 3.13',
 ]
 dependencies = [
-    "ipywidgets",
-    "ipykernel",
     "matplotlib",
     "meshio",
+    "numpy",
     "pyamg",
     "pyvista",
-    "scipy~=1.15.0",
-    "tqdm",
-    "torch",
-    "trame",
-    "trame-vuetify",
-    "trame-vtk",
+    "scipy>=1.14",
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+notebook = [
     "imageio",
+    "ipykernel",
+    "ipywidgets",
+    "tqdm",
+    "trame",
+    "trame-vtk",
+    "trame-vuetify",
+]
+dev = [
+    "flake8",
+    "pytest",
+    "testbook",
+]
+all = [
+    "torch-fem[notebook]",
+    "torch-fem[dev]",
 ]
 
 [project.urls]

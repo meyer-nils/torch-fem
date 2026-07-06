@@ -16,6 +16,11 @@ You may install torch-fem via pip with
 pip install torch-fem
 ```
 
+*Optional*: To run the example notebooks, install with the `notebook` extra to include Jupyter widgets, interactive PyVista rendering, and animation support:
+```
+pip install torch-fem[notebook]
+```
+
 *Optional*: For GPU support, install CUDA, PyTorch for CUDA, and the corresponding CuPy version.
 
 For CUDA 11.8: 

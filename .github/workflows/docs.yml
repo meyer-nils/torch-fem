@@ -34,7 +34,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install jupyter nbconvert nest_asyncio2
-          python -m pip install .
+          python -m pip install ".[notebook]"
 
       - run: pip install zensical mkdocs mkdocstrings-python       
       - run: zensical build --clean
