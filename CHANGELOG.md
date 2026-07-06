@@ -6,6 +6,8 @@
 - New optional dependency group `notebook` for running the example notebooks.
 - New optional dependency group `dev` with the development tools.
 - Binder configuration (`.binder/requirements.txt`) so the Binder badge installs the package with the `notebook` extra.
+- CI now enforces linting (`flake8`), formatting (`black`, `isort`), and type checking (`basedpyright`) as dedicated jobs, and the tool configuration lives in `.flake8` and `pyproject.toml`.
+- A `notebook` pytest marker so the slow example-notebook tests can be split from the fast unit tests (`pytest -m "not notebook"`).
 
 ### Changed
 - Fixed VRAM tracking and updated GPU benchmarks.
@@ -13,6 +15,10 @@
 - Slimmed core dependencies: the packages above are only used by the example notebooks.
 - Relaxed the SciPy pin from `scipy~=1.15.0` to `scipy>=1.14` and added an explicit `torch>=2.0` lower bound.
 - Declared `numpy` as an explicit dependency.
+- CI runs the fast unit tests across Python 3.10–3.13 and the notebook tests once, instead of executing every notebook on all four versions.
+
+### Fixed
+- Resolved all `basedpyright` type-checking errors.
 
 ## Version 0.7.0 - July 1 2026 
 

@@ -1,4 +1,8 @@
+import pytest
 from testbook import testbook
+
+# Slow: these execute the example notebooks. Skip with `-m "not notebook"`.
+pytestmark = pytest.mark.notebook
 
 
 @testbook("examples/basic/planar/cantilever.ipynb", execute=True)

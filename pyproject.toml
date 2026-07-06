@@ -40,7 +40,10 @@ notebook = [
     "trame-vuetify",
 ]
 dev = [
+    "basedpyright",
+    "black",
     "flake8",
+    "isort",
     "pytest",
     "testbook",
 ]
@@ -60,3 +63,20 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 torchfem = ["data/*.*"]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+
+[tool.pyright]
+pythonVersion = "3.10"
+include = ["src/torchfem"]
+typeCheckingMode = "basic"
+reportMissingImports = false
+
+[tool.pytest.ini_options]
+markers = [
+    "notebook: executes an example notebook (slow)",
+]

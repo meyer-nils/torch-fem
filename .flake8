@@ -1,0 +1,5 @@
+[flake8]
+# Black-compatible settings.
+max-line-length = 88
+extend-ignore = E203, W503
+exclude = .git,__pycache__,build,dist,site,.cache,.binder

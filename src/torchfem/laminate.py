@@ -207,10 +207,10 @@ class Laminate:
         for k in range(self.n_layers):
             m = self.materials[k]
             if hasattr(m, "G_13"):
-                g13 = torch.as_tensor(m.G_13)
-                g23 = torch.as_tensor(m.G_23)
+                g13 = torch.as_tensor(getattr(m, "G_13"))
+                g23 = torch.as_tensor(getattr(m, "G_23"))
             elif hasattr(m, "G"):
-                g13 = torch.as_tensor(m.G)
+                g13 = torch.as_tensor(getattr(m, "G"))
                 g23 = g13
             else:
                 raise ValueError(
@@ -236,6 +236,7 @@ class Laminate:
         to the ply thickness) with the ply angle annotated.
         """
         import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle
 
         t = torch.stack(self.thicknesses)
         angles = torch.rad2deg(torch.stack(self.angles))
@@ -261,7 +262,7 @@ class Laminate:
             z0 = z[k].item()
             z1 = z[k + 1].item()
             ax.add_patch(
-                plt.Rectangle(
+                Rectangle(
                     (0.0, z0),
                     width,
                     z1 - z0,

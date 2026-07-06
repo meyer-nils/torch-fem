@@ -155,7 +155,7 @@ class Solve(Function):
         gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
 
         # Update storage for next iteration
-        if ctx.update_cache:
+        if ctx.update_cache and ctx.cached_solve is not None:
             ctx.cached_solve.update_grad(gradb.detach().clone())
 
         return gradA, gradb, None, None, None, None, None, None, None
@@ -354,7 +354,7 @@ def _solve_cpu(A, b, B, method, stol, M, shape, x0):
             M = ml.aspreconditioner()
 
         # Solve with minres
-        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol, x0=x0_np)
+        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol, x0=x0_np)  # type: ignore  # noqa: E501
         if exit_code != 0:
             raise RuntimeError(f"minres failed with exit code {exit_code}")
     elif method == "cg":

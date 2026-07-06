@@ -586,10 +586,11 @@ class Shell(Mechanics):
                 count[idx] += 1
             nodal_thickness /= count
 
+            normals = np.asarray(mesh.point_normals)
             top = mesh.copy()
-            top.points += 0.5 * nodal_thickness[:, None] * mesh.point_normals
+            top.points += 0.5 * nodal_thickness[:, None] * normals
             bottom = mesh.copy()
-            bottom.points -= 0.5 * nodal_thickness[:, None] * mesh.point_normals
+            bottom.points -= 0.5 * nodal_thickness[:, None] * normals
 
             pl.add_mesh(top, show_edges=True)
             pl.add_mesh(bottom, show_edges=True)

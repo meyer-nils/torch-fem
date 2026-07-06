@@ -1,6 +1,6 @@
 from os import PathLike
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
@@ -34,7 +34,7 @@ def export_mesh(
         },
     )
     suffix = Path(str(filename)).suffix.lower()
-    write_kwargs: Dict[str, str | int | None] = {}
+    write_kwargs: Dict[str, Any] = {}
     if suffix in {".vtu"}:
         write_kwargs["compression"] = "zlib" if compress else None
     elif suffix in {".xdmf", ".xmf"}:
