@@ -34,7 +34,7 @@ def export_mesh(
         },
     )
     suffix = Path(str(filename)).suffix.lower()
-    write_kwargs = {}
+    write_kwargs: Dict[str, str | int | None] = {}
     if suffix in {".vtu"}:
         write_kwargs["compression"] = "zlib" if compress else None
     elif suffix in {".xdmf", ".xmf"}:

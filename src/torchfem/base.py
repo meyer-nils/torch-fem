@@ -778,6 +778,7 @@ class Mechanics(FEM, ABC):
 
             # Compute element stiffness matrix
             if need_k:
+                assert k is not None
                 BCB = torch.einsum("...Jp,...iJkL,...Lq->...piqk", B[i], ddsdde, B[i])
                 BCB = BCB.reshape(-1, N_dof * N_nod, N_dof * N_nod)
                 k += self.compute_k(detJ[i], BCB).mul_(w)
@@ -980,6 +981,7 @@ class Heat(FEM, ABC):
 
             # Compute element stiffness matrix
             if need_k:
+                assert k is not None
                 BCB = torch.einsum("...ij,...iN,...jM->...NM", ddfddg, B[i], B[i])
                 BCB = BCB.reshape(
                     -1, self.n_dof_per_node * N_nod, self.n_dof_per_node * N_nod

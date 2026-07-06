@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from math import sqrt
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 import torch
@@ -36,23 +35,13 @@ class Element(ABC):
             (length/area/volume).
         iso_dim (int): Reference-space dimension.
         nodes (int): Number of nodes per element.
-        meshio_type (Literal): Mesh cell type used for meshio I/O.
+        meshio_type (str): Mesh cell type used for meshio I/O.
     """
 
     iso_volume: float
     iso_dim: int
     nodes: int
-    meshio_type: Literal[
-        "line",
-        "triangle",
-        "triangle6",
-        "quad",
-        "quad8",
-        "tetra",
-        "tetra10",
-        "hexahedron",
-        "hexahedron20",
-    ]
+    meshio_type: str
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
