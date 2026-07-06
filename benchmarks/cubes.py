@@ -7,6 +7,7 @@ from torchfem import Solid
 from torchfem.elements import linear_to_quadratic
 from torchfem.materials import IsotropicElasticity3D
 from torchfem.mesh import cube_hexa
+from utils import VramMonitor
 
 torch.set_default_dtype(torch.float64)
 
@@ -42,9 +43,10 @@ if __name__ == "__main__":
 
     torch.set_default_device(args.device)
 
-    # Reset peak memory stats before computation
-    if args.device == "cuda":
-        torch.cuda.reset_peak_memory_stats()
+    # Sample driver-level VRAM (cuda only) around all problem-specific work.
+    monitor = VramMonitor() if args.device == "cuda" else None
+    if monitor is not None:
+        monitor.start()
 
     # Start timing
     print(f"START:{time.time()}")
@@ -60,3 +62,9 @@ if __name__ == "__main__":
     # Backward pass
     u.sum().backward()
     print(f"BWD_DONE:{time.time()}")
+
+    # Emit memory diagnostics
+    if monitor is not None:
+        monitor.stop()
+        for tag, val in monitor.report().items():
+            print(f"{tag}:{val}")

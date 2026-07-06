@@ -195,19 +195,19 @@ Python 3.10, SciPy 1.15.3, Apple Accelerate, float64
 |  80 |  1536000 |    13.90s |    73.41s |    17.95s |   9739.0MB |
 
 
-#### NVIDIA GeForce RTX 5090 (21,760 Cuda cores, 32 GB VRAM)
-Python 3.13, CuPy 14.0.1, CUDA 12.9, float64
+#### NVIDIA GeForce RTX 4090 (16,384 Cuda cores, 24 GB VRAM)
+Python 3.12, CuPy 13.3.0, CUDA 11.8, float64
 
-|  N  |     DOFs |     Setup | FWD Solve | BWD Solve |   Peak RAM |
+|  N  |     DOFs |     Setup | FWD Solve | BWD Solve |  Peak VRAM |
 | --- | -------- | --------- | --------- | --------- | ---------- |
-|  10 |     3000 |     0.27s |     0.45s |     0.46s |   1682.9MB |
-|  20 |    24000 |     0.24s |     0.49s |     0.49s |   1703.6MB |
-|  30 |    81000 |     0.25s |     0.60s |     0.59s |   1707.4MB |
-|  40 |   192000 |     0.25s |     0.78s |     0.73s |   1738.4MB |
-|  50 |   375000 |     0.28s |     1.08s |     0.94s |   1710.4MB |
-|  60 |   648000 |     0.32s |     1.54s |     1.27s |   1710.8MB |
-|  70 |  1029000 |     0.39s |     2.13s |     1.73s |   1728.7MB |
-|  80 |  1536000 |     0.49s |     3.76s |     3.22s |   2220.5MB |
+|  10 |     3000 |     0.12s |     0.87s |     0.69s |    234.0MB |
+|  20 |    24000 |     0.11s |     0.94s |     0.85s |    398.0MB |
+|  30 |    81000 |     0.12s |     1.00s |     1.02s |   1158.0MB |
+|  40 |   192000 |     0.14s |     1.23s |     1.17s |   2388.0MB |
+|  50 |   375000 |     0.18s |     1.60s |     1.48s |   4656.0MB |
+|  60 |   648000 |     0.22s |     2.12s |     1.85s |   8624.0MB |
+|  70 |  1029000 |     0.29s |     2.88s |     2.47s |  14046.0MB |
+|  80 |  1536000 |     0.39s |     3.90s |     3.16s |  21246.0MB |
 
 ## Alternatives
 There are many alternative Python FEM tools that you may also consider, 
