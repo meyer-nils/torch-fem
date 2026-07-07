@@ -18,6 +18,7 @@
 - Declared `numpy` as an explicit dependency.
 - CI runs the fast unit tests across Python 3.10–3.13 and the notebook tests once, instead of executing every notebook on all four versions.
 - Modernize PyPI publishing workflow.
+- Complete the theory page in the docs.
 
 ### Fixed
 - Resolved all `basedpyright` type-checking errors.
