@@ -17,6 +17,7 @@
 - Relaxed the SciPy pin from `scipy~=1.15.0` to `scipy>=1.14` and added an explicit `torch>=2.0` lower bound.
 - Declared `numpy` as an explicit dependency.
 - CI runs the fast unit tests across Python 3.10–3.13 and the notebook tests once, instead of executing every notebook on all four versions.
+- Modernize PyPI publishing workflow.
 
 ### Fixed
 - Resolved all `basedpyright` type-checking errors.
