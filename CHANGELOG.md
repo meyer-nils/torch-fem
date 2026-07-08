@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.7.1 - July 8 2026
 
 ### Added
 - New optional dependency group `notebook` for running the example notebooks.
