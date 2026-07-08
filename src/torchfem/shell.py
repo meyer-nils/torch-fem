@@ -21,6 +21,26 @@ from .utils import stiffness2voigt, stress2voigt
 
 
 class Shell(Mechanics):
+    """Flat-facet triangular shell model for thin-walled structures.
+
+    Each node carries six degrees of freedom (three translations, three
+    rotations). The section is either a homogeneous plane-stress material
+    with a thickness or a layered `Laminate`.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 3].
+        elements: Triangle connectivity with shape [n_elem, 3].
+        material: Vectorized plane-stress material (None for laminate shells).
+        section: Laminate section (None for homogeneous shells).
+        thickness: Element thicknesses with shape [n_elem].
+        orientation: Per-element material reference direction with shape
+            [n_elem, 3].
+        forces: Applied nodal forces and moments with shape [n_nod, 6].
+        displacements: Prescribed nodal displacements and rotations with
+            shape [n_nod, 6].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 6].
+    """
+
     def __init__(
         self,
         nodes: Tensor,
@@ -543,6 +563,18 @@ class Shell(Mechanics):
         mirror: tuple[bool, bool, bool] = (False, False, False),
         **kwargs,
     ):
+        """Plot the shell mesh with PyVista, optionally with results.
+
+        Args:
+            u: Nodal displacements added to the positions, e.g. to plot the
+                deformed configuration. Defaults to 0.0 (undeformed).
+            node_property: Named nodal fields, e.g. `{"u": u[:, :3]}`.
+            element_property: Named element fields.
+            thickness: If True, extrudes elements by their thickness.
+            mirror: Mirrors the mesh about the (x, y, z) planes, e.g. to
+                visualize symmetric halves.
+            **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
+        """
         try:
             import numpy as np
             import pyvista

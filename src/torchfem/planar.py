@@ -13,6 +13,20 @@ from .materials import Material
 
 
 class Planar(Mechanics):
+    """Planar mechanics model for plane-stress or plane-strain problems.
+
+    The element type (Tria1, Tria2, Quad1, Quad2) is inferred from the number
+    of nodes per element in the connectivity.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 2].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized material model.
+        thickness: Element thicknesses with shape [n_elem].
+        forces: Applied nodal forces with shape [n_nod, 2].
+        displacements: Prescribed nodal displacements with shape [n_nod, 2].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 2].
+    """
 
     def __init__(
         self,
@@ -21,7 +35,15 @@ class Planar(Mechanics):
         material: Material,
         thickness: Tensor | float = 1.0,
     ):
-        """Initialize the planar FEM problem."""
+        """Initialize the planar FEM problem.
+
+        Args:
+            nodes: Nodal coordinates with shape [n_nod, 2].
+            elements: Connectivity with shape [n_elem, nodes_per_element].
+            material: Plane-stress or plane-strain material model.
+            thickness: Element thickness. A float is expanded to all elements,
+                a tensor assigns one thickness per element.
+        """
 
         super().__init__(nodes, elements, material)
 
@@ -97,6 +119,32 @@ class Planar(Mechanics):
         ax: Axes | None = None,
         **kwargs,
     ):
+        """Plot the mesh with matplotlib, optionally with results.
+
+        Args:
+            u: Nodal displacements added to the positions, e.g. to plot the
+                deformed configuration. Defaults to 0.0 (undeformed).
+            node_property: Scalar nodal field with shape [n_nod] rendered as
+                interpolated contours.
+            element_property: Element field rendered as flat colors (shape
+                [n_elem]) or as vector arrows (shape [n_elem, 2]).
+            orientation: Element-wise material angles in radians rendered as
+                line markers.
+            node_labels: If True, annotates nodes with their indices.
+            node_markers: If True, draws markers at nodal positions.
+            axes: If True, shows the coordinate axes.
+            bcs: If True, indicates applied forces and constraints.
+            color: Line and marker color.
+            alpha: Opacity of nodal contour plots.
+            cmap: Matplotlib colormap name.
+            linewidth: Element edge line width. Set to 0.0 to hide edges.
+            figsize: Figure size when a new figure is created.
+            colorbar: If True, adds a colorbar.
+            vmin: Lower color limit.
+            vmax: Upper color limit.
+            title: Plot title.
+            ax: Existing matplotlib axes to plot into.
+        """
         # Compute deformed positions
         pos = self.nodes + u
 
@@ -266,7 +314,28 @@ class Planar(Mechanics):
 
 
 class PlanarHeat(Heat, Planar):
+    """Planar heat conduction model.
+
+    Uses the same elements and plotting as `Planar`, but with a single
+    temperature degree of freedom per node.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 2].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized thermal material model.
+        thickness: Element thicknesses with shape [n_elem].
+        heat_flux: Applied nodal heat sources with shape [n_nod, 1].
+        temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
+    """
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+        """Initialize the planar heat conduction problem.
+
+        Args:
+            nodes: Nodal coordinates with shape [n_nod, 2].
+            elements: Connectivity with shape [n_elem, nodes_per_element].
+            material: Thermal material model, e.g. `IsotropicConductivity2D`.
+        """
         super().__init__(nodes, elements, material)
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)

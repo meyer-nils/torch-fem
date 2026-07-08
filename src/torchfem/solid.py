@@ -12,6 +12,19 @@ from .materials import Material
 
 
 class Solid(Mechanics):
+    """Solid mechanics model for three-dimensional continua.
+
+    The element type (Tetra1, Tetra2, Hexa1, Hexa2) is inferred from the
+    number of nodes per element in the connectivity.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 3].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized material model.
+        forces: Applied nodal forces with shape [n_nod, 3].
+        displacements: Prescribed nodal displacements with shape [n_nod, 3].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 3].
+    """
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
@@ -183,7 +196,27 @@ class Solid(Mechanics):
 
 
 class SolidHeat(Heat, Solid):
+    """Solid heat conduction model.
+
+    Uses the same elements and plotting as `Solid`, but with a single
+    temperature degree of freedom per node.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 3].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized thermal material model.
+        heat_flux: Applied nodal heat sources with shape [n_nod, 1].
+        temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
+    """
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
+        """Initialize the solid heat conduction problem.
+
+        Args:
+            nodes: Nodal coordinates with shape [n_nod, 3].
+            elements: Connectivity with shape [n_elem, nodes_per_element].
+            material: Thermal material model, e.g. `IsotropicConductivity3D`.
+        """
         super().__init__(nodes, elements, material)
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)

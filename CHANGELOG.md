@@ -8,6 +8,7 @@
 - Binder configuration (`.binder/requirements.txt`) so the Binder badge installs the package with the `notebook` extra.
 - CI now enforces linting (`flake8`), formatting (`black`, `isort`), and type checking (`basedpyright`) as dedicated jobs, and the tool configuration lives in `.flake8` and `pyproject.toml`.
 - A `notebook` pytest marker so the slow example-notebook tests can be split from the fast unit tests (`pytest -m "not notebook"`).
+- A "Models" section in the docs with API documentation for the core model classes (`Truss`, `Planar`, `Shell`, `Solid`, and heat variants) and new docstrings on these classes.
 
 ### Changed
 - Split the monolithic `materials.py` into a `torchfem.materials` subpackage (`base`, `elasticity`, `hyperelasticity`, `plasticity`, `damage`, `conductivity`) mirroring the documentation structure. All material classes remain importable from `torchfem.materials`, so existing imports are unaffected.

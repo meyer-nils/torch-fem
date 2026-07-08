@@ -17,6 +17,24 @@ from .sparse import (
 
 
 class FEM(ABC):
+    """Abstract base class for all finite-element models.
+
+    A model is defined by nodal coordinates, an element connectivity, and a
+    material. Loads and boundary conditions are set through attributes of the
+    concrete model classes, and the quasi-static solution is computed with
+    `solve()`.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, n_dim].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized material model (or None for laminate shells).
+        constraints: Boolean mask of constrained degrees of freedom with shape
+            [n_nod, n_dof_per_node].
+        n_nod: Number of nodes.
+        n_elem: Number of elements.
+        n_dofs: Total number of degrees of freedom.
+    """
+
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material | None):
         """Initialize a finite-element model.
 
@@ -233,6 +251,7 @@ class FEM(ABC):
 
     @property
     def constraints(self) -> Tensor:
+        """Boolean mask of constrained DOFs with shape [n_nod, n_dof_per_node]."""
         return self._constraints
 
     @constraints.setter
@@ -432,8 +451,8 @@ class FEM(ABC):
 
         Returns:
             Tuple of displacement, internal force, flux, gradient, and material
-            state. If return_intermediate is True, each tensor includes an
-            increment dimension as the leading axis.
+                state. If return_intermediate is True, each tensor includes an
+                increment dimension as the leading axis.
 
         """
         # Number of increments
@@ -624,6 +643,7 @@ class Mechanics(FEM, ABC):
 
     @property
     def forces(self) -> Tensor:
+        """Applied external nodal forces with shape [n_nod, n_dof_per_node]."""
         return self._neumann
 
     @forces.setter
@@ -636,6 +656,10 @@ class Mechanics(FEM, ABC):
 
     @property
     def displacements(self) -> Tensor:
+        """Prescribed nodal displacements with shape [n_nod, n_dof_per_node].
+
+        Values take effect only where `constraints` is True.
+        """
         return self._dirichlet
 
     @displacements.setter
@@ -648,6 +672,10 @@ class Mechanics(FEM, ABC):
 
     @property
     def ext_strain(self) -> Tensor:
+        """External strain increment per element with shape [n_elem, d, d].
+
+        Used to impose macroscopic strains, e.g. in homogenization.
+        """
         return self._external_gradient
 
     @ext_strain.setter
@@ -792,6 +820,7 @@ class Mechanics(FEM, ABC):
         """Compute the natural frequencies and mode shapes.
 
         Solves the generalized eigenvalue problem
+
         $$\\mathbf{K}\\boldsymbol{\\phi} = \\omega^2 \\mathbf{M}\\boldsymbol{\\phi}$$
 
         Args:
@@ -799,8 +828,8 @@ class Mechanics(FEM, ABC):
 
         Returns:
             Tuple ``(omega_sq, modes)`` where ``omega_sq`` has shape
-            ``[n_modes]`` (squared angular frequencies, differentiable) and
-            ``modes`` has shape ``[n_modes, n_nod, n_dof_per_node]`` (detached).
+                ``[n_modes]`` (squared angular frequencies, differentiable) and
+                ``modes`` has shape ``[n_modes, n_nod, n_dof_per_node]`` (detached).
         """
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         free_indices = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
@@ -840,6 +869,7 @@ class Heat(FEM, ABC):
 
     @property
     def heat_flux(self) -> Tensor:
+        """Applied external nodal heat sources with shape [n_nod, 1]."""
         return self._neumann
 
     @heat_flux.setter
@@ -852,6 +882,10 @@ class Heat(FEM, ABC):
 
     @property
     def temperatures(self) -> Tensor:
+        """Prescribed nodal temperatures with shape [n_nod, 1].
+
+        Values take effect only where `constraints` is True.
+        """
         return self._dirichlet
 
     @temperatures.setter

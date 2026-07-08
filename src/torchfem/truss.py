@@ -13,8 +13,31 @@ from .materials import Material
 
 
 class Truss(Mechanics):
+    """Truss model built from bar elements in 2D or 3D space.
+
+    The element type (Bar1, Bar2) is inferred from the number of nodes per
+    element in the connectivity, and the spatial dimension from the nodes.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, n_dim].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized 1D material model.
+        areas: Cross-sectional areas with shape [n_elem]. Defaults to ones.
+        forces: Applied nodal forces with shape [n_nod, n_dim].
+        displacements: Prescribed nodal displacements with shape
+            [n_nod, n_dim].
+        constraints: Boolean mask of constrained DOFs with shape
+            [n_nod, n_dim].
+    """
+
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
-        """Initialize a truss FEM problem."""
+        """Initialize a truss FEM problem.
+
+        Args:
+            nodes: Nodal coordinates with shape [n_nod, n_dim].
+            elements: Connectivity with shape [n_elem, nodes_per_element].
+            material: 1D material model, e.g. `IsotropicElasticity1D`.
+        """
         super().__init__(nodes, elements, material)
 
         # Set up areas
@@ -82,6 +105,18 @@ class Truss(Mechanics):
         return rho * self.areas * detJ
 
     def plot(self, u: float | Tensor = 0.0, **kwargs):
+        """Plot the truss in 2D (matplotlib) or 3D (PyVista).
+
+        Dispatches to `plot2d` or `plot3d` based on the spatial dimension.
+
+        Args:
+            u: Nodal displacements added to the positions, e.g. to plot the
+                deformed configuration. Defaults to 0.0 (undeformed).
+            **kwargs: Forwarded to `plot2d` or `plot3d`, e.g.
+                `element_property` (per-element values coloring the bars),
+                `show_thickness` (line widths from cross-sectional areas), or
+                `node_labels` (annotate node indices, 2D only).
+        """
         if self.n_dim == 2:
             self.plot2d(u=u, **kwargs)
         elif self.n_dim == 3:
