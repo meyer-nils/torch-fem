@@ -9,6 +9,7 @@
 - CI now enforces linting (`flake8`), formatting (`black`, `isort`), and type checking (`basedpyright`) as dedicated jobs, and the tool configuration lives in `.flake8` and `pyproject.toml`.
 - A `notebook` pytest marker so the slow example-notebook tests can be split from the fast unit tests (`pytest -m "not notebook"`).
 - A "Models" section in the docs with API documentation for the core model classes (`Truss`, `Planar`, `Shell`, `Solid`, and heat variants) and new docstrings on these classes.
+- An examples gallery page in the docs linking all rendered example notebooks.
 
 ### Changed
 - Split the monolithic `materials.py` into a `torchfem.materials` subpackage (`base`, `elasticity`, `hyperelasticity`, `plasticity`, `damage`, `conductivity`) mirroring the documentation structure. All material classes remain importable from `torchfem.materials`, so existing imports are unaffected.
@@ -19,6 +20,7 @@
 - Declared `numpy` as an explicit dependency.
 - CI runs the fast unit tests across Python 3.10–3.13 and the notebook tests once, instead of executing every notebook on all four versions.
 - Modernize PyPI publishing workflow.
+- Restructured the README.
 - Complete the theory page in the docs.
 
 ### Fixed

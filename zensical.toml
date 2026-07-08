@@ -13,6 +13,7 @@ nav = [
   { "Installation" = "installation.md" },
   { "Getting Started" = "getting_started.md" },
   { "Differentiability" = "differentiability.md" },
+  { "Examples" = "examples.md" },
   { "Theory" = "theory.md" },
   { "Performance" = "performance.md" },
   { "Publications" = "publications.md" },
