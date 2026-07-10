@@ -1,7 +1,8 @@
-"""Run the cube benchmark and save results to benchmarks/results/<label>.json.
+"""Run a benchmark problem and save results to benchmarks/results/<label>.json.
 
 Usage:
-    python benchmarks/run.py [-N 10 20 ...] [-device cpu|cuda] [-order 1|2]
+    python benchmarks/run.py [-problem cube|thermal] [-N 10 20 ...]
+                             [-device cpu|cuda] [-order 1|2]
                              [--label NAME] [--hardware DESC]
 """
 
@@ -15,21 +16,40 @@ import scipy
 import torch
 from utils import profile_and_capture_cpu, profile_and_capture_gpu
 
+PROBLEMS = {
+    "cube": {
+        "script": "cubes.py",
+        "id": "cube_hexa_extension",
+        "default_N": [10, 20, 30, 40, 50, 60, 70, 80],
+        "dofs": lambda N: 3 * N**3,
+    },
+    "thermal": {
+        "script": "thermal.py",
+        "id": "thermal_slab_simp",
+        "default_N": [16, 32, 64, 128, 256, 512, 1024],
+        "dofs": lambda N: (N + 1) * (N // 2 + 1) * 2,
+    },
+}
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run cube benchmark and save JSON results."
+        description="Run a benchmark problem and save JSON results."
     )
-    parser.add_argument(
-        "-N", type=int, nargs="+", default=[10, 20, 30, 40, 50, 60, 70, 80]
-    )
+    parser.add_argument("-problem", type=str, default="cube", choices=PROBLEMS)
+    parser.add_argument("-N", type=int, nargs="+", default=None)
     parser.add_argument("-device", type=str, default="cpu")
     parser.add_argument("-order", type=int, default=1)
     parser.add_argument("--label", type=str, default=None)
     parser.add_argument("--hardware", type=str, default=None)
     args = parser.parse_args()
 
-    label = args.label or args.device
+    problem = PROBLEMS[args.problem]
+    if args.problem != "cube" and args.order != 1:
+        parser.error("-order is only supported for the cube problem.")
+    N_values = args.N or problem["default_N"]
+
+    label = args.label or f"{args.problem}_{args.device}"
 
     results_dir = Path(__file__).parent / "results"
     results_dir.mkdir(exist_ok=True)
@@ -49,32 +69,32 @@ def main():
 
     header_mem = " Peak VRAM" if use_cuda else "  Peak RAM"
     rows = []
-    print(f"Running benchmark on device={args.device}, order={args.order}")
-    print(f"|  N  |     DOFs |     Setup | FWD Solve | BWD Solve | {header_mem} |")
-    print("| --- | -------- | --------- | --------- | --------- | ---------- |")
+    print(f"Running {args.problem} benchmark on device={args.device}")
+    print(f"|    N |     DOFs |     Setup | FWD Solve | BWD Solve | {header_mem} |")
+    print("| ---- | -------- | --------- | --------- | --------- | ---------- |")
 
-    cubes = Path(__file__).parent / "cubes.py"
-    for N in args.N:
+    script = Path(__file__).parent / problem["script"]
+    for N in N_values:
         cmd = [
             sys.executable,
-            str(cubes),
+            str(script),
             "-N",
             str(N),
             "-device",
             args.device,
-            "-order",
-            str(args.order),
         ]
+        if args.problem == "cube":
+            cmd += ["-order", str(args.order)]
         profiler = profile_and_capture_gpu if use_cuda else profile_and_capture_cpu
         mem, clock = profiler(cmd)
         setup_t = clock["SETUP_DONE"] - clock["START"]
         fwd_t = clock["FWD_DONE"] - clock["SETUP_DONE"]
         bwd_t = clock["BWD_DONE"] - clock["FWD_DONE"]
         peak_mem = mem["peak_vram_mb"] if use_cuda else mem["peak_ram_mb"]
-        dofs = 3 * N**3
+        dofs = problem["dofs"](N)
         mem_str = f"{peak_mem:8.1f}MB"
         print(
-            f"| {N:3d} | {dofs:8d} | {setup_t:8.2f}s | {fwd_t:8.2f}s "
+            f"| {N:4d} | {dofs:8d} | {setup_t:8.2f}s | {fwd_t:8.2f}s "
             f"| {bwd_t:8.2f}s | {mem_str} |"
         )
         rows.append(
@@ -95,7 +115,7 @@ def main():
         "python": platform.python_version(),
         "libraries": libraries,
         "dtype": "float64",
-        "problem": "cube_hexa_extension",
+        "problem": problem["id"],
         "order": args.order,
         "rows": rows,
     }

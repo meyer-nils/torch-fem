@@ -4,22 +4,22 @@ icon: lucide/gauge
 
 # Performance
 
-This page documents the scaling behavior of *torch-fem* on a canonical benchmark problem and shows how to reproduce the results on your own hardware.
+This page documents the scaling behavior of *torch-fem* on two canonical benchmark problems and shows how to reproduce the results on your own hardware. Both benchmarks measure the same three phases per run:
 
-## Benchmark problem
+- **Setup** — mostly computing the sparsity pattern.
+- **Forward solve** — assembly and sparse linear system solve.
+- **Backward solve** — reverse-mode AD through the solve via `autograd`.
+
+Peak RAM is tracked by polling the child-process RSS every 50 ms; peak VRAM is sampled at the driver level.
+
+## Structural benchmark: cube extension
 
 A unit cube is subjected to one-dimensional extension:
 
 - Discretised with $N \times N \times N$ linear hexahedral (Hexa1) elements ($3N^3$ degrees of freedom).
 - Material: isotropic linear elasticity, $E = 1000$, $\nu = 0.3$.
 - Boundary conditions: fully clamped at $x = 0$; prescribed displacement $u_x = 0.1$ at $x = 1$.
-- Three timings are measured per run:
-    - **Setup** — mostly computing the sparsity pattern. 
-    - **Forward solve** — assembly and sparse linear system solve.
-    - **Backward solve** — reverse-mode AD of `u.sum()` w.r.t. nodal forces via `autograd`.
-- Peak RAM is tracked by polling the child-process RSS every 50 ms.
-
-## Results
+- Backward pass: gradient of `u.sum()` w.r.t. nodal forces.
 
 ![Solve time scaling (forward)](images/benchmark_timing.png)
 
@@ -27,6 +27,20 @@ A unit cube is subjected to one-dimensional extension:
 
 ![Peak RAM scaling](images/benchmark_ram.png)
 
+## Thermal benchmark: SIMP heated slab
+
+A quasi-2D heated slab with SIMP-penalized conductivity, mirroring the *thermal-mesh* problem of the [mosaic benchmark suite](https://github.com/pasteurlabs/mosaic), which compares differentiable solvers (including *torch-fem*) across frameworks:
+
+- Domain $[0,2] \times [0,1] \times [0,1]$, discretised with a single layer of $N \times N/2 \times 1$ linear hexahedral (Hexa1) elements — one temperature degree of freedom per node.
+- Material: isotropic conductivity with SIMP penalization $k(\rho) = k_\min + (k_\max - k_\min)\,\rho^3$, $k_\min = 10^{-3} k_\max$, at uniform density $\rho = 0.5$.
+- Boundary conditions: $T = 0$ at $x = 0$; uniform heat flux $Q = 1$ on the face at $x = 2$.
+- Backward pass: gradient of the thermal compliance $C = \oint_{\Gamma_N} q_n T \, d\Gamma$ w.r.t. the per-element densities $\rho$ — the adjoint sensitivity used in topology optimization.
+
+![Solve time scaling (forward)](images/benchmark_thermal_timing.png)
+
+![Solve time scaling (backward)](images/benchmark_thermal_backward.png)
+
+![Peak RAM scaling](images/benchmark_thermal_ram.png)
 
 ## Reproducing the results
 
@@ -35,11 +49,14 @@ The scripts live in `benchmarks/` at the repository root. For interactive memory
 **1. Run the benchmark**:
 
 ```bash
-# CPU (default)
+# Structural benchmark on CPU (default)
 python benchmarks/run.py
 
-# CUDA
+# Structural benchmark on CUDA
 python benchmarks/run.py -device cuda --label rtx5090_cuda --hardware "RTX 5090"
+
+# Thermal benchmark
+python benchmarks/run.py -problem thermal --label thermal_m1_pro_cpu --hardware "Apple M1 Pro"
 ```
 
 Results are written to `benchmarks/results/<label>.json`.
@@ -50,5 +67,5 @@ Results are written to `benchmarks/results/<label>.json`.
 python benchmarks/plot.py
 ```
 
-This reads all JSON files in `benchmarks/results/` and writes `docs/images/benchmark_timing.png`, `docs/images/benchmark_backward.png`, and `docs/images/benchmark_ram.png`.
+This reads all JSON files in `benchmarks/results/`, groups them by problem, and writes the timing, backward, and RAM plots to `docs/images/benchmark_*.png` (structural) and `docs/images/benchmark_thermal_*.png` (thermal).
 

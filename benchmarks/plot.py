@@ -9,24 +9,38 @@ import matplotlib.ticker as ticker
 RESULTS_DIR = Path(__file__).parent / "results"
 IMAGES_DIR = Path(__file__).parent.parent / "docs" / "images"
 
+# problem id -> (plot title, image filename prefix)
+PROBLEM_META = {
+    "cube_hexa_extension": ("Cube extension benchmark", "benchmark"),
+    "thermal_slab_simp": ("Thermal SIMP slab benchmark", "benchmark_thermal"),
+}
 
-def load_results() -> list[dict]:
+
+def load_results() -> dict[str, list[dict]]:
+    """Load all result JSONs, grouped by problem id."""
     files = sorted(RESULTS_DIR.glob("*.json"))
     if not files:
         raise FileNotFoundError(f"No JSON files found in {RESULTS_DIR}")
-    return [json.loads(f.read_text()) for f in files]
+    grouped: dict[str, list[dict]] = {}
+    for f in files:
+        ds = json.loads(f.read_text())
+        grouped.setdefault(ds["problem"], []).append(ds)
+    return grouped
 
 
 def _label(ds: dict) -> str:
     return f"{ds['hardware']} ({ds['device'].upper()})"
 
 
-def plot_timing(datasets: list[dict], out_path: Path, metric: str, title: str) -> None:
+def plot_timing(
+    datasets: list[dict], out_path: Path, metric: str, title: str, suite: str
+) -> None:
     cpu_ds = [ds for ds in datasets if ds["device"] != "cuda"]
     gpu_ds = [ds for ds in datasets if ds["device"] == "cuda"]
     colors = {_label(ds): f"C{i}" for i, ds in enumerate(datasets)}
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), squeeze=False)
+    ncols = int(bool(cpu_ds)) + int(bool(gpu_ds))
+    fig, axes = plt.subplots(1, ncols, figsize=(5 * ncols, 4), squeeze=False)
     axes = axes[0]
 
     if cpu_ds:
@@ -55,7 +69,7 @@ def plot_timing(datasets: list[dict], out_path: Path, metric: str, title: str) -
             )
         _setup_ax(ax, f"{title} (GPU)", "Time (s)")
 
-    fig.suptitle(f"Cube extension benchmark — {title.lower()}", fontweight="bold")
+    fig.suptitle(f"{suite} — {title.lower()}", fontweight="bold")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -73,12 +87,13 @@ def _setup_ax(ax, title: str, ylabel: str) -> None:
         ax.legend(fontsize=7)
 
 
-def plot_ram(datasets: list[dict], out_path: Path) -> None:
+def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
     cpu_ds = [ds for ds in datasets if ds["device"] != "cuda"]
     gpu_ds = [ds for ds in datasets if ds["device"] == "cuda"]
     colors = {_label(ds): f"C{i}" for i, ds in enumerate(datasets)}
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), squeeze=False)
+    ncols = int(bool(cpu_ds)) + int(bool(gpu_ds))
+    fig, axes = plt.subplots(1, ncols, figsize=(5 * ncols, 4), squeeze=False)
     axes = axes[0]
 
     if cpu_ds:
@@ -107,7 +122,7 @@ def plot_ram(datasets: list[dict], out_path: Path) -> None:
             ax.loglog(x, y, marker="o", label=lbl, color=colors[lbl])
         _setup_ax(ax, "Peak VRAM (GPU)", "Peak VRAM (MB)")
 
-    fig.suptitle("Cube extension benchmark — memory", fontweight="bold")
+    fig.suptitle(f"{suite} — memory", fontweight="bold")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -116,12 +131,23 @@ def plot_ram(datasets: list[dict], out_path: Path) -> None:
 
 def main():
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-    datasets = load_results()
-    plot_timing(datasets, IMAGES_DIR / "benchmark_timing.png", "fwd_s", "Forward solve")
-    plot_timing(
-        datasets, IMAGES_DIR / "benchmark_backward.png", "bwd_s", "Backward solve"
-    )
-    plot_ram(datasets, IMAGES_DIR / "benchmark_ram.png")
+    for problem, datasets in load_results().items():
+        suite, prefix = PROBLEM_META.get(problem, (problem, f"benchmark_{problem}"))
+        plot_timing(
+            datasets,
+            IMAGES_DIR / f"{prefix}_timing.png",
+            "fwd_s",
+            "Forward solve",
+            suite,
+        )
+        plot_timing(
+            datasets,
+            IMAGES_DIR / f"{prefix}_backward.png",
+            "bwd_s",
+            "Backward solve",
+            suite,
+        )
+        plot_ram(datasets, IMAGES_DIR / f"{prefix}_ram.png", suite)
 
 
 if __name__ == "__main__":
