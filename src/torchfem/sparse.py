@@ -248,6 +248,10 @@ def sparse_solve(
     if device is not None:
         A = A.to(device)
         b = b.to(device)
+        if B is not None:
+            B = B.to(device)
+        if x0 is not None:
+            x0 = x0.to(device)
 
     # Make default solver choice based on shape and available backends
     if method is None:
