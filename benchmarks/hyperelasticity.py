@@ -60,7 +60,10 @@ def setup(N):
 
     def forward():
         _, result["f"], *_ = box.solve(
-            increments=increments, nlgeom=True, differentiable_parameters=params
+            increments=increments,
+            nlgeom=True,
+            differentiable_parameters=params,
+            method="cg",
         )
 
     def backward():
