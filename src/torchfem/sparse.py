@@ -312,7 +312,7 @@ def _solve_gpu(A, b, B, method, stol, M, shape, x0):
         # Jacobi preconditioner
         M = cupy_diags(1.0 / A_cp.diagonal())
         # Solve with conjugate gradients
-        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
+        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, rtol=stol, x0=x0_cp)
         if exit_code != 0:
             raise RuntimeError(f"CG failed with exit code {exit_code}")
 
