@@ -1,0 +1,37 @@
+{
+  "hardware": "RTX 4060Ti",
+  "device": "cuda",
+  "python": "3.12.12",
+  "libraries": "CuPy 13.6.0, CUDA 12.9",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 5,
+      "dofs": 375,
+      "setup_s": 0.1412,
+      "fwd_s": 10.3651,
+      "bwd_s": 2.531,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 110.0
+    },
+    {
+      "N": 9,
+      "dofs": 2187,
+      "setup_s": 0.1391,
+      "fwd_s": 17.5456,
+      "bwd_s": 4.5426,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 400.0
+    },
+    {
+      "N": 13,
+      "dofs": 6591,
+      "setup_s": 0.1431,
+      "fwd_s": 77.5791,
+      "bwd_s": 19.8278,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1300.0
+    }
+  ]
+}
