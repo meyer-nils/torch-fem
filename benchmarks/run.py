@@ -1,7 +1,7 @@
 """Run benchmark problems and save results to benchmarks/results/<problem>_<label>.json.
 
 Usage:
-    python benchmarks/run.py [-problem cube|thermal|all] [-N 10 20 ...]
+    python benchmarks/run.py [-problem cube|thermal|hyperelasticity|all] [-N 10 20 ...]
                              [-device cpu|cuda] [--label NAME] [--hardware DESC]
 """
 
@@ -15,12 +15,13 @@ import scipy
 import torch
 
 import cubes
+import hyperelasticity
 import thermal
 from utils import profile_and_capture_cpu, profile_and_capture_gpu
 
 # name -> problem module; each module defines a `PROBLEM` descriptor and is
 # runnable as the child process that solves one (N, device) case.
-PROBLEMS = {"cube": cubes, "thermal": thermal}
+PROBLEMS = {"cube": cubes, "thermal": thermal, "hyperelasticity": hyperelasticity}
 
 
 def run_problem(name: str, N_values: list[int], device: str) -> list[dict]:
