@@ -1,9 +1,8 @@
-"""Run a benchmark problem and save results to benchmarks/results/<label>.json.
+"""Run benchmark problems and save results to benchmarks/results/<problem>_<label>.json.
 
 Usage:
-    python benchmarks/run.py [-problem cube|thermal] [-N 10 20 ...]
-                             [-device cpu|cuda] [-order 1|2]
-                             [--label NAME] [--hardware DESC]
+    python benchmarks/run.py [-problem cube|thermal|all] [-N 10 20 ...]
+                             [-device cpu|cuda] [--label NAME] [--hardware DESC]
 """
 
 import argparse
@@ -14,84 +13,34 @@ from pathlib import Path
 
 import scipy
 import torch
+
+import cubes
+import thermal
 from utils import profile_and_capture_cpu, profile_and_capture_gpu
 
-PROBLEMS = {
-    "cube": {
-        "script": "cubes.py",
-        "id": "cube_hexa_extension",
-        "default_N": [10, 20, 30, 40, 50, 60, 70, 80],
-        "dofs": lambda N: 3 * N**3,
-    },
-    "thermal": {
-        "script": "thermal.py",
-        "id": "thermal_slab_simp",
-        "default_N": [16, 32, 64, 128, 256, 512, 1024],
-        "dofs": lambda N: (N + 1) * (N // 2 + 1) * 2,
-    },
-}
+# name -> problem module; each module defines a `PROBLEM` descriptor and is
+# runnable as the child process that solves one (N, device) case.
+PROBLEMS = {"cube": cubes, "thermal": thermal}
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run a benchmark problem and save JSON results."
-    )
-    parser.add_argument("-problem", type=str, default="cube", choices=PROBLEMS)
-    parser.add_argument("-N", type=int, nargs="+", default=None)
-    parser.add_argument("-device", type=str, default="cpu")
-    parser.add_argument("-order", type=int, default=1)
-    parser.add_argument("--label", type=str, default=None)
-    parser.add_argument("--hardware", type=str, default=None)
-    args = parser.parse_args()
-
-    problem = PROBLEMS[args.problem]
-    if args.problem != "cube" and args.order != 1:
-        parser.error("-order is only supported for the cube problem.")
-    N_values = args.N or problem["default_N"]
-
-    label = args.label or f"{args.problem}_{args.device}"
-
-    results_dir = Path(__file__).parent / "results"
-    results_dir.mkdir(exist_ok=True)
-    out_path = results_dir / f"{label}.json"
-
-    hardware = args.hardware or platform.processor() or platform.machine()
-
-    use_cuda = args.device == "cuda"
-    if use_cuda:
-        import cupy
-
-        cuda_ver = cupy.cuda.runtime.runtimeGetVersion()
-        cuda_str = f"{cuda_ver // 1000}.{cuda_ver % 1000 // 10}"
-        libraries = f"CuPy {cupy.__version__}, CUDA {cuda_str}"
-    else:
-        libraries = f"SciPy {scipy.__version__}, PyTorch {torch.__version__}"
-
+def run_problem(name: str, N_values: list[int], device: str) -> list[dict]:
+    use_cuda = device == "cuda"
+    script = PROBLEMS[name].__file__
     header_mem = " Peak VRAM" if use_cuda else "  Peak RAM"
     rows = []
-    print(f"Running {args.problem} benchmark on device={args.device}")
+    print(f"Running {name} benchmark on device={device}")
     print(f"|    N |     DOFs |     Setup | FWD Solve | BWD Solve | {header_mem} |")
     print("| ---- | -------- | --------- | --------- | --------- | ---------- |")
 
-    script = Path(__file__).parent / problem["script"]
     for N in N_values:
-        cmd = [
-            sys.executable,
-            str(script),
-            "-N",
-            str(N),
-            "-device",
-            args.device,
-        ]
-        if args.problem == "cube":
-            cmd += ["-order", str(args.order)]
+        cmd = [sys.executable, script, "-N", str(N), "-device", device]
         profiler = profile_and_capture_gpu if use_cuda else profile_and_capture_cpu
-        mem, clock = profiler(cmd)
-        setup_t = clock["SETUP_DONE"] - clock["START"]
-        fwd_t = clock["FWD_DONE"] - clock["SETUP_DONE"]
-        bwd_t = clock["BWD_DONE"] - clock["FWD_DONE"]
+        mem, tags = profiler(cmd)
+        dofs = int(tags["DOFS"])
+        setup_t = tags["SETUP_DONE"] - tags["START"]
+        fwd_t = tags["FWD_DONE"] - tags["SETUP_DONE"]
+        bwd_t = tags["BWD_DONE"] - tags["FWD_DONE"]
         peak_mem = mem["peak_vram_mb"] if use_cuda else mem["peak_ram_mb"]
-        dofs = problem["dofs"](N)
         mem_str = f"{peak_mem:8.1f}MB"
         print(
             f"| {N:4d} | {dofs:8d} | {setup_t:8.2f}s | {fwd_t:8.2f}s "
@@ -104,26 +53,61 @@ def main():
                 "setup_s": round(setup_t, 4),
                 "fwd_s": round(fwd_t, 4),
                 "bwd_s": round(bwd_t, 4),
-                "peak_ram_mb": round(mem["peak_ram_mb"], 1) if not use_cuda else None,
+                "peak_ram_mb": round(peak_mem, 1) if not use_cuda else None,
                 "peak_vram_mb": round(peak_mem, 1) if use_cuda else None,
             }
         )
+    return rows
 
-    payload = {
-        "hardware": hardware,
-        "device": args.device,
-        "python": platform.python_version(),
-        "libraries": libraries,
-        "dtype": "float64",
-        "problem": problem["id"],
-        "order": args.order,
-        "rows": rows,
-    }
 
-    with open(out_path, "w") as f:
-        json.dump(payload, f, indent=2)
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run benchmark problems and save JSON results."
+    )
+    parser.add_argument("-problem", type=str, default="cube", choices=[*PROBLEMS, "all"])
+    parser.add_argument("-N", type=int, nargs="+", default=None)
+    parser.add_argument("-device", type=str, default="cpu")
+    parser.add_argument("--label", type=str, default=None)
+    parser.add_argument("--hardware", type=str, default=None)
+    args = parser.parse_args()
 
-    print(f"\nResults written to {out_path}")
+    if args.problem == "all" and args.N is not None:
+        parser.error("-N cannot be combined with '-problem all'.")
+    names = list(PROBLEMS) if args.problem == "all" else [args.problem]
+
+    label = args.label or args.device
+    hardware = args.hardware or platform.processor() or platform.machine()
+
+    use_cuda = args.device == "cuda"
+    if use_cuda:
+        import cupy
+
+        cuda_ver = cupy.cuda.runtime.runtimeGetVersion()
+        cuda_str = f"{cuda_ver // 1000}.{cuda_ver % 1000 // 10}"
+        libraries = f"CuPy {cupy.__version__}, CUDA {cuda_str}"
+    else:
+        libraries = f"SciPy {scipy.__version__}, PyTorch {torch.__version__}"
+
+    results_dir = Path(__file__).parent / "results"
+    results_dir.mkdir(exist_ok=True)
+
+    for name in names:
+        problem = PROBLEMS[name].PROBLEM
+        N_values = args.N or problem.default_N
+        out_path = results_dir / f"{name}_{label}.json"
+        rows = run_problem(name, N_values, args.device)
+        payload = {
+            "hardware": hardware,
+            "device": args.device,
+            "python": platform.python_version(),
+            "libraries": libraries,
+            "dtype": "float64",
+            "problem": problem.id,
+            "rows": rows,
+        }
+        with open(out_path, "w") as f:
+            json.dump(payload, f, indent=2)
+        print(f"\nResults written to {out_path}\n")
 
 
 if __name__ == "__main__":

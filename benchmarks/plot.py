@@ -5,14 +5,15 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from run import PROBLEMS
 
 RESULTS_DIR = Path(__file__).parent / "results"
 IMAGES_DIR = Path(__file__).parent.parent / "docs" / "images"
 
 # problem id -> (plot title, image filename prefix)
 PROBLEM_META = {
-    "cube_hexa_extension": ("Cube extension benchmark", "benchmark"),
-    "thermal_slab_simp": ("Thermal SIMP slab benchmark", "benchmark_thermal"),
+    mod.PROBLEM.id: (mod.PROBLEM.title, mod.PROBLEM.plot_prefix)
+    for mod in PROBLEMS.values()
 }
 
 

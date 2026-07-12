@@ -56,10 +56,13 @@ python benchmarks/run.py
 python benchmarks/run.py -device cuda --label rtx5090_cuda --hardware "RTX 5090"
 
 # Thermal benchmark
-python benchmarks/run.py -problem thermal --label thermal_m1_pro_cpu --hardware "Apple M1 Pro"
+python benchmarks/run.py -problem thermal --label m1_pro_cpu --hardware "Apple M1 Pro"
+
+# All benchmarks in one invocation
+python benchmarks/run.py -problem all -device cuda --label rtx5090_cuda --hardware "RTX 5090"
 ```
 
-Results are written to `benchmarks/results/<label>.json`.
+The label identifies the machine; results are written to `benchmarks/results/<problem>_<label>.json`.
 
 **2. Regenerate the plots**:
 

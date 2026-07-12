@@ -1,14 +1,9 @@
-import argparse
-import time
-
 import torch
 
 from torchfem import SolidHeat
 from torchfem.materials import IsotropicConductivity3D
 from torchfem.mesh import cube_hexa
-from utils import VramMonitor
-
-torch.set_default_dtype(torch.float64)
+from utils import Case, Problem, run_case
 
 # Quasi-2D heated slab with SIMP-penalized conductivity, following the
 # "thermal-mesh" benchmark in pasteurlabs/mosaic: a single HEX8 layer on
@@ -51,39 +46,28 @@ def get_slab(N):
     return model, rho
 
 
+def setup(N):
+    model, rho = get_slab(N)
+    result = {}
+
+    def forward():
+        result["u"], *_ = model.solve(differentiable_parameters=rho)
+
+    def backward():
+        # Thermal compliance w.r.t. SIMP densities
+        compliance = torch.inner(model.heat_flux.ravel(), result["u"].ravel())
+        compliance.backward()
+
+    return Case(dofs=model.n_nod, forward=forward, backward=backward)
+
+
+PROBLEM = Problem(
+    id="thermal_slab_simp",
+    title="Thermal SIMP slab benchmark",
+    plot_prefix="benchmark_thermal",
+    default_N=[16, 32, 64, 128, 256, 512, 1024],
+    setup=setup,
+)
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Solve the thermal slab problem.")
-    parser.add_argument(
-        "-N", type=int, help="Elements along x (ny = N/2, nz = 1)", default=16
-    )
-    parser.add_argument("-device", type=str, help="Torch default device", default="cpu")
-    args = parser.parse_args()
-
-    torch.set_default_device(args.device)
-
-    # Sample driver-level VRAM (cuda only) around all problem-specific work.
-    monitor = VramMonitor() if args.device == "cuda" else None
-    if monitor is not None:
-        monitor.start()
-
-    # Start timing
-    print(f"START:{time.time()}")
-
-    # Setup
-    model, rho = get_slab(args.N)
-    print(f"SETUP_DONE:{time.time()}")
-
-    # Forward pass
-    u, f, flux, grad, state = model.solve(differentiable_parameters=rho)
-    print(f"FWD_DONE:{time.time()}")
-
-    # Backward pass: thermal compliance w.r.t. SIMP densities
-    compliance = torch.inner(model.heat_flux.ravel(), u.ravel())
-    compliance.backward()
-    print(f"BWD_DONE:{time.time()}")
-
-    # Emit memory diagnostics
-    if monitor is not None:
-        monitor.stop()
-        for tag, val in monitor.report().items():
-            print(f"{tag}:{val}")
+    run_case(PROBLEM)
