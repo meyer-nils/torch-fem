@@ -4,7 +4,7 @@ icon: lucide/gauge
 
 # Performance
 
-This page documents the scaling behavior of *torch-fem* on two canonical benchmark problems and shows how to reproduce the results on your own hardware. Both benchmarks measure the same three phases per run:
+This page documents the scaling behavior of *torch-fem* on canonical benchmark problems and shows how to reproduce the results on your own hardware. All benchmarks measure the same three phases per run:
 
 - **Setup** — mostly computing the sparsity pattern.
 - **Forward solve** — assembly and sparse linear system solve.
@@ -42,6 +42,24 @@ A quasi-2D heated slab with SIMP-penalized conductivity, mirroring the *thermal-
 
 ![Peak RAM scaling](images/benchmark_thermal_ram.png)
 
+## Hyperelastic benchmark: Neo-Hookean large stretch
+
+A unit cube is stretched to twenty times its original length, mirroring the [large stretch example](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/solid/large_stretch.ipynb):
+
+- Discretised with $(N-1) \times (N-1) \times (N-1)$ linear hexahedral (Hexa1) elements ($3N^3$ degrees of freedom, $N$ odd).
+- Material: Neo-Hookean strain energy $\psi(\mathbf{C}) = \frac{\mu}{2}(\textrm{tr}(\mathbf{C}) - 3) - \mu \ln J + \frac{\lambda}{2} (\ln J)^2$ with $E = 1000$, $\nu = 0.3$.
+- Boundary conditions: $u_x = 0$ at $x = 0$; prescribed displacement $u_x = 19$ at $x = 1$ (stretch $\lambda = 20$); symmetry constraints on the center planes.
+- Load applied in 21 increments that are geometric in the stretch, with full Newton iterations (`nlgeom=True`) per increment.
+- Backward pass: gradient of the total reaction force w.r.t. the Lamé parameters $(\mu, \lambda)$ — the adjoint used in material parameter calibration.
+
+The forward solution matches the analytical uniaxial Neo-Hookean response.
+
+![Solve time scaling (forward)](images/benchmark_hyperelasticity_timing.png)
+
+![Solve time scaling (backward)](images/benchmark_hyperelasticity_backward.png)
+
+![Peak RAM scaling](images/benchmark_hyperelasticity_ram.png)
+
 ## Reproducing the results
 
 The scripts live in `benchmarks/` at the repository root. For interactive memory profiling and cProfile / torch.profiler analysis, see the notebook at `benchmarks/cubes.ipynb`.
@@ -49,17 +67,15 @@ The scripts live in `benchmarks/` at the repository root. For interactive memory
 **1. Run the benchmark**:
 
 ```bash
-# Structural benchmark on CPU (default)
+# All benchmarks on CPU (default)
 python benchmarks/run.py
 
 # Structural benchmark on CUDA
-python benchmarks/run.py -device cuda --label rtx5090_cuda --hardware "RTX 5090"
+python benchmarks/run.py -problem cube -device cuda --label rtx5090_cuda --hardware "RTX 5090"
 
 # Thermal benchmark
 python benchmarks/run.py -problem thermal --label m1_pro_cpu --hardware "Apple M1 Pro"
 
-# All benchmarks in one invocation
-python benchmarks/run.py -problem all -device cuda --label rtx5090_cuda --hardware "RTX 5090"
 ```
 
 The label identifies the machine; results are written to `benchmarks/results/<problem>_<label>.json`.

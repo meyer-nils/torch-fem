@@ -11,12 +11,11 @@ import platform
 import sys
 from pathlib import Path
 
-import scipy
-import torch
-
 import cubes
 import hyperelasticity
+import scipy
 import thermal
+import torch
 from utils import profile_and_capture_cpu, profile_and_capture_gpu
 
 # name -> problem module; each module defines a `PROBLEM` descriptor and is
@@ -65,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Run benchmark problems and save JSON results."
     )
-    parser.add_argument("-problem", type=str, default="cube", choices=[*PROBLEMS, "all"])
+    parser.add_argument("-problem", type=str, default="all", choices=[*PROBLEMS, "all"])
     parser.add_argument("-N", type=int, nargs="+", default=None)
     parser.add_argument("-device", type=str, default="cpu")
     parser.add_argument("--label", type=str, default=None)
