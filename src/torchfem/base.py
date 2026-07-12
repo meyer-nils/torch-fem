@@ -497,25 +497,11 @@ class FEM(ABC):
         # Initialize field variable increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
-        # Incremental loading
-        for n in range(1, N):
-            if verbose:
-                print(f"Starting increment {n} ...")
-
-            # Increment size
-            inc = increments[n] - increments[n - 1]
-
-            # Load increment
-            F_ext = increments[n] * self._neumann.ravel()
-            DU = inc * self._dirichlet.ravel()
-            de0 = inc * self._external_gradient
-            u_prev = u[n - 1].detach()
-            grad_prev = grad[n - 1].detach()
-            flux_prev = flux[n - 1].detach()
-            state_prev = state[n - 1].detach()
-
-            # Residual for Newton-Raphson iterations
-            def eval_residual(du, i):
+        def make_eval_residual(F_ext, DU, de0):
+            # Bind this increment's loads at definition time. A plain closure
+            # over the loop variables would late-bind them, so the adjoint
+            # backward replay would see the last increment's loads.
+            def eval_residual(du, i, u_prev, grad_prev, flux_prev, state_prev):
                 # Enforce Dirichlet BCs on increment
                 du_bc = du.clone()
                 du_bc[con] = DU[con]
@@ -537,32 +523,43 @@ class FEM(ABC):
                     self.K = self.assemble_matrix(k, con)
                 F_int = self.assemble_rhs(f_i)
 
-                # Compute baseline force from previous stress (du=0) to
-                # stop gradient of the parameter-dependent scaling of the
-                # accumulated stress.  This ensures dR/dp only reflects
-                # the incremental stiffness contribution. This is only needed
-                # during the adjoint backward replay (where du requires grad),
-                # not during forward Newton iterations.
-                if track_parameter_gradients and du.requires_grad:
-                    _, f_base, _, _, _ = self.integrate_material(
-                        u_prev,
-                        grad_prev,
-                        flux_prev,
-                        state_prev,
-                        torch.zeros_like(du_bc),
-                        torch.zeros_like(de0),
-                        i,
-                        nlgeom,
-                        compute_stiffness=False,
-                    )
-                    F_int_base = self.assemble_rhs(f_base)
-                    F_int = (F_int - F_int_base) + F_int_base.detach()
-
                 # Compute residual
                 res = F_int - F_ext
                 res[con] = 0.0
 
                 return res, self.K
+
+            return eval_residual
+
+        # Incremental loading
+        for n in range(1, N):
+            if verbose:
+                print(f"Starting increment {n} ...")
+
+            # Increment size
+            inc = increments[n] - increments[n - 1]
+
+            # Load increment
+            F_ext = increments[n] * self._neumann.ravel()
+            DU = inc * self._dirichlet.ravel()
+            de0 = inc * self._external_gradient
+
+            # Previous state passed to the Newton solver. The adjoint backward
+            # differentiates the residual w.r.t. this state, which chains
+            # sensitivities across increments. Clones are required when
+            # tracking gradients, because the solver saves these tensors for
+            # backward while u/grad/flux/state are updated in place by
+            # subsequent increments.
+            if track_parameter_gradients:
+                u_prev = u[n - 1].clone()
+                grad_prev = grad[n - 1].clone()
+                flux_prev = flux[n - 1].clone()
+                state_prev = state[n - 1].clone()
+            else:
+                u_prev = u[n - 1].detach()
+                grad_prev = grad[n - 1].detach()
+                flux_prev = flux[n - 1].detach()
+                state_prev = state[n - 1].detach()
 
             # Solve for increment using Newton-Raphson method
             if use_cached_solve:
@@ -571,8 +568,8 @@ class FEM(ABC):
                 cached_solve = CachedSolve()
 
             du = newton_solve(
-                eval_residual,
-                du,
+                make_eval_residual(F_ext, DU, de0),
+                du.detach(),
                 B,
                 max_iter,
                 rtol,
@@ -583,6 +580,10 @@ class FEM(ABC):
                 device,
                 cached_solve,
                 use_cached_solve,
+                u_prev,
+                grad_prev,
+                flux_prev,
+                state_prev,
                 *differentiable_parameters,
             )
 
