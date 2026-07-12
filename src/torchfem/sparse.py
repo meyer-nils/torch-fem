@@ -524,7 +524,7 @@ class NewtonRaphsonAdjoint(Function):
             p.detach().requires_grad_(True)
             for p in (u_prev, grad_prev, flux_prev, state_prev)
         )
-        with torch.enable_grad():
+        with torch.enable_grad(), torch.device(du_local.device):
             residual, _ = eval_residual(du_local, converged_iter, *prev_local)
 
         grad_inputs = (du_local, *prev_local, *parameters)
