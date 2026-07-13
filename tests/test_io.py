@@ -1,9 +1,8 @@
 import tempfile
 from pathlib import Path
 
-import torch
-
 import pytest
+import torch
 
 from torchfem import Planar, Solid
 from torchfem.io import (
