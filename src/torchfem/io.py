@@ -81,3 +81,31 @@ def import_mesh(
             .to(device)
         )
         return Planar(nodes, elements, material, thickness=thickness)
+
+
+def import_shell(
+    filename: PathLike, material: Material, thickness: float = 1.0
+) -> Shell:
+    """Import a mesh as a `Shell`. Raises `TypeError` for other mesh types."""
+    mesh = import_mesh(filename, material, thickness)
+    if not isinstance(mesh, Shell):
+        raise TypeError(f"{filename} is not a shell mesh, but {type(mesh).__name__}.")
+    return mesh
+
+
+def import_planar(
+    filename: PathLike, material: Material, thickness: float = 1.0
+) -> Planar:
+    """Import a mesh as `Planar`. Raises `TypeError` for other mesh types."""
+    mesh = import_mesh(filename, material, thickness)
+    if not isinstance(mesh, Planar):
+        raise TypeError(f"{filename} is not a planar mesh, but {type(mesh).__name__}.")
+    return mesh
+
+
+def import_solid(filename: PathLike, material: Material) -> Solid:
+    """Import a mesh as a `Solid`. Raises `TypeError` for other mesh types."""
+    mesh = import_mesh(filename, material)
+    if not isinstance(mesh, Solid):
+        raise TypeError(f"{filename} is not a solid mesh, but {type(mesh).__name__}.")
+    return mesh
