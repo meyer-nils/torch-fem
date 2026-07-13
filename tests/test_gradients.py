@@ -156,3 +156,21 @@ def test_gradients_planar_heat_topology_parameter_autograd():
     sensitivity = torch.autograd.grad(compliance, rho_nodes)[0]
 
     assert torch.isfinite(sensitivity).all()
+
+
+def test_solve_outputs_detached_without_differentiable_parameters():
+    # Guard the differentiable_parameters trap: if a design variable requires
+    # grad but is not declared to solve(), the adjoint cannot account for it.
+    # The outputs must then be fully detached, so a forgotten declaration
+    # fails loudly (no grad) instead of returning a silently wrong gradient.
+    cantilever = _build_minimal_planar_cantilever()
+    rho = torch.ones(cantilever.n_elem, requires_grad=True)
+    cantilever.thickness = rho**3
+
+    u, f, sigma, F, alpha = cantilever.solve()
+
+    for out in (u, f, sigma, F, alpha):
+        assert not out.requires_grad
+
+    compliance = torch.inner(f.ravel(), u.ravel())
+    assert not compliance.requires_grad

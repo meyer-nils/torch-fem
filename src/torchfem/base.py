@@ -606,6 +606,8 @@ class FEM(ABC):
             du = du_eval
 
         # Create output views without mutating tensors captured by eval_residual.
+        out_u = u
+        out_f = f
         out_flux = flux
         out_grad = grad
         out_state = state
@@ -619,16 +621,18 @@ class FEM(ABC):
         out_grad = out_grad.squeeze()
 
         if not track_parameter_gradients:
+            out_u = out_u.detach()
+            out_f = out_f.detach()
             out_flux = out_flux.detach()
             out_grad = out_grad.detach()
             out_state = out_state.detach()
 
         if return_intermediate:
             # Return all intermediate values
-            return u, f, out_flux, out_grad, out_state
+            return out_u, out_f, out_flux, out_grad, out_state
         else:
             # Return only the final values
-            return u[-1], f[-1], out_flux[-1], out_grad[-1], out_state[-1]
+            return out_u[-1], out_f[-1], out_flux[-1], out_grad[-1], out_state[-1]
 
 
 class Mechanics(FEM, ABC):
