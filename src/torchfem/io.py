@@ -66,8 +66,10 @@ def import_mesh(
     device = torch.get_default_device()
     dtype = torch.get_default_dtype()
 
-    if not np.allclose(mesh.points[:, 2], np.zeros_like(mesh.points[:, 2])):
-        nodes = torch.from_numpy(mesh.points.astype(np.float32)).type(dtype).to(device)
+    points = mesh.points.astype(np.float64)
+
+    if not np.allclose(points[:, 2], np.zeros_like(points[:, 2])):
+        nodes = torch.tensor(points, dtype=dtype, device=device)
         if etype in ["triangle"]:
             return Shell(nodes, elements, material, thickness=thickness)
         elif etype in ["tetra", "tetra10", "hexahedron", "hexahedron20"]:
@@ -75,11 +77,7 @@ def import_mesh(
         else:
             raise Exception(f"Cannot interpret element type {etype}.")
     else:
-        nodes = (
-            torch.from_numpy(mesh.points.astype(np.float32)[:, 0:2])
-            .type(dtype)
-            .to(device)
-        )
+        nodes = torch.tensor(points[:, 0:2], dtype=dtype, device=device)
         return Planar(nodes, elements, material, thickness=thickness)
 
 
