@@ -62,7 +62,7 @@ The forward solution matches the analytical uniaxial Neo-Hookean response.
 
 ## Reproducing the results
 
-The scripts live in `benchmarks/` at the repository root. For interactive memory profiling and cProfile / torch.profiler analysis, see the notebook at `benchmarks/cubes.ipynb`.
+The scripts live in `benchmarks/` at the repository root.
 
 **1. Run the benchmark**:
 
