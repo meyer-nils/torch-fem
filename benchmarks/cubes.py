@@ -1,9 +1,9 @@
 import torch
+from utils import Case, Problem, run_case
 
 from torchfem import Solid
 from torchfem.materials import IsotropicElasticity3D
 from torchfem.mesh import cube_hexa
-from utils import Case, Problem, run_case
 
 
 def get_cube(N):

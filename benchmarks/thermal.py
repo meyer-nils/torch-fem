@@ -1,9 +1,9 @@
 import torch
+from utils import Case, Problem, run_case
 
 from torchfem import SolidHeat
 from torchfem.materials import IsotropicConductivity3D
 from torchfem.mesh import cube_hexa
-from utils import Case, Problem, run_case
 
 # Quasi-2D heated slab with SIMP-penalized conductivity, following the
 # "thermal-mesh" benchmark in pasteurlabs/mosaic: a single HEX8 layer on

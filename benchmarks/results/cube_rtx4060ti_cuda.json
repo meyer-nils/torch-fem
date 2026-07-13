@@ -1,5 +1,5 @@
 {
-  "hardware": "RTX 4060Ti",
+  "hardware": "RTX 4060 Ti",
   "device": "cuda",
   "python": "3.12.12",
   "libraries": "CuPy 13.6.0, CUDA 12.9",

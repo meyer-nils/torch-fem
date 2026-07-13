@@ -48,7 +48,9 @@ class Problem:
 def run_case(problem: Problem) -> None:
     """Child-process entry point: solve one case and print tagged phases."""
     parser = argparse.ArgumentParser(description=f"Solve the {problem.id} problem.")
-    parser.add_argument("-N", type=int, help="Problem size", default=problem.default_N[0])
+    parser.add_argument(
+        "-N", type=int, help="Problem size", default=problem.default_N[0]
+    )
     parser.add_argument("-device", type=str, help="Torch default device", default="cpu")
     args = parser.parse_args()
 
