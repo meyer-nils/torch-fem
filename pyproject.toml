@@ -9,7 +9,18 @@ authors = [{ name = "Nils Meyer", email = "nils.meyer@uni-a.de" }]
 description = "GPU accelerated differentiable finite elements for solid mechanics with PyTorch."
 readme = "README.md"
 license = {file = "LICENSE"}
-keywords = ["finite elements", "automatic differentiation"]
+keywords = [
+    "finite elements",
+    "automatic differentiation",
+    "scientific computing",
+    "differentiable programming",
+    "solid mechanics",
+    "differentiable physics",
+    "sensitivity analysis",
+    "topology optimization",
+    "shape optimization",
+    "inverse problems",
+]
 requires-python = ">=3.10"
 classifiers = [
     'Programming Language :: Python',
@@ -18,6 +29,7 @@ classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
 ]
 dependencies = [
     "matplotlib",
