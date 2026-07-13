@@ -6,13 +6,12 @@ from torch import Tensor
 from torchfem.rotations import axis_rotation
 
 EPS = 1e-10
-torch.set_default_dtype(torch.float64)
 
 
 class SDF:
-    def __init__(self, center: Tensor = torch.zeros(3), scale: Tensor = torch.ones(3)):
-        self.center = center
-        self.transform = torch.diag(1 / scale)
+    def __init__(self, center: Tensor | None = None, scale: Tensor | None = None):
+        self.center = torch.zeros(3) if center is None else center
+        self.transform = torch.diag(1 / (torch.ones(3) if scale is None else scale))
 
     @abstractmethod
     def _f(self, points: Tensor) -> Tensor:
@@ -95,9 +94,11 @@ class Difference(Boolean):
 class Gyroid(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
-        scale: Tensor = 1 / (2 * torch.pi) * torch.ones(3),
+        center: Tensor | None = None,
+        scale: Tensor | None = None,
     ):
+        if scale is None:
+            scale = torch.full((3,), 1 / (2 * torch.pi))
         super().__init__(center, scale)
 
     def _f(self, points: Tensor) -> Tensor:
@@ -119,10 +120,12 @@ class Gyroid(SDF):
 class SchwarzP(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
-        scale: Tensor = 1 / (2 * torch.pi) * torch.ones(3),
+        center: Tensor | None = None,
+        scale: Tensor | None = None,
         c: float = 0.0,
     ):
+        if scale is None:
+            scale = torch.full((3,), 1 / (2 * torch.pi))
         super().__init__(center, scale)
         self.c = c
 
@@ -141,9 +144,11 @@ class SchwarzP(SDF):
 class Diamond(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
-        scale: Tensor = 1 / (2 * torch.pi) * torch.ones(3),
+        center: Tensor | None = None,
+        scale: Tensor | None = None,
     ):
+        if scale is None:
+            scale = torch.full((3,), 1 / (2 * torch.pi))
         super().__init__(center, scale)
 
     def _f(self, points: Tensor) -> Tensor:
@@ -181,9 +186,11 @@ class Diamond(SDF):
 class Lidinoid(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
-        scale: Tensor = 1 / (2 * torch.pi) * torch.ones(3),
+        center: Tensor | None = None,
+        scale: Tensor | None = None,
     ):
+        if scale is None:
+            scale = torch.full((3,), 1 / (2 * torch.pi))
         super().__init__(center, scale)
 
     def _f(self, points: Tensor) -> Tensor:
@@ -224,9 +231,11 @@ class Lidinoid(SDF):
 class SplitP(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
-        scale: Tensor = 1 / (2 * torch.pi) * torch.ones(3),
+        center: Tensor | None = None,
+        scale: Tensor | None = None,
     ):
+        if scale is None:
+            scale = torch.full((3,), 1 / (2 * torch.pi))
         super().__init__(center, scale)
 
     def _f(self, points: Tensor) -> Tensor:
@@ -285,9 +294,11 @@ class SplitP(SDF):
 class Neovius(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
-        scale: Tensor = 1 / (2 * torch.pi) * torch.ones(3),
+        center: Tensor | None = None,
+        scale: Tensor | None = None,
     ):
+        if scale is None:
+            scale = torch.full((3,), 1 / (2 * torch.pi))
         super().__init__(center, scale)
 
     def _f(self, points: Tensor) -> Tensor:
@@ -305,7 +316,7 @@ class Neovius(SDF):
 
 
 class Sphere(SDF):
-    def __init__(self, center: Tensor = torch.zeros(3), radius: float = 1.0):
+    def __init__(self, center: Tensor | None = None, radius: float = 1.0):
         super().__init__(center)
         self.radius = radius
 
@@ -324,7 +335,7 @@ class Sphere(SDF):
 class Torus(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
+        center: Tensor | None = None,
         radius: float = 1.0,
         tube_radius: float = 0.5,
     ):
@@ -347,9 +358,9 @@ class Torus(SDF):
 
 
 class Box(SDF):
-    def __init__(self, center: Tensor = torch.zeros(3), size: Tensor = torch.ones(3)):
+    def __init__(self, center: Tensor | None = None, size: Tensor | None = None):
         super().__init__(center)
-        self.size = size
+        self.size = torch.ones(3) if size is None else size
 
     def _f(self, points: Tensor) -> Tensor:
         x, y, z = self._to_xyz(points)
@@ -375,7 +386,7 @@ class Box(SDF):
 class Cylinder(SDF):
     def __init__(
         self,
-        center: Tensor = torch.zeros(3),
+        center: Tensor | None = None,
         radius: float = 1.0,
         height: float = 1.0,
     ):
@@ -399,10 +410,10 @@ class Cylinder(SDF):
 
 
 class Plane(SDF):
-    def __init__(
-        self, center: Tensor = torch.zeros(3), normal: Tensor = torch.tensor([0, 0, 1])
-    ):
+    def __init__(self, center: Tensor | None = None, normal: Tensor | None = None):
         super().__init__(center)
+        if normal is None:
+            normal = torch.tensor([0.0, 0.0, 1.0])
         self.normal = normal / torch.norm(normal)
 
     def _f(self, points: Tensor) -> Tensor:
