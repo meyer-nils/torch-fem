@@ -160,4 +160,6 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 -   [**Thermal topology optimization**](examples/optimization/solid/topology_thermal.html)
 
+-   [**Heat source recovery**](examples/optimization/solid/source_recovery_thermal.html)
+
 </div>

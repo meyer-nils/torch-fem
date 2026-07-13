@@ -1,5 +1,21 @@
 # Changelog 
 
+## Version 0.7.2 - July 13 2026
+
+### Added
+- Two new benchmark problems next to the cube extension: a thermal SIMP slab (mirroring the *thermal-mesh* problem of the mosaic benchmark suite) and a Neo-Hookean large-stretch cube. Both are documented with CPU/GPU results and plots on the performance docs page.
+- New example `optimization/solid/source_recovery_thermal.ipynb` recovering a heat source distribution via adjoint optimization, linked in the docs example gallery.
+- New cube benchmark results for Apple M1 Pro and RTX 5090.
+- Gradient regression tests for multi-increment solves: load-side gradients against a single-step solve, and nonlinear Neo-Hookean material parameter gradients against the analytical uniaxial solution.
+
+### Changed
+- Refactored `benchmarks/` into per-problem modules (`cubes.py`, `thermal.py`, `hyperelasticity.py`) sharing a problem interface in `utils.py`. `run.py` runs one or all problems and writes `results/<problem>_<label>.json`. The outdated `cubes.ipynb` is removed.
+- `newton_solve(...)` and its `eval_residual` callback now receive the previous increment's state (`u_prev`, `grad_prev`, `flux_prev`, `state_prev`) explicitly.
+
+### Fixed
+- Adjoint gradients of multi-increment solves were truncated to the last increment, because the residual closure late-bound the loop variables and the previous state was detached. Gradients now chain across increments and match single-step and analytical references.
+- Adapted to CuPy's rename of the CG tolerance argument from `tol` to `rtol`.
+
 ## Version 0.7.1 - July 8 2026
 
 ### Added

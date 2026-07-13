@@ -312,7 +312,7 @@ def _solve_gpu(A, b, B, method, stol, M, shape, x0):
         # Jacobi preconditioner
         M = cupy_diags(1.0 / A_cp.diagonal())
         # Solve with conjugate gradients
-        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
+        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, rtol=stol, x0=x0_cp)
         if exit_code != 0:
             raise RuntimeError(f"CG failed with exit code {exit_code}")
 
@@ -379,16 +379,18 @@ class NewtonRaphsonAdjoint(Function):
     """Custom autograd function for nonlinear Newton-Raphson solves.
 
     The forward pass performs Newton iterations on the residual callback
-    ``eval_residual(du, iter) -> (residual, tangent)`` and returns the
-    converged increment ``du``.
+    ``eval_residual(du, iter, u_prev, grad_prev, flux_prev, state_prev) ->
+    (residual, tangent)`` and returns the converged increment ``du``.
 
     In the backward pass, gradients are computed by an implicit adjoint
     relation at the converged state:
 
     1) Solve the adjoint linear system ``K^T lambda = grad_du``.
     2) Recompute the residual with a differentiable local state.
-    3) Differentiate residual with respect to the explicit parameter
-       tensors passed to ``newton_solve``.
+    3) Differentiate the residual with respect to the previous increment's
+       state (``u_prev``, ``grad_prev``, ``flux_prev``, ``state_prev``) and
+       the explicit parameter tensors passed to ``newton_solve``. The state
+       gradients let autograd chain sensitivities across load increments.
 
     This avoids differentiating through all Newton iterations.
 
@@ -411,6 +413,10 @@ class NewtonRaphsonAdjoint(Function):
         device: str | None = None,
         cached_solve=CachedSolve(),
         update_cache=False,
+        u_prev: Tensor | None = None,
+        grad_prev: Tensor | None = None,
+        flux_prev: Tensor | None = None,
+        state_prev: Tensor | None = None,
         *parameters: Tensor,
     ) -> Tensor:
         M = None
@@ -420,7 +426,7 @@ class NewtonRaphsonAdjoint(Function):
         for i in range(max_iter):
 
             # Evaluate residual, stiffness matrix, and internal forces
-            residual, K = eval_residual(du, i)
+            residual, K = eval_residual(du, i, u_prev, grad_prev, flux_prev, state_prev)
 
             # Compute residual norm
             res_norm = torch.linalg.norm(residual)
@@ -461,7 +467,9 @@ class NewtonRaphsonAdjoint(Function):
         if res_norm > rtol * res_norm0 and res_norm > atol:
             raise RuntimeError("Newton-Raphson iteration did not converge.")
 
-        ctx.save_for_backward(K, du, *parameters)
+        ctx.save_for_backward(
+            K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters
+        )
         ctx.B = B
         ctx.M = M
         ctx.stol = stol
@@ -479,7 +487,7 @@ class NewtonRaphsonAdjoint(Function):
     def backward(ctx, *grad_outputs):
         grad_du = grad_outputs[0]
 
-        K, du, *parameters = ctx.saved_tensors
+        K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters = ctx.saved_tensors
 
         B = ctx.B
         M = ctx.M
@@ -512,10 +520,14 @@ class NewtonRaphsonAdjoint(Function):
 
         # Recompute the residual with a differentiable local state.
         du_local = du.detach().requires_grad_(True)
-        with torch.enable_grad():
-            residual, _ = eval_residual(du_local, converged_iter)
+        prev_local = tuple(
+            p.detach().requires_grad_(True)
+            for p in (u_prev, grad_prev, flux_prev, state_prev)
+        )
+        with torch.enable_grad(), torch.device(du_local.device):
+            residual, _ = eval_residual(du_local, converged_iter, *prev_local)
 
-        grad_inputs = (du_local, *parameters)
+        grad_inputs = (du_local, *prev_local, *parameters)
         grads = torch.autograd.grad(
             residual,
             grad_inputs,
@@ -523,7 +535,8 @@ class NewtonRaphsonAdjoint(Function):
             allow_unused=True,
             retain_graph=True,
         )
-        grad_parameters = grads[1:]
+        grad_prev_state = grads[1:5]
+        grad_parameters = grads[5:]
 
         return (
             None,
@@ -538,6 +551,7 @@ class NewtonRaphsonAdjoint(Function):
             None,
             None,
             None,
+            *grad_prev_state,
             *grad_parameters,
         )
 
@@ -555,13 +569,17 @@ def newton_solve(
     device: str | None = None,
     cached_solve=CachedSolve(),
     update_cache=False,
+    u_prev: Tensor | None = None,
+    grad_prev: Tensor | None = None,
+    flux_prev: Tensor | None = None,
+    state_prev: Tensor | None = None,
     *parameters: Tensor,
 ) -> Tensor:
     """Solve a nonlinear residual equation with adjoint-safe Newton iterations.
 
     Args:
         eval_residual: Callback returning ``(residual, tangent)`` for the
-            current iterate and Newton iteration index.
+            current iterate, Newton iteration index, and previous state.
         du: Initial guess for the unknown increment.
         B: Null-space rigid-body basis for AMG preconditioning.
         max_iter: Maximum Newton iterations.
@@ -573,6 +591,11 @@ def newton_solve(
         device: Optional sparse backend device hint.
         cached_solve: Optional storage for warm-start vectors.
         update_cache: If True, updates cached vectors.
+        u_prev: Previous increment's field values. Receives residual gradients
+            in backward so sensitivities chain across increments.
+        grad_prev: Previous increment's gradient (e.g. deformation gradient).
+        flux_prev: Previous increment's flux (e.g. stress).
+        state_prev: Previous increment's internal state variables.
         *parameters: Explicit tensors that should receive gradients via the
             implicit adjoint backward.
 
@@ -592,6 +615,10 @@ def newton_solve(
         device,
         cached_solve,
         update_cache,
+        u_prev,
+        grad_prev,
+        flux_prev,
+        state_prev,
         *parameters,
     )  # type: ignore
     if du is None:

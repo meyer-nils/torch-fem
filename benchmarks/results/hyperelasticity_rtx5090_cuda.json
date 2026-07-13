@@ -1,0 +1,37 @@
+{
+  "hardware": "RTX 5090",
+  "device": "cuda",
+  "python": "3.13.12",
+  "libraries": "CuPy 14.1.1, CUDA 12.9",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 5,
+      "dofs": 375,
+      "setup_s": 0.1632,
+      "fwd_s": 8.5881,
+      "bwd_s": 2.367,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 190.0
+    },
+    {
+      "N": 9,
+      "dofs": 2187,
+      "setup_s": 0.1677,
+      "fwd_s": 10.3144,
+      "bwd_s": 3.121,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 430.0
+    },
+    {
+      "N": 13,
+      "dofs": 6591,
+      "setup_s": 0.2024,
+      "fwd_s": 14.7226,
+      "bwd_s": 4.1,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1078.0
+    }
+  ]
+}
