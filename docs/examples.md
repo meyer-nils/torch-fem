@@ -142,7 +142,7 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   [**Free-size optimization**](examples/optimization/shell/freesize.html)
+-   [**Pressure vessel free-size optimization**](examples/optimization/shell/pressure_vessel.html)
 
 -   [**Orientation optimization**](examples/optimization/shell/orientation.html)
 
