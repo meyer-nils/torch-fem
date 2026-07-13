@@ -158,3 +158,8 @@ def test_planar_orientation_optimization_notebook(tb):
 @testbook("examples/optimization/shell/orientation.ipynb", execute=True)
 def test_shell_orientation_optimization_notebook(tb):
     tb.execute()
+
+
+@testbook("examples/optimization/shell/pressure_vessel.ipynb", execute=True)
+def test_shell_pressure_vessel_optimization_notebook(tb):
+    tb.execute()
