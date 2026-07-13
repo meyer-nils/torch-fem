@@ -246,7 +246,7 @@ for _ in range(100):
 The 100 iterations take a couple of seconds on a laptop CPU. The compliance drops from about 10.1 to 2.0, i.e., the structure is roughly five times stiffer than the uniform design with the same amount of material, and we can plot the material distribution:
 
 ```py
-model.plot(element_property=rho.detach(), cmap="gray_r")
+model.plot(element_property=rho, cmap="gray_r")
 ```
 
 ![Optimized topology of the MBB beam](images/minimal_example_topopt.png)
