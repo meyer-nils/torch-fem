@@ -1,5 +1,23 @@
 # Changelog 
 
+## Version 0.7.3 - July 14 2026
+
+### Added
+- Typed mesh import wrappers `import_shell(...)`, `import_planar(...)`, and `import_solid(...)` in `io.py` that return the requested model type and raise `TypeError` when the file's element type does not match.
+- New shell size-optimization example `optimization/shell/pressure_vessel.ipynb` (replacing the old `freesize.ipynb`), linked in the docs example gallery and covered by the notebook tests.
+- A minimal topology-optimization walkthrough in the getting-started docs, alongside a rewritten planar `topology.ipynb` example.
+- Python 3.14 added to the CI test matrix and the PyPI classifiers, plus additional package keywords in `pyproject.toml`.
+- Regression test guarding the `differentiable_parameters` trap: `solve()` outputs are fully detached when a grad-requiring design variable is not declared.
+
+### Changed
+- `torchfem.sdfs` no longer calls `torch.set_default_dtype(torch.float64)` at import time. SDF constructors now default their tensor arguments to `None` and build them internally, so importing the module no longer mutates the global default dtype.
+- `import_mesh(...)` converts mesh points to native-byte-order `float64` before building node tensors (previously cast to `float32`), correctly importing legacy big-endian `.vtk` files and preserving coordinate precision.
+- `Shell.plot(...)` forwards `**kwargs` to the underlying PyVista `add_mesh` calls (defaulting to `show_edges=True`), so surface appearance is customizable.
+
+### Fixed
+- Forgetting to declare a differentiable argument in a `solve(...)` call now fails loudly: when parameter gradients are not tracked, all outputs are detached instead of silently returning wrong gradients.
+- Corrected the performance docs, which still referenced the removed `cubes.ipynb`, and a stale version reference in the publications docs.
+
 ## Version 0.7.2 - July 13 2026
 
 ### Added
