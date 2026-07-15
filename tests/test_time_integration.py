@@ -72,7 +72,9 @@ def test_time_integration_starts_from_equilibrium_when_output_starts_late():
     model = _build_heated_plate()
     delta_t = 0.5
 
-    full, *_ = model.time_integration(torch.arange(0.0, 10.0 + delta_t, delta_t), delta_t)
+    full, *_ = model.time_integration(
+        torch.arange(0.0, 10.0 + delta_t, delta_t), delta_t
+    )
     late, *_ = model.time_integration(torch.tensor([5.0, 10.0]), delta_t)
 
     # Integration always starts at t=0, even if t=0 is not requested as output.
