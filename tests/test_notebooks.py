@@ -135,6 +135,11 @@ def test_solid_modal_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/solid/thermal_transient.ipynb", execute=True)
+def test_solid_thermal_transient_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/optimization/planar/topology.ipynb", execute=True)
 def test_planar_topology_optimization_notebook(tb):
     tb.execute()
@@ -152,6 +157,15 @@ def test_planar_shape_optimization_notebook(tb):
 
 @testbook("examples/optimization/planar/orientation.ipynb", execute=True)
 def test_planar_orientation_optimization_notebook(tb):
+    tb.execute()
+
+
+@testbook(
+    "examples/optimization/planar/orientation_thermal_transient.ipynb",
+    execute=True,
+    timeout=180,
+)
+def test_planar_orientation_thermal_transient_optimization_notebook(tb):
     tb.execute()
 
 

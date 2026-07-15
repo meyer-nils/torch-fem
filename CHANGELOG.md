@@ -1,5 +1,20 @@
 # Changelog 
 
+## Version 0.7.4 - July 15 2026
+
+### Added
+- Regression tests for `time_integration(...)` in `tests/test_time_integration.py`.
+- Notebook tests for `basic/solid/thermal_transient.ipynb` and `optimization/planar/orientation_thermal_transient.ipynb`.
+
+### Changed
+- **Breaking:** `time_integration(...)` returns one result per requested `t_output` time. Previously `t_output` only set the end time and results came back per internal time step.
+- **Breaking:** Removed the `return_intermediate` argument of `time_integration(...)`. Results always carry a leading time axis of length `len(t_output)`; request the internal grid explicitly with `times = torch.arange(0.0, end_time + delta_t, delta_t)`, or index `[-1]` for the final state.
+- `time_integration(...)` subdivides each interval between output times into equal substeps of at most `delta_t`, replacing the `torch.arange(...)` and `unique()` merge. Output times are hit exactly, and a requested time close to an internal step no longer adds a spurious near-zero step.
+- `time_integration(...)` raises `ValueError` for empty, negative, or non-increasing `t_output`.
+
+### Fixed
+- `time_integration(...)` no longer drops the leading time axis of heat flux and temperature gradient when a single output time is requested.
+
 ## Version 0.7.3 - July 14 2026
 
 ### Added

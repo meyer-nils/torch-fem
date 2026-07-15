@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from functools import cached_property
@@ -1047,18 +1048,18 @@ class Heat(FEM, ABC):
         device: str | None = None,
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         aggregate_integration_points: bool = True,
-        return_intermediate: bool = False,
         use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Integrate the heat equation in time with implicit increments.
 
-        The routine first computes a consistent equilibrium state at the
-        initial time under the current boundary conditions, then advances the
-        solution over the requested output times.
+        Computes an equilibrium state at t=0 under the current boundary
+        conditions, then advances to each requested output time using internal
+        steps of at most `delta_t`.
 
         Args:
-            t_output: Requested output times.
+            t_output: Requested output times. Results are returned at exactly
+                these times.
             delta_t: Maximum internal time step.
             max_iter: Maximum Newton iterations per time step.
             verbose: If True, prints per-step Newton residuals.
@@ -1069,7 +1070,6 @@ class Heat(FEM, ABC):
             method: Linear solver backend name.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            return_intermediate: If True, returns all intermediate increments.
             use_cached_solve: If True, reuses cached linear solver data.
             differentiable_parameters: Explicit parameters that should receive
                 gradients through implicit solves. Accepts either a single
@@ -1077,12 +1077,21 @@ class Heat(FEM, ABC):
 
         Returns:
             Tuple of temperature, internal vector, heat flux, temperature
-            gradient, and material state. If return_intermediate is True, each
-            tensor includes a time-increment dimension as the leading axis.
+            gradient, and material state, each with a leading axis of length
+            `len(t_output)`.
 
         Raises:
+            ValueError: If `t_output` is empty, negative, or not increasing.
             RuntimeError: If Newton iterations do not converge for a time step.
         """
+
+        # Validate before self.constraints is modified below.
+        if t_output.numel() == 0:
+            raise ValueError("t_output must contain at least one time.")
+        if t_output.min() < 0.0:
+            raise ValueError("t_output must not contain negative times.")
+        if (t_output[1:] <= t_output[:-1]).any():
+            raise ValueError("t_output must be strictly increasing.")
 
         # initial step: we get heat fluxes and temperature gradients for initial
         # conditions enforce initial conditions as boundary conditions
@@ -1097,14 +1106,30 @@ class Heat(FEM, ABC):
             differentiable_parameters=differentiable_parameters,
         )
 
-        # assemble time_steps for evaluation
-        start_time = 0.0
-        end_time = t_output.max().item()
-        t_eval = torch.clamp(t_output, min=0.0, max=end_time)
-        increments = torch.arange(start_time, end_time, delta_t)
+        # Knots bound the intervals to subdivide; integration starts at t=0
+        # even when it is not requested as an output time.
+        knots = t_output
+        if knots[0] > 0.0:
+            knots = torch.cat((knots.new_zeros(1), knots))
 
-        increments = torch.cat((increments, t_eval))
-        increments = increments.unique(sorted=True)
+        chunks = [knots[0:1]]
+        # Row of the internal grid holding each output time.
+        output_rows = [] if t_output[0] > 0.0 else [0]
+        row = 0
+        for t_start, t_end in zip(knots[:-1], knots[1:]):
+            # The tolerance keeps float error in an interval that is an exact
+            # multiple of delta_t from adding a spurious substep.
+            ratio = ((t_end - t_start) / delta_t).item()
+            n_sub = max(1, math.ceil(ratio - 1e-9 * max(1.0, ratio)))
+            sub = torch.linspace(t_start.item(), t_end.item(), n_sub + 1)[1:]
+            # Restore the exact knot; linspace can miss it by an ulp.
+            sub[-1] = t_end
+            chunks.append(sub)
+            row += n_sub
+            output_rows.append(row)
+
+        increments = torch.cat(chunks)
+        t_rows = torch.tensor(output_rows)
 
         dt = increments[1:] - increments[:-1]  # time step sizes
 
@@ -1236,21 +1261,18 @@ class Heat(FEM, ABC):
             f[n] = f_int.reshape((-1, self.n_dof_per_node))
 
         # Create output views without mutating tensors captured by autograd.
-        out_flux = flux
-        out_grad = grad
-        out_state = state
+        out_u = u[t_rows]
+        out_f = f[t_rows]
+        out_flux = flux[t_rows]
+        out_grad = grad[t_rows]
+        out_state = state[t_rows]
 
         if aggregate_integration_points:
             out_grad = out_grad.mean(dim=1)
             out_flux = out_flux.mean(dim=1)
             out_state = out_state.mean(dim=1)
 
-        out_flux = out_flux.squeeze()
-        out_grad = out_grad.squeeze()
+        out_flux = out_flux.squeeze(-2)
+        out_grad = out_grad.squeeze(-2)
 
-        if return_intermediate:
-            # Return all intermediate values
-            return u, f, out_flux, out_grad, out_state
-        else:
-            # Return only the final values
-            return u[-1], f[-1], out_flux[-1], out_grad[-1], out_state[-1]
+        return out_u, out_f, out_flux, out_grad, out_state
