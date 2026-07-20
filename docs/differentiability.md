@@ -22,7 +22,7 @@ For the global sparse linear algebra and nonlinear equilibrium solves, *torch-fe
 
 For a linear system
 $$
-A(\theta)x = b(\theta),
+Ax = b,
 $$
 the forward pass computes $x$ with a non-differentiable sparse backend (for example SciPy, CuPy, or Pardiso). In the backward pass, given an upstream gradient $\partial \mathcal{L}/\partial x$, we solve the adjoint system
 $$
@@ -56,7 +56,7 @@ $$
 =
 \frac{\partial \mathcal{L}}{\partial \theta}
 -
-\lambda^\top\frac{\partial R}{\partial \theta}.
+\left(\frac{\partial R}{\partial \theta}\right)^\top\lambda.
 $$
 
 Practically, this has two major benefits:
