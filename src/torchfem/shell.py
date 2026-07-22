@@ -608,6 +608,7 @@ class Shell(Mechanics):
                 mesh.cell_data[key] = val.cpu().numpy()
 
         # Plot as separate top and bottom surface
+        kwargs.setdefault("show_edges", True)
         base_meshes = []
         if thickness:
             nodal_thickness = np.zeros((len(self.nodes)))
@@ -624,11 +625,11 @@ class Shell(Mechanics):
             bottom = mesh.copy()
             bottom.points -= 0.5 * nodal_thickness[:, None] * normals
 
-            pl.add_mesh(top, show_edges=True)
-            pl.add_mesh(bottom, show_edges=True)
+            pl.add_mesh(top, **kwargs)
+            pl.add_mesh(bottom, **kwargs)
             base_meshes.extend([top, bottom])
         else:
-            pl.add_mesh(mesh, show_edges=True)
+            pl.add_mesh(mesh, **kwargs)
             base_meshes.append(mesh)
 
         # Mirror meshes across specified planes
@@ -645,5 +646,5 @@ class Shell(Mechanics):
                         mirrored.points[:, 0] *= sx
                         mirrored.points[:, 1] *= sy
                         mirrored.points[:, 2] *= sz
-                        pl.add_mesh(mirrored, show_edges=True, opacity=0.5)
+                        pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
         pl.show(jupyter_backend="html")

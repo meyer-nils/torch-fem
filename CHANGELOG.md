@@ -1,5 +1,54 @@
 # Changelog 
 
+## Version 0.7.4 - July 15 2026
+
+### Added
+- Regression tests for `time_integration(...)` in `tests/test_time_integration.py`.
+- Notebook tests for `basic/solid/thermal_transient.ipynb` and `optimization/planar/orientation_thermal_transient.ipynb`.
+
+### Changed
+- **Breaking:** `time_integration(...)` returns one result per requested `t_output` time. Previously `t_output` only set the end time and results came back per internal time step.
+- **Breaking:** Removed the `return_intermediate` argument of `time_integration(...)`. Results always carry a leading time axis of length `len(t_output)`; request the internal grid explicitly with `times = torch.arange(0.0, end_time + delta_t, delta_t)`, or index `[-1]` for the final state.
+- `time_integration(...)` subdivides each interval between output times into equal substeps of at most `delta_t`, replacing the `torch.arange(...)` and `unique()` merge. Output times are hit exactly, and a requested time close to an internal step no longer adds a spurious near-zero step.
+- `time_integration(...)` raises `ValueError` for empty, negative, or non-increasing `t_output`.
+
+### Fixed
+- `time_integration(...)` no longer drops the leading time axis of heat flux and temperature gradient when a single output time is requested.
+
+## Version 0.7.3 - July 14 2026
+
+### Added
+- Typed mesh import wrappers `import_shell(...)`, `import_planar(...)`, and `import_solid(...)` in `io.py` that return the requested model type and raise `TypeError` when the file's element type does not match.
+- New shell size-optimization example `optimization/shell/pressure_vessel.ipynb` (replacing the old `freesize.ipynb`), linked in the docs example gallery and covered by the notebook tests.
+- A minimal topology-optimization walkthrough in the getting-started docs, alongside a rewritten planar `topology.ipynb` example.
+- Python 3.14 added to the CI test matrix and the PyPI classifiers, plus additional package keywords in `pyproject.toml`.
+- Regression test guarding the `differentiable_parameters` trap: `solve()` outputs are fully detached when a grad-requiring design variable is not declared.
+
+### Changed
+- `torchfem.sdfs` no longer calls `torch.set_default_dtype(torch.float64)` at import time. SDF constructors now default their tensor arguments to `None` and build them internally, so importing the module no longer mutates the global default dtype.
+- `import_mesh(...)` converts mesh points to native-byte-order `float64` before building node tensors (previously cast to `float32`), correctly importing legacy big-endian `.vtk` files and preserving coordinate precision.
+- `Shell.plot(...)` forwards `**kwargs` to the underlying PyVista `add_mesh` calls (defaulting to `show_edges=True`), so surface appearance is customizable.
+
+### Fixed
+- Forgetting to declare a differentiable argument in a `solve(...)` call now fails loudly: when parameter gradients are not tracked, all outputs are detached instead of silently returning wrong gradients.
+- Corrected the performance docs, which still referenced the removed `cubes.ipynb`, and a stale version reference in the publications docs.
+
+## Version 0.7.2 - July 13 2026
+
+### Added
+- Two new benchmark problems next to the cube extension: a thermal SIMP slab (mirroring the *thermal-mesh* problem of the mosaic benchmark suite) and a Neo-Hookean large-stretch cube. Both are documented with CPU/GPU results and plots on the performance docs page.
+- New example `optimization/solid/source_recovery_thermal.ipynb` recovering a heat source distribution via adjoint optimization, linked in the docs example gallery.
+- New cube benchmark results for Apple M1 Pro and RTX 5090.
+- Gradient regression tests for multi-increment solves: load-side gradients against a single-step solve, and nonlinear Neo-Hookean material parameter gradients against the analytical uniaxial solution.
+
+### Changed
+- Refactored `benchmarks/` into per-problem modules (`cubes.py`, `thermal.py`, `hyperelasticity.py`) sharing a problem interface in `utils.py`. `run.py` runs one or all problems and writes `results/<problem>_<label>.json`. The outdated `cubes.ipynb` is removed.
+- `newton_solve(...)` and its `eval_residual` callback now receive the previous increment's state (`u_prev`, `grad_prev`, `flux_prev`, `state_prev`) explicitly.
+
+### Fixed
+- Adjoint gradients of multi-increment solves were truncated to the last increment, because the residual closure late-bound the loop variables and the previous state was detached. Gradients now chain across increments and match single-step and analytical references.
+- Adapted to CuPy's rename of the CG tolerance argument from `tol` to `rtol`.
+
 ## Version 0.7.1 - July 8 2026
 
 ### Added

@@ -235,6 +235,7 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 <div class="grid cards" markdown>
 
 -   ![Free-size optimization](images/examples/optimization/shell/freesize.png)
+-   [**Pressure vessel free-size optimization**](examples/optimization/shell/pressure_vessel.html)
 
     [**Free-size optimization**](examples/optimization/shell/freesize.html)
 
@@ -263,5 +264,7 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 -   ![Thermal topology optimization](images/examples/optimization/solid/topology_thermal.png)
 
     [**Thermal topology optimization**](examples/optimization/solid/topology_thermal.html)
+
+-   [**Heat source recovery**](examples/optimization/solid/source_recovery_thermal.html)
 
 </div>

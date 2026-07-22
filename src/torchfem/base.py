@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from functools import cached_property
@@ -497,25 +498,11 @@ class FEM(ABC):
         # Initialize field variable increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
-        # Incremental loading
-        for n in range(1, N):
-            if verbose:
-                print(f"Starting increment {n} ...")
-
-            # Increment size
-            inc = increments[n] - increments[n - 1]
-
-            # Load increment
-            F_ext = increments[n] * self._neumann.ravel()
-            DU = inc * self._dirichlet.ravel()
-            de0 = inc * self._external_gradient
-            u_prev = u[n - 1].detach()
-            grad_prev = grad[n - 1].detach()
-            flux_prev = flux[n - 1].detach()
-            state_prev = state[n - 1].detach()
-
-            # Residual for Newton-Raphson iterations
-            def eval_residual(du, i):
+        def make_eval_residual(F_ext, DU, de0):
+            # Bind this increment's loads at definition time. A plain closure
+            # over the loop variables would late-bind them, so the adjoint
+            # backward replay would see the last increment's loads.
+            def eval_residual(du, i, u_prev, grad_prev, flux_prev, state_prev):
                 # Enforce Dirichlet BCs on increment
                 du_bc = du.clone()
                 du_bc[con] = DU[con]
@@ -537,32 +524,43 @@ class FEM(ABC):
                     self.K = self.assemble_matrix(k, con)
                 F_int = self.assemble_rhs(f_i)
 
-                # Compute baseline force from previous stress (du=0) to
-                # stop gradient of the parameter-dependent scaling of the
-                # accumulated stress.  This ensures dR/dp only reflects
-                # the incremental stiffness contribution. This is only needed
-                # during the adjoint backward replay (where du requires grad),
-                # not during forward Newton iterations.
-                if track_parameter_gradients and du.requires_grad:
-                    _, f_base, _, _, _ = self.integrate_material(
-                        u_prev,
-                        grad_prev,
-                        flux_prev,
-                        state_prev,
-                        torch.zeros_like(du_bc),
-                        torch.zeros_like(de0),
-                        i,
-                        nlgeom,
-                        compute_stiffness=False,
-                    )
-                    F_int_base = self.assemble_rhs(f_base)
-                    F_int = (F_int - F_int_base) + F_int_base.detach()
-
                 # Compute residual
                 res = F_int - F_ext
                 res[con] = 0.0
 
                 return res, self.K
+
+            return eval_residual
+
+        # Incremental loading
+        for n in range(1, N):
+            if verbose:
+                print(f"Starting increment {n} ...")
+
+            # Increment size
+            inc = increments[n] - increments[n - 1]
+
+            # Load increment
+            F_ext = increments[n] * self._neumann.ravel()
+            DU = inc * self._dirichlet.ravel()
+            de0 = inc * self._external_gradient
+
+            # Previous state passed to the Newton solver. The adjoint backward
+            # differentiates the residual w.r.t. this state, which chains
+            # sensitivities across increments. Clones are required when
+            # tracking gradients, because the solver saves these tensors for
+            # backward while u/grad/flux/state are updated in place by
+            # subsequent increments.
+            if track_parameter_gradients:
+                u_prev = u[n - 1].clone()
+                grad_prev = grad[n - 1].clone()
+                flux_prev = flux[n - 1].clone()
+                state_prev = state[n - 1].clone()
+            else:
+                u_prev = u[n - 1].detach()
+                grad_prev = grad[n - 1].detach()
+                flux_prev = flux[n - 1].detach()
+                state_prev = state[n - 1].detach()
 
             # Solve for increment using Newton-Raphson method
             if use_cached_solve:
@@ -571,8 +569,8 @@ class FEM(ABC):
                 cached_solve = CachedSolve()
 
             du = newton_solve(
-                eval_residual,
-                du,
+                make_eval_residual(F_ext, DU, de0),
+                du.detach(),
                 B,
                 max_iter,
                 rtol,
@@ -583,6 +581,10 @@ class FEM(ABC):
                 device,
                 cached_solve,
                 use_cached_solve,
+                u_prev,
+                grad_prev,
+                flux_prev,
+                state_prev,
                 *differentiable_parameters,
             )
 
@@ -605,6 +607,8 @@ class FEM(ABC):
             du = du_eval
 
         # Create output views without mutating tensors captured by eval_residual.
+        out_u = u
+        out_f = f
         out_flux = flux
         out_grad = grad
         out_state = state
@@ -618,16 +622,18 @@ class FEM(ABC):
         out_grad = out_grad.squeeze()
 
         if not track_parameter_gradients:
+            out_u = out_u.detach()
+            out_f = out_f.detach()
             out_flux = out_flux.detach()
             out_grad = out_grad.detach()
             out_state = out_state.detach()
 
         if return_intermediate:
             # Return all intermediate values
-            return u, f, out_flux, out_grad, out_state
+            return out_u, out_f, out_flux, out_grad, out_state
         else:
             # Return only the final values
-            return u[-1], f[-1], out_flux[-1], out_grad[-1], out_state[-1]
+            return out_u[-1], out_f[-1], out_flux[-1], out_grad[-1], out_state[-1]
 
 
 class Mechanics(FEM, ABC):
@@ -1042,18 +1048,18 @@ class Heat(FEM, ABC):
         device: str | None = None,
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         aggregate_integration_points: bool = True,
-        return_intermediate: bool = False,
         use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Integrate the heat equation in time with implicit increments.
 
-        The routine first computes a consistent equilibrium state at the
-        initial time under the current boundary conditions, then advances the
-        solution over the requested output times.
+        Computes an equilibrium state at t=0 under the current boundary
+        conditions, then advances to each requested output time using internal
+        steps of at most `delta_t`.
 
         Args:
-            t_output: Requested output times.
+            t_output: Requested output times. Results are returned at exactly
+                these times.
             delta_t: Maximum internal time step.
             max_iter: Maximum Newton iterations per time step.
             verbose: If True, prints per-step Newton residuals.
@@ -1064,7 +1070,6 @@ class Heat(FEM, ABC):
             method: Linear solver backend name.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            return_intermediate: If True, returns all intermediate increments.
             use_cached_solve: If True, reuses cached linear solver data.
             differentiable_parameters: Explicit parameters that should receive
                 gradients through implicit solves. Accepts either a single
@@ -1072,12 +1077,21 @@ class Heat(FEM, ABC):
 
         Returns:
             Tuple of temperature, internal vector, heat flux, temperature
-            gradient, and material state. If return_intermediate is True, each
-            tensor includes a time-increment dimension as the leading axis.
+            gradient, and material state, each with a leading axis of length
+            `len(t_output)`.
 
         Raises:
+            ValueError: If `t_output` is empty, negative, or not increasing.
             RuntimeError: If Newton iterations do not converge for a time step.
         """
+
+        # Validate before self.constraints is modified below.
+        if t_output.numel() == 0:
+            raise ValueError("t_output must contain at least one time.")
+        if t_output.min() < 0.0:
+            raise ValueError("t_output must not contain negative times.")
+        if (t_output[1:] <= t_output[:-1]).any():
+            raise ValueError("t_output must be strictly increasing.")
 
         # initial step: we get heat fluxes and temperature gradients for initial
         # conditions enforce initial conditions as boundary conditions
@@ -1092,14 +1106,30 @@ class Heat(FEM, ABC):
             differentiable_parameters=differentiable_parameters,
         )
 
-        # assemble time_steps for evaluation
-        start_time = 0.0
-        end_time = t_output.max().item()
-        t_eval = torch.clamp(t_output, min=0.0, max=end_time)
-        increments = torch.arange(start_time, end_time, delta_t)
+        # Knots bound the intervals to subdivide; integration starts at t=0
+        # even when it is not requested as an output time.
+        knots = t_output
+        if knots[0] > 0.0:
+            knots = torch.cat((knots.new_zeros(1), knots))
 
-        increments = torch.cat((increments, t_eval))
-        increments = increments.unique(sorted=True)
+        chunks = [knots[0:1]]
+        # Row of the internal grid holding each output time.
+        output_rows = [] if t_output[0] > 0.0 else [0]
+        row = 0
+        for t_start, t_end in zip(knots[:-1], knots[1:]):
+            # The tolerance keeps float error in an interval that is an exact
+            # multiple of delta_t from adding a spurious substep.
+            ratio = ((t_end - t_start) / delta_t).item()
+            n_sub = max(1, math.ceil(ratio - 1e-9 * max(1.0, ratio)))
+            sub = torch.linspace(t_start.item(), t_end.item(), n_sub + 1)[1:]
+            # Restore the exact knot; linspace can miss it by an ulp.
+            sub[-1] = t_end
+            chunks.append(sub)
+            row += n_sub
+            output_rows.append(row)
+
+        increments = torch.cat(chunks)
+        t_rows = torch.tensor(output_rows)
 
         dt = increments[1:] - increments[:-1]  # time step sizes
 
@@ -1231,21 +1261,18 @@ class Heat(FEM, ABC):
             f[n] = f_int.reshape((-1, self.n_dof_per_node))
 
         # Create output views without mutating tensors captured by autograd.
-        out_flux = flux
-        out_grad = grad
-        out_state = state
+        out_u = u[t_rows]
+        out_f = f[t_rows]
+        out_flux = flux[t_rows]
+        out_grad = grad[t_rows]
+        out_state = state[t_rows]
 
         if aggregate_integration_points:
             out_grad = out_grad.mean(dim=1)
             out_flux = out_flux.mean(dim=1)
             out_state = out_state.mean(dim=1)
 
-        out_flux = out_flux.squeeze()
-        out_grad = out_grad.squeeze()
+        out_flux = out_flux.squeeze(-2)
+        out_grad = out_grad.squeeze(-2)
 
-        if return_intermediate:
-            # Return all intermediate values
-            return u, f, out_flux, out_grad, out_state
-        else:
-            # Return only the final values
-            return u[-1], f[-1], out_flux[-1], out_grad[-1], out_state[-1]
+        return out_u, out_f, out_flux, out_grad, out_state
