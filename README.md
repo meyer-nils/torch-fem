@@ -173,16 +173,17 @@ If you use torch-fem in your research, please cite it as follows:
 Contributions are welcome! Please check out the [contributing guide](https://github.com/meyer-nils/torch-fem/blob/main/CONTRIBUTING.md) for the development workflow. Bug reports, feature requests, and usage questions are all welcome in the [issue tracker](https://github.com/meyer-nils/torch-fem/issues) - see the [support guide](https://github.com/meyer-nils/torch-fem/blob/main/SUPPORT.md) for what to include.
 
 ## Alternatives
-There are many alternative Python FEM tools that you may also consider, 
-depending on your needs:
+*torch-fem* focuses on solid mechanics and thermal problems. It provides sensitivities through PyTorch autograd, which makes it easy to drop into optimization loops and ML pipelines. It is the natural choice if you are working in the PyTorch ecosystem. Depending on your needs, one of these Python FEM tools may serve you better:
 
-- General-purpose FEM/PDE frameworks
-    - [FEniCSx (DOLFINx)](https://github.com/FEniCS/dolfinx) ![GitHub stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square)
-    - [SfePy](https://github.com/sfepy/sfepy) ![GitHub stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square)
-    - [scikit-fem](https://github.com/kinnala/scikit-fem) ![GitHub stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square)
-    - [FElupe](https://github.com/adtzlr/felupe) ![GitHub stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square)
-    - [Nutils](https://github.com/evalf/nutils) ![GitHub stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) 
-- Differentiable or adjoint-capable FEM
-    - [JAX-FEM](https://github.com/deepmodeling/jax-fem) ![GitHub stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square)
-    - [dolfin-adjoint](https://github.com/dolfin-adjoint/pyadjoint) ![GitHub stars](https://img.shields.io/github/stars/dolfin-adjoint/pyadjoint?style=flat-square)
-    - [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) ![GitHub stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square)
+| Library | Focus | Differentiable | Consider it over torch-fem when… |
+|---|---|:---:|---|
+| [FEniCSx (DOLFINx)](https://github.com/FEniCS/dolfinx) ![stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square) | General PDEs, UFL weak forms, MPI | via [dolfin-adjoint](https://github.com/dolfin-adjoint/pyadjoint) | you need arbitrary weak forms or massively parallel distributed runs |
+| [SfePy](https://github.com/sfepy/sfepy) ![stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square) | General multiphysics, pure Python | — | you need a broad range of PDE applications on CPU |
+| [JAX-FEM](https://github.com/deepmodeling/jax-fem) ![stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square) | Differentiable FEM, JAX / GPU | ✅ | your stack is built on JAX rather than PyTorch |
+| [Firedrake](https://github.com/firedrakeproject/firedrake) ![stars](https://img.shields.io/github/stars/firedrakeproject/firedrake?style=flat-square) | General PDEs, UFL weak forms | via [pyadjoint](https://github.com/dolfin-adjoint/pyadjoint) | you want a UFL form language with automated adjoints for multiphysics |
+| [scikit-fem](https://github.com/kinnala/scikit-fem) ![stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square) | Lightweight assembly, NumPy/SciPy | — | you want minimal dependencies and full control over custom forms |
+| [FElupe](https://github.com/adtzlr/felupe) ![stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square) | Finite-strain solid mechanics | partially via [tensortrax](https://github.com/adtzlr/tensortrax) | you work with hyperelastic / finite-strain solids |
+| [Nutils](https://github.com/evalf/nutils) ![stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) | High-order / immersed methods | — | you research advanced or immersed discretizations including IGA |
+| [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) ![stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square) | Biomechanics, PyTorch | ✅ | you work on soft-tissue / inverse biomechanics |
+
+Not sure which to pick? The [mosaic](https://github.com/pasteurlabs/mosaic) differentiable-physics benchmark suite compares several of these solvers on gradient accuracy and forward/adjoint performance under a common interface.
