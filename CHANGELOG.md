@@ -1,5 +1,12 @@
 # Changelog 
 
+## Unreleased
+
+### Added
+- Optional viscous stabilization in `solve(...)` via the `alpha` argument, matching Abaqus automatic stabilization with "Specify damping factor". A viscous force `alpha M du/dt` is added to the residual and its tangent to damp locally unstable increments. Defaults to `alpha=0.0`, which disables stabilization.
+- `model.stabilization_energy` holds the dissipated energy per increment, equivalent to the Abaqus `ALLSD` output.
+- Theory docs section on viscous stabilization.
+
 ## Version 0.7.4 - July 15 2026
 
 ### Added

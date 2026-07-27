@@ -428,6 +428,7 @@ class FEM(ABC):
         aggregate_integration_points: bool = True,
         use_cached_solve: bool = False,
         nlgeom: bool = False,
+        alpha: float = 0.0,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the quasi-static finite-element problem by load increments.
@@ -446,6 +447,8 @@ class FEM(ABC):
                 state over integration points.
             use_cached_solve: If True, reuses cached linear solver data.
             nlgeom: If True, includes geometric nonlinearity.
+            alpha: Damping factor for viscous stabilization. Dissipated
+                energy is accumulated in `self.stabilization_energy`.
             differentiable_parameters: Explicit parameter(s) to differentiate
                 through implicit Newton/sparse solves. Accepts either a single
                 tensor or an iterable of tensors.
@@ -454,10 +457,13 @@ class FEM(ABC):
             Tuple of displacement, internal force, flux, gradient, and material
                 state. If return_intermediate is True, each tensor includes an
                 increment dimension as the leading axis.
-
         """
         # Number of increments
         N = len(increments)
+
+        # Mass matrix and dissipated energy for viscous stabilization
+        m = self.integrate_mass() if alpha > 0.0 else None
+        self.stabilization_energy = torch.zeros(N)
 
         # Determine differentiable dependencies for this solve call.
         if differentiable_parameters is None:
@@ -498,7 +504,7 @@ class FEM(ABC):
         # Initialize field variable increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
-        def make_eval_residual(F_ext, DU, de0):
+        def make_eval_residual(F_ext, DU, de0, k_visc):
             # Bind this increment's loads at definition time. A plain closure
             # over the loop variables would late-bind them, so the adjoint
             # backward replay would see the last increment's loads.
@@ -518,6 +524,13 @@ class FEM(ABC):
                     i,
                     nlgeom,
                 )
+
+                # Viscous stabilization (k is None when self.K is reused as-is)
+                if k_visc is not None:
+                    du_e = du_bc.view(-1, self.n_dof_per_node)[self.elements].flatten(1)
+                    f_i = f_i + torch.einsum("...ij,...j->...i", k_visc, du_e)
+                    if k is not None:
+                        k = k + k_visc
 
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if k is not None:
@@ -545,6 +558,9 @@ class FEM(ABC):
             DU = inc * self._dirichlet.ravel()
             de0 = inc * self._external_gradient
 
+            # Element viscous stiffness alpha/dt * M, constant over the increment
+            k_visc = alpha / float(inc) * m if m is not None else None
+
             # Previous state passed to the Newton solver. The adjoint backward
             # differentiates the residual w.r.t. this state, which chains
             # sensitivities across increments. Clones are required when
@@ -569,7 +585,7 @@ class FEM(ABC):
                 cached_solve = CachedSolve()
 
             du = newton_solve(
-                make_eval_residual(F_ext, DU, de0),
+                make_eval_residual(F_ext, DU, de0, k_visc),
                 du.detach(),
                 B,
                 max_iter,
@@ -602,9 +618,20 @@ class FEM(ABC):
                 nlgeom,
             )
             F_int = self.assemble_rhs(f_i)
+
+            # Viscous forces balance the loads and their work is dissipated
+            if k_visc is not None:
+                du_e = du_eval.view(-1, self.n_dof_per_node)[self.elements].flatten(1)
+                F_v = self.assemble_rhs(torch.einsum("...ij,...j->...i", k_visc, du_e))
+                F_int = F_int + F_v
+                self.stabilization_energy[n] = torch.dot(du_eval, F_v).detach()
+
             f[n] = F_int.reshape((-1, self.n_dof_per_node))
             u[n] = u[n - 1] + du_eval.reshape((-1, self.n_dof_per_node))
             du = du_eval
+
+        # Dissipation is reported as a cumulative value per increment
+        self.stabilization_energy = self.stabilization_energy.cumsum(0)
 
         # Create output views without mutating tensors captured by eval_residual.
         out_u = u
