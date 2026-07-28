@@ -169,6 +169,20 @@ $$
 
 is solved with the tangent stiffness $\mathbf{K}$ assembled from the algorithmic material tangents. For linear problems, this converges in a single iteration.
 
+If an increment does not converge within `max_iter` iterations, it is cut back: the increment is subdivided and retried from the last converged state, and the substep is grown again after each success. Results are always reported at the requested increments $\lambda_n$, so the subdivision changes only the internal load path.
+
+#### Viscous stabilization
+
+Locally unstable problems such as buckling or snap-through have a singular or indefinite tangent stiffness and stall the Newton-Raphson iterations. The `alpha` argument of `solve()` damps them with a viscous force
+
+$$
+\mathbf{R}(\mathbf{u}) = \mathbf{f}^\textrm{int}(\mathbf{u}) + \alpha \mathbf{M} \cdot \frac{\Delta \mathbf{u}}{\Delta \lambda} - \mathbf{f}^\textrm{ext} = \mathbf{0},
+$$
+
+where $\Delta \mathbf{u}/\Delta \lambda$ is the nodal velocity with respect to the pseudo time of the load increments and the tangent stiffness is augmented by $\alpha \mathbf{M} / \Delta \lambda$. This matches the Abaqus `*STATIC, STABILIZE` option with a specified damping factor, which assumes a unit density in $\mathbf{M}$ — the default of `material.rho`.
+
+The viscous forces vanish as the solution approaches a stable equilibrium, so a sufficiently small $\alpha$ barely perturbs the result. To verify this, the dissipated energy is accumulated per increment in `model.stabilization_energy` (the Abaqus `ALLSD` output) and should stay small compared to the strain energy. The default $\alpha = 0$ disables stabilization.
+
 The sparse linear system can be solved with different backends via the `method` argument of `solve()`:
 
 - direct sparse solvers (`"spsolve"`, `"pardiso"`),

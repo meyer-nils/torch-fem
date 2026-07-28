@@ -30,6 +30,11 @@ def test_planar_finite_strain_notebook(tb):
     tb.execute()
 
 
+@testbook("examples/basic/planar/stabilization.ipynb", execute=True)
+def test_planar_stabilization_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/basic/planar/thermal_static.ipynb", execute=True)
 def test_planar_thermal_static_notebook(tb):
     tb.execute()

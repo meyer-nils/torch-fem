@@ -417,10 +417,13 @@ class FEM(ABC):
     def solve(
         self,
         increments: Tensor = torch.tensor([0.0, 1.0]),
-        max_iter: int = 100,
+        max_iter: int = 10,
         rtol: float = 1e-8,
         atol: float = 1e-6,
         stol: float = 1e-10,
+        cutback_factor: float = 0.5,
+        growth_factor: float = 1.5,
+        max_cutbacks: int = 10,
         verbose: bool = False,
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
         device: str | None = None,
@@ -428,16 +431,26 @@ class FEM(ABC):
         aggregate_integration_points: bool = True,
         use_cached_solve: bool = False,
         nlgeom: bool = False,
+        alpha: float = 0.0,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the quasi-static finite-element problem by load increments.
 
         Args:
-            increments: Monotonic load scale factors, typically [0, 1].
-            max_iter: Maximum Newton iterations per load increment.
+            increments: Monotonic load scale factors, typically [0, 1]. Results
+                are always returned at exactly these values. If a Newton solve
+                does not converge, the increment is subdivided internally and
+                retried, and the substep is grown again after each success.
+            max_iter: Maximum Newton iterations before an increment is cut back.
             rtol: Relative residual tolerance for Newton convergence.
             atol: Absolute residual tolerance for Newton convergence.
             stol: Tolerance used by iterative linear solvers.
+            cutback_factor: Factor applied to the substep size after a Newton
+                solve failed to converge.
+            growth_factor: Factor applied to the substep size after a Newton
+                solve converged, capped at the requested increment.
+            max_cutbacks: Number of successive cutbacks accepted within an
+                increment before the solve is given up.
             verbose: If True, prints per-increment progress.
             method: Linear solver backend name.
             device: Optional device hint for the linear solver backend.
@@ -446,6 +459,8 @@ class FEM(ABC):
                 state over integration points.
             use_cached_solve: If True, reuses cached linear solver data.
             nlgeom: If True, includes geometric nonlinearity.
+            alpha: Damping factor for viscous stabilization. Dissipated
+                energy is accumulated in `self.stabilization_energy`.
             differentiable_parameters: Explicit parameter(s) to differentiate
                 through implicit Newton/sparse solves. Accepts either a single
                 tensor or an iterable of tensors.
@@ -454,10 +469,13 @@ class FEM(ABC):
             Tuple of displacement, internal force, flux, gradient, and material
                 state. If return_intermediate is True, each tensor includes an
                 increment dimension as the leading axis.
-
         """
         # Number of increments
         N = len(increments)
+
+        # Mass matrix and dissipated energy for viscous stabilization
+        m = self.integrate_mass() if alpha > 0.0 else None
+        self.stabilization_energy = torch.zeros(N)
 
         # Determine differentiable dependencies for this solve call.
         if differentiable_parameters is None:
@@ -498,7 +516,7 @@ class FEM(ABC):
         # Initialize field variable increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
-        def make_eval_residual(F_ext, DU, de0):
+        def make_eval_residual(F_ext, DU, de0, k_visc):
             # Bind this increment's loads at definition time. A plain closure
             # over the loop variables would late-bind them, so the adjoint
             # backward replay would see the last increment's loads.
@@ -519,6 +537,13 @@ class FEM(ABC):
                     nlgeom,
                 )
 
+                # Viscous stabilization (k is None when self.K is reused as-is)
+                if k_visc is not None:
+                    du_e = du_bc.view(-1, self.n_dof_per_node)[self.elements].flatten(1)
+                    f_i = f_i + torch.einsum("...ij,...j->...i", k_visc, du_e)
+                    if k is not None:
+                        k = k + k_visc
+
                 # Assemble global stiffness matrix and internal force vector (if needed)
                 if k is not None:
                     self.K = self.assemble_matrix(k, con)
@@ -532,79 +557,141 @@ class FEM(ABC):
 
             return eval_residual
 
-        # Incremental loading
+        # Running state, advanced by substeps and stored at requested increments
+        u_cur = u[0].clone()
+        f_cur = f[0].clone()
+        grad_cur = grad[0].clone()
+        flux_cur = flux[0].clone()
+        state_cur = state[0].clone()
+        energy = torch.zeros(())
+
+        # Pseudo time, attempted substep size, and the substep that the cached
+        # viscous tangent belongs to. All are carried across increments.
+        lam = float(increments[0])
+        step_size = 0.0
+        k_step = 0.0
+
+        # Incremental loading with automatic cutback
         for n in range(1, N):
             if verbose:
                 print(f"Starting increment {n} ...")
 
-            # Increment size
-            inc = increments[n] - increments[n - 1]
+            target = float(increments[n])
+            span = target - lam
+            if step_size <= 0.0:
+                step_size = span
+            min_step = abs(span) * cutback_factor**max_cutbacks
 
-            # Load increment
-            F_ext = increments[n] * self._neumann.ravel()
-            DU = inc * self._dirichlet.ravel()
-            de0 = inc * self._external_gradient
+            while target - lam > 1e-12 * max(1.0, abs(target)):
+                # Never step past the requested increment
+                step = min(step_size, target - lam)
 
-            # Previous state passed to the Newton solver. The adjoint backward
-            # differentiates the residual w.r.t. this state, which chains
-            # sensitivities across increments. Clones are required when
-            # tracking gradients, because the solver saves these tensors for
-            # backward while u/grad/flux/state are updated in place by
-            # subsequent increments.
-            if track_parameter_gradients:
-                u_prev = u[n - 1].clone()
-                grad_prev = grad[n - 1].clone()
-                flux_prev = flux[n - 1].clone()
-                state_prev = state[n - 1].clone()
-            else:
-                u_prev = u[n - 1].detach()
-                grad_prev = grad[n - 1].detach()
-                flux_prev = flux[n - 1].detach()
-                state_prev = state[n - 1].detach()
+                # Load at the end of the substep, and the substep's increments
+                F_ext = (lam + step) * self._neumann.ravel()
+                DU = step * self._dirichlet.ravel()
+                de0 = step * self._external_gradient
 
-            # Solve for increment using Newton-Raphson method
-            if use_cached_solve:
-                cached_solve = self.cached_solve
-            else:
-                cached_solve = CachedSolve()
+                # Element viscous stiffness alpha/dt * M for this substep. A
+                # linear model caches K, so it must be rebuilt when it changes.
+                k_visc = None
+                if m is not None:
+                    k_visc = alpha / step * m
+                    if step != k_step:
+                        self.K = torch.empty(0)
+                    k_step = step
 
-            du = newton_solve(
-                make_eval_residual(F_ext, DU, de0),
-                du.detach(),
-                B,
-                max_iter,
-                rtol,
-                atol,
-                stol,
-                verbose,
-                method,
-                device,
-                cached_solve,
-                use_cached_solve,
-                u_prev,
-                grad_prev,
-                flux_prev,
-                state_prev,
-                *differentiable_parameters,
-            )
+                # Previous state passed to the Newton solver. The adjoint
+                # backward differentiates the residual w.r.t. this state, which
+                # chains sensitivities across substeps. Clones are required when
+                # tracking gradients, because the solver saves these tensors for
+                # backward while the running state is replaced below.
+                if track_parameter_gradients:
+                    u_prev = u_cur.clone()
+                    grad_prev = grad_cur.clone()
+                    flux_prev = flux_cur.clone()
+                    state_prev = state_cur.clone()
+                else:
+                    u_prev = u_cur.detach()
+                    grad_prev = grad_cur.detach()
+                    flux_prev = flux_cur.detach()
+                    state_prev = state_cur.detach()
 
-            # Evaluate converged state
-            du_eval = du.clone()
-            du_eval[con] = DU[con]
-            _, f_i, grad[n], flux[n], state[n] = self.integrate_material(
-                u[n - 1],
-                grad[n - 1],
-                flux[n - 1],
-                state[n - 1],
-                du_eval,
-                de0,
-                max_iter,
-                nlgeom,
-            )
-            F_int = self.assemble_rhs(f_i)
-            f[n] = F_int.reshape((-1, self.n_dof_per_node))
-            u[n] = u[n - 1] + du_eval.reshape((-1, self.n_dof_per_node))
-            du = du_eval
+                # Solve for increment using Newton-Raphson method
+                if use_cached_solve:
+                    cached_solve = self.cached_solve
+                else:
+                    cached_solve = CachedSolve()
+
+                try:
+                    du = newton_solve(
+                        make_eval_residual(F_ext, DU, de0, k_visc),
+                        du.detach(),
+                        B,
+                        max_iter,
+                        rtol,
+                        atol,
+                        stol,
+                        verbose,
+                        method,
+                        device,
+                        cached_solve,
+                        use_cached_solve,
+                        u_prev,
+                        grad_prev,
+                        flux_prev,
+                        state_prev,
+                        *differentiable_parameters,
+                    )
+                except RuntimeError:
+                    # Cut the substep back and retry from the same state
+                    step_size = cutback_factor * step
+                    if step_size < min_step:
+                        raise RuntimeError(
+                            f"Newton-Raphson did not converge in increment {n} "
+                            f"after {max_cutbacks} cutbacks."
+                        )
+                    if verbose:
+                        print(f"  Cutting increment back to {step_size:.3e} ...")
+                    continue
+
+                # Evaluate converged state
+                du_eval = du.clone()
+                du_eval[con] = DU[con]
+                _, f_i, grad_cur, flux_cur, state_cur = self.integrate_material(
+                    u_cur,
+                    grad_cur,
+                    flux_cur,
+                    state_cur,
+                    du_eval,
+                    de0,
+                    max_iter,
+                    nlgeom,
+                )
+                F_int = self.assemble_rhs(f_i)
+
+                # Viscous forces balance the loads and their work is dissipated
+                if k_visc is not None:
+                    du_e = du_eval.view(-1, self.n_dof_per_node)[self.elements]
+                    f_v = torch.einsum("...ij,...j->...i", k_visc, du_e.flatten(1))
+                    F_v = self.assemble_rhs(f_v)
+                    F_int = F_int + F_v
+                    energy = energy + torch.dot(du_eval, F_v).detach()
+
+                f_cur = F_int.reshape((-1, self.n_dof_per_node))
+                u_cur = u_cur + du_eval.reshape((-1, self.n_dof_per_node))
+                du = du_eval
+
+                # Accept the substep and grow the next one
+                lam += step
+                step_size = min(growth_factor * step, abs(span))
+
+            # Store the results at the requested increment
+            u[n] = u_cur
+            f[n] = f_cur
+            grad[n] = grad_cur
+            flux[n] = flux_cur
+            state[n] = state_cur
+            self.stabilization_energy[n] = energy
 
         # Create output views without mutating tensors captured by eval_residual.
         out_u = u

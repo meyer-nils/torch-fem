@@ -1,5 +1,18 @@
 # Changelog 
 
+## Unreleased
+
+### Added
+- Automatic increment cutback in `solve(...)`. When a Newton solve does not converge, the increment is cut back and retried from the last converged state, and the substep grows again after each success. Results are still returned at exactly the requested `increments`. Controlled by the new `cutback_factor`, `growth_factor`, and `max_cutbacks` arguments.
+- Optional viscous stabilization in `solve(...)` via the `alpha` argument, matching Abaqus automatic stabilization with "Specify damping factor". A viscous force `alpha M du/dt` is added to the residual and its tangent to damp locally unstable increments. Defaults to `alpha=0.0`, which disables stabilization.
+- `model.stabilization_energy` holds the dissipated energy per increment, equivalent to the Abaqus `ALLSD` output.
+- Theory docs section on viscous stabilization.
+- New example `basic/planar/stabilization.ipynb` tracing the snap-through of a shallow cylindrical roof (plane strain section of the Sabir and Lock benchmark), where viscous stabilization carries a load-controlled solve across the limit point onto the far branch. Linked in the docs example gallery and covered by the notebook tests.
+- Tests for viscous stabilization in `tests/test_stabilization.py`.
+
+### Changed
+- The default `max_iter` of `solve(...)` is 10 instead of 100. Exceeding it now triggers an increment cutback rather than aborting the solve.
+
 ## Version 0.7.4 - July 15 2026
 
 ### Added
