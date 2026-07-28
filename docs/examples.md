@@ -54,6 +54,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [**Finite strain**](examples/basic/planar/finite_strain.html)
 
+-   ![Snap-through of a cylindrical roof](images/examples/basic/planar/stabilization.png)
+
+    [**Snap-through of a cylindrical roof**](examples/basic/planar/stabilization.html)
+
 -   ![Modal analysis](images/examples/basic/planar/modal.png)
 
     [**Modal analysis**](examples/basic/planar/modal.html)

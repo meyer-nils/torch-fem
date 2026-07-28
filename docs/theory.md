@@ -169,6 +169,8 @@ $$
 
 is solved with the tangent stiffness $\mathbf{K}$ assembled from the algorithmic material tangents. For linear problems, this converges in a single iteration.
 
+If an increment does not converge within `max_iter` iterations, it is cut back: the increment is subdivided and retried from the last converged state, and the substep is grown again after each success. Results are always reported at the requested increments $\lambda_n$, so the subdivision changes only the internal load path.
+
 #### Viscous stabilization
 
 Locally unstable problems such as buckling or snap-through have a singular or indefinite tangent stiffness and stall the Newton-Raphson iterations. The `alpha` argument of `solve()` damps them with a viscous force
