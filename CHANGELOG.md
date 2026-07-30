@@ -12,7 +12,7 @@
 
 ### Changed
 - The default `max_iter` of `solve(...)` is 10 instead of 100. Exceeding it now triggers an increment cutback rather than aborting the solve.
-- `Planar.plot(..., bcs=True)` draws boundary conditions differently. Force arrows are scaled linearly with their magnitude, so relative load sizes are visible, with the largest arrow spanning 15% of the plot. In the undeformed configuration, constrained DOFs with a prescribed non-zero displacement are drawn as an arrow to scale with a dot at its tip instead of a marker, which distinguishes them from the force arrows. Plot limits now include the arrow tips.
+- `Planar.plot(..., bcs=True)` draws boundary conditions differently. Force arrows are scaled linearly with their magnitude, so relative load sizes are visible, with the largest arrow spanning 10% of the plot. In the undeformed configuration, constrained DOFs with a prescribed non-zero displacement are drawn as an arrow to scale with a dot at its tip instead of a marker, which distinguishes them from the force arrows. In the deformed configuration, the arrow is omitted and the dot marks the position the node was pulled to. Plot limits now include the arrow tips.
 
 ## Version 0.7.4 - July 15 2026
 

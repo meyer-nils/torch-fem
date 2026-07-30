@@ -136,7 +136,9 @@ class Planar(Mechanics):
             bcs: If True, indicates applied forces as arrows scaled relative to
                 each other and constrained DOFs as markers. In the undeformed
                 configuration, prescribed non-zero displacements are drawn to
-                scale as arrows with a dot at the tip instead of a marker.
+                scale as arrows with a dot at the tip instead of a marker. In
+                the deformed configuration, only the dot is drawn, marking the
+                position the node was pulled to.
             color: Line and marker color.
             alpha: Opacity of nodal contour plots.
             cmap: Matplotlib colormap name.
@@ -159,9 +161,8 @@ class Planar(Mechanics):
         prescribed = torch.where(constraints, self.displacements.cpu(), 0.0)
 
         # In a deformed configuration the prescribed displacements are already
-        # visible in the plotted positions, so they are shown as markers only.
-        if isinstance(u, Tensor):
-            prescribed = torch.zeros_like(prescribed)
+        # visible in the plotted positions, so only their tips are drawn there.
+        deformed = isinstance(u, Tensor)
 
         # Bounding box
         size = torch.linalg.norm(pos.max() - pos.min())
@@ -266,10 +267,10 @@ class Planar(Mechanics):
             }
 
             if forces.shape[1] == 2:
-                # Forces scaled linearly, the largest arrow spanning 15% of the plot
+                # Forces scaled linearly, the largest arrow spanning 10% of the plot
                 magnitude = torch.linalg.norm(forces, dim=1)
                 if magnitude.max() > 0.0:
-                    ends = pos + (0.15 * size / magnitude.max()) * forces
+                    ends = pos + (0.1 * size / magnitude.max()) * forces
                     for i in torch.nonzero(magnitude).ravel():
                         ax.arrow(
                             float(pos[i, 0]),
@@ -283,29 +284,33 @@ class Planar(Mechanics):
                 # Prescribed displacements to scale, with a dot marking the tip
                 magnitude = torch.linalg.norm(prescribed, dim=1)
                 if magnitude.max() > 0.0:
-                    ends = (pos + prescribed)[magnitude > 0.0]
-                    for i in torch.nonzero(magnitude).ravel():
-                        ax.arrow(
-                            float(pos[i, 0]),
-                            float(pos[i, 1]),
-                            float(prescribed[i, 0]),
-                            float(prescribed[i, 1]),
-                            length_includes_head=True,
-                            **arrow_style,
-                        )
+                    if deformed:
+                        # The nodes already sit at the prescribed positions
+                        ends = pos[magnitude > 0.0]
+                    else:
+                        ends = (pos + prescribed)[magnitude > 0.0]
+                        for i in torch.nonzero(magnitude).ravel():
+                            ax.arrow(
+                                float(pos[i, 0]),
+                                float(pos[i, 1]),
+                                float(prescribed[i, 0]),
+                                float(prescribed[i, 1]),
+                                length_includes_head=True,
+                                **arrow_style,
+                            )
                     ax.scatter(
                         ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10
                     )
                     tips.append(ends)
 
-            # Constrained DOFs without prescribed displacement as markers
+            # Constrained DOFs as markers, unless an arrow already shows them
             for i, constraint in enumerate(constraints):
                 x = float(pos[i][0])
                 y = float(pos[i][1])
                 if len(constraint) == 2:
-                    if constraint[0] and prescribed[i, 0] == 0.0:
+                    if constraint[0] and (deformed or prescribed[i, 0] == 0.0):
                         ax.plot(x - 0.01 * size, y, ">", color="gray")
-                    if constraint[1] and prescribed[i, 1] == 0.0:
+                    if constraint[1] and (deformed or prescribed[i, 1] == 0.0):
                         ax.plot(x, y - 0.01 * size, "^", color="gray")
                 elif len(constraint) == 1:
                     if constraint[0]:
