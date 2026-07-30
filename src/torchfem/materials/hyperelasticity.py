@@ -114,27 +114,26 @@ class Hyperelastic3D(Material):
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
-                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 3, 3)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
-                - Shape: `(..., 3, 3)`, same as `H_inc`.
+                *Shape:* `(..., 3, 3)`, same as `H_inc`.
             stress (Tensor): Current 1st PK stress tensor.
-                - Shape: `(..., 3, 3)`.
+                *Shape:* `(..., 3, 3)`.
             state (Tensor): Internal state variables (unused in hyperelasticity).
-                - Shape: Arbitrary, remains unchanged.
+                *Shape:* Arbitrary, remains unchanged.
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
+                *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                - Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             iter (int): Current iteration number.
 
         Returns:
-            tuple:
-                - **stress_new (Tensor)**: Updated (1st PK) stress tensor.
-                Shape: `(..., 3, 3)`.
-                - **state_new (Tensor)**: Updated internal state (unchanged).
-                Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                Shape: `(..., 3, 3, 3, 3)`.
+            stress_new (Tensor): Updated (1st PK) stress tensor.
+                *Shape:* `(..., 3, 3)`.
+            state_new (Tensor): Updated internal state (unchanged).
+                *Shape:* same as `state`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 3, 3, 3, 3)`.
         """
         with torch.enable_grad():
             # Compute deformation gradient.
@@ -247,27 +246,26 @@ class HyperelasticPlaneStress(Hyperelastic3D):
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
-                - Shape: `(..., 2, 2)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 2, 2)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
-                - Shape: `(..., 2, 2)`, same as `H_inc`.
+                *Shape:* `(..., 2, 2)`, same as `H_inc`.
             stress (Tensor): Current 1st PK stress tensor.
-                - Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             state (Tensor): Internal state variables (unused in hyperelasticity).
-                - Shape: Arbitrary, remains unchanged.
+                *Shape:* Arbitrary, remains unchanged.
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
-                - Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                - Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             iter (int): Current iteration number.
 
         Returns:
-            tuple:
-                - **stress_new (Tensor)**: Updated 1st PK stress tensor.
-                Shape: `(..., 2, 2)`.
-                - **state_new (Tensor)**: Updated internal state (unchanged).
-                Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                Shape: `(..., 2, 2, 2, 2)`.
+            stress_new (Tensor): Updated 1st PK stress tensor.
+                *Shape:* `(..., 2, 2)`.
+            state_new (Tensor): Updated internal state (unchanged).
+                *Shape:* same as `state`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 2, 2, 2, 2)`.
         """
 
         # Extract out-of plane stretch
@@ -387,27 +385,26 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
-                - Shape: `(..., 2, 2)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 2, 2)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
-                - Shape: `(..., 2, 2)`, same as `H_inc`.
+                *Shape:* `(..., 2, 2)`, same as `H_inc`.
             stress (Tensor): Current 1st PK stress tensor.
-                - Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             state (Tensor): Internal state variables (unused in hyperelasticity).
-                - Shape: Arbitrary, remains unchanged.
+                *Shape:* Arbitrary, remains unchanged.
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
-                - Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                - Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             iter (int): Current iteration number.
 
         Returns:
-            tuple:
-                - **stress_new (Tensor)**: Updated 1st PK stress tensor.
-                Shape: `(..., 2, 2)`.
-                - **state_new (Tensor)**: Updated internal state (unchanged).
-                Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                Shape: `(..., 2, 2, 2, 2)`.
+            stress_new (Tensor): Updated 1st PK stress tensor.
+                *Shape:* `(..., 2, 2)`.
+            state_new (Tensor): Updated internal state (unchanged).
+                *Shape:* same as `state`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 2, 2, 2, 2)`.
         """
         # Extend deformation gradient to 3D
         F3D = torch.zeros(F.shape[0], 3, 3)

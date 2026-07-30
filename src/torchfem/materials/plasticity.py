@@ -153,27 +153,26 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
-                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 3, 3)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
-                - Shape: `(..., 3, 3)`, same as `H_inc`.
+                *Shape:* `(..., 3, 3)`, same as `H_inc`.
             stress (Tensor): Current Cauchy stress tensor.
-                - Shape: `(..., 3, 3)`.
+                *Shape:* `(..., 3, 3)`.
             state (Tensor): Internal state variables, here: equivalent plastic strain.
-                - Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
+                *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                - Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             iter (int): Current iteration number.
 
         Returns:
-            tuple:
-                - **stress_new (Tensor)**: Updated Cauchy stress tensor after plastic
-                    update. Shape: `(..., 3, 3)`.
-                - **state_new (Tensor)**: Updated internal state with updated plastic
-                    strain. Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                    Shape: `(..., 3, 3, 3, 3)`.
+            stress_new (Tensor): Updated Cauchy stress tensor after plastic update.
+                *Shape:* `(..., 3, 3)`.
+            state_new (Tensor): Updated internal state with updated plastic strain.
+                *Shape:* same as `state`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 3, 3, 3, 3)`.
         """
         # Second order identity tensor
         I2 = torch.eye(H_inc.shape[-1])
@@ -375,27 +374,26 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
-                Shape: `(..., 2, 2)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 2, 2)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
-                Shape: `(..., 2, 2)`, same as `H_inc`.
+                *Shape:* `(..., 2, 2)`, same as `H_inc`.
             stress (Tensor): Current Cauchy stress tensor.
-                Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             state (Tensor): Internal state variables, here: equivalent plastic strain.
-                Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             iter (int): Current iteration number.
 
         Returns:
-            tuple:
-                - **stress_new (Tensor)**: Updated Cauchy stress tensor after plastic
-                    update. Shape: `(..., 2, 2)`.
-                - **state_new (Tensor)**: Updated internal state with updated plastic
-                    strain. Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                    Shape: `(..., 2, 2, 2, 2)`.
+            stress_new (Tensor): Updated Cauchy stress tensor after plastic update.
+                *Shape:* `(..., 2, 2)`.
+            state_new (Tensor): Updated internal state with updated plastic strain.
+                *Shape:* same as `state`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 2, 2, 2, 2)`.
         """
 
         # Projection operator
@@ -581,27 +579,27 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
-                Shape: `(..., 2, 2)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 2, 2)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
-                Shape: `(..., 2, 2)`, same as `H_inc`.
+                *Shape:* `(..., 2, 2)`, same as `H_inc`.
             stress (Tensor): Current Cauchy stress tensor.
-                Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             state (Tensor): Internal state variables, here: equivalent plastic strain
-                and stress in the third direction. Shape: `(..., 2)`.
+                and stress in the third direction.
+                *Shape:* `(..., 2)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                Shape: `(..., 2, 2)`.
+                *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             iter (int): Current iteration number.
 
         Returns:
-            tuple:
-                - **stress_new (Tensor)**: Updated Cauchy stress tensor after plastic
-                    update. Shape: `(..., 2, 2)`.
-                - **state_new (Tensor)**: Updated internal state with updated plastic
-                    strain. Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                    Shape: `(..., 2, 2, 2, 2)`.
+            stress_new (Tensor): Updated Cauchy stress tensor after plastic update.
+                *Shape:* `(..., 2, 2)`.
+            state_new (Tensor): Updated internal state with updated plastic strain.
+                *Shape:* same as `state`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 2, 2, 2, 2)`.
         """
         # Compute small strain tensor in Voigt notation
         de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)

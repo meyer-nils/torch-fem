@@ -81,27 +81,26 @@ class IsotropicConductivity3D(Material):
 
         Args:
             H_inc (Tensor): Incremental temperature gradient increment.
-                - Shape: `(..., 3, 1)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 1, 3)`, where `...` represents batch dimensions.
             F (Tensor): Current temperature gradient.
-                - Shape: `(..., 3, 1)`, same as `H_inc`.
+                *Shape:* `(..., 1, 3)`, same as `H_inc`.
             stress (Tensor): Current heat flux.
-                - Shape: `(..., 3, 1)`.
+                *Shape:* `(..., 1, 3)`.
             state (Tensor): Internal state variables (unused in heat conductivity).
-                - Shape: Arbitrary, remains unchanged.
+                *Shape:* Arbitrary, remains unchanged.
             de0 (Tensor): External temperature gradient increment.
-                - Shape: `(..., 3, 1)`.
+                *Shape:* `(..., 1, 3)`.
             cl (Tensor): Characteristic lengths.
-                - Shape: `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
-            tuple:
-                - **heat_flux_new (Tensor)**: Updated heat flux.
-                Shape: `(..., 3, 1)`.
-                - **state_new (Tensor)**: Updated internal state (unchanged).
-                Shape: same as `state`.
-                - **ddheat_flux_ddtemp_grad (Tensor)**: Algorithmic tangent tensor.
-                Shape: `(..., 3, 3)`.
+            heat_flux_new (Tensor): Updated heat flux.
+                *Shape:* `(..., 1, 3)`.
+            state_new (Tensor): Updated internal state (unchanged).
+                *Shape:* same as `state`.
+            ddheat_flux_ddtemp_grad (Tensor): Algorithmic tangent tensor.
+                *Shape:* `(..., 3, 3)`.
         """
         # Interpretation of inputs
         temp_grad_inc = H_inc
@@ -119,11 +118,27 @@ class IsotropicConductivity3D(Material):
 
 
 class IsotropicConductivity2D(IsotropicConductivity3D):
+    """Isotropic heat conductivity material in 2D.
+
+    Uses the same constitutive law as the 3D class with the conductivity tensor
+    reduced to the in-plane 2x2 block.
+
+    The inherited `step` method operates on thermal tensors with shapes
+    `(..., 1, 2)` and returns an algorithmic tangent of shape `(..., 2, 2)`.
+    """
+
     def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
+        """Create a 2D isotropic conductivity material.
+
+        Args:
+            kappa (Tensor | float): In-plane thermal conductivity.
+            rho (Tensor | float): Mass density.
+        """
         super().__init__(kappa, rho)
         self.KAPPA = self.KAPPA[..., :2, :2]
 
     def vectorize(self, n_elem: int) -> IsotropicConductivity2D:
+        """Return a vectorized 2D material for `n_elem` elements."""
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -134,11 +149,27 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
 
 
 class IsotropicConductivity1D(IsotropicConductivity2D):
+    """Isotropic heat conductivity material in 1D.
+
+    Uses the same constitutive law as the higher-dimensional classes with a
+    scalar 1x1 conductivity tensor.
+
+    The inherited `step` method operates on thermal tensors with shapes
+    `(..., 1, 1)` and returns an algorithmic tangent of shape `(..., 1, 1)`.
+    """
+
     def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
+        """Create a 1D isotropic conductivity material.
+
+        Args:
+            kappa (Tensor | float): Thermal conductivity.
+            rho (Tensor | float): Mass density.
+        """
         super().__init__(kappa, rho)
         self.KAPPA = self.KAPPA[..., :1, :1]
 
     def vectorize(self, n_elem: int) -> IsotropicConductivity1D:
+        """Return a vectorized 1D material for `n_elem` elements."""
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -150,6 +181,12 @@ class IsotropicConductivity1D(IsotropicConductivity2D):
 
 
 class OrthotropicConductivity3D(IsotropicConductivity3D):
+    """Orthotropic heat conductivity material in 3D.
+
+    The principal conductivities are aligned with the material axes and can be
+    rotated into the global frame with `rotate`.
+    """
+
     def __init__(
         self,
         kappa_1: Tensor | float,
@@ -157,6 +194,14 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
         kappa_3: Tensor | float,
         rho: Tensor | float = 1.0,
     ):
+        """Create a 3D orthotropic conductivity material.
+
+        Args:
+            kappa_1 (Tensor | float): Conductivity along local axis 1.
+            kappa_2 (Tensor | float): Conductivity along local axis 2.
+            kappa_3 (Tensor | float): Conductivity along local axis 3.
+            rho (Tensor | float): Mass density.
+        """
         self.kappa_1 = torch.as_tensor(kappa_1)
         self.kappa_2 = torch.as_tensor(kappa_2)
         self.kappa_3 = torch.as_tensor(kappa_3)
@@ -179,6 +224,7 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
         self.is_vectorized = self.kappa_1.dim() > 0
 
     def vectorize(self, n_elem: int) -> OrthotropicConductivity3D:
+        """Return a vectorized 3D orthotropic material for `n_elem` elements."""
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -191,7 +237,7 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
             )
 
     def rotate(self, R: Tensor) -> OrthotropicConductivity3D:
-        """Rotate the material with rotation matrix R."""
+        """Rotate the conductivity tensor with rotation matrix `R`."""
         if R.shape[-2] != 3 or R.shape[-1] != 3:
             raise ValueError("Rotation matrix must be a 3x3 tensor.")
 
@@ -201,12 +247,25 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
 
 
 class OrthotropicConductivity2D(IsotropicConductivity2D):
+    """Orthotropic heat conductivity material in 2D.
+
+    The two principal in-plane conductivities are aligned with local axes and
+    can be rotated into the global frame with `rotate`.
+    """
+
     def __init__(
         self,
         kappa_1: Tensor | float,
         kappa_2: Tensor | float,
         rho: Tensor | float = 1.0,
     ):
+        """Create a 2D orthotropic conductivity material.
+
+        Args:
+            kappa_1 (Tensor | float): Conductivity along local axis 1.
+            kappa_2 (Tensor | float): Conductivity along local axis 2.
+            rho (Tensor | float): Mass density.
+        """
         self.kappa_1 = torch.as_tensor(kappa_1)
         self.kappa_2 = torch.as_tensor(kappa_2)
         self.rho = torch.as_tensor(rho)
@@ -225,6 +284,7 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
         self.is_vectorized = self.kappa_1.dim() > 0
 
     def vectorize(self, n_elem: int) -> OrthotropicConductivity2D:
+        """Return a vectorized 2D orthotropic material for `n_elem` elements."""
         if self.is_vectorized:
             print("Material is already vectorized.")
             return self
@@ -236,7 +296,7 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
             )
 
     def rotate(self, R: Tensor) -> OrthotropicConductivity2D:
-        """Rotate the material with rotation matrix R."""
+        """Rotate the conductivity tensor with rotation matrix `R`."""
         if R.shape[-2] != 2 or R.shape[-1] != 2:
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
 

@@ -120,27 +120,26 @@ class IsotropicDamage3D(IsotropicElasticity3D):
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
-                - Shape: `(..., 3, 3)`, where `...` represents batch dimensions.
+                *Shape:* `(..., 3, 3)`, where `...` represents batch dimensions.
             F (Tensor): Current deformation gradient.
-                - Shape: `(..., 3, 3)`, same as `H_inc`.
+                *Shape:* `(..., 3, 3)`, same as `H_inc`.
             stress (Tensor): Current Cauchy stress tensor.
-                - Shape: `(..., 3, 3)`.
+                *Shape:* `(..., 3, 3)`.
             state (Tensor): Internal state variables, here: equivalent plastic strain.
-                - Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
-                - Shape: `(..., 3, 3)`.
+                *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                - Shape: `(..., 1)`.
+                *Shape:* `(..., 1)`.
             iter (int): Newton iteration.
 
         Returns:
-            tuple:
-                - **stress_new (Tensor)**: Updated Cauchy stress tensor after plastic
-                    update. Shape: `(..., 3, 3)`.
-                - **state_new (Tensor)**: Updated internal state with updated plastic
-                    strain. Shape: same as `state`.
-                - **ddsdde (Tensor)**: Algorithmic tangent stiffness tensor.
-                    Shape: `(..., 3, 3, 3, 3)`.
+            stress_new (Tensor): Updated Cauchy stress tensor after plastic update.
+                *Shape:* `(..., 3, 3)`.
+            state_new (Tensor): Updated internal state with updated plastic strain.
+                *Shape:* same as `state`.
+            ddsdde (Tensor): Algorithmic tangent stiffness tensor.
+                *Shape:* `(..., 3, 3, 3, 3)`.
         """
         # Compute total strain
         H_new = (F - torch.eye(H_inc.shape[-1])) + H_inc

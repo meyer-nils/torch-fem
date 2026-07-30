@@ -71,10 +71,11 @@ class Material(ABC):
                 or $\\mathbf{P}_{n+1}$.
                 *Shape:* `(..., d, d)`.
             state_new (Tensor): Updated internal state $\\pmb{\\alpha}_{n+1}$.
-                *Shape:* ``(..., n_state)``
+                *Shape:* `(..., n_state)`.
             ddsdde (Tensor): Algorithmic tangent stiffness tensor
                 $\\frac{\\partial \\Delta \\pmb{\\sigma}}{\\partial \\Delta
-                \\mathbf{H}}$. Shape: `(..., d, d, d, d)`.
+                \\mathbf{H}}$.
+                *Shape:* `(..., d, d, d, d)`.
         """
         pass
 
