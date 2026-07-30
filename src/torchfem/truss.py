@@ -43,7 +43,7 @@ class Truss(Mechanics):
         super().__init__(nodes, elements, material)
 
         # Set up areas
-        self.areas = torch.ones((len(elements)))
+        self.areas = torch.ones(len(elements))
 
     def __repr__(self) -> str:
         etype = self.etype.__class__.__name__
