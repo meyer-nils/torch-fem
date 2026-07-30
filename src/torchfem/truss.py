@@ -1,3 +1,4 @@
+import typing
 from functools import cached_property
 
 import matplotlib.pyplot as plt
@@ -5,6 +6,7 @@ import pyvista
 import torch
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
+from pyvista import DataSet
 from torch import Tensor
 
 from .base import Mechanics
@@ -257,8 +259,6 @@ class Truss(Mechanics):
         self,
         u: float | Tensor = 0.0,
         element_property: dict[str, Tensor] | None = None,
-        force_size_factor: float = 0.2,
-        constraint_size_factor: float = 0.025,
         cmap: str = "viridis",
     ):
         pyvista.set_plot_theme("document")
@@ -290,13 +290,23 @@ class Truss(Mechanics):
             else:
                 pl.add_mesh(tube)
 
+        def glyph(points: Tensor, geom, directions: Tensor | None = None, color=None):
+            """Place a copy of geom on every point, oriented along directions."""
+            if points.numel() == 0:
+                return
+            data = pyvista.PolyData(points.numpy())
+            if directions is not None:
+                data["dir"] = directions.numpy()
+            orient = "dir" if directions is not None else False
+            glyphs = data.glyph(geom=geom, orient=orient, scale=False)
+            pl.add_mesh(typing.cast(DataSet, glyphs), color=color)
+
         # Spheres smoothing the joints where the tubes meet
-        for node in pos:
-            joint = pyvista.Sphere(radius=float(radii.mean()), center=node.numpy())
-            if element_property is not None:
-                pl.add_mesh(joint, color="gray")
-            else:
-                pl.add_mesh(joint)
+        glyph(
+            pos,
+            pyvista.Sphere(radius=float(radii.mean())),
+            color="gray" if element_property is not None else None,
+        )
 
         # Boundary conditions
         prescribed = torch.where(self.constraints, self.displacements, 0.0)
@@ -305,18 +315,18 @@ class Truss(Mechanics):
         # visible in the plotted positions, so only their tips are drawn there.
         deformed = isinstance(u, Tensor)
 
-        # Forces scaled linearly, the largest arrow spanning force_size_factor
+        # Forces scaled linearly, the largest arrow spanning 20% of the model
         magnitude = torch.linalg.norm(self.forces, dim=1)
         if magnitude.max() > 0.0:
             nonzero = magnitude > 0.0
             pl.add_arrows(
                 pos[nonzero].numpy(),
                 (self.forces[nonzero] / magnitude.max()).numpy(),
-                mag=force_size_factor * size,
+                mag=0.2 * size,
                 color="gray",
             )
 
-        radius = constraint_size_factor * size
+        radius = 0.025 * size
 
         # Prescribed displacements to scale, with a dot marking the tip
         magnitude = torch.linalg.norm(prescribed, dim=1)
@@ -326,34 +336,24 @@ class Truss(Mechanics):
                 ends = pos[nonzero]
             else:
                 ends = (pos + prescribed)[nonzero]
-                disp_dir = prescribed[nonzero] / magnitude.max()
                 pl.add_arrows(
-                    pos[nonzero].numpy(),
-                    disp_dir.numpy(),
-                    mag=force_size_factor * size,
-                    color="gray",
+                    pos[nonzero].numpy(), prescribed[nonzero].numpy(), color="gray"
                 )
             # Large enough to stay visible where the dot sits on a node
             dot_radius = max(0.5 * radius, 1.25 * float(radii.max()))
-            for end in ends:
-                dot = pyvista.Sphere(radius=dot_radius, center=end.numpy())
-                pl.add_mesh(dot, color="gray")
+            glyph(ends, pyvista.Sphere(radius=dot_radius), color="gray")
 
         # Constrained DOFs as cones pointing at the node, unless an arrow
         # already shows them
-        for i, constraint in enumerate(self.constraints):
-            for d in torch.nonzero(constraint).ravel():
-                if not deformed and prescribed[i, d] != 0.0:
-                    continue
-                axis = torch.zeros(3)
-                axis[d] = 1.0
-                cone = pyvista.Cone(
-                    center=(pos[i] - radius * axis).numpy(),
-                    direction=axis.numpy(),
-                    height=2.0 * radius,
-                    radius=radius,
-                    resolution=16,
-                )
-                pl.add_mesh(cone, color="gray")
+        fixed = self.constraints if deformed else self.constraints & (prescribed == 0.0)
+        node, dof = torch.nonzero(fixed).T
+        cone = pyvista.Cone(
+            center=(-radius, 0.0, 0.0),
+            direction=(1.0, 0.0, 0.0),
+            height=2.0 * radius,
+            radius=radius,
+            resolution=16,
+        )
+        glyph(pos[node], cone, torch.eye(3)[dof], color="gray")
 
         pl.show(jupyter_backend="html")
