@@ -1,0 +1,29 @@
+# Create a GitHub release when a version tag is pushed.
+
+name: Create GitHub release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v5
+    - name: Extract release notes from CHANGELOG.md
+      run: |
+        awk -v ver="${GITHUB_REF_NAME#v}" '
+          $0 ~ "^## Version " ver "( |$)" {found=1; next}
+          found && /^## / {exit}
+          found {print}
+        ' CHANGELOG.md > notes.md
+        test -s notes.md || { echo "No CHANGELOG section for $GITHUB_REF_NAME"; exit 1; }
+    - name: Create release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
