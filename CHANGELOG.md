@@ -1,4 +1,10 @@
 # Changelog 
+
+## Unreleased
+
+### Added
+- A PEP 561 `py.typed` marker, so type checkers in downstream projects now use the annotations shipped with `torchfem` instead of treating the package as untyped.
+
 ### Fixed
 - The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (the attribute is `kappa`) and described `step(...)` as a "small-strain isotropic elasticity model". Both now describe the heat conduction model, and the constructor arguments are documented like the other material classes.
 
