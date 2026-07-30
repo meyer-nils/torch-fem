@@ -13,6 +13,10 @@
 ### Changed
 - The default `max_iter` of `solve(...)` is 10 instead of 100. Exceeding it now triggers an increment cutback rather than aborting the solve.
 - `Planar.plot(..., bcs=True)` draws boundary conditions differently. Force arrows are scaled linearly with their magnitude, so relative load sizes are visible, with the largest arrow spanning 10% of the plot. In the undeformed configuration, constrained DOFs with a prescribed non-zero displacement are drawn as an arrow to scale with a dot at its tip instead of a marker, which distinguishes them from the force arrows. In the deformed configuration, the arrow is omitted and the dot marks the position the node was pulled to. Plot limits now include the arrow tips.
+- `Truss.plot(...)` draws boundary conditions the same way as `Planar.plot(...)`. In 2D, force arrows are scaled linearly with the largest spanning 10% of the plot, prescribed non-zero displacements are drawn to scale with a dot at the tip in the undeformed configuration and as the dot alone in the deformed one, arrow widths follow the model size instead of a fixed 0.05, and plot limits include the arrow tips. In 3D, force arrows are scaled linearly with `force_size_factor * size` now setting the length of the largest arrow, and prescribed displacements are drawn the same way with a point at the tip.
+
+### Fixed
+- `Truss.plot(...)` no longer raises when a 3D truss has no applied forces.
 
 ## Version 0.7.4 - July 15 2026
 

@@ -185,29 +185,61 @@ class Truss(Mechanics):
             y = [pos[n1][1], pos[n2][1]]
             ax.plot(x, y, linewidth=linewidth[j], c=color[j])
 
-        # Forces
-        for i, force in enumerate(self.forces):
-            if torch.norm(force) > 0.0:
-                s = 0.05 * size / torch.linalg.norm(force)  # scale
-                plt.arrow(
-                    float(pos[i][0]),
-                    float(pos[i][1]),
-                    s * force[0],
-                    s * force[1],
-                    width=0.05,
-                    facecolor="gray",
-                )
+        # Boundary conditions
+        prescribed = torch.where(self.constraints, self.displacements, 0.0)
 
-        # Constraints
+        # In a deformed configuration the prescribed displacements are already
+        # visible in the plotted positions, so only their tips are drawn there.
+        deformed = isinstance(u, Tensor)
+
+        tips = [pos]
+        arrow_style = {"width": 0.01 * size, "facecolor": "gray"}
+
+        # Forces scaled linearly, the largest arrow spanning 10% of the plot
+        magnitude = torch.linalg.norm(self.forces, dim=1)
+        if magnitude.max() > 0.0:
+            ends = pos + (0.1 * size / magnitude.max()) * self.forces
+            for i in torch.nonzero(magnitude).ravel():
+                ax.arrow(
+                    float(pos[i, 0]),
+                    float(pos[i, 1]),
+                    float(ends[i, 0] - pos[i, 0]),
+                    float(ends[i, 1] - pos[i, 1]),
+                    **arrow_style,
+                )
+            tips.append(ends[magnitude > 0.0])
+
+        # Prescribed displacements to scale, with a dot marking the tip
+        magnitude = torch.linalg.norm(prescribed, dim=1)
+        if magnitude.max() > 0.0:
+            if deformed:
+                # The nodes already sit at the prescribed positions
+                ends = pos[magnitude > 0.0]
+            else:
+                ends = (pos + prescribed)[magnitude > 0.0]
+                for i in torch.nonzero(magnitude).ravel():
+                    ax.arrow(
+                        float(pos[i, 0]),
+                        float(pos[i, 1]),
+                        float(prescribed[i, 0]),
+                        float(prescribed[i, 1]),
+                        length_includes_head=True,
+                        **arrow_style,
+                    )
+            ax.scatter(ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10)
+            tips.append(ends)
+
+        # Constrained DOFs as markers, unless an arrow already shows them
         for i, constraint in enumerate(self.constraints):
-            if constraint[0]:
+            if constraint[0] and (deformed or prescribed[i, 0] == 0.0):
                 ax.plot(pos[i][0] - 0.1, pos[i][1], ">", color="gray")
-            if constraint[1]:
+            if constraint[1] and (deformed or prescribed[i, 1] == 0.0):
                 ax.plot(pos[i][0], pos[i][1] - 0.1, "^", color="gray")
 
-        # Adjustments
-        nmin = pos.min(dim=0).values
-        nmax = pos.max(dim=0).values
+        # Adjustments (limits include the arrow tips)
+        extent = torch.cat(tips)
+        nmin = extent.min(dim=0).values
+        nmax = extent.max(dim=0).values
         ax.set(
             xlim=(float(nmin[0]) - 0.5, float(nmax[0]) + 0.5),
             ylim=(float(nmin[1]) - 0.5, float(nmax[1]) + 0.5),
@@ -258,19 +290,37 @@ class Truss(Mechanics):
             else:
                 pl.add_mesh(tube, color="gray")
 
-        # Forces
-        force_centers = []
-        force_directions = []
-        for i, force in enumerate(self.forces):
-            if torch.norm(force) > 0.0:
-                force_centers.append(pos[i])
-                force_directions.append(force / torch.linalg.norm(force))
-        pl.add_arrows(
-            torch.stack(force_centers).numpy(),
-            torch.stack(force_directions).numpy(),
-            mag=force_size_factor * size,
-            color="gray",
-        )
+        # Forces scaled linearly, the largest arrow spanning force_size_factor
+        magnitude = torch.linalg.norm(self.forces, dim=1)
+        if magnitude.max() > 0.0:
+            nonzero = magnitude > 0.0
+            pl.add_arrows(
+                pos[nonzero].numpy(),
+                (self.forces[nonzero] / magnitude.max()).numpy(),
+                mag=force_size_factor * size,
+                color="gray",
+            )
+
+        # Prescribed displacements to scale, with a dot marking the tip. In a
+        # deformed configuration the nodes already sit at the prescribed
+        # positions, so only the dot is drawn there.
+        prescribed = torch.where(self.constraints, self.displacements, 0.0)
+        magnitude = torch.linalg.norm(prescribed, dim=1)
+        if magnitude.max() > 0.0:
+            nonzero = magnitude > 0.0
+            if isinstance(u, Tensor):
+                ends = pos[nonzero]
+            else:
+                ends = (pos + prescribed)[nonzero]
+                pl.add_arrows(
+                    pos[nonzero].numpy(), prescribed[nonzero].numpy(), color="gray"
+                )
+            pl.add_points(
+                ends.numpy(),
+                color="gray",
+                point_size=10.0,
+                render_points_as_spheres=True,
+            )
 
         # Constraints
         for i, constraint in enumerate(self.constraints):
