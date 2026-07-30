@@ -7,14 +7,22 @@ from .base import Material
 
 
 class IsotropicConductivity3D(Material):
-    """Isotropic heat conductivity material.
+    """Isotropic heat conductivity material in 3D.
 
     This class represents a 3D isotropic heat conductivity material, defined by the
-    thermal conductivity k.
+    thermal conductivity $\\kappa$. The constructor derives the conductivity tensor
+    $\\pmb{\\kappa} = \\kappa \\mathbf{I}$.
 
-    Attributes:
-        k (Tensor | float): Thermal conductivity. Converted, if a float is provided.
-            Shape: `()` for a scalar or `(N,)` for a batch of materials.
+    Args:
+        kappa (Tensor | float): Thermal conductivity. If a float is provided, it is
+            converted.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+
+    Notes:
+        - No internal state variables (``n_state = 0``).
+        - Supports batched/vectorized material parameters.
     """
 
     def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
@@ -65,10 +73,11 @@ class IsotropicConductivity3D(Material):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Performs an incremental step in the small-strain isotropic elasticity model.
+        """Performs an incremental step in the isotropic heat conduction model.
 
-        This function updates the deformation gradient, stress, and internal state
-        variables based on a small-strain assumption.
+        This function updates the heat flux from the temperature gradient increment
+        via Fourier's law. The arguments follow the generic `Material.step(...)`
+        signature, so the mechanical names carry thermal meaning here.
 
         Args:
             H_inc (Tensor): Incremental temperature gradient increment.

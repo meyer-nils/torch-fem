@@ -1,4 +1,6 @@
 # Changelog 
+### Fixed
+- The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (the attribute is `kappa`) and described `step(...)` as a "small-strain isotropic elasticity model". Both now describe the heat conduction model, and the constructor arguments are documented like the other material classes.
 
 ## Version 0.7.5 - July 30 2026
 
