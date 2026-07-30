@@ -6,7 +6,7 @@
 - Automatic increment cutback in `solve(...)` via the new `cutback_factor`, `growth_factor`, and `max_cutbacks` arguments. A non-converged Newton solve retries from the last converged state with a smaller substep, and results still come back at exactly the requested `increments`.
 - Optional viscous stabilization in `solve(...)` via `alpha`, matching Abaqus automatic stabilization with "Specify damping factor" and disabled by default. `model.stabilization_energy` reports the dissipated energy per increment, equivalent to the Abaqus `ALLSD` output.
 - New example `basic/planar/stabilization.ipynb` tracing the snap-through of a shallow cylindrical roof, plus a theory docs section and tests for stabilization.
-- `Solid.plot(..., bcs=True)` renders boundary conditions: arrows for forces and prescribed displacements, spheres at displacement tips, and a cone per constrained DOF.
+- `Solid.plot(..., bcs=True)` and `Shell.plot(..., bcs=True)` render boundary conditions: arrows for forces and prescribed displacements, spheres at displacement tips, and a cone per constrained DOF. Shells double the heads for the rotational DOFs, drawing moments as double-headed arrows and constrained rotations as double cones.
 
 ### Changed
 - The default `max_iter` of `solve(...)` is 10 instead of 100. Exceeding it now triggers an increment cutback rather than aborting the solve.

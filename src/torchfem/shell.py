@@ -8,7 +8,7 @@ https://doi.org/10.1002/nme.6944
 
 from functools import cached_property
 from math import sqrt
-from typing import Tuple
+from typing import Tuple, cast
 
 import torch
 from torch import Tensor
@@ -561,6 +561,7 @@ class Shell(Mechanics):
         element_property: dict[str, Tensor] | None = None,
         thickness: bool = False,
         mirror: tuple[bool, bool, bool] = (False, False, False),
+        bcs: bool = False,
         **kwargs,
     ):
         """Plot the shell mesh with PyVista, optionally with results.
@@ -573,6 +574,10 @@ class Shell(Mechanics):
             thickness: If True, extrudes elements by their thickness.
             mirror: Mirrors the mesh about the (x, y, z) planes, e.g. to
                 visualize symmetric halves.
+            bcs: If True, renders boundary conditions on the unmirrored mesh:
+                arrows for forces and prescribed displacements, spheres at
+                displacement tips, and a cone per constrained DOF. Rotational
+                DOFs use doubled heads, the usual convention for moments.
             **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
         """
         try:
@@ -647,4 +652,80 @@ class Shell(Mechanics):
                         mirrored.points[:, 1] *= sy
                         mirrored.points[:, 2] *= sz
                         pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
+
+        if bcs:
+            deformed = isinstance(u, Tensor)
+            points = self.nodes + u
+            prescribed = torch.where(self.constraints, self.displacements, 0.0)
+            size = torch.linalg.norm(
+                points.max(dim=0).values - points.min(dim=0).values
+            )
+            height = 0.5 * float(self.char_lengths.mean())
+
+            def glyph(pts: Tensor, geom, directions: Tensor | None = None):
+                """Put a gray geom on every point, along and scaled by directions."""
+                if pts.numel() == 0:
+                    return
+                data = pyvista.PolyData(pts.cpu().numpy())
+                if directions is not None:
+                    length = torch.linalg.norm(directions, dim=1, keepdim=True)
+                    data["dir"] = (directions / length).cpu().numpy()
+                    data["len"] = length.ravel().cpu().numpy()
+                orient = "dir" if directions is not None else False
+                glyphs = data.glyph(geom=geom, orient=orient, scale=orient and "len")
+                pl.add_mesh(cast(pyvista.DataSet, glyphs), color="gray")
+
+            # Translations get a single head, rotations a doubled one
+            arrow = pyvista.Arrow()
+            moment = arrow + pyvista.Cone(
+                center=(0.625, 0.0, 0.0),
+                direction=(1.0, 0.0, 0.0),
+                height=0.25,
+                radius=0.1,
+            )
+            cone = pyvista.Cone(
+                center=(-0.5 * height, 0.0, 0.0),
+                direction=(1.0, 0.0, 0.0),
+                height=height,
+                radius=0.5 * height,
+                resolution=12,
+            )
+            double_cone = cone + cone.translate((-height, 0.0, 0.0), inplace=False)
+
+            # Forces and moments scaled linearly, each normalized on its own
+            # because they carry different units
+            for dofs, geom in [(slice(0, 3), arrow), (slice(3, 6), moment)]:
+                load = self.forces[:, dofs]
+                magnitude = torch.linalg.norm(load, dim=1)
+                if magnitude.max() > 0.0:
+                    loaded = magnitude > 0.0
+                    scale = 0.1 * size / magnitude.max()
+                    glyph(points[loaded], geom, scale * load[loaded])
+
+            # Prescribed translations to scale, with a sphere marking the tip
+            magnitude = torch.linalg.norm(prescribed[:, :3], dim=1)
+            if magnitude.max() > 0.0:
+                pulled = magnitude > 0.0
+                if deformed:
+                    ends = points[pulled]
+                else:
+                    ends = (points + prescribed[:, :3])[pulled]
+                    glyph(points[pulled], arrow, prescribed[pulled, :3])
+                glyph(
+                    ends,
+                    pyvista.Sphere(
+                        radius=0.3 * height, theta_resolution=10, phi_resolution=10
+                    ),
+                )
+
+            # One cone per constrained DOF, unless an arrow already shows it.
+            # A prescribed rotation cannot be drawn to scale, so it keeps its cone.
+            fixed = self.constraints.clone()
+            if not deformed:
+                fixed[:, :3] &= prescribed[:, :3] == 0.0
+            unit = torch.eye(3, device=points.device, dtype=points.dtype)
+            for dofs, geom in [(slice(0, 3), cone), (slice(3, 6), double_cone)]:
+                node, dof = torch.nonzero(fixed[:, dofs]).T
+                glyph(points[node], geom, unit[dof])
+
         pl.show(jupyter_backend="html")
