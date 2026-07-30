@@ -5,6 +5,10 @@
 ### Added
 - A PEP 561 `py.typed` marker, so type checkers in downstream projects now use the annotations shipped with `torchfem` instead of treating the package as untyped.
 
+### Removed
+- **Breaking:** The `torchfem.sdfs` module, which provided signed distance functions for implicit geometry (TPMS surfaces, primitives, and CSG booleans). Implicit geometry modelling is out of scope for a finite element library. The `basic/solid/gyroid.ipynb` example now defines its gyroid distance function inline, which is all the example ever needed.
+- The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples, along with their entries in the example gallery.
+
 ### Fixed
 - The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (the attribute is `kappa`) and described `step(...)` as a "small-strain isotropic elasticity model". Both now describe the heat conduction model, and the constructor arguments are documented like the other material classes.
 

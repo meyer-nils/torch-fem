@@ -130,14 +130,6 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [**Finite strain cantilever**](examples/basic/solid/finite_strain.html)
 
--   ![Implicit surfaces](images/examples/basic/solid/implicits.png)
-
-    [**Implicit surfaces**](examples/basic/solid/implicits.html)
-
--   ![Triply periodic minimal surfaces](images/examples/basic/solid/tpms.png)
-
-    [**Triply periodic minimal surfaces**](examples/basic/solid/tpms.html)
-
 -   ![Plasticity](images/examples/basic/solid/plasticity.png)
 
     [**Plasticity**](examples/basic/solid/plasticity.html)
