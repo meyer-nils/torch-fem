@@ -22,6 +22,23 @@ def export_mesh(
     elem_data: dict[str, list[Tensor]] = {},
     compress: bool = True,
 ):
+    """Writes a model and optional result fields to a mesh file.
+
+    The file format is inferred from the suffix of `filename` by meshio. All tensors
+    are detached and moved to the CPU before writing.
+
+    Args:
+        mesh (FEM): Model providing the nodes and elements to write.
+        filename (str | PathLike): Output path. Its suffix selects the format.
+        nodal_data (dict[str, Tensor]): Point data to attach, keyed by name.
+            *Shape:* `(n_nod, ...)` per entry.
+        elem_data (dict[str, list[Tensor]]): Cell data to attach, keyed by name. Each
+            value is a *list* with one tensor per cell block, so a single-block model
+            takes a one-element list, e.g. `{"rho": [rho]}`.
+            *Shape:* `(n_elem, ...)` per tensor.
+        compress (bool): Compress the payload. Applies to `.vtu` (zlib) and
+            `.xdmf`/`.xmf` (gzip) only, and is ignored for other formats.
+    """
     etype = mesh.etype.meshio_type
 
     msh = Mesh(
@@ -47,7 +64,30 @@ def export_mesh(
 def import_mesh(
     filename: PathLike, material: Material, thickness: float = 1.0
 ) -> Mechanics:
+    """Imports a mesh file and returns the matching model type.
 
+    The model type follows from the geometry and the element type: a mesh whose nodes
+    all lie in the z=0 plane becomes a `Planar` model, a non-planar triangle mesh a
+    `Shell`, and a tetrahedral or hexahedral mesh a `Solid`. Use `import_planar(...)`,
+    `import_shell(...)`, or `import_solid(...)` to require one specific type.
+
+    Cell blocks that do not correspond to a supported element are skipped, as are line
+    blocks, so a mesh storing boundary edges or vertices next to its faces imports as
+    expected (`plate_hole.vtk` is one such mesh).
+
+    Args:
+        filename (PathLike): Path to a mesh file in any format meshio can read.
+        material (Material): Material assigned to the imported model.
+        thickness (float): Thickness of the `Planar` or `Shell` model. Unused when a
+            `Solid` is returned.
+
+    Returns:
+        Mechanics: A `Planar`, `Shell`, or `Solid` model, as described above.
+
+    Raises:
+        Exception: If the file holds more than one element type, or if its element
+            type has no corresponding model.
+    """
     mesh = read(filename)
     elems = []
     etypes = []
