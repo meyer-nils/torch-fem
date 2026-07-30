@@ -3,22 +3,25 @@
 ## Unreleased
 
 ### Added
-- Automatic increment cutback in `solve(...)`. When a Newton solve does not converge, the increment is cut back and retried from the last converged state, and the substep grows again after each success. Results are still returned at exactly the requested `increments`. Controlled by the new `cutback_factor`, `growth_factor`, and `max_cutbacks` arguments.
-- Optional viscous stabilization in `solve(...)` via the `alpha` argument, matching Abaqus automatic stabilization with "Specify damping factor". A viscous force `alpha M du/dt` is added to the residual and its tangent to damp locally unstable increments. Defaults to `alpha=0.0`, which disables stabilization.
+- Automatic increment cutback in `solve(...)`, controlled by the new `cutback_factor`, `growth_factor`, and `max_cutbacks` arguments. A non-converged Newton solve retries from the last converged state with a smaller substep, which grows again after each success. Results still come back at exactly the requested `increments`.
+- Optional viscous stabilization in `solve(...)` via `alpha`, matching Abaqus automatic stabilization with "Specify damping factor". A viscous force `alpha M du/dt` is added to the residual and its tangent to damp locally unstable increments. Defaults to `0.0`, which disables it.
 - `model.stabilization_energy` holds the dissipated energy per increment, equivalent to the Abaqus `ALLSD` output.
 - Theory docs section on viscous stabilization.
-- New example `basic/planar/stabilization.ipynb` tracing the snap-through of a shallow cylindrical roof (plane strain section of the Sabir and Lock benchmark), where viscous stabilization carries a load-controlled solve across the limit point onto the far branch. Linked in the docs example gallery and covered by the notebook tests.
+- New example `basic/planar/stabilization.ipynb` tracing the snap-through of a shallow cylindrical roof (plane strain section of the Sabir and Lock benchmark), where stabilization carries a load-controlled solve across the limit point. Linked in the docs example gallery and covered by the notebook tests.
 - Tests for viscous stabilization in `tests/test_stabilization.py`.
-- 3D trusses draw a sphere of the mean bar radius at each node, smoothing the joints where tubes meet. It takes the bar color, or gray when `element_property` is given.
+- 3D trusses draw a sphere of the mean bar radius at each node, smoothing the tube joints. Bar-colored, or gray when `element_property` is given.
 
 ### Changed
 - The default `max_iter` of `solve(...)` is 10 instead of 100. Exceeding it now triggers an increment cutback rather than aborting the solve.
-- `Planar.plot(..., bcs=True)` draws boundary conditions differently. Force arrows are scaled linearly with their magnitude, so relative load sizes are visible, with the largest arrow spanning 10% of the plot. In the undeformed configuration, constrained DOFs with a prescribed non-zero displacement are drawn as an arrow to scale with a dot at its tip instead of a marker, which distinguishes them from the force arrows. In the deformed configuration, the arrow is omitted and the dot marks the position the node was pulled to. Plot limits now include the arrow tips.
-- `Truss.plot(...)` draws boundary conditions the same way as `Planar.plot(...)`. In 2D, force arrows are scaled linearly with the largest spanning 10% of the plot, prescribed non-zero displacements are drawn to scale with a dot at the tip in the undeformed configuration and as the dot alone in the deformed one, arrow widths follow the model size instead of a fixed 0.05, and plot limits include the arrow tips. In 3D, force arrows are scaled linearly with `force_size_factor * size` now setting the length of the largest arrow, prescribed displacements are drawn the same way with a sphere at the tip, and constrained DOFs are marked by one cone per fixed DOF pointing at the node, replacing the single sphere that previously marked a constrained node as a whole. `constraint_size_factor` now sets the cone base radius.
-- `Solid.plot(...)` now supports `bcs` (default `False`) and renders 3D mechanics boundary conditions in a truss-like style: force and prescribed-displacement arrows are batched for faster rendering, displacement tips are marked with spheres, and constrained DOFs are shown as cones. Force arrows default to a largest length of 10% of the model size, while scalar heat models skip directional BC arrows/cones.
+- `Planar.plot(..., bcs=True)` scales force arrows linearly with their magnitude, the largest spanning 10% of the plot. A constrained DOF with a prescribed non-zero displacement is drawn as an arrow to scale with a dot at its tip instead of a marker; in the deformed configuration only the dot remains. Plot limits include the arrow tips.
+- `Truss.plot(...)` draws boundary conditions the same way as `Planar.plot(...)`. In 2D, arrow widths follow the model size instead of a fixed 0.05. In 3D, the largest force arrow spans 20% of the model, displacement tips are marked by spheres, and one cone per fixed DOF replaces the single sphere that marked a constrained node as a whole.
+- **Breaking:** Removed the `force_size_factor` and `constraint_size_factor` arguments of `Truss.plot3d(...)`. Boundary condition markers are sized from the model extent by fixed factors, as in `Solid.plot(...)`.
+- `Truss.plot3d(...)` batches the node spheres, displacement tips, and constraint cones into one glyph each instead of one mesh per node. On a 343-node lattice truss: 1373 to 885 actors, 2.9 s to 1.7 s, identical geometry.
+- `Solid.plot(...)` gained `bcs` (default `False`), rendering 3D mechanics boundary conditions in the truss style: batched force and displacement arrows, spheres at displacement tips, and cones at constrained DOFs. The largest force arrow spans 10% of the model; scalar heat models skip the directional markers.
 
 ### Fixed
 - `Truss.plot(...)` no longer raises when a 3D truss has no applied forces.
+- Prescribed displacements of a 3D truss are drawn to scale again, so the arrow ends at the sphere marking where the node is pulled to. They were normalized by the largest prescribed displacement and scaled like force arrows.
 
 ## Version 0.7.4 - July 15 2026
 
