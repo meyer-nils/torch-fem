@@ -270,7 +270,7 @@ class Truss(Mechanics):
         pos = self.nodes + u
 
         # Bounding box
-        size = torch.linalg.norm(pos.max() - pos.min()).item()
+        size = torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values).item()
 
         # Radii
         radii = torch.sqrt(self.areas / torch.pi).numpy()
@@ -326,7 +326,8 @@ class Truss(Mechanics):
                 color="gray",
             )
 
-        radius = 0.025 * size
+        # Cone size
+        radius = 0.1 * float(self.char_lengths.mean())
 
         # Prescribed displacements to scale, with a dot marking the tip
         magnitude = torch.linalg.norm(prescribed, dim=1)
