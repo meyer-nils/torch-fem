@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.7.5 - July 30 2026
 
 ### Added
 - Automatic increment cutback in `solve(...)` via the new `cutback_factor`, `growth_factor`, and `max_cutbacks` arguments. A non-converged Newton solve retries from the last converged state with a smaller substep, and results still come back at exactly the requested `increments`.
