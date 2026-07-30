@@ -9,13 +9,13 @@
 - Theory docs section on viscous stabilization.
 - New example `basic/planar/stabilization.ipynb` tracing the snap-through of a shallow cylindrical roof (plane strain section of the Sabir and Lock benchmark), where viscous stabilization carries a load-controlled solve across the limit point onto the far branch. Linked in the docs example gallery and covered by the notebook tests.
 - Tests for viscous stabilization in `tests/test_stabilization.py`.
-- `Truss.plot3d(...)` accepts `node_property`, a dict of named nodal fields matching `Solid.plot(...)` and `Shell.plot(...)`. The last field colors the node spheres through `cmap`, sharing one color range and scalar bar.
-- 3D trusses draw a sphere of the mean bar radius at each node, smoothing the joints where tubes meet. It takes the bar color when no property is given, gray when `element_property` is given, and the colormap when `node_property` is given.
+- 3D trusses draw a sphere of the mean bar radius at each node, smoothing the joints where tubes meet. It takes the bar color, or gray when `element_property` is given.
 
 ### Changed
 - The default `max_iter` of `solve(...)` is 10 instead of 100. Exceeding it now triggers an increment cutback rather than aborting the solve.
 - `Planar.plot(..., bcs=True)` draws boundary conditions differently. Force arrows are scaled linearly with their magnitude, so relative load sizes are visible, with the largest arrow spanning 10% of the plot. In the undeformed configuration, constrained DOFs with a prescribed non-zero displacement are drawn as an arrow to scale with a dot at its tip instead of a marker, which distinguishes them from the force arrows. In the deformed configuration, the arrow is omitted and the dot marks the position the node was pulled to. Plot limits now include the arrow tips.
 - `Truss.plot(...)` draws boundary conditions the same way as `Planar.plot(...)`. In 2D, force arrows are scaled linearly with the largest spanning 10% of the plot, prescribed non-zero displacements are drawn to scale with a dot at the tip in the undeformed configuration and as the dot alone in the deformed one, arrow widths follow the model size instead of a fixed 0.05, and plot limits include the arrow tips. In 3D, force arrows are scaled linearly with `force_size_factor * size` now setting the length of the largest arrow, prescribed displacements are drawn the same way with a sphere at the tip, and constrained DOFs are marked by one cone per fixed DOF pointing at the node, replacing the single sphere that previously marked a constrained node as a whole. `constraint_size_factor` now sets the cone base radius.
+- `Solid.plot(...)` now supports `bcs` (default `False`) and renders 3D mechanics boundary conditions in a truss-like style: force and prescribed-displacement arrows are batched for faster rendering, displacement tips are marked with spheres, and constrained DOFs are shown as cones. Force arrows default to a largest length of 10% of the model size, while scalar heat models skip directional BC arrows/cones.
 
 ### Fixed
 - `Truss.plot(...)` no longer raises when a 3D truss has no applied forces.
