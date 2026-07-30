@@ -3,25 +3,19 @@
 ## Unreleased
 
 ### Added
-- Automatic increment cutback in `solve(...)`, controlled by the new `cutback_factor`, `growth_factor`, and `max_cutbacks` arguments. A non-converged Newton solve retries from the last converged state with a smaller substep, which grows again after each success. Results still come back at exactly the requested `increments`.
-- Optional viscous stabilization in `solve(...)` via `alpha`, matching Abaqus automatic stabilization with "Specify damping factor". A viscous force `alpha M du/dt` is added to the residual and its tangent to damp locally unstable increments. Defaults to `0.0`, which disables it.
-- `model.stabilization_energy` holds the dissipated energy per increment, equivalent to the Abaqus `ALLSD` output.
-- Theory docs section on viscous stabilization.
-- New example `basic/planar/stabilization.ipynb` tracing the snap-through of a shallow cylindrical roof (plane strain section of the Sabir and Lock benchmark), where stabilization carries a load-controlled solve across the limit point. Linked in the docs example gallery and covered by the notebook tests.
-- Tests for viscous stabilization in `tests/test_stabilization.py`.
-- 3D trusses draw a sphere of the mean bar radius at each node, smoothing the tube joints. Bar-colored, or gray when `element_property` is given.
+- Automatic increment cutback in `solve(...)` via the new `cutback_factor`, `growth_factor`, and `max_cutbacks` arguments. A non-converged Newton solve retries from the last converged state with a smaller substep, and results still come back at exactly the requested `increments`.
+- Optional viscous stabilization in `solve(...)` via `alpha`, matching Abaqus automatic stabilization with "Specify damping factor" and disabled by default. `model.stabilization_energy` reports the dissipated energy per increment, equivalent to the Abaqus `ALLSD` output.
+- New example `basic/planar/stabilization.ipynb` tracing the snap-through of a shallow cylindrical roof, plus a theory docs section and tests for stabilization.
+- `Solid.plot(..., bcs=True)` renders boundary conditions: arrows for forces and prescribed displacements, spheres at displacement tips, and a cone per constrained DOF.
 
 ### Changed
 - The default `max_iter` of `solve(...)` is 10 instead of 100. Exceeding it now triggers an increment cutback rather than aborting the solve.
-- `Planar.plot(..., bcs=True)` scales force arrows linearly with their magnitude, the largest spanning 10% of the plot. A constrained DOF with a prescribed non-zero displacement is drawn as an arrow to scale with a dot at its tip instead of a marker; in the deformed configuration only the dot remains. Plot limits include the arrow tips.
-- `Truss.plot(...)` draws boundary conditions the same way as `Planar.plot(...)`. In 2D, arrow widths follow the model size instead of a fixed 0.05. In 3D, the largest force arrow spans 20% of the model, displacement tips are marked by spheres, and one cone per fixed DOF replaces the single sphere that marked a constrained node as a whole.
-- **Breaking:** Removed the `force_size_factor` and `constraint_size_factor` arguments of `Truss.plot3d(...)`. Boundary condition markers are sized from the model extent by fixed factors, as in `Solid.plot(...)`.
-- `Truss.plot3d(...)` batches the node spheres, displacement tips, and constraint cones into one glyph each instead of one mesh per node. On a 343-node lattice truss: 1373 to 885 actors, 2.9 s to 1.7 s, identical geometry.
-- `Solid.plot(...)` gained `bcs` (default `False`), rendering 3D mechanics boundary conditions in the truss style: batched force and displacement arrows, spheres at displacement tips, and cones at constrained DOFs. The largest force arrow spans 10% of the model; scalar heat models skip the directional markers.
+- `Planar.plot(...)` and `Truss.plot(...)` draw boundary conditions to scale. Force arrows scale with their magnitude instead of all being equally long, prescribed non-zero displacements become an arrow ending in a dot at the position the node is pulled to, and each fixed DOF gets its own marker.
+- **Breaking:** Removed the `force_size_factor` and `constraint_size_factor` arguments of `Truss.plot3d(...)`. Markers are sized automatically, cones from the mean bar length.
+- 3D trusses draw a sphere at each node smoothing the tube joints, and batch their boundary condition markers into one glyph each, which renders a 343-node truss about 1.7 times faster.
 
 ### Fixed
 - `Truss.plot(...)` no longer raises when a 3D truss has no applied forces.
-- Prescribed displacements of a 3D truss are drawn to scale again, so the arrow ends at the sphere marking where the node is pulled to. They were normalized by the largest prescribed displacement and scaled like force arrows.
 
 ## Version 0.7.4 - July 15 2026
 
