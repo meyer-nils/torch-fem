@@ -1,5 +1,3 @@
-from typing import List, Tuple
-
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import torch
@@ -333,11 +331,11 @@ def voigt2stiffness(voigt: Tensor) -> Tensor:
 def plot_contours(
     x: Tensor,
     f: Tensor,
-    opti: Tensor | List = [],
-    figsize: Tuple[float, float] = (8, 6),
+    opti: Tensor | list = [],
+    figsize: tuple[float, float] = (8, 6),
     levels: int = 25,
     title: str = "",
-    box: List[Tensor] | None = None,
+    box: list[Tensor] | None = None,
     paths: dict[str, list] = {},
     colorbar: bool = False,
 ):

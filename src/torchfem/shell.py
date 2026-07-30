@@ -8,7 +8,7 @@ https://doi.org/10.1002/nme.6944
 
 from functools import cached_property
 from math import sqrt
-from typing import Tuple, cast
+from typing import cast
 
 import torch
 from torch import Tensor
@@ -374,7 +374,7 @@ class Shell(Mechanics):
         iter: int,
         nlgeom: bool,
         compute_stiffness: bool = True,
-    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix.
 
         Args:
@@ -616,8 +616,8 @@ class Shell(Mechanics):
         kwargs.setdefault("show_edges", True)
         base_meshes = []
         if thickness:
-            nodal_thickness = np.zeros((len(self.nodes)))
-            count = np.zeros((len(self.nodes)))
+            nodal_thickness = np.zeros(len(self.nodes))
+            count = np.zeros(len(self.nodes))
             for i, face in enumerate(mesh.faces.reshape(-1, 4)):
                 idx = face[1::]
                 nodal_thickness[idx] += self.thickness[i].cpu().item()

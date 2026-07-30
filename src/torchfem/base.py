@@ -2,7 +2,7 @@ import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from functools import cached_property
-from typing import Literal, Tuple
+from typing import Literal
 
 import torch
 from torch import Tensor
@@ -229,7 +229,7 @@ class FEM(ABC):
         iter: int,
         nlgeom: bool,
         compute_stiffness: bool = True,
-    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Integrate constitutive response over all integration points.
 
         Args:
@@ -433,7 +433,7 @@ class FEM(ABC):
         nlgeom: bool = False,
         alpha: float = 0.0,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the quasi-static finite-element problem by load increments.
 
         Args:
@@ -805,7 +805,7 @@ class Mechanics(FEM, ABC):
         iter: int,
         nlgeom: bool,
         compute_stiffness: bool = True,
-    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """
         Integrate mechanics material response over all integration points.
 
@@ -909,7 +909,7 @@ class Mechanics(FEM, ABC):
     def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def solve_modes(self, n_modes: int) -> Tuple[Tensor, Tensor]:
+    def solve_modes(self, n_modes: int) -> tuple[Tensor, Tensor]:
         """Compute the natural frequencies and mode shapes.
 
         Solves the generalized eigenvalue problem
@@ -1022,7 +1022,7 @@ class Heat(FEM, ABC):
         iter: int,
         nlgeom: bool,
         compute_stiffness: bool = True,
-    ) -> Tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Integrate thermal constitutive response over all integration points.
 
         Args:
@@ -1137,7 +1137,7 @@ class Heat(FEM, ABC):
         aggregate_integration_points: bool = True,
         use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
-    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Integrate the heat equation in time with implicit increments.
 
         Computes an equilibrium state at t=0 under the current boundary

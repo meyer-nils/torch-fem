@@ -1,6 +1,6 @@
 from os import PathLike
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import torch
@@ -18,8 +18,8 @@ from .materials import Material
 def export_mesh(
     mesh: FEM,
     filename: str | PathLike,
-    nodal_data: Dict[str, Tensor] = {},
-    elem_data: Dict[str, List[Tensor]] = {},
+    nodal_data: dict[str, Tensor] = {},
+    elem_data: dict[str, list[Tensor]] = {},
     compress: bool = True,
 ):
     etype = mesh.etype.meshio_type
@@ -34,7 +34,7 @@ def export_mesh(
         },
     )
     suffix = Path(str(filename)).suffix.lower()
-    write_kwargs: Dict[str, Any] = {}
+    write_kwargs: dict[str, Any] = {}
     if suffix in {".vtu"}:
         write_kwargs["compression"] = "zlib" if compress else None
     elif suffix in {".xdmf", ".xmf"}:

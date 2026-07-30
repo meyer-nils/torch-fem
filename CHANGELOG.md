@@ -13,6 +13,7 @@
 - `Planar.plot(...)` and `Truss.plot(...)` draw boundary conditions to scale. Force arrows scale with their magnitude instead of all being equally long, prescribed non-zero displacements become an arrow ending in a dot at the position the node is pulled to, and each fixed DOF gets its own marker.
 - **Breaking:** Removed the `force_size_factor` and `constraint_size_factor` arguments of `Truss.plot3d(...)`. Markers are sized automatically, cones from the mean bar length.
 - 3D trusses draw a sphere at each node smoothing the tube joints, and batch their boundary condition markers into one glyph each, which renders a 343-node truss about 1.7 times faster.
+- Type annotations use the builtin generics `tuple`, `list`, and `dict` instead of their deprecated `typing` aliases, and import `Callable` from `collections.abc`. Signatures are unchanged apart from their spelling.
 
 ### Fixed
 - `Truss.plot(...)` no longer raises when a 3D truss has no applied forces.

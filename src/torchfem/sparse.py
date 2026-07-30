@@ -1,4 +1,4 @@
-from typing import Callable, Tuple
+from collections.abc import Callable
 
 import numpy as np
 import pyamg
@@ -210,7 +210,7 @@ def sparse_solve(
     method: str | None = None,
     M: LinearOperator | None = None,
     x0: Tensor | None = None,
-) -> Tuple[Tensor, LinearOperator | None]:
+) -> tuple[Tensor, LinearOperator | None]:
     """
     Solve the linear system Ax = b.
 
@@ -677,7 +677,7 @@ def modal_eigsolve(
     M: Tensor,
     n_modes: int,
     free_indices: Tensor,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Solve the generalized eigenvalue problem ``K φ = ω² M φ``.
 
     Args:
@@ -720,7 +720,7 @@ class Eigensolve(Function):
         M: Tensor,
         n_modes: int,
         free_indices: Tensor,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         return modal_eigsolve(K, M, n_modes, free_indices)
 
     @staticmethod
@@ -777,7 +777,7 @@ def differentiable_modal_eigsolve(
     M: Tensor,
     n_modes: int,
     free_indices: Tensor,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Solve the modal eigenvalue problem ``K φ = ω² M φ``.
 
     Args:
