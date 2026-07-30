@@ -133,7 +133,10 @@ class Planar(Mechanics):
             node_labels: If True, annotates nodes with their indices.
             node_markers: If True, draws markers at nodal positions.
             axes: If True, shows the coordinate axes.
-            bcs: If True, indicates applied forces and constraints.
+            bcs: If True, indicates applied forces as arrows scaled relative to
+                each other and constrained DOFs as markers. In the undeformed
+                configuration, prescribed non-zero displacements are drawn to
+                scale as arrows with a dot at the tip instead of a marker.
             color: Line and marker color.
             alpha: Opacity of nodal contour plots.
             cmap: Matplotlib colormap name.
@@ -152,7 +155,13 @@ class Planar(Mechanics):
         pos = pos.cpu()
         elements = self.elements.cpu()
         forces = self.forces.cpu()
-        constraints = self.constraints
+        constraints = self.constraints.cpu()
+        prescribed = torch.where(constraints, self.displacements.cpu(), 0.0)
+
+        # In a deformed configuration the prescribed displacements are already
+        # visible in the plotted positions, so they are shown as markers only.
+        if isinstance(u, Tensor):
+            prescribed = torch.zeros_like(prescribed)
 
         # Bounding box
         size = torch.linalg.norm(pos.max() - pos.min())
@@ -246,32 +255,57 @@ class Planar(Mechanics):
             lc = LineCollection(segments.tolist(), colors=color, linewidths=linewidth)
             ax.add_collection(lc)
 
-        # Forces
+        # Boundary conditions
+        tips = [pos]
         if bcs:
-            for i, force in enumerate(forces):
-                if torch.norm(force) > 0.0:
-                    x = float(pos[i][0])
-                    y = float(pos[i][1])
-                    ax.arrow(
-                        x,
-                        y,
-                        size * 0.05 * force[0] / torch.norm(force),
-                        size * 0.05 * force[1] / torch.norm(force),
-                        width=0.01 * size,
-                        facecolor="gray",
-                        linewidth=0.0,
-                        zorder=10,
-                    )
+            arrow_style = {
+                "width": 0.01 * size,
+                "facecolor": "gray",
+                "linewidth": 0.0,
+                "zorder": 10,
+            }
 
-        # Constraints
-        if bcs:
+            if forces.shape[1] == 2:
+                # Forces scaled linearly, the largest arrow spanning 15% of the plot
+                magnitude = torch.linalg.norm(forces, dim=1)
+                if magnitude.max() > 0.0:
+                    ends = pos + (0.15 * size / magnitude.max()) * forces
+                    for i in torch.nonzero(magnitude).ravel():
+                        ax.arrow(
+                            float(pos[i, 0]),
+                            float(pos[i, 1]),
+                            float(ends[i, 0] - pos[i, 0]),
+                            float(ends[i, 1] - pos[i, 1]),
+                            **arrow_style,
+                        )
+                    tips.append(ends[magnitude > 0.0])
+
+                # Prescribed displacements to scale, with a dot marking the tip
+                magnitude = torch.linalg.norm(prescribed, dim=1)
+                if magnitude.max() > 0.0:
+                    ends = (pos + prescribed)[magnitude > 0.0]
+                    for i in torch.nonzero(magnitude).ravel():
+                        ax.arrow(
+                            float(pos[i, 0]),
+                            float(pos[i, 1]),
+                            float(prescribed[i, 0]),
+                            float(prescribed[i, 1]),
+                            length_includes_head=True,
+                            **arrow_style,
+                        )
+                    ax.scatter(
+                        ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10
+                    )
+                    tips.append(ends)
+
+            # Constrained DOFs without prescribed displacement as markers
             for i, constraint in enumerate(constraints):
                 x = float(pos[i][0])
                 y = float(pos[i][1])
                 if len(constraint) == 2:
-                    if constraint[0]:
+                    if constraint[0] and prescribed[i, 0] == 0.0:
                         ax.plot(x - 0.01 * size, y, ">", color="gray")
-                    if constraint[1]:
+                    if constraint[1] and prescribed[i, 1] == 0.0:
                         ax.plot(x, y - 0.01 * size, "^", color="gray")
                 elif len(constraint) == 1:
                     if constraint[0]:
@@ -300,10 +334,11 @@ class Planar(Mechanics):
                 width=0.005,
             )
 
-        # Plot limits (collections do not autoscale)
+        # Plot limits (collections do not autoscale), including arrow tips
+        extent = torch.cat(tips)
         margin = 0.1 * size
-        ax.set_xlim(pos[:, 0].min() - margin, pos[:, 0].max() + margin)
-        ax.set_ylim(pos[:, 1].min() - margin, pos[:, 1].max() + margin)
+        ax.set_xlim(extent[:, 0].min() - margin, extent[:, 0].max() + margin)
+        ax.set_ylim(extent[:, 1].min() - margin, extent[:, 1].max() + margin)
         ax.set_aspect("equal", adjustable="box")
 
         if title:
