@@ -76,10 +76,7 @@ torchfem = ["data/*.*"]
 
 [tool.ruff]
 line-length = 88
-# Notebooks and markdown are excluded to match the previous black/isort/flake8
-# scope. Ruff would otherwise also lint notebooks and reformat code blocks in
-# docs, neither of which the old stack touched.
-exclude = [".binder", ".cache", "build", "dist", "site", "*.ipynb", "*.md"]
+exclude = [".binder", ".cache", "build", "dist", "site", "*.md"]
 
 [tool.ruff.lint]
 # E, W: pycodestyle, F: pyflakes, I: isort.
@@ -90,6 +87,8 @@ ignore = ["E203"]
 [tool.ruff.lint.per-file-ignores]
 # I, J, K are the conventional names for meshgrid index arrays.
 "src/torchfem/mesh.py" = ["E741"]
+# Notebooks legitimately import after code  and redefine names in later cells.
+"*.ipynb" = ["E402", "F811"]
 
 [tool.pyright]
 pythonVersion = "3.10"
