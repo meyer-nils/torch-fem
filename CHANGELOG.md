@@ -4,11 +4,12 @@
 
 ### Added
 - A PEP 561 `py.typed` marker, so downstream type checkers use the shipped annotations.
-- Tests for the conductivity materials, the orthotropic plane-stress and plane-strain materials, `linear_to_quadratic(...)`, and `Truss`, none of which had unit tests before.
+- Tests for the conductivity materials, the orthotropic plane-stress and plane-strain materials, `linear_to_quadratic(...)`, `Truss`, `SolidHeat`, the boundary condition setters, and the non-planar mesh imports, none of which had unit tests before.
+- A first-order patch test over all eight supported element types. `Planar` and `Solid` were previously only ever tested with `Quad1` and `Hexa1` meshes.
 
 ### Changed
 - Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`, configured in `pyproject.toml` under `[tool.ruff]`. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered.
-- CI measures test coverage with `pytest-cov` and fails below 78% (currently 80%).
+- CI measures test coverage with `pytest-cov` and fails below 78% (currently 81%).
 - The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` now default to `None` instead of a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged.
 
 ### Removed
@@ -16,6 +17,7 @@
 - The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples and their gallery entries.
 
 ### Fixed
+- `__repr__` of `Truss`, `Planar`, `Solid`, and `Shell` reported the element type as `ABCMeta`. It read `self.etype.__class__.__name__`, but `etype` is already a class, so this gave the name of its metaclass.
 - `rotate(...)` raised `IndexError` on `OrthotropicElasticityPlaneStrain` and returned meaningless `E_1`, `E_2`, `nu_12`, and `G_12` on `OrthotropicElasticityPlaneStress`. Both inverted the fourth-order stiffness tensor instead of its Voigt matrix, and now use `stiffness2voigt(self.C)` like the 3D class. The rotated `C` was always correct.
 - The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (it is `kappa`) and described `step(...)` as a small-strain elasticity model.
 - Several functions shared a single mutable default across all calls: `cached_solve=CachedSolve()` in `sparse_solve(...)`, `newton_solve(...)` and their autograd wrappers, `nodal_data`/`elem_data` in `export_mesh(...)`, and two arguments of `plot_contours(...)`. Each default is now built per call.
