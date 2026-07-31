@@ -791,11 +791,11 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         )
 
         # Compute rotated internal variables
-        S = torch.linalg.inv(self.C)
-        self.E_1 = 1 / S[..., 0, 0, 0, 0]
-        self.E_2 = 1 / S[..., 1, 1, 1, 1]
-        self.nu_12 = -S[..., 0, 0, 0, 0] * S[..., 0, 0, 1, 1]
-        self.G_12 = 1 / S[..., 0, 1, 0, 1]
+        S = torch.linalg.inv(stiffness2voigt(self.C))
+        self.E_1 = 1 / S[..., 0, 0]
+        self.E_2 = 1 / S[..., 1, 1]
+        self.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
+        self.G_12 = 1 / S[..., 2, 2]
         return self
 
 
@@ -931,9 +931,9 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         )
 
         # Compute rotated internal variables
-        S = torch.linalg.inv(self.C)
+        S = torch.linalg.inv(stiffness2voigt(self.C))
         self.E_1 = 1 / S[..., 0, 0]
         self.E_2 = 1 / S[..., 1, 1]
-        self.nu_12 = -S[..., 0, 0] * S[..., 0, 1]
+        self.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
         self.G_12 = 1 / S[..., 2, 2]
         return self
