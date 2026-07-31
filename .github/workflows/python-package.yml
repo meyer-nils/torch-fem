@@ -60,6 +60,13 @@ jobs:
         DISPLAY: ":99"
       run: pytest -m "not notebook" --cov --cov-report=term-missing --cov-fail-under=78
 
+    # Report from one matrix entry only, and also when the gate above failed.
+    - name: Coverage summary
+      if: always() && matrix.python-version == '3.12'
+      run: |
+        echo "### Coverage: $(coverage report --format=total)%" >> $GITHUB_STEP_SUMMARY
+        coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
+
   notebooks:
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
