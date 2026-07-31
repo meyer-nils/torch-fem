@@ -22,16 +22,15 @@ For usage questions and support requests, see `SUPPORT.md`.
 6. **Submit a Pull Request (PR)**: Go to the main repository and click "New Pull Request." Provide a description of your changes and reference any related issue numbers.
 
 ## Code Style
-- Follow the [black](https://github.com/psf/black) coding style for Python.
+- Follow the [ruff](https://docs.astral.sh/ruff/) coding style for Python.
 - Keep code clean and modular.
 - Use type annotations.
 
 ## Running the checks
 The CI enforces formatting, linting, type checking, and tests. To reproduce them locally:
 ```sh
-black --check src/ tests/       # formatting (drop --check to auto-format)
-isort --check-only src/ tests/  # import ordering (drop --check-only to fix)
-flake8 src/ tests/              # linting
+ruff format --check src/ tests/ # formatting (drop --check to auto-format)
+ruff check src/ tests/          # linting and import ordering (add --fix to fix)
 basedpyright                    # type checking (same engine as Pylance)
 pytest -m "not notebook"        # fast unit tests
 pytest -m "notebook"            # slow tests that execute the example notebooks

@@ -430,7 +430,6 @@ class Shell(Mechanics):
         materials, z_stations, w_stations = self._thickness_stations()
 
         for i, wi in enumerate(self.etype.iweights):
-
             # Transform displacement increment to local element coordinates
             du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
             dw_local = torch.einsum("...ij,...kj->...ki", self.t, d_w)

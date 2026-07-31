@@ -1083,7 +1083,6 @@ class Heat(FEM, ABC):
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
         for i, w in enumerate(self.etype.iweights):
-
             # Compute temperature gradient increment
             temp_grad_inc = torch.einsum("...ij,...jk->...ki", B[i], du)
             # Update deformation gradient

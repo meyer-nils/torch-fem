@@ -53,10 +53,8 @@ notebook = [
 ]
 dev = [
     "basedpyright",
-    "black",
-    "flake8",
-    "isort",
     "pytest",
+    "ruff",
     "testbook",
 ]
 all = [
@@ -76,11 +74,22 @@ where = ["src"]
 [tool.setuptools.package-data]
 torchfem = ["data/*.*"]
 
-[tool.black]
+[tool.ruff]
 line-length = 88
+# Notebooks and markdown are excluded to match the previous black/isort/flake8
+# scope. Ruff would otherwise also lint notebooks and reformat code blocks in
+# docs, neither of which the old stack touched.
+exclude = [".binder", ".cache", "build", "dist", "site", "*.ipynb", "*.md"]
 
-[tool.isort]
-profile = "black"
+[tool.ruff.lint]
+# E, W: pycodestyle, F: pyflakes, I: isort.
+select = ["E", "W", "F", "I"]
+# E203 (whitespace before ':') conflicts with the formatter.
+ignore = ["E203"]
+
+[tool.ruff.lint.per-file-ignores]
+# I, J, K are the conventional names for meshgrid index arrays.
+"src/torchfem/mesh.py" = ["E741"]
 
 [tool.pyright]
 pythonVersion = "3.10"

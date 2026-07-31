@@ -40,6 +40,6 @@ In the root of the cloned project, make the installation editable as
 ``` sh 
 pip install -e ".[all]"
 ```
-The `all` extra combines the `notebook` extra with the development tools (`pytest`, `testbook`, `flake8`) in the `dev` extra. Both are required to run the test suite, which executes the example notebooks.
+The `all` extra combines the `notebook` extra with the development tools (`pytest`, `testbook`, `ruff`) in the `dev` extra. Both are required to run the test suite, which executes the example notebooks.
 
 Now, the package is linked to this local directory and whenever you use `import torchfem`, it will use the latest code.

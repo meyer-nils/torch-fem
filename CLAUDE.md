@@ -12,7 +12,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Commands
 - **Environment:** `conda activate torchfem`
-- **Lint:** `black . && isort .`
+- **Lint:** `ruff format . && ruff check --fix .`
 - **Test:** `pytest`
 
 ## This repo

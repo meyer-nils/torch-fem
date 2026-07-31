@@ -5,6 +5,9 @@
 ### Added
 - A PEP 561 `py.typed` marker, so type checkers in downstream projects now use the annotations shipped with `torchfem` instead of treating the package as untyped.
 
+### Changed
+- Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`. The tool configuration lives entirely in `pyproject.toml` under `[tool.ruff]`, replacing the deleted `.flake8` file, and the `dev` extra installs `ruff` instead of the three previous tools. Local checks are now `ruff format .` and `ruff check --fix .`.
+
 ### Removed
 - **Breaking:** The `torchfem.sdfs` module, which provided signed distance functions for implicit geometry (TPMS surfaces, primitives, and CSG booleans). Implicit geometry modelling is out of scope for a finite element library. The `basic/solid/gyroid.ipynb` example now defines its gyroid distance function inline, which is all the example ever needed.
 - The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples, along with their entries in the example gallery.
