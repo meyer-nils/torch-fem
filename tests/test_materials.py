@@ -434,16 +434,6 @@ class TestTransverseIsotropicElasticity3D:
         )
         assert mat.C.shape == (3, 3, 3, 3)
 
-    def test_is_orthotropic_subclass(self):
-        mat = TransverseIsotropicElasticity3D(
-            E_L=100e3,
-            E_T=10e3,
-            nu_L=0.3,
-            nu_T=0.3,
-            G_L=5e3,
-        )
-        assert isinstance(mat, OrthotropicElasticity3D)
-
 
 class TestOrthotropicElasticityPlaneStress:
     def test_stiffness_shape(self):

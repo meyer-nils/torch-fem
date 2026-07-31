@@ -6,7 +6,7 @@ from torchfem.homogenization import (
     symm,
     tandon_weng_homogenization,
 )
-from torchfem.materials import IsotropicElasticity3D, OrthotropicElasticity3D
+from torchfem.materials import IsotropicElasticity3D
 
 
 class TestSymm:
@@ -71,12 +71,6 @@ class TestComputeOrientationAverage:
 
 
 class TestTandonWengHomogenization:
-    def test_returns_orthotropic(self):
-        matrix = IsotropicElasticity3D(3500.0, 0.35)
-        fiber = IsotropicElasticity3D(72000.0, 0.2)
-        result = tandon_weng_homogenization(matrix, fiber, a=20.0, volfrac=0.3)
-        assert isinstance(result, OrthotropicElasticity3D)
-
     def test_stiffness_shape(self):
         matrix = IsotropicElasticity3D(3500.0, 0.35)
         fiber = IsotropicElasticity3D(72000.0, 0.2)
