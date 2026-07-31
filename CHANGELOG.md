@@ -3,21 +3,23 @@
 ## Unreleased
 
 ### Added
-- A PEP 561 `py.typed` marker, so type checkers in downstream projects now use the annotations shipped with `torchfem` instead of treating the package as untyped.
+- A PEP 561 `py.typed` marker, so downstream type checkers use the shipped annotations.
+- Tests for the conductivity materials, the orthotropic plane-stress and plane-strain materials, `linear_to_quadratic(...)`, and `Truss`, none of which had unit tests before.
 
 ### Changed
-- Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`. The tool configuration lives entirely in `pyproject.toml` under `[tool.ruff]`, replacing the deleted `.flake8` file, and the `dev` extra installs `ruff` instead of the three previous tools. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered, and CI enforces both across the whole repository.
-- CI measures test coverage with `pytest-cov` and fails below 70%. Coverage currently sits at 73%; the settings live in `pyproject.toml` under `[tool.coverage.run]` and `[tool.coverage.report]`, and the `dev` extra installs `pytest-cov`.
-- The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` accept `None` and default to it, instead of defaulting to a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged; passing `None` now selects it explicitly.
+- Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`, configured in `pyproject.toml` under `[tool.ruff]`. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered.
+- CI measures test coverage with `pytest-cov` and fails below 78% (currently 80%).
+- The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` now default to `None` instead of a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged.
 
 ### Removed
-- **Breaking:** The `torchfem.sdfs` module, which provided signed distance functions for implicit geometry (TPMS surfaces, primitives, and CSG booleans). Implicit geometry modelling is out of scope for a finite element library. The `basic/solid/gyroid.ipynb` example now defines its gyroid distance function inline, which is all the example ever needed.
-- The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples, along with their entries in the example gallery.
+- **Breaking:** The `torchfem.sdfs` module, which provided signed distance functions for implicit geometry (TPMS surfaces, primitives, and CSG booleans) and is out of scope for a finite element library. The `basic/solid/gyroid.ipynb` example now defines its distance function inline.
+- The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples and their gallery entries.
 
 ### Fixed
-- The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (the attribute is `kappa`) and described `step(...)` as a "small-strain isotropic elasticity model". Both now describe the heat conduction model, and the constructor arguments are documented like the other material classes.
-- Several functions shared a single mutable default argument across all calls: `cached_solve=CachedSolve()` in `sparse_solve(...)`, `newton_solve(...)` and their autograd wrappers, the `nodal_data`/`elem_data` dictionaries of `export_mesh(...)`, and two arguments of `plot_contours(...)`. Each default is now built per call, so a solve that writes to the cache can no longer affect a later, unrelated solve.
-- The `psi` strain energy function in the `basic/solid/large_compression.ipynb` example read the module-level `mu` and `lbd` instead of the `params` it was given, which would have made gradients with respect to `params` identically zero. Results are unchanged, because the example passes exactly those values.
+- `rotate(...)` raised `IndexError` on `OrthotropicElasticityPlaneStrain` and returned meaningless `E_1`, `E_2`, `nu_12`, and `G_12` on `OrthotropicElasticityPlaneStress`. Both inverted the fourth-order stiffness tensor instead of its Voigt matrix, and now use `stiffness2voigt(self.C)` like the 3D class. The rotated `C` was always correct.
+- The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (it is `kappa`) and described `step(...)` as a small-strain elasticity model.
+- Several functions shared a single mutable default across all calls: `cached_solve=CachedSolve()` in `sparse_solve(...)`, `newton_solve(...)` and their autograd wrappers, `nodal_data`/`elem_data` in `export_mesh(...)`, and two arguments of `plot_contours(...)`. Each default is now built per call.
+- The `psi` function in the `basic/solid/large_compression.ipynb` example read the module-level `mu` and `lbd` instead of its `params`, which would have zeroed gradients with respect to `params`. Results are unchanged.
 
 ## Version 0.7.5 - July 30 2026
 

@@ -16,6 +16,6 @@ This file provides guidance to Claude Code when working with code in this reposi
 - **Test:** `pytest`
 
 ## This repo
-- Public API change: add a `CHANGELOG.md` entry under "Unreleased".
+- Public API change: add a brief `CHANGELOG.md` entry under "Unreleased".
 - New example notebook: add a card in `docs/examples.md` and a test in `tests/test_notebooks.py`.
 - Everything runs in float64.
