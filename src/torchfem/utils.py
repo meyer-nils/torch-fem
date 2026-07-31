@@ -331,12 +331,12 @@ def voigt2stiffness(voigt: Tensor) -> Tensor:
 def plot_contours(
     x: Tensor,
     f: Tensor,
-    opti: Tensor | list = [],
+    opti: Tensor | list | None = None,
     figsize: tuple[float, float] = (8, 6),
     levels: int = 25,
     title: str = "",
     box: list[Tensor] | None = None,
-    paths: dict[str, list] = {},
+    paths: dict[str, list] | None = None,
     colorbar: bool = False,
 ):
     """Function to plot contours of a function f(x) in 2D.
@@ -352,6 +352,9 @@ def plot_contours(
         box: Tuple representing the box coordinates for the contour plot.
         paths: Dictionary of paths to plot.
         colorbar: Boolean indicating whether to show the colorbar."""
+    opti = [] if opti is None else opti
+    paths = {} if paths is None else paths
+
     with torch.no_grad():
         plt.figure(figsize=figsize)
         plt.contour(x[..., 0], x[..., 1], f, levels=levels, colors="k", linewidths=0.5)

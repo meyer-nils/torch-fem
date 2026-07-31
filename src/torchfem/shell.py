@@ -582,8 +582,8 @@ class Shell(Mechanics):
         try:
             import numpy as np
             import pyvista
-        except ImportError:
-            raise Exception("Plotting 3D requires pyvista.")
+        except ImportError as err:
+            raise Exception("Plotting 3D requires pyvista.") from err
 
         pyvista.set_plot_theme("document")
         pyvista.set_jupyter_backend("client")

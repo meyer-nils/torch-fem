@@ -2,6 +2,7 @@ import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from functools import cached_property
+from itertools import pairwise
 from typing import Literal
 
 import torch
@@ -416,7 +417,7 @@ class FEM(ABC):
 
     def solve(
         self,
-        increments: Tensor = torch.tensor([0.0, 1.0]),
+        increments: Tensor | None = None,
         max_iter: int = 10,
         rtol: float = 1e-8,
         atol: float = 1e-6,
@@ -470,6 +471,8 @@ class FEM(ABC):
                 state. If return_intermediate is True, each tensor includes an
                 increment dimension as the leading axis.
         """
+        increments = torch.tensor([0.0, 1.0]) if increments is None else increments
+
         # Number of increments
         N = len(increments)
 
@@ -642,14 +645,14 @@ class FEM(ABC):
                         state_prev,
                         *differentiable_parameters,
                     )
-                except RuntimeError:
+                except RuntimeError as err:
                     # Cut the substep back and retry from the same state
                     step_size = cutback_factor * step
                     if step_size < min_step:
                         raise RuntimeError(
                             f"Newton-Raphson did not converge in increment {n} "
                             f"after {max_cutbacks} cutbacks."
-                        )
+                        ) from err
                     if verbose:
                         print(f"  Cutting increment back to {step_size:.3e} ...")
                     continue
@@ -1124,7 +1127,7 @@ class Heat(FEM, ABC):
 
     def time_integration(
         self,
-        t_output: Tensor = torch.tensor([0.0, 1.0]),
+        t_output: Tensor | None = None,
         delta_t: float = 1.0e-1,
         max_iter: int = 100,
         verbose: bool = False,
@@ -1172,6 +1175,8 @@ class Heat(FEM, ABC):
         """
 
         # Validate before self.constraints is modified below.
+        t_output = torch.tensor([0.0, 1.0]) if t_output is None else t_output
+
         if t_output.numel() == 0:
             raise ValueError("t_output must contain at least one time.")
         if t_output.min() < 0.0:
@@ -1202,7 +1207,7 @@ class Heat(FEM, ABC):
         # Row of the internal grid holding each output time.
         output_rows = [] if t_output[0] > 0.0 else [0]
         row = 0
-        for t_start, t_end in zip(knots[:-1], knots[1:]):
+        for t_start, t_end in pairwise(knots):
             # The tolerance keeps float error in an interval that is an exact
             # multiple of delta_t from adding a spurious substep.
             ratio = ((t_end - t_start) / delta_t).item()

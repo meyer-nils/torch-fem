@@ -6,7 +6,8 @@
 - A PEP 561 `py.typed` marker, so type checkers in downstream projects now use the annotations shipped with `torchfem` instead of treating the package as untyped.
 
 ### Changed
-- Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`. The tool configuration lives entirely in `pyproject.toml` under `[tool.ruff]`, replacing the deleted `.flake8` file, and the `dev` extra installs `ruff` instead of the three previous tools. Local checks are now `ruff format .` and `ruff check --fix .`.
+- Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`. The tool configuration lives entirely in `pyproject.toml` under `[tool.ruff]`, replacing the deleted `.flake8` file, and the `dev` extra installs `ruff` instead of the three previous tools. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered, and CI enforces both across the whole repository.
+- The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` accept `None` and default to it, instead of defaulting to a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged; passing `None` now selects it explicitly.
 
 ### Removed
 - **Breaking:** The `torchfem.sdfs` module, which provided signed distance functions for implicit geometry (TPMS surfaces, primitives, and CSG booleans). Implicit geometry modelling is out of scope for a finite element library. The `basic/solid/gyroid.ipynb` example now defines its gyroid distance function inline, which is all the example ever needed.
@@ -14,6 +15,8 @@
 
 ### Fixed
 - The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (the attribute is `kappa`) and described `step(...)` as a "small-strain isotropic elasticity model". Both now describe the heat conduction model, and the constructor arguments are documented like the other material classes.
+- Several functions shared a single mutable default argument across all calls: `cached_solve=CachedSolve()` in `sparse_solve(...)`, `newton_solve(...)` and their autograd wrappers, the `nodal_data`/`elem_data` dictionaries of `export_mesh(...)`, and two arguments of `plot_contours(...)`. Each default is now built per call, so a solve that writes to the cache can no longer affect a later, unrelated solve.
+- The `psi` strain energy function in the `basic/solid/large_compression.ipynb` example read the module-level `mu` and `lbd` instead of the `params` it was given, which would have made gradients with respect to `params` identically zero. Results are unchanged, because the example passes exactly those values.
 
 ## Version 0.7.5 - July 30 2026
 

@@ -79,16 +79,17 @@ line-length = 88
 exclude = [".binder", ".cache", "build", "dist", "site", "*.md"]
 
 [tool.ruff.lint]
-# E, W: pycodestyle, F: pyflakes, I: isort.
-select = ["E", "W", "F", "I"]
-# E203 (whitespace before ':') conflicts with the formatter.
-ignore = ["E203"]
+# E, W: pycodestyle, F: pyflakes, I: isort, B: bugbear, UP: pyupgrade, C4: comprehensions
+select = ["E", "W", "F", "I", "B", "UP", "C4"]
+# E203 conflicts with the formatter, B905 asks for an explicit strict= on every zip.
+ignore = ["E203", "B905"]
 
 [tool.ruff.lint.per-file-ignores]
 # I, J, K are the conventional names for meshgrid index arrays.
 "src/torchfem/mesh.py" = ["E741"]
-# Notebooks legitimately import after code  and redefine names in later cells.
-"*.ipynb" = ["E402", "F811"]
+# Notebooks import after code and redefine names in later cells, and their
+# optimization loops close over loop variables.
+"*.ipynb" = ["E402", "F811", "B023", "B007"]
 
 [tool.pyright]
 pythonVersion = "3.10"

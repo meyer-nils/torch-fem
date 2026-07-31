@@ -428,7 +428,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         E = self.E[fm]
         G = self.G[fm]
         nu = self.nu[fm]
-        for j in range(self.max_iter):
+        for _ in range(self.max_iter):
             # Compute xi and some short hands
             xi = (
                 a1[fm] / (6 * (1 + E * dGamma / (3 * (1 - nu))) ** 2)

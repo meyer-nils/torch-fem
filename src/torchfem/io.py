@@ -18,8 +18,8 @@ from .materials import Material
 def export_mesh(
     mesh: FEM,
     filename: str | PathLike,
-    nodal_data: dict[str, Tensor] = {},
-    elem_data: dict[str, list[Tensor]] = {},
+    nodal_data: dict[str, Tensor] | None = None,
+    elem_data: dict[str, list[Tensor]] | None = None,
     compress: bool = True,
 ):
     """Writes a model and optional result fields to a mesh file.
@@ -39,6 +39,9 @@ def export_mesh(
         compress (bool): Compress the payload. Applies to `.vtu` (zlib) and
             `.xdmf`/`.xmf` (gzip) only, and is ignored for other formats.
     """
+    nodal_data = {} if nodal_data is None else nodal_data
+    elem_data = {} if elem_data is None else elem_data
+
     etype = mesh.etype.meshio_type
 
     msh = Mesh(
@@ -91,7 +94,7 @@ def import_mesh(
     mesh = read(filename)
     elems = []
     etypes = []
-    allowed_meshio_types = set([e.meshio_type for e in ELEMENT_REGISTRY])
+    allowed_meshio_types = {e.meshio_type for e in ELEMENT_REGISTRY}
     forbidden_meshio_types = {"line"}
     for cell_block in mesh.cells:
         if cell_block.type in allowed_meshio_types.difference(forbidden_meshio_types):

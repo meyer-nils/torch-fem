@@ -209,7 +209,7 @@ class Planar(Mechanics):
                     verts = pos[elements[:, :4]]
                 else:
                     verts = pos[elements]
-                pc = PolyCollection([v for v in verts.numpy()], cmap=cmap)
+                pc = PolyCollection(list(verts.numpy()), cmap=cmap)
                 pc.set_array(element_property)
                 ax.add_collection(pc)
                 if colorbar:

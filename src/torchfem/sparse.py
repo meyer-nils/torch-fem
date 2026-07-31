@@ -97,7 +97,7 @@ class Solve(Function):
         device: str | None = None,
         method: str | None = None,
         M: LinearOperator | None = None,
-        cached_solve: CachedSolve | None = CachedSolve(),
+        cached_solve: CachedSolve | None = None,
         update_cache: bool = False,
     ) -> tuple[Tensor, LinearOperator | None]:
         """Solve `A x = b`, warm-starting from `cached_solve`.
@@ -188,7 +188,7 @@ def differentiable_sparse_solve(
     device: str | None = None,
     method: str | None = None,
     M: LinearOperator | None = None,
-    cached_solve: CachedSolve | None = CachedSolve(),
+    cached_solve: CachedSolve | None = None,
     update_cache: bool = False,
 ) -> Tensor:
     """Solve `A x = b` with custom sparse adjoint autograd support.
@@ -394,7 +394,7 @@ def _solve_cpu(
             M = ml.aspreconditioner()
 
         # Solve with minres
-        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol, x0=x0_np)  # type: ignore  # noqa: E501
+        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol, x0=x0_np)  # type: ignore
         if exit_code != 0:
             raise RuntimeError(f"minres failed with exit code {exit_code}")
     elif method == "cg":
@@ -447,7 +447,7 @@ class NewtonRaphsonAdjoint(Function):
         verbose: bool,
         method: str | None = None,
         device: str | None = None,
-        cached_solve: CachedSolve | None = CachedSolve(),
+        cached_solve: CachedSolve | None = None,
         update_cache: bool = False,
         u_prev: Tensor | None = None,
         grad_prev: Tensor | None = None,
@@ -620,7 +620,7 @@ def newton_solve(
     verbose: bool,
     method: str | None = None,
     device: str | None = None,
-    cached_solve: CachedSolve | None = CachedSolve(),
+    cached_solve: CachedSolve | None = None,
     update_cache: bool = False,
     u_prev: Tensor | None = None,
     grad_prev: Tensor | None = None,

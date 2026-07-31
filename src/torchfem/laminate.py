@@ -14,6 +14,7 @@ first local axis, counter-clockwise as in `planar_rotation`.
 from __future__ import annotations
 
 import copy
+from typing import ClassVar
 
 import torch
 from torch import Tensor
@@ -51,7 +52,11 @@ class Laminate:
           coupling the offset implies (so an offset symmetric stack couples).
     """
 
-    _OFFSET_ALIASES = {"mid": 0.0, "top": 0.5, "bottom": -0.5}
+    _OFFSET_ALIASES: ClassVar[dict[str, float]] = {
+        "mid": 0.0,
+        "top": 0.5,
+        "bottom": -0.5,
+    }
 
     def __init__(
         self,
@@ -206,11 +211,13 @@ class Laminate:
         As = torch.zeros(n_elem, 2, 2)
         for k in range(self.n_layers):
             m = self.materials[k]
+            # getattr keeps these dynamic: the transverse moduli exist only on
+            # some Material subclasses, which is what the hasattr guards test.
             if hasattr(m, "G_13"):
-                g13 = torch.as_tensor(getattr(m, "G_13"))
-                g23 = torch.as_tensor(getattr(m, "G_23"))
+                g13 = torch.as_tensor(getattr(m, "G_13"))  # noqa: B009
+                g23 = torch.as_tensor(getattr(m, "G_23"))  # noqa: B009
             elif hasattr(m, "G"):
-                g13 = torch.as_tensor(getattr(m, "G"))
+                g13 = torch.as_tensor(getattr(m, "G"))  # noqa: B009
                 g23 = g13
             else:
                 raise ValueError(
