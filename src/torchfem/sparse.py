@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pyamg
@@ -51,28 +52,30 @@ except ImportError:
 
 
 class CachedSolve:
+    """Cache of the previous solution and gradient, used to warm-start solvers.
+
+    Written only when the caller passes `update_cache=True`. Direct solvers
+    ignore it.
+
+    Args:
+        previous_x (Tensor | None): Previous forward solution.
+            *Shape:* `(n_dofs,)`.
+        previous_grad (Tensor | None): Previous adjoint solution.
+            *Shape:* `(n_dofs,)`.
+    """
+
     def __init__(
         self, previous_x: Tensor | None = None, previous_grad: Tensor | None = None
-    ):
-        """Cache for the previous solution and gradient.
-
-        This is used to warm-start the solver in the next iteration.
-        previous_x is updated during the forward pass,
-        and previous_grad is updated during the backward pass.
-
-        Args:
-            previous_x (Tensor, optional): Previous solution tensor.
-            previous_grad (Tensor, optional): Previous gradient tensor.
-        If None, the cache is empty.
-        """
-
+    ) -> None:
         self.previous_x = previous_x
         self.previous_grad = previous_grad
 
     def update_grad(self, grad: Tensor | None) -> None:
+        """Stores a detached copy of `grad` as the next backward warm start."""
         self.previous_grad = grad.detach().clone() if grad is not None else None
 
     def update_x(self, x: Tensor | None) -> None:
+        """Stores a detached copy of `x` as the next forward warm start."""
         self.previous_x = x.detach().clone() if x is not None else None
 
 
@@ -94,30 +97,18 @@ class Solve(Function):
         device: str | None = None,
         method: str | None = None,
         M: LinearOperator | None = None,
-        cached_solve=CachedSolve(),
-        update_cache=False,
-    ):
-        """
-        Solve the linear system Ax = b.
-        Args:
-            A (sparse_coo_tensor): Sparse matrix A.
-            b (Tensor): Right-hand side vector b.
-            B (Tensor, optional): Null space rigid body modes for AMG preconditioner.
-            stol (float, optional): Relative solver tolerance for the iterative solver.
-                Defaults to 1e-10.
-            device (str, optional): Device to run the computation on ('cpu' or 'cuda').
-                Defaults to None, which uses the current device.
-            method (str, optional): Method to use for solving ('spsolve', 'minres',
-                'cg', 'pardiso'). Defaults to None for automatic selection based on the
-                input size and available backends.
-            M (LinearOperator, optional): Preconditioner matrix for iterative methods.
-                Defaults to None.
-            cached_solve (CachedSolve, optional): Cache for the previous solution and
-                gradient. Defaults to an empty cache.
-            update_cache (bool, optional): Whether to update the cached solution
-                after the forward pass. Defaults to False.
+        cached_solve: CachedSolve | None = CachedSolve(),
+        update_cache: bool = False,
+    ) -> tuple[Tensor, LinearOperator | None]:
+        """Solve `A x = b`, warm-starting from `cached_solve`.
+
+        See `sparse_solve` for the arguments.
+
         Returns:
-            Tensor: Solution vector x.
+            x (Tensor): Solution vector.
+                *Shape:* `(n_dofs,)`.
+            M (LinearOperator | None): Preconditioner built or reused by the
+                solve, passed on to `backward` for the adjoint system.
         """
         x0 = None
         if cached_solve is not None and cached_solve.previous_x is not None:
@@ -131,7 +122,15 @@ class Solve(Function):
         return x, M
 
     @staticmethod
-    def backward(ctx, *grad_outputs):
+    def backward(ctx, *grad_outputs) -> tuple:
+        """Backpropagate through the solve via the adjoint system `A^T λ = grad_x`.
+
+        The matrix gradient `dL/dA_ij = -λ_i x_j` is evaluated only at the
+        sparsity pattern of `A`, so no dense matrix is formed.
+
+        Returns:
+            Gradients for `A` and `b`, then `None` for the other arguments.
+        """
         # Upstream gradient for the solution x
         grad_x = grad_outputs[0]
 
@@ -161,7 +160,12 @@ class Solve(Function):
         return gradA, gradb, None, None, None, None, None, None, None
 
     @staticmethod
-    def setup_context(ctx, inputs, output):
+    def setup_context(ctx, inputs, output) -> None:
+        """Save `A`, `x` and the solver settings for `backward`.
+
+        Stores the preconditioner *returned* by the forward pass, not the one
+        passed in, so the adjoint solve reuses the AMG hierarchy built there.
+        """
         A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
         x, M_computed = output
         ctx.save_for_backward(A, x)
@@ -184,14 +188,14 @@ def differentiable_sparse_solve(
     device: str | None = None,
     method: str | None = None,
     M: LinearOperator | None = None,
-    cached_solve=CachedSolve(),
-    update_cache=False,
+    cached_solve: CachedSolve | None = CachedSolve(),
+    update_cache: bool = False,
 ) -> Tensor:
-    """Solve ``A x = b`` with custom sparse adjoint autograd support.
+    """Solve `A x = b` with custom sparse adjoint autograd support.
 
     The forward pass may use non-differentiable sparse backends (SciPy, CuPy,
     Pardiso). The backward pass solves the adjoint system and returns gradients
-    with respect to both ``A`` and ``b``.
+    with respect to both `A` and `b`.
     """
     result, _ = Solve.apply(
         A, b, B, stol, device, method, M, cached_solve, update_cache
@@ -228,8 +232,12 @@ def sparse_solve(
         M (Tensor, optional): Preconditioner matrix for iterative methods.
             Defaults to None.
         x0 (Tensor, optional): Initial guess for iterative solvers. Defaults to None.
+
     Returns:
-        Tuple[Tensor, LinearOperator | None]: Solution vector x and preconditioner  M.
+        x (Tensor): Solution vector.
+            *Shape:* `(n_dofs,)`.
+        M (LinearOperator | None): Preconditioner built or reused by the solve,
+            `None` for direct methods.
     """
     # Check the input shape
     if A.ndim != 2 or (A.shape[0] != A.shape[1]):
@@ -275,7 +283,21 @@ def sparse_solve(
     return x, M_xp
 
 
-def _solve_gpu(A, b, B, method, stol, M, shape, x0):
+def _solve_gpu(
+    A: Tensor,
+    b: Tensor,
+    B: Tensor | None,
+    method: str,
+    stol: float,
+    M: LinearOperator | None,
+    shape: torch.Size,
+    x0: Tensor | None,
+) -> tuple[Any, Any]:
+    """Solve `A x = b` on the GPU via CuPy. See `sparse_solve` for arguments.
+
+    Iterative methods use a Jacobi preconditioner, so `B` and any supplied `M`
+    are ignored. `pardiso` is CPU only and raises.
+    """
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
 
@@ -319,7 +341,21 @@ def _solve_gpu(A, b, B, method, stol, M, shape, x0):
     return x_xp, M
 
 
-def _solve_cpu(A, b, B, method, stol, M, shape, x0):
+def _solve_cpu(
+    A: Tensor,
+    b: Tensor,
+    B: Tensor | None,
+    method: str,
+    stol: float,
+    M: LinearOperator | None,
+    shape: torch.Size,
+    x0: Tensor | None,
+) -> tuple[Any, LinearOperator | None]:
+    """Solve `A x = b` on the CPU via SciPy. See `sparse_solve` for arguments.
+
+    Iterative methods build an AMG preconditioner from `A` and `B` unless `M` is
+    supplied. `pardiso` reorders with reverse Cuthill-McKee before factorising.
+    """
     A_np = scipy_coo_matrix(
         (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
     ).tocsr()
@@ -379,17 +415,17 @@ class NewtonRaphsonAdjoint(Function):
     """Custom autograd function for nonlinear Newton-Raphson solves.
 
     The forward pass performs Newton iterations on the residual callback
-    ``eval_residual(du, iter, u_prev, grad_prev, flux_prev, state_prev) ->
-    (residual, tangent)`` and returns the converged increment ``du``.
+    `eval_residual(du, iter, u_prev, grad_prev, flux_prev, state_prev) ->
+    (residual, tangent)` and returns the converged increment `du`.
 
     In the backward pass, gradients are computed by an implicit adjoint
     relation at the converged state:
 
-    1) Solve the adjoint linear system ``K^T lambda = grad_du``.
+    1) Solve the adjoint linear system `K^T lambda = grad_du`.
     2) Recompute the residual with a differentiable local state.
     3) Differentiate the residual with respect to the previous increment's
-       state (``u_prev``, ``grad_prev``, ``flux_prev``, ``state_prev``) and
-       the explicit parameter tensors passed to ``newton_solve``. The state
+       state (`u_prev`, `grad_prev`, `flux_prev`, `state_prev`) and
+       the explicit parameter tensors passed to `newton_solve`. The state
        gradients let autograd chain sensitivities across load increments.
 
     This avoids differentiating through all Newton iterations.
@@ -411,14 +447,23 @@ class NewtonRaphsonAdjoint(Function):
         verbose: bool,
         method: str | None = None,
         device: str | None = None,
-        cached_solve=CachedSolve(),
-        update_cache=False,
+        cached_solve: CachedSolve | None = CachedSolve(),
+        update_cache: bool = False,
         u_prev: Tensor | None = None,
         grad_prev: Tensor | None = None,
         flux_prev: Tensor | None = None,
         state_prev: Tensor | None = None,
         *parameters: Tensor,
     ) -> Tensor:
+        """Run Newton iterations until the residual meets `rtol` or `atol`.
+
+        Only the converged state is saved for backward, and the warm start
+        applies to the first Newton step only. See `newton_solve` for arguments.
+
+        Raises:
+            RuntimeError: If the residual becomes NaN or infinite, or the
+                iteration limit is reached.
+        """
         M = None
         converged_iter = max_iter - 1
 
@@ -484,7 +529,16 @@ class NewtonRaphsonAdjoint(Function):
         return du
 
     @staticmethod
-    def backward(ctx, *grad_outputs):
+    def backward(ctx, *grad_outputs) -> tuple:
+        """Differentiate the converged solve via the adjoint `K^T λ = grad_du`.
+
+        The residual is recomputed once with differentiable inputs and `-λ`
+        pulled back through it, so gradients reach the previous increment's
+        state and chain across load increments.
+
+        Returns:
+            `None` for solver arguments, then state and parameter gradients.
+        """
         grad_du = grad_outputs[0]
 
         K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters = ctx.saved_tensors
@@ -567,8 +621,8 @@ def newton_solve(
     verbose: bool,
     method: str | None = None,
     device: str | None = None,
-    cached_solve=CachedSolve(),
-    update_cache=False,
+    cached_solve: CachedSolve | None = CachedSolve(),
+    update_cache: bool = False,
     u_prev: Tensor | None = None,
     grad_prev: Tensor | None = None,
     flux_prev: Tensor | None = None,
@@ -578,7 +632,7 @@ def newton_solve(
     """Solve a nonlinear residual equation with adjoint-safe Newton iterations.
 
     Args:
-        eval_residual: Callback returning ``(residual, tangent)`` for the
+        eval_residual: Callback returning `(residual, tangent)` for the
             current iterate, Newton iteration index, and previous state.
         du: Initial guess for the unknown increment.
         B: Null-space rigid-body basis for AMG preconditioning.
@@ -600,7 +654,8 @@ def newton_solve(
             implicit adjoint backward.
 
     Returns:
-        Converged increment tensor ``du``.
+        du (Tensor): Converged increment.
+            *Shape:* `(n_dofs,)`.
     """
     du = NewtonRaphsonAdjoint.apply(
         eval_residual,
@@ -626,7 +681,20 @@ def newton_solve(
     return du
 
 
-def _eigsolve_cpu(K, M, n_modes, free_indices, shape, n_dofs):
+def _eigsolve_cpu(
+    K: Tensor,
+    M: Tensor,
+    n_modes: int,
+    free_indices: Tensor,
+    shape: torch.Size,
+    n_dofs: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Solve the generalized eigenproblem on the CPU via SciPy.
+
+    Shift-invert at `sigma=0.0` targets the lowest modes. Eigenvectors are
+    scattered back from the free-DOF subspace, leaving constrained rows at zero.
+    See `modal_eigsolve` for arguments.
+    """
     K_csr = scipy_coo_matrix(
         (K._values(), (K._indices()[0], K._indices()[1])), shape=shape
     ).tocsr()
@@ -644,7 +712,18 @@ def _eigsolve_cpu(K, M, n_modes, free_indices, shape, n_dofs):
     return eigenvalues[order], eigenvectors[:, order]
 
 
-def _eigsolve_gpu(K, M, n_modes, free_indices, shape, n_dofs):
+def _eigsolve_gpu(
+    K: Tensor,
+    M: Tensor,
+    n_modes: int,
+    free_indices: Tensor,
+    shape: torch.Size,
+    n_dofs: int,
+) -> tuple[Any, Any]:
+    """Solve the generalized eigenproblem on the GPU via CuPy.
+
+    Mirrors `_eigsolve_cpu` and returns CuPy arrays.
+    """
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
     K_csr = cupy_coo_matrix(
@@ -678,7 +757,7 @@ def modal_eigsolve(
     n_modes: int,
     free_indices: Tensor,
 ) -> tuple[Tensor, Tensor]:
-    """Solve the generalized eigenvalue problem ``K φ = ω² M φ``.
+    """Solve the generalized eigenvalue problem `K φ = ω² M φ`.
 
     Args:
         K (sparse_coo_tensor): Stiffness matrix K.
@@ -687,11 +766,13 @@ def modal_eigsolve(
         free_indices (Tensor): Free DOF indices for subspace extraction.
             The eigenproblem is solved in the free-DOF subspace to avoid
             spurious eigenvalues from the Dirichlet penalty
-            (``K_ii = M_ii = 1  =>  ω² = 1``).
+            (`K_ii = M_ii = 1  =>  ω² = 1`).
 
     Returns:
-        Tuple[Tensor, Tensor]: Eigenvalues ``[n_modes]`` and eigenvectors
-        ``[n_dofs, n_modes]``, sorted by ascending eigenvalue.
+        eigenvalues (Tensor): Squared angular frequencies, ascending.
+            *Shape:* `(n_modes,)`.
+        eigenvectors (Tensor): Mode shapes, constrained rows left at zero.
+            *Shape:* `(n_dofs, n_modes)`.
     """
     shape = K.size()
     n_dofs = shape[0]
@@ -721,16 +802,31 @@ class Eigensolve(Function):
         n_modes: int,
         free_indices: Tensor,
     ) -> tuple[Tensor, Tensor]:
+        """Compute the eigenpairs. See `modal_eigsolve` for the arguments."""
         return modal_eigsolve(K, M, n_modes, free_indices)
 
     @staticmethod
-    def setup_context(ctx, inputs, output):
+    def setup_context(ctx, inputs, output) -> None:
+        """Save `K`, `M` and the computed eigenpairs for `backward`."""
         K, M, n_modes, free_indices = inputs
         lambdas, phis = output
         ctx.save_for_backward(K, M, lambdas, phis)
 
     @staticmethod
-    def backward(ctx, *grad_outputs):
+    def backward(ctx, *grad_outputs) -> tuple:
+        """Differentiate the eigenvalues with the Rayleigh-quotient sensitivities.
+
+        For `φ` normalised so that `φ^T M φ = 1`, the sensitivities are
+        `dλ/dK_ij = φ_i φ_j` and `dλ/dM_ij = -λ φ_i φ_j`, evaluated only at the
+        sparsity pattern of the respective matrix.
+
+        Eigenvector gradients are **not** supported: only the eigenvalue
+        gradient is consumed, which is why `differentiable_modal_eigsolve`
+        detaches the mode shapes.
+
+        Returns:
+            Sparse gradients for `K` and `M`, then `None` for the other arguments.
+        """
         grad_lambdas = grad_outputs[0]
         K, M, lambdas, phis = ctx.saved_tensors
 
@@ -778,7 +874,7 @@ def differentiable_modal_eigsolve(
     n_modes: int,
     free_indices: Tensor,
 ) -> tuple[Tensor, Tensor]:
-    """Solve the modal eigenvalue problem ``K φ = ω² M φ``.
+    """Solve the modal eigenvalue problem `K φ = ω² M φ`.
 
     Args:
         K (sparse_coo_tensor): Stiffness matrix K.
@@ -789,8 +885,11 @@ def differentiable_modal_eigsolve(
             spurious eigenvalues from the Dirichlet penalty (K_ii = M_ii = 1).
 
     Returns:
-        Tuple[Tensor, Tensor]: Squared frequencies ``[n_modes]``
-        (differentiable) and mode shapes ``[n_dofs, n_modes]`` (detached).
+        lambdas (Tensor): Squared angular frequencies, differentiable.
+            *Shape:* `(n_modes,)`.
+        phis (Tensor): Mode shapes, detached since only eigenvalue gradients are
+            supported.
+            *Shape:* `(n_dofs, n_modes)`.
     """
     lambdas, phis = Eigensolve.apply(K, M, n_modes, free_indices)  # type: ignore
     if lambdas is None:
