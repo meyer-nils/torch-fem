@@ -54,6 +54,7 @@ notebook = [
 dev = [
     "basedpyright",
     "pytest",
+    "pytest-cov",
     "ruff",
     "testbook",
 ]
@@ -100,4 +101,14 @@ reportMissingImports = false
 [tool.pytest.ini_options]
 markers = [
     "notebook: executes an example notebook (slow)",
+]
+
+[tool.coverage.run]
+source = ["torchfem"]
+
+[tool.coverage.report]
+# Abstract stubs and the optional GPU/Pardiso backends cannot run in CI.
+exclude_also = [
+    "raise NotImplementedError",
+    "except ImportError:",
 ]

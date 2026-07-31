@@ -7,6 +7,7 @@
 
 ### Changed
 - Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`. The tool configuration lives entirely in `pyproject.toml` under `[tool.ruff]`, replacing the deleted `.flake8` file, and the `dev` extra installs `ruff` instead of the three previous tools. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered, and CI enforces both across the whole repository.
+- CI measures test coverage with `pytest-cov` and fails below 70%. Coverage currently sits at 73%; the settings live in `pyproject.toml` under `[tool.coverage.run]` and `[tool.coverage.report]`, and the `dev` extra installs `pytest-cov`.
 - The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` accept `None` and default to it, instead of defaulting to a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged; passing `None` now selects it explicitly.
 
 ### Removed

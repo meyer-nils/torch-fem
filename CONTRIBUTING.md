@@ -34,4 +34,5 @@ ruff check src/ tests/          # linting and import ordering (add --fix to fix)
 basedpyright                    # type checking (same engine as Pylance)
 pytest -m "not notebook"        # fast unit tests
 pytest -m "notebook"            # slow tests that execute the example notebooks
+pytest -m "not notebook" --cov --cov-report=term-missing  # coverage (CI requires 70%)
 ```

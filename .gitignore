@@ -27,3 +27,9 @@ dist
 
 # Documentation
 site
+
+# Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov

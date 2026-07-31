@@ -58,7 +58,7 @@ jobs:
     - name: Run unit tests
       env:
         DISPLAY: ":99"
-      run: pytest -m "not notebook"
+      run: pytest -m "not notebook" --cov --cov-report=term-missing --cov-fail-under=70
 
   notebooks:
     needs: [lint, typecheck]
