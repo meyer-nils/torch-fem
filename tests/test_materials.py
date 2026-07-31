@@ -1,8 +1,12 @@
+import pytest
 import torch
 
 from torchfem.materials import (
     Hyperelastic3D,
     HyperelasticPlaneStress,
+    IsotropicConductivity1D,
+    IsotropicConductivity2D,
+    IsotropicConductivity3D,
     IsotropicDamage3D,
     IsotropicElasticity1D,
     IsotropicElasticity3D,
@@ -12,10 +16,14 @@ from torchfem.materials import (
     IsotropicPlasticity3D,
     IsotropicPlasticityPlaneStrain,
     IsotropicPlasticityPlaneStress,
+    OrthotropicConductivity2D,
+    OrthotropicConductivity3D,
     OrthotropicElasticity3D,
+    OrthotropicElasticityPlaneStrain,
     OrthotropicElasticityPlaneStress,
     TransverseIsotropicElasticity3D,
 )
+from torchfem.rotations import axis_rotation, planar_rotation
 from torchfem.utils import stiffness2voigt, stress2voigt
 
 N_ELEM = 10
@@ -56,6 +64,17 @@ def _make_step_args_1d(n_elem=1, n_state=0):
     de0 = torch.zeros(n_elem, 1, 1)
     cl = torch.ones(n_elem)
     return H_inc, F, stress, state, de0, cl
+
+
+def _make_thermal_step_args(dim, n_elem=1):
+    """Create minimal tensors for calling step() on a conductivity material."""
+    grad_inc = torch.linspace(1.0, float(dim), dim).expand(n_elem, 1, dim).clone()
+    F = torch.zeros(n_elem, 1, dim)
+    heat_flux = torch.zeros(n_elem, 1, dim)
+    state = torch.zeros(n_elem, 0)
+    de0 = torch.zeros(n_elem, 1, dim)
+    cl = torch.ones(n_elem)
+    return grad_inc, F, heat_flux, state, de0, cl
 
 
 # Common yield function for plasticity tests
@@ -435,30 +454,95 @@ class TestTransverseIsotropicElasticity3D:
         assert mat.C.shape == (3, 3, 3, 3)
 
 
+def _plane_stress():
+    return OrthotropicElasticityPlaneStress(E_1=100e3, E_2=10e3, nu_12=0.3, G_12=5e3)
+
+
+def _plane_strain():
+    return OrthotropicElasticityPlaneStrain(
+        E_1=100e3, E_2=10e3, E_3=10e3, nu_12=0.3, nu_13=0.3, nu_23=0.3, G_12=5e3
+    )
+
+
 class TestOrthotropicElasticityPlaneStress:
     def test_stiffness_shape(self):
-        mat = OrthotropicElasticityPlaneStress(
-            E_1=100e3,
-            E_2=10e3,
-            nu_12=0.3,
-            G_12=5e3,
-        )
-        assert mat.C.shape == (2, 2, 2, 2)
+        assert _plane_stress().C.shape == (2, 2, 2, 2)
 
     def test_step(self):
         n = N_ELEM
-        mat = OrthotropicElasticityPlaneStress(
-            E_1=100e3,
-            E_2=10e3,
-            nu_12=0.3,
-            G_12=5e3,
-        ).vectorize(n)
+        mat = _plane_stress().vectorize(n)
         H_inc, F, stress, state, de0, cl = _make_step_args_2d(n)
         s_new, _, _ = mat.step(H_inc, F, stress, state, de0, cl, 0)
         de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
         expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
         assert s_new.shape == (n, 2, 2)
         assert torch.allclose(s_new, expected, atol=1e-10, rtol=1e-10)
+
+    def test_vectorize(self):
+        mat = _plane_stress().vectorize(N_ELEM)
+        assert mat.C.shape == (N_ELEM, 2, 2, 2, 2)
+        assert mat.E_1.shape == (N_ELEM,)
+
+    def test_vectorize_idempotent(self):
+        mat = _plane_stress().vectorize(N_ELEM)
+        assert mat.vectorize(N_ELEM) is mat
+
+    def test_identity_rotation_recovers_input_constants(self):
+        """The engineering constants are re-extracted from the compliance, so
+        rotating by the identity must return exactly what was passed in."""
+        mat = _plane_stress().rotate(torch.eye(2))
+        assert torch.allclose(mat.E_1, torch.tensor(100e3), rtol=1e-5)
+        assert torch.allclose(mat.E_2, torch.tensor(10e3), rtol=1e-5)
+        assert torch.allclose(mat.nu_12, torch.tensor(0.3), rtol=1e-5)
+        assert torch.allclose(mat.G_12, torch.tensor(5e3), rtol=1e-5)
+
+    def test_rotation_by_90_deg_swaps_axes(self):
+        mat = _plane_stress().rotate(planar_rotation(torch.pi / 2))
+        assert torch.allclose(mat.E_1, torch.tensor(10e3), rtol=1e-5)
+        assert torch.allclose(mat.E_2, torch.tensor(100e3), rtol=1e-5)
+        assert torch.allclose(mat.G_12, torch.tensor(5e3), rtol=1e-5)
+
+    def test_rotate_rejects_non_2x2_matrix(self):
+        with pytest.raises(ValueError, match="2x2"):
+            _plane_stress().rotate(torch.eye(3))
+
+
+class TestOrthotropicElasticityPlaneStrain:
+    def test_stiffness_shape(self):
+        assert _plane_strain().C.shape == (2, 2, 2, 2)
+
+    def test_step(self):
+        n = N_ELEM
+        mat = _plane_strain().vectorize(n)
+        H_inc, F, stress, state, de0, cl = _make_step_args_2d(n)
+        s_new, _, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
+        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
+        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
+        assert s_new.shape == (n, 2, 2)
+        assert ddsdde.shape == (n, 2, 2, 2, 2)
+        assert torch.allclose(s_new, expected, atol=1e-10, rtol=1e-10)
+
+    def test_vectorize(self):
+        mat = _plane_strain().vectorize(N_ELEM)
+        assert mat.C.shape == (N_ELEM, 2, 2, 2, 2)
+        assert mat.E_1.shape == (N_ELEM,)
+
+    def test_vectorize_idempotent(self):
+        mat = _plane_strain().vectorize(N_ELEM)
+        assert mat.vectorize(N_ELEM) is mat
+
+    def test_rotation_by_90_deg_swaps_axes(self):
+        """Plane strain constrains eps_33, so the extracted constants differ from
+        the input; compare against the unrotated material instead."""
+        ref = _plane_strain().rotate(torch.eye(2))
+        rot = _plane_strain().rotate(planar_rotation(torch.pi / 2))
+        assert torch.allclose(rot.E_1, ref.E_2, rtol=1e-5)
+        assert torch.allclose(rot.E_2, ref.E_1, rtol=1e-5)
+        assert torch.allclose(rot.G_12, ref.G_12, rtol=1e-5)
+
+    def test_rotate_rejects_non_2x2_matrix(self):
+        with pytest.raises(ValueError, match="2x2"):
+            _plane_strain().rotate(torch.eye(3))
 
 
 class TestHyperelasticPlaneStress:
@@ -484,3 +568,141 @@ class TestHyperelasticPlaneStress:
         assert s_new.shape == (n, 2, 2)
         assert ddsdde.shape == (n, 2, 2, 2, 2)
         assert torch.allclose(s_new, torch.zeros_like(s_new), atol=1e-8)
+
+
+class TestIsotropicConductivity3D:
+    def test_conductivity_is_kappa_times_identity(self):
+        assert torch.allclose(
+            IsotropicConductivity3D(400.0).KAPPA, 400.0 * torch.eye(3)
+        )
+
+    def test_step_scales_temperature_gradient_by_kappa(self):
+        n = N_ELEM
+        mat = IsotropicConductivity3D(400.0).vectorize(n)
+        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(3, n)
+        q_new, state_new, tangent = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        assert q_new.shape == (n, 1, 3)
+        assert tangent.shape == (n, 3, 3)
+        assert torch.allclose(q_new, 400.0 * grad_inc)
+        assert torch.allclose(state_new, state)
+
+    def test_vectorize(self):
+        mat = IsotropicConductivity3D(400.0).vectorize(N_ELEM)
+        assert mat.kappa.shape == (N_ELEM,)
+        assert mat.KAPPA.shape == (N_ELEM, 3, 3)
+
+    def test_vectorize_idempotent(self):
+        mat = IsotropicConductivity3D(400.0).vectorize(N_ELEM)
+        assert mat.vectorize(N_ELEM) is mat
+
+
+class TestIsotropicConductivity2D:
+    def test_conductivity_is_in_plane_block(self):
+        assert torch.allclose(
+            IsotropicConductivity2D(400.0).KAPPA, 400.0 * torch.eye(2)
+        )
+
+    def test_step_scales_temperature_gradient_by_kappa(self):
+        n = N_ELEM
+        mat = IsotropicConductivity2D(400.0).vectorize(n)
+        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(2, n)
+        q_new, _, tangent = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        assert q_new.shape == (n, 1, 2)
+        assert tangent.shape == (n, 2, 2)
+        assert torch.allclose(q_new, 400.0 * grad_inc)
+
+    def test_vectorize(self):
+        mat = IsotropicConductivity2D(400.0).vectorize(N_ELEM)
+        assert mat.KAPPA.shape == (N_ELEM, 2, 2)
+
+    def test_vectorize_idempotent(self):
+        mat = IsotropicConductivity2D(400.0).vectorize(N_ELEM)
+        assert mat.vectorize(N_ELEM) is mat
+
+
+class TestIsotropicConductivity1D:
+    def test_conductivity_is_scalar_block(self):
+        assert torch.allclose(
+            IsotropicConductivity1D(400.0).KAPPA, 400.0 * torch.eye(1)
+        )
+
+    def test_step_scales_temperature_gradient_by_kappa(self):
+        n = N_ELEM
+        mat = IsotropicConductivity1D(400.0).vectorize(n)
+        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(1, n)
+        q_new, _, tangent = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        assert q_new.shape == (n, 1, 1)
+        assert tangent.shape == (n, 1, 1)
+        assert torch.allclose(q_new, 400.0 * grad_inc)
+
+    def test_vectorize(self):
+        mat = IsotropicConductivity1D(400.0).vectorize(N_ELEM)
+        assert mat.KAPPA.shape == (N_ELEM, 1, 1)
+
+    def test_vectorize_idempotent(self):
+        mat = IsotropicConductivity1D(400.0).vectorize(N_ELEM)
+        assert mat.vectorize(N_ELEM) is mat
+
+
+class TestOrthotropicConductivity3D:
+    def test_conductivity_is_diagonal_in_principal_axes(self):
+        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0)
+        assert torch.allclose(mat.KAPPA, torch.diag(torch.tensor([1.0, 2.0, 3.0])))
+
+    def test_step_applies_conductivity_per_direction(self):
+        n = N_ELEM
+        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0).vectorize(n)
+        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(3, n)
+        q_new, _, _ = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        # Gradient [1, 2, 3] against conductivities [1, 2, 3].
+        assert torch.allclose(q_new, torch.tensor([1.0, 4.0, 9.0]).expand(n, 1, 3))
+
+    def test_rotation_about_z_swaps_in_plane_axes(self):
+        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0)
+        mat.rotate(axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.pi / 2))
+        expected = torch.diag(torch.tensor([2.0, 1.0, 3.0]))
+        assert torch.allclose(mat.KAPPA, expected, atol=1e-6)
+
+    def test_rotate_rejects_non_3x3_matrix(self):
+        with pytest.raises(ValueError, match="3x3"):
+            OrthotropicConductivity3D(1.0, 2.0, 3.0).rotate(torch.eye(2))
+
+    def test_vectorize(self):
+        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0).vectorize(N_ELEM)
+        assert mat.KAPPA.shape == (N_ELEM, 3, 3)
+
+    def test_vectorize_idempotent(self):
+        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0).vectorize(N_ELEM)
+        assert mat.vectorize(N_ELEM) is mat
+
+
+class TestOrthotropicConductivity2D:
+    def test_conductivity_is_diagonal_in_principal_axes(self):
+        mat = OrthotropicConductivity2D(1.0, 2.0)
+        assert torch.allclose(mat.KAPPA, torch.diag(torch.tensor([1.0, 2.0])))
+
+    def test_step_applies_conductivity_per_direction(self):
+        n = N_ELEM
+        mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(n)
+        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(2, n)
+        q_new, _, _ = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        assert torch.allclose(q_new, torch.tensor([1.0, 4.0]).expand(n, 1, 2))
+
+    def test_rotation_by_90_deg_swaps_axes(self):
+        mat = OrthotropicConductivity2D(1.0, 2.0)
+        mat.rotate(planar_rotation(torch.pi / 2))
+        assert torch.allclose(
+            mat.KAPPA, torch.diag(torch.tensor([2.0, 1.0])), atol=1e-6
+        )
+
+    def test_rotate_rejects_non_2x2_matrix(self):
+        with pytest.raises(ValueError, match="2x2"):
+            OrthotropicConductivity2D(1.0, 2.0).rotate(torch.eye(3))
+
+    def test_vectorize(self):
+        mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(N_ELEM)
+        assert mat.KAPPA.shape == (N_ELEM, 2, 2)
+
+    def test_vectorize_idempotent(self):
+        mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(N_ELEM)
+        assert mat.vectorize(N_ELEM) is mat
