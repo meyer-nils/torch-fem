@@ -27,7 +27,7 @@ class Solid(Mechanics):
     """
 
     def __repr__(self) -> str:
-        etype = self.etype.__class__.__name__
+        etype = self.etype.__name__
         return f"<torch-fem solid ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
 
     @property
