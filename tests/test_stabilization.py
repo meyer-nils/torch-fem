@@ -237,11 +237,31 @@ def test_max_cutbacks_bounds_the_retries(monkeypatch):
     assert len(calls) > 1
 
 
+def test_growing_increments_are_each_attempted_whole(capsys):
+    """A load path with growing increments takes one substep per increment."""
+    increments = torch.tensor([0.0, 0.1, 0.25, 0.45, 0.7, 1.0])
+    _build_cantilever().solve(increments=increments, verbose=True)
+
+    # Third column of the report is the substep count of each increment.
+    rows = [line.split() for line in capsys.readouterr().out.splitlines()[7:-2]]
+    assert [row[2] for row in rows] == ["1"] * (len(increments) - 1)
+
+
 def test_cutback_returns_results_at_the_requested_increments(monkeypatch):
     """Substepping must not change which load factors are reported."""
     requested = torch.tensor([0.0, 0.3, 0.55, 1.0])
 
-    calls = _count_newton_solves(monkeypatch)
+    # Force a cutback, so the solve substeps by construction
+    original = base.newton_solve
+    calls = []
+
+    def failing_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("forced cutback")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(base, "newton_solve", failing_once)
     u, f, _, _, _ = _build_bent_cantilever().solve(
         increments=requested, nlgeom=True, return_intermediate=True
     )

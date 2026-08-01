@@ -598,10 +598,11 @@ class FEM(ABC):
         state_cur = state[0].clone()
         energy = torch.zeros(())
 
-        # Pseudo time, attempted substep size, and the substep that the cached
-        # viscous tangent belongs to. All are carried across increments.
+        # Pseudo time, the fraction of an increment attempted per substep, and
+        # the substep the cached viscous tangent belongs to, all carried across
+        # increments. A fraction rescales to each increment's own span.
         lam = float(increments[0])
-        step_size = 0.0
+        step_frac = 1.0
         k_step = 0.0
 
         # Incremental loading with automatic cutback
@@ -611,8 +612,7 @@ class FEM(ABC):
                 report.begin(n, target)
 
             span = target - lam
-            if step_size <= 0.0:
-                step_size = span
+            step_size = step_frac * span
             min_step = abs(span) * cutback_factor**max_cutbacks
 
             while target - lam > 1e-12 * max(1.0, abs(target)):
@@ -721,6 +721,9 @@ class FEM(ABC):
                 if report is not None and not math.isclose(step_size, abs(span)):
                     report.growth()  # not already spanning the whole increment
                 step_size = min(growth_factor * step_size, abs(span))
+
+            # Carry the achieved fraction into the next increment
+            step_frac = min(step_size / span, 1.0) if span > 0.0 else 1.0
 
             # Store the results at the requested increment
             u[n] = u_cur

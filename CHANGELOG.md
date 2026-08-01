@@ -25,6 +25,7 @@
 - The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples and their gallery entries.
 
 ### Fixed
+- `solve(...)` subdivided every increment of a load path with growing increments. The attempted substep is now carried across increments as a fraction of an increment instead of an absolute size.
 - `solve(...)` never recovered to one substep per increment after a cutback. It grew the substep from `step`, which is clipped so the substep lands exactly on the requested increment, instead of from the size it asked for. Every increment therefore ended by shrinking the substep to `growth_factor` times its own last remainder, and kept subdividing ever more finely for the rest of the load path. The `basic/planar/stabilization.ipynb` snap-through now takes 126 Newton iterations instead of 168.
 - `__repr__` of `Truss`, `Planar`, `Solid`, and `Shell` reported the element type as `ABCMeta`. It read `self.etype.__class__.__name__`, but `etype` is already a class, so this gave the name of its metaclass.
 - `rotate(...)` raised `IndexError` on `OrthotropicElasticityPlaneStrain` and returned meaningless `E_1`, `E_2`, `nu_12`, and `G_12` on `OrthotropicElasticityPlaneStress`. Both inverted the fourth-order stiffness tensor instead of its Voigt matrix, and now use `stiffness2voigt(self.C)` like the 3D class. The rotated `C` was always correct.
