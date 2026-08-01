@@ -16,6 +16,7 @@
 - Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`, configured in `pyproject.toml` under `[tool.ruff]`. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered.
 - CI measures test coverage with `pytest-cov` and fails below 78% (currently 81%).
 - The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` now default to `None` instead of a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged.
+- The `optimization/solid/bracket.ipynb` example interpolates stiffness as `C_min + rho^p (C0 - C_min)` with `C_min = 1e-3 C0`, instead of `rho^p C0`. The stiffness floor no longer depends on the density bound, so `rho_min` drops from 0.01 to 1e-3 and less of the volume budget is spent on void.
 
 ### Removed
 - **Breaking:** The `contour` argument of `Solid.plot(...)`, superseded by `clip`. The `basic/solid/gyroid.ipynb` example now clips on `thickness - sdf.abs()`, rendering the wall as a solid instead of its two bounding surfaces.
