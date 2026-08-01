@@ -686,7 +686,7 @@ class FEM(ABC):
 
                 # Accept the substep and grow the next one
                 lam += step
-                step_size = min(growth_factor * step, abs(span))
+                step_size = min(growth_factor * step_size, abs(span))
 
             # Store the results at the requested increment
             u[n] = u_cur
