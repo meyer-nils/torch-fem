@@ -76,10 +76,10 @@ class Solid(Mechanics):
         orientations: Tensor | None = None,
         show_edges: bool = True,
         show_undeformed: bool = False,
+        show_outline: bool = False,
         bcs: bool = False,
-        contour: tuple[str, list[float]] | None = None,
+        clip: tuple[str, float] | None = None,
         plotter: pyvista.Plotter | None = None,
-        threshold_condition: torch.Tensor | None = None,
         **kwargs,
     ):
         """Plot the mesh with optional node and element properties.
@@ -97,16 +97,17 @@ class Solid(Mechanics):
                 Show edges. Defaults to True.
             show_undeformed (bool, optional):
                 Show undeformed mesh. Defaults to False.
+            show_outline (bool, optional):
+                Show a box around the full mesh. Defaults to False.
             bcs (bool, optional):
                 If True, render boundary conditions (forces as arrows,
                 prescribed displacements as arrows and tip markers,
                 and constrained DOFs as cones). Defaults to False.
-            contour (tuple[str, list[float]], optional):
-                Contour plot. Defaults to None.
+            clip (tuple[str, float], optional):
+                Property and value to cut the mesh at. Culls orientations and
+                boundary conditions with it. Defaults to None.
             plotter (pyvista.Plotter, optional):
                 PyVista plotter. Defaults to None.
-            threshold_condition (torch.Tensor, optional):
-                Threshold condition to recover subshape. Defaults to None.
             **kwargs:
                 Additional keyword arguments passed to pyvista.Plotter.add_mesh.
         """
@@ -145,11 +146,21 @@ class Solid(Mechanics):
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()
 
-        if threshold_condition is None:
-            threshold_condition = torch.ones(self.n_elem, dtype=torch.bool)
+        if show_outline:
+            pl.add_mesh(mesh.outline(), color="black")
 
-        # Apply threshold to recover subshape
-        mesh = mesh.extract_cells(threshold_condition.cpu().numpy())
+        # Averaging onto the nodes makes the field continuous, so the cut runs
+        # through the elements instead of around them.
+        kept = torch.ones(self.n_elem, dtype=torch.bool)
+        if clip:
+            scalars, value = clip
+            # Surviving elements, to cull orientations and BCs
+            if element_property and scalars in element_property:
+                kept = element_property[scalars] > value
+            elif node_property and scalars in node_property:
+                kept = (node_property[scalars][self.elements] > value).any(dim=1)
+            mesh = mesh.cell_data_to_point_data()
+            mesh = mesh.clip_scalar(scalars=scalars, value=value, invert=False)
 
         # Plot orientations
         if orientations is not None:
@@ -157,35 +168,28 @@ class Solid(Mechanics):
             for j, color in enumerate(["red", "green", "blue"]):
                 directions = orientations[:, j, :]
                 pl.add_arrows(
-                    ecenters.cpu().numpy()[threshold_condition],
-                    directions.cpu().numpy()[threshold_condition],
+                    ecenters.cpu().numpy()[kept],
+                    directions.cpu().numpy()[kept],
                     mag=1,
                     color=color,
                     show_scalar_bar=False,
                 )
 
         # Plot mesh
-        if contour:
-            scalars, values = contour
-            pl.add_mesh(mesh.outline(), color="black")
-            pl.add_mesh(mesh.contour(values, scalars=scalars), **kwargs)
-        else:
-            mesh = typing.cast(DataSet, mesh)
-            if show_edges:
-                if self.etype is Tetra2 or self.etype is Hexa2:
-                    # Trick to plot edges for quadratic elements
-                    # See: https://github.com/pyvista/pyvista/discussions/5777
-                    surface = mesh.separate_cells().extract_surface(
-                        nonlinear_subdivision=4
-                    )
-                    edges = surface.extract_feature_edges()
-                    pl.add_mesh(surface, **kwargs)
-                    actor = pl.add_mesh(edges, style="wireframe", color="black")
-                    actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
-                else:
-                    pl.add_mesh(mesh, show_edges=True, **kwargs)
+        mesh = typing.cast(DataSet, mesh)
+        if show_edges:
+            if self.etype is Tetra2 or self.etype is Hexa2:
+                # Trick to plot edges for quadratic elements
+                # See: https://github.com/pyvista/pyvista/discussions/5777
+                surface = mesh.separate_cells().extract_surface(nonlinear_subdivision=4)
+                edges = surface.extract_feature_edges()
+                pl.add_mesh(surface, **kwargs)
+                actor = pl.add_mesh(edges, style="wireframe", color="black")
+                actor.mapper.SetResolveCoincidentTopologyToPolygonOffset()
             else:
-                pl.add_mesh(mesh, **kwargs)
+                pl.add_mesh(mesh, show_edges=True, **kwargs)
+        else:
+            pl.add_mesh(mesh, **kwargs)
 
         if show_undeformed:
             undefo = pyvista.UnstructuredGrid(elements, cell_types, self.nodes.tolist())
@@ -204,7 +208,7 @@ class Solid(Mechanics):
 
             # Nodes of culled elements carry no visible boundary conditions
             visible = torch.zeros(self.n_nod, dtype=torch.bool)
-            visible[self.elements[threshold_condition].reshape(-1)] = True
+            visible[self.elements[kept].reshape(-1)] = True
 
             def glyph(points: Tensor, geom, directions: Tensor | None = None):
                 """Put a gray geom on every point, along and scaled by directions."""

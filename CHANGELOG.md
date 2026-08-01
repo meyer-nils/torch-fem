@@ -7,6 +7,8 @@
 - Tests for the conductivity materials, the orthotropic plane-stress and plane-strain materials, `linear_to_quadratic(...)`, `Truss`, `SolidHeat`, the boundary condition setters, and the non-planar mesh imports, none of which had unit tests before.
 - A first-order patch test over all eight supported element types. `Planar` and `Solid` were previously only ever tested with `Quad1` and `Hexa1` meshes.
 - `torchfem.sparse.resolve_method(...)` returns the linear solver backend that `sparse_solve(...)` picks for a given system size and device. `sparse_solve(...)` now uses it instead of its own copy of the rules.
+- `Solid.plot(..., clip=("rho", 0.5))` cuts the mesh at an iso-value of a property, culling orientations and boundary conditions with it. The `optimization/solid/bracket.ipynb` example uses it to show the optimized part instead of exporting a VTU for ParaView.
+- `Solid.plot(..., show_outline=True)` draws a box around the full mesh, which gives a clipped result its design space back.
 
 ### Changed
 - `verbose=True` in `solve(...)` and `time_integration(...)` prints a compact table with one row per increment, holding its substeps, iterations, residual, wall time, and flags counting the substep cutbacks (`↓`) and growths (`↑`), under a header naming the model, the machine, the linear solver backend actually used, and the Newton settings. Notebooks redraw the table in place, elsewhere rows stream as they complete. Iterations count linear solves, so a linear problem needs exactly one.
@@ -16,6 +18,8 @@
 - The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` now default to `None` instead of a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged.
 
 ### Removed
+- **Breaking:** The `contour` argument of `Solid.plot(...)`, superseded by `clip`. The `basic/solid/gyroid.ipynb` example now clips on `thickness - sdf.abs()`, rendering the wall as a solid instead of its two bounding surfaces.
+- **Breaking:** The `threshold_condition` argument of `Solid.plot(...)`, superseded by `clip`.
 - **Breaking:** The `torchfem.sdfs` module, which provided signed distance functions for implicit geometry (TPMS surfaces, primitives, and CSG booleans) and is out of scope for a finite element library. The `basic/solid/gyroid.ipynb` example now defines its distance function inline.
 - The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples and their gallery entries.
 
