@@ -423,7 +423,7 @@ class FEM(ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         cutback_factor: float = 0.5,
-        growth_factor: float = 1.5,
+        growth_factor: float = 1.1,
         max_cutbacks: int = 10,
         verbose: bool = False,
         method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
