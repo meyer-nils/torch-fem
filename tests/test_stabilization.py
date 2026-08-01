@@ -193,6 +193,33 @@ def test_cutback_recovers_a_diverging_increment(monkeypatch):
     assert torch.allclose(reference[0], cut_back[0], rtol=1e-6)
 
 
+def test_a_recovered_substep_spans_the_next_increment(monkeypatch, capsys):
+    """After a cutback the substep must grow back to one per increment.
+
+    Growth applies to the size the solver asked for, not to the substep clipped
+    to land on the requested increment. Growing from that clipped remainder
+    would shrink the substep for good and subdivide every later increment.
+    """
+    original = base.newton_solve
+    calls = []
+
+    def failing_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("forced cutback")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(base, "newton_solve", failing_once)
+    _build_cantilever().solve(increments=torch.linspace(0, 1, 11), verbose=True)
+
+    # Report rows, whose third column counts the substeps of each increment. The
+    # substep ramps back up at `growth_factor` and then spans a whole increment;
+    # growing from the clipped remainder instead never gets there.
+    rows = [line.split() for line in capsys.readouterr().out.splitlines()[7:-2]]
+    assert rows[0][2] != "1", "the forced failure must subdivide increment 1"
+    assert [row[2] for row in rows[-5:]] == ["1"] * 5
+
+
 def test_max_cutbacks_bounds_the_retries(monkeypatch):
     """Forbidding cutbacks must surface the underlying convergence failure."""
     increments = torch.tensor([0.0, 1.0])

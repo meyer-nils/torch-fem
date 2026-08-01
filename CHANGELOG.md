@@ -6,8 +6,11 @@
 - A PEP 561 `py.typed` marker, so downstream type checkers use the shipped annotations.
 - Tests for the conductivity materials, the orthotropic plane-stress and plane-strain materials, `linear_to_quadratic(...)`, `Truss`, `SolidHeat`, the boundary condition setters, and the non-planar mesh imports, none of which had unit tests before.
 - A first-order patch test over all eight supported element types. `Planar` and `Solid` were previously only ever tested with `Quad1` and `Hexa1` meshes.
+- `torchfem.sparse.resolve_method(...)` returns the linear solver backend that `sparse_solve(...)` picks for a given system size and device. `sparse_solve(...)` now uses it instead of its own copy of the rules.
 
 ### Changed
+- `verbose=True` in `solve(...)` and `time_integration(...)` prints a compact table with one row per increment, holding its substeps, iterations, residual, wall time, and flags counting the substep cutbacks (`↓`) and growths (`↑`), under a header naming the model, the machine, the linear solver backend actually used, and the Newton settings. Notebooks redraw the table in place, elsewhere rows stream as they complete. Iterations count linear solves, so a linear problem needs exactly one.
+- **Breaking:** The `verbose` argument of `torchfem.sparse.newton_solve(...)` became `report`, taking a `torchfem.report.SolveReport` or `None` instead of a bool.
 - Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`, configured in `pyproject.toml` under `[tool.ruff]`. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered.
 - CI measures test coverage with `pytest-cov` and fails below 78% (currently 81%).
 - The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` now default to `None` instead of a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged.
@@ -17,6 +20,7 @@
 - The `basic/solid/implicits.ipynb` and `basic/solid/tpms.ipynb` examples and their gallery entries.
 
 ### Fixed
+- `solve(...)` never recovered to one substep per increment after a cutback. It grew the substep from `step`, which is clipped so the substep lands exactly on the requested increment, instead of from the size it asked for. Every increment therefore ended by shrinking the substep to `growth_factor` times its own last remainder, and kept subdividing ever more finely for the rest of the load path. The `basic/planar/stabilization.ipynb` snap-through now takes 126 Newton iterations instead of 168.
 - `__repr__` of `Truss`, `Planar`, `Solid`, and `Shell` reported the element type as `ABCMeta`. It read `self.etype.__class__.__name__`, but `etype` is already a class, so this gave the name of its metaclass.
 - `rotate(...)` raised `IndexError` on `OrthotropicElasticityPlaneStrain` and returned meaningless `E_1`, `E_2`, `nu_12`, and `G_12` on `OrthotropicElasticityPlaneStress`. Both inverted the fourth-order stiffness tensor instead of its Voigt matrix, and now use `stiffness2voigt(self.C)` like the 3D class. The rotated `C` was always correct.
 - The `IsotropicConductivity3D` docstring documented a non-existent attribute `k` (it is `kappa`) and described `step(...)` as a small-strain elasticity model.

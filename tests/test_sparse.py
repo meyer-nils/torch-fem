@@ -6,10 +6,13 @@ from scipy.linalg import eigh as scipy_eigh
 
 from torchfem.sparse import (
     CachedSolve,
+    available_backends,
+    describe_method,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     modal_eigsolve,
     newton_solve,
+    resolve_method,
     sparse_solve,
 )
 
@@ -302,3 +305,24 @@ class TestEigensolveGradients:
         lambdas, phis = differentiable_modal_eigsolve(K, M, N_MODES, torch.arange(2, n))
         assert lambdas.requires_grad
         assert not phis.requires_grad
+
+
+class TestResolveMethod:
+    def test_an_explicit_method_is_kept(self):
+        assert resolve_method(10, "cpu", "cg") == "cg"
+        assert resolve_method(10**6, "cuda", "spsolve") == "spsolve"
+
+    def test_large_systems_switch_to_an_iterative_solver(self):
+        assert resolve_method(9999, "cpu", None) != "minres"
+        assert resolve_method(10000, "cpu", None) == "minres"
+
+    def test_small_systems_use_a_direct_solver(self):
+        direct = "pardiso" if "pypardiso" in available_backends else "spsolve"
+        assert resolve_method(10, "cpu", None) == direct
+        # Pardiso is CPU only, so the GPU falls back to the CuPy direct solver.
+        assert resolve_method(10, "cuda", None) == "spsolve"
+
+    def test_the_description_names_preconditioner_library_and_device(self):
+        assert describe_method(10, "cpu", "cg") == "cg · iterative · AMG · scipy · cpu"
+        assert "jacobi" in describe_method(10, "cuda", "cg")
+        assert "cupy" in describe_method(10, "cuda", "spsolve")

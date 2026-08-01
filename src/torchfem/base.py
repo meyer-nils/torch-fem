@@ -10,8 +10,10 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
+from .report import SolveReport, machine
 from .sparse import (
     CachedSolve,
+    describe_method,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     newton_solve,
@@ -415,6 +417,33 @@ class FEM(ABC):
 
         return F.index_add_(0, indices, values)
 
+    def _report(
+        self,
+        verbose: bool,
+        title: str,
+        dtype: torch.dtype,
+        method: str | None,
+        device: str | None,
+        newton: str,
+        **kwargs: str,
+    ) -> SolveReport | None:
+        """Open a report on this model and its linear solver, if verbose."""
+        if not verbose:
+            return None
+        device = device or self.nodes.device.type
+        header = {
+            "model": f"{type(self).__name__} · {self.n_elem:,} elem · "
+            f"{self.n_dofs:,} dof · {str(dtype).removeprefix('torch.')}",
+            "machine": machine(device),
+            "solver": describe_method(self.n_dofs, device, method),
+            "newton": newton,
+        }
+        if dtype != torch.float64:
+            header["warning"] = (
+                "⚠ single precision, prefer torch.set_default_dtype(torch.float64)"
+            )
+        return SolveReport(f"torch-fem · {title}", header, **kwargs)
+
     def solve(
         self,
         increments: Tensor | None = None,
@@ -452,7 +481,8 @@ class FEM(ABC):
                 solve converged, capped at the requested increment.
             max_cutbacks: Number of successive cutbacks accepted within an
                 increment before the solve is given up.
-            verbose: If True, prints per-increment progress.
+            verbose: If True, reports the solver configuration and a table of
+                per-increment progress, updated in place inside notebooks.
             method: Linear solver backend name.
             device: Optional device hint for the linear solver backend.
             return_intermediate: If True, returns values for all increments.
@@ -506,12 +536,12 @@ class FEM(ABC):
         grad[:, :, :, :, :] = self.initial_grad
         state = torch.zeros(N, self.n_int, self.n_elem, self.n_state)
 
-        if verbose and u.dtype != torch.float64:
-            print(
-                "WARNING: Detected single precision floating points. It is highly "
-                "recommended to use torch-fem with double precision by setting "
-                "'torch.set_default_dtype(torch.float64)'."
-            )
+        newton = (
+            f"rtol {rtol:.0e} · atol {atol:.0e} · ≤{max_iter} it"
+            + (" · nlgeom" if nlgeom else "")
+            + (f" · stabilized α={alpha:g}" if alpha > 0.0 else "")
+        )
+        report = self._report(verbose, "solve", u.dtype, method, device, newton)
 
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
@@ -576,10 +606,10 @@ class FEM(ABC):
 
         # Incremental loading with automatic cutback
         for n in range(1, N):
-            if verbose:
-                print(f"Starting increment {n} ...")
-
             target = float(increments[n])
+            if report is not None:
+                report.begin(n, target)
+
             span = target - lam
             if step_size <= 0.0:
                 step_size = span
@@ -634,7 +664,7 @@ class FEM(ABC):
                         rtol,
                         atol,
                         stol,
-                        verbose,
+                        report,
                         method,
                         device,
                         cached_solve,
@@ -653,8 +683,8 @@ class FEM(ABC):
                             f"Newton-Raphson did not converge in increment {n} "
                             f"after {max_cutbacks} cutbacks."
                         ) from err
-                    if verbose:
-                        print(f"  Cutting increment back to {step_size:.3e} ...")
+                    if report is not None:
+                        report.cutback()
                     continue
 
                 # Evaluate converged state
@@ -684,8 +714,12 @@ class FEM(ABC):
                 u_cur = u_cur + du_eval.reshape((-1, self.n_dof_per_node))
                 du = du_eval
 
-                # Accept the substep and grow the next one
+                # Accept the substep and grow the next one. Growth applies to
+                # the size the solver asked for, not to `step`, which is clipped
+                # to land on the increment and would shrink the substep for good.
                 lam += step
+                if report is not None and not math.isclose(step_size, abs(span)):
+                    report.growth()  # not already spanning the whole increment
                 step_size = min(growth_factor * step_size, abs(span))
 
             # Store the results at the requested increment
@@ -695,6 +729,12 @@ class FEM(ABC):
             flux[n] = flux_cur
             state[n] = state_cur
             self.stabilization_energy[n] = energy
+
+            if report is not None:
+                report.end()
+
+        if report is not None:
+            report.close()
 
         # Create output views without mutating tensors captured by eval_residual.
         out_u = u
@@ -1151,7 +1191,8 @@ class Heat(FEM, ABC):
                 these times.
             delta_t: Maximum internal time step.
             max_iter: Maximum Newton iterations per time step.
-            verbose: If True, prints per-step Newton residuals.
+            verbose: If True, reports the solver configuration and a table of
+                per-time-step progress, updated in place inside notebooks.
             rtol: Relative residual tolerance for Newton convergence.
             atol: Absolute residual tolerance for Newton convergence.
             stol: Tolerance used by iterative linear solvers.
@@ -1270,6 +1311,22 @@ class Heat(FEM, ABC):
 
         # Initialize displacement increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
+
+        newton = (
+            f"rtol {rtol:.0e} · atol {atol:.0e} · ≤{max_iter} it · Δt ≤ {delta_t:g}"
+        )
+        report = self._report(
+            verbose,
+            "time integration",
+            u.dtype,
+            method,
+            device,
+            newton,
+            label="Time step",
+            value="Time",
+            unit="time steps",
+        )
+
         # Enforce initial BCs on u[0] explicitly, in case line_heat._dirichlet gives
         # updated BCs
         u[0].view(-1)[con] = self._dirichlet.view(-1)[con]
@@ -1278,6 +1335,9 @@ class Heat(FEM, ABC):
             u_guess = u[n - 1].clone()
             dt_n = dt[n - 1]
             f_int_old = f[n - 1].clone()
+
+            if report is not None:
+                report.begin(n, float(increments[n]))
 
             for it in range(max_iter):
                 du = u_guess - u[n - 1]
@@ -1313,11 +1373,9 @@ class Heat(FEM, ABC):
                 if it == 0:
                     res_norm0 = res_norm
 
-                # Print iteration information
-                if verbose:
-                    print(
-                        f"Increment {n} | Iteration {it + 1} | Residual: {res_norm:.5e}"
-                    )
+                # Report iteration information
+                if report is not None:
+                    report.iteration(it, res_norm)
 
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
@@ -1350,6 +1408,12 @@ class Heat(FEM, ABC):
 
             u[n] = u_guess
             f[n] = f_int.reshape((-1, self.n_dof_per_node))
+
+            if report is not None:
+                report.end()
+
+        if report is not None:
+            report.close()
 
         # Create output views without mutating tensors captured by autograd.
         out_u = u[t_rows]

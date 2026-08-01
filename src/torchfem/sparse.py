@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyamg
@@ -13,6 +15,9 @@ from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
 from torch.autograd import Function
+
+if TYPE_CHECKING:
+    from .report import SolveReport
 
 ERR_CUPY_MISSING = (
     "CuPy is not available.\n\n"
@@ -49,6 +54,29 @@ try:
     available_backends.append("pypardiso")
 except ImportError:
     pass
+
+
+def resolve_method(n_dofs: int, device: str, method: str | None) -> str:
+    """Return the backend that `sparse_solve` uses for a system of this size."""
+    if method is not None:
+        return method
+    if n_dofs < 10000:
+        if device == "cpu" and "pypardiso" in available_backends:
+            return "pardiso"
+        return "spsolve"
+    return "minres"
+
+
+def describe_method(n_dofs: int, device: str, method: str | None) -> str:
+    """Describe the backend that `resolve_method` picks, for verbose output."""
+    resolved = resolve_method(n_dofs, device, method)
+    kind = "direct"
+    if resolved in ("minres", "cg"):
+        kind = "iterative · " + ("jacobi" if device == "cuda" else "AMG")
+    library = "cupy" if device == "cuda" else "scipy"
+    if resolved == "pardiso":
+        library = "pypardiso"
+    return f"{resolved} · {kind} · {library} · {device}"
 
 
 class CachedSolve:
@@ -262,14 +290,7 @@ def sparse_solve(
             x0 = x0.to(device)
 
     # Make default solver choice based on shape and available backends
-    if method is None:
-        if shape[0] < 10000:
-            if A.device.type == "cpu" and "pypardiso" in available_backends:
-                method = "pardiso"
-            else:
-                method = "spsolve"
-        else:
-            method = "minres"
+    method = resolve_method(shape[0], A.device.type, method)
 
     # Solve either on CPU or GPU
     if A.device.type == "cuda":
@@ -444,7 +465,7 @@ class NewtonRaphsonAdjoint(Function):
         rtol: float,
         atol: float,
         stol: float,
-        verbose: bool,
+        report: SolveReport | None,
         method: str | None = None,
         device: str | None = None,
         cached_solve: CachedSolve | None = None,
@@ -479,9 +500,9 @@ class NewtonRaphsonAdjoint(Function):
             if i == 0:
                 res_norm0 = res_norm
 
-            # Print iteration information
-            if verbose:
-                print(f"Solver iteration {i + 1} | Residual: {res_norm:.5e}")
+            # Report iteration information
+            if report is not None:
+                report.iteration(i, res_norm)
 
             # Check convergence
             if res_norm < rtol * res_norm0 or res_norm < atol:
@@ -617,7 +638,7 @@ def newton_solve(
     rtol: float,
     atol: float,
     stol: float,
-    verbose: bool,
+    report: SolveReport | None,
     method: str | None = None,
     device: str | None = None,
     cached_solve: CachedSolve | None = None,
@@ -639,7 +660,7 @@ def newton_solve(
         rtol: Relative residual tolerance.
         atol: Absolute residual tolerance.
         stol: Linear-solver tolerance used inside Newton steps for iterative solvers.
-        verbose: If True, prints iteration residuals.
+        report: Optional progress report receiving the iteration residuals.
         method: Sparse backend method name.
         device: Optional sparse backend device hint.
         cached_solve: Optional storage for warm-start vectors.
@@ -664,7 +685,7 @@ def newton_solve(
         rtol,
         atol,
         stol,
-        verbose,
+        report,
         method,
         device,
         cached_solve,
