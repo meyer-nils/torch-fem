@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.8.0 - August 3 2026
 
 ### Added
 - A PEP 561 `py.typed` marker, so downstream type checkers use the shipped annotations.
