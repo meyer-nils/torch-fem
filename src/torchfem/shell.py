@@ -10,6 +10,8 @@ from functools import cached_property
 from math import sqrt
 from typing import cast
 
+import numpy as np
+import pyvista
 import torch
 from torch import Tensor
 
@@ -558,9 +560,12 @@ class Shell(Mechanics):
         u: float | Tensor = 0.0,
         node_property: dict[str, Tensor] | None = None,
         element_property: dict[str, Tensor] | None = None,
+        orientations: Tensor | None = None,
         thickness: bool = False,
         mirror: tuple[bool, bool, bool] = (False, False, False),
+        show_undeformed: bool = False,
         bcs: bool = False,
+        plotter: pyvista.Plotter | None = None,
         **kwargs,
     ):
         """Plot the shell mesh with PyVista, optionally with results.
@@ -570,24 +575,24 @@ class Shell(Mechanics):
                 deformed configuration. Defaults to 0.0 (undeformed).
             node_property: Named nodal fields, e.g. `{"u": u[:, :3]}`.
             element_property: Named element fields.
+            orientations: Per-element direction vectors with shape
+                [n_elem, k, 3] with k <= 3, e.g. the local frames `self.t`,
+                drawn on the unmirrored mesh as red, green, and blue arrows of
+                the mean element size.
             thickness: If True, extrudes elements by their thickness.
             mirror: Mirrors the mesh about the (x, y, z) planes, e.g. to
                 visualize symmetric halves.
+            show_undeformed: If True, draws the undeformed mesh as a grey
+                wireframe.
             bcs: If True, renders boundary conditions on the unmirrored mesh:
                 arrows for forces and prescribed displacements, spheres at
                 displacement tips, and a cone per constrained DOF. Rotational
                 DOFs use doubled heads, the usual convention for moments.
+            plotter: PyVista plotter. Defaults to None.
             **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
         """
-        try:
-            import numpy as np
-            import pyvista
-        except ImportError as err:
-            raise Exception("Plotting 3D requires pyvista.") from err
-
         pyvista.set_plot_theme("document")
-        pyvista.set_jupyter_backend("client")
-        pl = pyvista.Plotter()
+        pl = pyvista.Plotter() if plotter is None else plotter
         pl.enable_anti_aliasing("ssaa")
 
         # VTK element list
@@ -636,7 +641,26 @@ class Shell(Mechanics):
             pl.add_mesh(mesh, **kwargs)
             base_meshes.append(mesh)
 
+        # Plot orientations, lifted onto the top surface of a thick shell so
+        # that they do not disappear inside it
+        if orientations is not None:
+            centers = (self.nodes + u)[self.elements].mean(dim=1).cpu().numpy()
+            if thickness:
+                offset = 0.5 * self.thickness[:, None].cpu().numpy()
+                centers = centers + offset * np.asarray(mesh.cell_normals)
+            mag = float(self.char_lengths.mean())
+            for j, color in zip(range(orientations.shape[1]), ["red", "green", "blue"]):
+                directions = torch.nn.functional.normalize(orientations[:, j], dim=-1)
+                pl.add_arrows(
+                    centers,
+                    directions.cpu().numpy(),
+                    mag=mag,
+                    color=color,
+                    show_scalar_bar=False,
+                )
+
         # Mirror meshes across specified planes
+        meshes = list(base_meshes)
         sx_values = [1.0, -1.0] if mirror[0] else [1.0]
         sy_values = [1.0, -1.0] if mirror[1] else [1.0]
         sz_values = [1.0, -1.0] if mirror[2] else [1.0]
@@ -651,6 +675,12 @@ class Shell(Mechanics):
                         mirrored.points[:, 1] *= sy
                         mirrored.points[:, 2] *= sz
                         pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
+                        meshes.append(mirrored)
+
+        if show_undeformed:
+            undefo = pyvista.PolyData(self.nodes.cpu().numpy(), elements)
+            edges = cast(pyvista.DataSet, undefo.extract_all_edges())
+            pl.add_mesh(edges, style="wireframe", color="grey")
 
         if bcs:
             deformed = isinstance(u, Tensor)
@@ -727,4 +757,5 @@ class Shell(Mechanics):
                 node, dof = torch.nonzero(fixed[:, dofs]).T
                 glyph(points[node], geom, unit[dof])
 
-        pl.show(jupyter_backend="html")
+        if plotter is None:
+            pl.show(jupyter_backend="html")

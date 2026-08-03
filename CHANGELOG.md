@@ -9,8 +9,15 @@
 - `torchfem.sparse.resolve_method(...)` returns the linear solver backend that `sparse_solve(...)` picks for a given system size and device. `sparse_solve(...)` now uses it instead of its own copy of the rules.
 - `Solid.plot(..., clip=("rho", 0.5))` cuts the mesh at an iso-value of a property, culling orientations and boundary conditions with it. The `optimization/solid/bracket.ipynb` example uses it to show the optimized part instead of exporting a VTU for ParaView.
 - `Solid.plot(..., show_outline=True)` draws a box around the full mesh, which gives a clipped result its design space back.
+- `Shell.plot(..., plotter=pl)` and `Truss.plot3d(..., plotter=pl)` render into an existing PyVista plotter instead of creating and showing their own, as `Solid.plot(...)` already did.
+- `bcs` on `Truss.plot2d(...)` and `Truss.plot3d(...)`, which drew boundary conditions unconditionally. It defaults to True, matching `Planar.plot(...)`, so plots are unchanged unless it is switched off.
+- `Shell.plot(..., orientations=...)` draws per-element direction vectors, e.g. the local frames `shell.t`, as red, green, and blue arrows, like `Solid.plot(...)` does. On a shell drawn with `thickness=True` they sit on the top surface instead of inside it. The `optimization/shell/orientation.ipynb` example uses it to show the optimized fiber directions in 3D.
+- `Shell.plot(..., show_undeformed=True)` for consistency.
+- `Solid.plot(..., orientations=...)` accepts fewer than three vectors per element, like `Shell.plot(...)`, so `[n_elem, 1, 3]` draws a fiber direction alone. The `optimization/solid/topology+orientation.ipynb` example passes just that instead of the full rotated frame.
+- Docstrings for `Truss.plot2d(...)` and `Truss.plot3d(...)`, which had none.
 
 ### Changed
+- `Shell.plot(...)` and `Truss.plot3d(...)` no longer set the global PyVista Jupyter backend to `client`. Both pass `jupyter_backend="html"` to `show(...)`, which overrode it anyway, so only the global side effect on other plots is gone.
 - `verbose=True` in `solve(...)` and `time_integration(...)` prints a compact table with one row per increment, holding its substeps, iterations, residual, wall time, and flags counting the substep cutbacks (`↓`) and growths (`↑`), under a header naming the model, the machine, the linear solver backend actually used, and the Newton settings. Notebooks redraw the table in place, elsewhere rows stream as they complete. Iterations count linear solves, so a linear problem needs exactly one.
 - **Breaking:** The `verbose` argument of `torchfem.sparse.newton_solve(...)` became `report`, taking a `torchfem.report.SolveReport` or `None` instead of a bool.
 - Linting and formatting moved from `black`, `isort`, and `flake8` to `ruff`, configured in `pyproject.toml` under `[tool.ruff]`. Local checks are now `ruff format .` and `ruff check --fix .`. Ruff also lints the example notebooks, which the previous stack never covered.

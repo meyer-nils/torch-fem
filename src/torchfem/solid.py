@@ -92,7 +92,8 @@ class Solid(Mechanics):
             element_property (dict[str, torch.Tensor], optional):
                 Element property to plot. Defaults to None.
             orientations (torch.Tensor, optional):
-                Element orientations. Defaults to None.
+                Element orientations with shape [n_elem, k, 3] with k <= 3,
+                drawn as red, green, and blue arrows. Defaults to None.
             show_edges (bool, optional):
                 Show edges. Defaults to True.
             show_undeformed (bool, optional):
@@ -165,7 +166,7 @@ class Solid(Mechanics):
         # Plot orientations
         if orientations is not None:
             ecenters = pos[self.elements].mean(dim=1)
-            for j, color in enumerate(["red", "green", "blue"]):
+            for j, color in zip(range(orientations.shape[1]), ["red", "green", "blue"]):
                 directions = orientations[:, j, :]
                 pl.add_arrows(
                     ecenters.cpu().numpy()[kept],
