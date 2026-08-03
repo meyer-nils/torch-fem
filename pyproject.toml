@@ -46,10 +46,8 @@ notebook = [
     "imageio",
     "ipykernel",
     "ipywidgets",
+    "pyvista[jupyter]",
     "tqdm",
-    "trame",
-    "trame-vtk",
-    "trame-vuetify",
 ]
 dev = [
     "basedpyright",

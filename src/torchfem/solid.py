@@ -182,7 +182,9 @@ class Solid(Mechanics):
             if self.etype is Tetra2 or self.etype is Hexa2:
                 # Trick to plot edges for quadratic elements
                 # See: https://github.com/pyvista/pyvista/discussions/5777
-                surface = mesh.separate_cells().extract_surface(nonlinear_subdivision=4)
+                surface = mesh.separate_cells().extract_surface(
+                    nonlinear_subdivision=4, algorithm=None
+                )
                 edges = surface.extract_feature_edges()
                 pl.add_mesh(surface, **kwargs)
                 actor = pl.add_mesh(edges, style="wireframe", color="black")
@@ -196,7 +198,7 @@ class Solid(Mechanics):
             undefo = pyvista.UnstructuredGrid(elements, cell_types, self.nodes.tolist())
             edges = (
                 undefo.separate_cells()
-                .extract_surface(nonlinear_subdivision=4)
+                .extract_surface(nonlinear_subdivision=4, algorithm=None)
                 .extract_feature_edges()
             )
             pl.add_mesh(edges, style="wireframe", color="grey")

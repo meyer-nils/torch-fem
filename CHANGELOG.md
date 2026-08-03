@@ -17,6 +17,8 @@
 - Docstrings for `Truss.plot2d(...)` and `Truss.plot3d(...)`, which had none.
 
 ### Changed
+- The `notebook` extra requires `pyvista[jupyter]` instead of listing `trame`, `trame-vtk`, and `trame-vuetify` itself, so the trame versions stay inside the range PyVista supports. A newer `trame-vtk` ships a VTK.js bundle that PyVista's HTML Jupyter backend embeds incorrectly, leaving the plot blank.
+- `Solid.plot(...)` passes `algorithm=None` to `extract_surface(...)`, silencing a PyVista warning about its default changing. The extracted surface is unchanged.
 - `Shell.plot(..., mirror=...)` no longer draws the constraint cones that enforce the symmetry of a mirrored plane, since the mirrored copy already shows that symmetry, and warns if the nodes on such a plane are not symmetry-constrained. Loads and all other constraints on the plane are still drawn.
 - `Shell.plot(...)` and `Truss.plot3d(...)` no longer set the global PyVista Jupyter backend to `client`. Both pass `jupyter_backend="html"` to `show(...)`, which overrode it anyway, so only the global side effect on other plots is gone.
 - `verbose=True` in `solve(...)` and `time_integration(...)` prints a compact table with one row per increment, holding its substeps, iterations, residual, wall time, and flags counting the substep cutbacks (`↓`) and growths (`↑`), under a header naming the model, the machine, the linear solver backend actually used, and the Newton settings. Notebooks redraw the table in place, elsewhere rows stream as they complete. Iterations count linear solves, so a linear problem needs exactly one.
