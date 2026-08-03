@@ -129,8 +129,15 @@ class Shell(Mechanics):
 
             # Effective through-thickness transverse shear stiffness
             if transverse_G is None:
+                # getattr keeps these dynamic: the shear moduli exist only on
+                # some Material subclasses, which is what the hasattr guards test.
                 if hasattr(self.material, "G"):
-                    G = [self.material.G, self.material.G]  # type: ignore
+                    G = 2 * [getattr(self.material, "G")]  # noqa: B009
+                elif hasattr(self.material, "G_13") and hasattr(self.material, "G_23"):
+                    G = [
+                        getattr(self.material, "G_13"),  # noqa: B009
+                        getattr(self.material, "G_23"),  # noqa: B009
+                    ]
                 else:
                     raise ValueError(
                         "Material must have shear modulus 'G' defined or "

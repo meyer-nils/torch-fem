@@ -110,13 +110,21 @@ class TestShellValidation:
             Shell(self.nodes, self.elements, material, n_simpson=4)
 
     def test_requires_a_shear_modulus(self):
-        """An orthotropic material has no isotropic `G`, so `transverse_G` is
-        the only way to define the transverse shear stiffness."""
+        """An orthotropic material without transverse moduli defines no
+        transverse shear stiffness, and neither does `G_12`."""
         material = OrthotropicElasticityPlaneStress(
             E_1=100e3, E_2=10e3, nu_12=0.3, G_12=5e3
         )
         with pytest.raises(ValueError, match="shear modulus"):
             Shell(self.nodes, self.elements, material)
+
+    def test_integrates_the_transverse_moduli_of_an_orthotropic_material(self):
+        material = OrthotropicElasticityPlaneStress(
+            E_1=100e3, E_2=10e3, nu_12=0.3, G_12=5e3, G_13=4.8e3, G_23=3e3
+        )
+        shell = Shell(self.nodes, self.elements, material, thickness=0.2)
+        expected = 0.2 * torch.tensor([[4.8e3, 0.0], [0.0, 3e3]])
+        assert torch.allclose(shell.As[0], expected)
 
 
 class TestRepr:

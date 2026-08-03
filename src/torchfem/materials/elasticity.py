@@ -685,14 +685,19 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         E_2 (Tensor | float): Young's modulus in direction 2.
         nu_12 (Tensor | float): Poisson's ratio $\\nu_{12}$.
         G_12 (Tensor | float): In-plane shear modulus $G_{12}$.
-        G_13 (Tensor | float): Transverse shear modulus $G_{13}$. Default is `0.0`.
-        G_23 (Tensor | float): Transverse shear modulus $G_{23}$. Default is `0.0`.
+        G_13 (Tensor | float | None): Transverse shear modulus $G_{13}$. Unset by
+            default.
+        G_23 (Tensor | float | None): Transverse shear modulus $G_{23}$. Unset by
+            default.
         rho (Tensor | float): Mass density. Default is `1.0`.
 
     Notes:
         - Small-strain assumption with plane stress condition.
         - No internal state variables (``n_state = 0``).
         - Supports rotation of the material coordinate system via `rotate()`.
+        - $G_{13}$ and $G_{23}$ do not enter the plane stress stiffness. `Shell` and
+          `Laminate` read them as the transverse shear moduli and raise if they are
+          unset.
 
     Info: Plane stress orthotropic stiffness
         The in-plane stiffness components are
@@ -711,8 +716,8 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         E_2: float | Tensor,
         nu_12: float | Tensor,
         G_12: float | Tensor,
-        G_13: float | Tensor = 0.0,
-        G_23: float | Tensor = 0.0,
+        G_13: float | Tensor | None = None,
+        G_23: float | Tensor | None = None,
         rho: float | Tensor = 1.0,
     ):
         # Convert float inputs to tensors
@@ -721,8 +726,10 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.nu_12 = torch.as_tensor(nu_12)
         self.nu_21 = self.E_2 / self.E_1 * self.nu_12
         self.G_12 = torch.as_tensor(G_12)
-        self.G_13 = torch.as_tensor(G_13)
-        self.G_23 = torch.as_tensor(G_23)
+        if G_13 is not None:
+            self.G_13 = torch.as_tensor(G_13)
+        if G_23 is not None:
+            self.G_23 = torch.as_tensor(G_23)
         self.rho = torch.as_tensor(rho)
 
         # Check if the material is vectorized
@@ -764,8 +771,12 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
             E_2 = self.E_2.repeat(n_elem)
             nu_12 = self.nu_12.repeat(n_elem)
             G_12 = self.G_12.repeat(n_elem)
-            G_13 = self.G_13.repeat(n_elem)
-            G_23 = self.G_23.repeat(n_elem)
+            if hasattr(self, "G_13") and hasattr(self, "G_23"):
+                G_13 = self.G_13.repeat(n_elem)
+                G_23 = self.G_23.repeat(n_elem)
+            else:
+                G_13 = None
+                G_23 = None
             rho = self.rho.repeat(n_elem)
             return OrthotropicElasticityPlaneStress(
                 E_1, E_2, nu_12, G_12, G_13, G_23, rho
@@ -810,8 +821,10 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         nu_13 (Tensor | float): Poisson's ratio $\\nu_{13}$.
         nu_23 (Tensor | float): Poisson's ratio $\\nu_{23}$.
         G_12 (Tensor | float): In-plane shear modulus $G_{12}$.
-        G_13 (Tensor | float): Transverse shear modulus $G_{13}$. Default is `0.0`.
-        G_23 (Tensor | float): Transverse shear modulus $G_{23}$. Default is `0.0`.
+        G_13 (Tensor | float | None): Transverse shear modulus $G_{13}$. Unset by
+            default.
+        G_23 (Tensor | float | None): Transverse shear modulus $G_{23}$. Unset by
+            default.
         rho (Tensor | float): Mass density. Default is `1.0`.
 
     Notes:
@@ -837,8 +850,8 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         nu_13: float | Tensor,
         nu_23: float | Tensor,
         G_12: float | Tensor,
-        G_13: float | Tensor = 0.0,
-        G_23: float | Tensor = 0.0,
+        G_13: float | Tensor | None = None,
+        G_23: float | Tensor | None = None,
         rho: float | Tensor = 1.0,
     ):
         # Convert float inputs to tensors
@@ -852,8 +865,10 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.nu_23 = torch.as_tensor(nu_23)
         self.nu_32 = self.E_3 / self.E_2 * self.nu_23
         self.G_12 = torch.as_tensor(G_12)
-        self.G_13 = torch.as_tensor(G_13)
-        self.G_23 = torch.as_tensor(G_23)
+        if G_13 is not None:
+            self.G_13 = torch.as_tensor(G_13)
+        if G_23 is not None:
+            self.G_23 = torch.as_tensor(G_23)
         self.rho = torch.as_tensor(rho)
 
         # Check if the material is vectorized
@@ -904,8 +919,12 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
             nu_13 = self.nu_13.repeat(n_elem)
             nu_23 = self.nu_23.repeat(n_elem)
             G_12 = self.G_12.repeat(n_elem)
-            G_13 = self.G_13.repeat(n_elem)
-            G_23 = self.G_23.repeat(n_elem)
+            if hasattr(self, "G_13") and hasattr(self, "G_23"):
+                G_13 = self.G_13.repeat(n_elem)
+                G_23 = self.G_23.repeat(n_elem)
+            else:
+                G_13 = None
+                G_23 = None
             rho = self.rho.repeat(n_elem)
             return OrthotropicElasticityPlaneStrain(
                 E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho

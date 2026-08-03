@@ -27,6 +27,7 @@
 - CI measures test coverage with `pytest-cov` and fails below 78% (currently 81%).
 - The `increments` argument of `solve(...)` and the `t_output` argument of `time_integration(...)` now default to `None` instead of a `torch.tensor([0.0, 1.0])` built once at import. The effective default is unchanged.
 - The `optimization/solid/bracket.ipynb` example interpolates stiffness as `C_min + rho^p (C0 - C_min)` with `C_min = 1e-3 C0`, instead of `rho^p C0`. The stiffness floor no longer depends on the density bound, so `rho_min` drops from 0.01 to 1e-3 and less of the volume budget is spent on void.
+- **Breaking:** `G_13` and `G_23` of `OrthotropicElasticityPlaneStress` and `OrthotropicElasticityPlaneStrain` are unset instead of defaulting to `0.0`, and a homogeneous `Shell(...)` integrates them into its transverse shear stiffness when `transverse_G` is not given. A `Laminate` of plies without transverse moduli silently integrated to zero transverse shear stiffness before and now raises.
 
 ### Removed
 - **Breaking:** The `contour` argument of `Solid.plot(...)`, superseded by `clip`. The `basic/solid/gyroid.ipynb` example now clips on `thickness - sdf.abs()`, rendering the wall as a solid instead of its two bounding surfaces.
