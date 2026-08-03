@@ -581,13 +581,16 @@ class Shell(Mechanics):
                 the mean element size.
             thickness: If True, extrudes elements by their thickness.
             mirror: Mirrors the mesh about the (x, y, z) planes, e.g. to
-                visualize symmetric halves.
+                visualize symmetric halves. Warns if the nodes on a mirrored
+                plane are not constrained to enforce that symmetry.
             show_undeformed: If True, draws the undeformed mesh as a grey
                 wireframe.
             bcs: If True, renders boundary conditions on the unmirrored mesh:
                 arrows for forces and prescribed displacements, spheres at
                 displacement tips, and a cone per constrained DOF. Rotational
                 DOFs use doubled heads, the usual convention for moments.
+                Constraints enforcing the symmetry of a mirrored plane are
+                skipped, since the mirrored copy shows that symmetry already.
             plotter: PyVista plotter. Defaults to None.
             **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
         """
@@ -659,8 +662,24 @@ class Shell(Mechanics):
                     show_scalar_bar=False,
                 )
 
+        # Symmetry constraints expected on each mirrored plane: the normal
+        # translation and the two rotations about the in-plane axes
+        symmetry = torch.zeros_like(self.constraints)
+        tol = 1e-6 * float(self.char_lengths.mean())
+        for axis, mirrored_axis in enumerate(mirror):
+            if not mirrored_axis:
+                continue
+            on_plane = self.nodes[:, axis].abs() < tol
+            dofs = sorted([axis, 3 + (axis + 1) % 3, 3 + (axis + 2) % 3])
+            for dof in dofs:
+                symmetry[on_plane, dof] = True
+            if not (on_plane.any() and self.constraints[on_plane][:, dofs].all()):
+                print(
+                    f"Mirroring about {'xyz'[axis]} = 0, but its nodes are not "
+                    f"constrained in DOFs {dofs} to enforce that symmetry."
+                )
+
         # Mirror meshes across specified planes
-        meshes = list(base_meshes)
         sx_values = [1.0, -1.0] if mirror[0] else [1.0]
         sy_values = [1.0, -1.0] if mirror[1] else [1.0]
         sz_values = [1.0, -1.0] if mirror[2] else [1.0]
@@ -675,7 +694,6 @@ class Shell(Mechanics):
                         mirrored.points[:, 1] *= sy
                         mirrored.points[:, 2] *= sz
                         pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
-                        meshes.append(mirrored)
 
         if show_undeformed:
             undefo = pyvista.PolyData(self.nodes.cpu().numpy(), elements)
@@ -749,7 +767,7 @@ class Shell(Mechanics):
 
             # One cone per constrained DOF, unless an arrow already shows it.
             # A prescribed rotation cannot be drawn to scale, so it keeps its cone.
-            fixed = self.constraints.clone()
+            fixed = self.constraints & ~symmetry
             if not deformed:
                 fixed[:, :3] &= prescribed[:, :3] == 0.0
             unit = torch.eye(3, device=points.device, dtype=points.dtype)
