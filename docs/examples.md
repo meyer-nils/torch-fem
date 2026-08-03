@@ -12,21 +12,21 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Truss elasticity in 2D](images/examples/basic/truss/elasticity_2D.png)
+-   **Truss elasticity in 2D**
 
-    [**Truss elasticity in 2D**](examples/basic/truss/elasticity_2D.html)
+    [![Truss elasticity in 2D](images/examples/basic/truss/elasticity_2D.png)](examples/basic/truss/elasticity_2D.html)
 
--   ![Truss elasticity in 3D](images/examples/basic/truss/elasticity_3D.png)
+-   **Truss elasticity in 3D**
 
-    [**Truss elasticity in 3D**](examples/basic/truss/elasticity_3D.html)
+    [![Truss elasticity in 3D](images/examples/basic/truss/elasticity_3D.png)](examples/basic/truss/elasticity_3D.html)
 
--   ![Truss plasticity in 2D](images/examples/basic/truss/plasticity_2D.png)
+-   **Truss plasticity in 2D**
 
-    [**Truss plasticity in 2D**](examples/basic/truss/plasticity_2D.html)
+    [![Truss plasticity in 2D](images/examples/basic/truss/plasticity_2D.png)](examples/basic/truss/plasticity_2D.html)
 
--   ![Truss modal analysis](images/examples/basic/truss/modal.png)
+-   **Truss modal analysis**
 
-    [**Truss modal analysis**](examples/basic/truss/modal.html)
+    [![Truss modal analysis](images/examples/basic/truss/modal.png)](examples/basic/truss/modal.html)
 
 </div>
 
@@ -34,45 +34,45 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Minimal example](images/examples/basic/planar/minimal.png)
+-   **Minimal example**
 
-    [**Minimal example**](examples/basic/planar/minimal.html)
+    [![Minimal example](images/examples/basic/planar/minimal.png)](examples/basic/planar/minimal.html)
 
--   ![Cantilever beams](images/examples/basic/planar/cantilever.png)
+-   **Cantilever beams**
 
-    [**Cantilever beams**](examples/basic/planar/cantilever.html)
+    [![Cantilever beams](images/examples/basic/planar/cantilever.png)](examples/basic/planar/cantilever.html)
 
--   ![Plasticity in a plate with hole](images/examples/basic/planar/plasticity.png)
+-   **Plasticity in a plate with hole**
 
-    [**Plasticity in a plate with hole**](examples/basic/planar/plasticity.html)
+    [![Plasticity in a plate with hole](images/examples/basic/planar/plasticity.png)](examples/basic/planar/plasticity.html)
 
--   ![Fillet](images/examples/basic/planar/fillet.png)
+-   **Fillet**
 
-    [**Fillet**](examples/basic/planar/fillet.html)
+    [![Fillet](images/examples/basic/planar/fillet.png)](examples/basic/planar/fillet.html)
 
--   ![Finite strain](images/examples/basic/planar/finite_strain.png)
+-   **Finite strain**
 
-    [**Finite strain**](examples/basic/planar/finite_strain.html)
+    [![Finite strain](images/examples/basic/planar/finite_strain.png)](examples/basic/planar/finite_strain.html)
 
--   ![Snap-through of a cylindrical roof](images/examples/basic/planar/stabilization.png)
+-   **Snap-through of a cylindrical roof**
 
-    [**Snap-through of a cylindrical roof**](examples/basic/planar/stabilization.html)
+    [![Snap-through of a cylindrical roof](images/examples/basic/planar/stabilization.png)](examples/basic/planar/stabilization.html)
 
--   ![Modal analysis](images/examples/basic/planar/modal.png)
+-   **Modal analysis**
 
-    [**Modal analysis**](examples/basic/planar/modal.html)
+    [![Modal analysis](images/examples/basic/planar/modal.png)](examples/basic/planar/modal.html)
 
--   ![Patch tests](images/examples/basic/planar/test_problems.png)
+-   **Patch tests**
 
-    [**Patch tests**](examples/basic/planar/test_problems.html)
+    [![Patch tests](images/examples/basic/planar/test_problems.png)](examples/basic/planar/test_problems.html)
 
--   ![Static heat conduction](images/examples/basic/planar/thermal_static.png)
+-   **Static heat conduction**
 
-    [**Static heat conduction**](examples/basic/planar/thermal_static.html)
+    [![Static heat conduction](images/examples/basic/planar/thermal_static.png)](examples/basic/planar/thermal_static.html)
 
--   ![Transient heat conduction](images/examples/basic/planar/thermal_transient.png)
+-   **Transient heat conduction**
 
-    [**Transient heat conduction**](examples/basic/planar/thermal_transient.html)
+    [![Transient heat conduction](images/examples/basic/planar/thermal_transient.png)](examples/basic/planar/thermal_transient.html)
 
 </div>
 
@@ -80,37 +80,37 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Shell cantilever](images/examples/basic/shell/cantilever.png)
+-   **Shell cantilever**
 
-    [**Shell cantilever**](examples/basic/shell/cantilever.html)
+    [![Shell cantilever](images/examples/basic/shell/cantilever.png)](examples/basic/shell/cantilever.html)
 
--   ![Laminate cantilever](images/examples/basic/shell/cantilever_laminate.png)
+-   **Laminate cantilever**
 
-    [**Laminate cantilever**](examples/basic/shell/cantilever_laminate.html)
+    [![Laminate cantilever](images/examples/basic/shell/cantilever_laminate.png)](examples/basic/shell/cantilever_laminate.html)
 
--   ![Fiber metal laminate cantilever](images/examples/basic/shell/cantilever_fml.png)
+-   **Fiber metal laminate cantilever**
 
-    [**Fiber metal laminate cantilever**](examples/basic/shell/cantilever_fml.html)
+    [![Fiber metal laminate cantilever](images/examples/basic/shell/cantilever_fml.png)](examples/basic/shell/cantilever_fml.html)
 
--   ![Composite overwrapped pressure vessel](images/examples/basic/shell/copv.png)
+-   **Composite overwrapped pressure vessel**
 
-    [**Composite overwrapped pressure vessel**](examples/basic/shell/copv.html)
+    [![Composite overwrapped pressure vessel](images/examples/basic/shell/copv.png)](examples/basic/shell/copv.html)
 
--   ![Plate bending](images/examples/basic/shell/plate.png)
+-   **Plate bending**
 
-    [**Plate bending**](examples/basic/shell/plate.html)
+    [![Plate bending](images/examples/basic/shell/plate.png)](examples/basic/shell/plate.html)
 
--   ![Shell plasticity](images/examples/basic/shell/plasticity.png)
+-   **Shell plasticity**
 
-    [**Shell plasticity**](examples/basic/shell/plasticity.html)
+    [![Shell plasticity](images/examples/basic/shell/plasticity.png)](examples/basic/shell/plasticity.html)
 
--   ![Shell modal analysis](images/examples/basic/shell/modal.png)
+-   **Shell modal analysis**
 
-    [**Shell modal analysis**](examples/basic/shell/modal.html)
+    [![Shell modal analysis](images/examples/basic/shell/modal.png)](examples/basic/shell/modal.html)
 
--   ![Shell test problems](images/examples/basic/shell/test_problems.png)
+-   **Shell test problems**
 
-    [**Shell test problems**](examples/basic/shell/test_problems.html)
+    [![Shell test problems](images/examples/basic/shell/test_problems.png)](examples/basic/shell/test_problems.html)
 
 </div>
 
@@ -118,61 +118,61 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Solid cubes with different element types](images/examples/basic/solid/cubes.png)
+-   **Solid cubes with different element types**
 
-    [**Solid cubes with different element types**](examples/basic/solid/cubes.html)
+    [![Solid cubes with different element types](images/examples/basic/solid/cubes.png)](examples/basic/solid/cubes.html)
 
--   ![Gyroid](images/examples/basic/solid/gyroid.png)
+-   **Gyroid**
 
-    [**Gyroid**](examples/basic/solid/gyroid.html)
+    [![Gyroid](images/examples/basic/solid/gyroid.png)](examples/basic/solid/gyroid.html)
 
--   ![Finite strain cantilever](images/examples/basic/solid/finite_strain.png)
+-   **Finite strain cantilever**
 
-    [**Finite strain cantilever**](examples/basic/solid/finite_strain.html)
+    [![Finite strain cantilever](images/examples/basic/solid/finite_strain.png)](examples/basic/solid/finite_strain.html)
 
--   ![Plasticity](images/examples/basic/solid/plasticity.png)
+-   **Plasticity**
 
-    [**Plasticity**](examples/basic/solid/plasticity.html)
+    [![Plasticity](images/examples/basic/solid/plasticity.png)](examples/basic/solid/plasticity.html)
 
--   ![Inelasticity](images/examples/basic/solid/inelasticity.png)
+-   **Inelasticity**
 
-    [**Inelasticity**](examples/basic/solid/inelasticity.html)
+    [![Inelasticity](images/examples/basic/solid/inelasticity.png)](examples/basic/solid/inelasticity.html)
 
--   ![Isotropic damage](images/examples/basic/solid/isotropic_damage.png)
+-   **Isotropic damage**
 
-    [**Isotropic damage**](examples/basic/solid/isotropic_damage.html)
+    [![Isotropic damage](images/examples/basic/solid/isotropic_damage.png)](examples/basic/solid/isotropic_damage.html)
 
--   ![Plate damage](images/examples/basic/solid/plate_damage.png)
+-   **Plate damage**
 
-    [**Plate damage**](examples/basic/solid/plate_damage.html)
+    [![Plate damage](images/examples/basic/solid/plate_damage.png)](examples/basic/solid/plate_damage.html)
 
--   ![Large compression](images/examples/basic/solid/large_compression.png)
+-   **Large compression**
 
-    [**Large compression**](examples/basic/solid/large_compression.html)
+    [![Large compression](images/examples/basic/solid/large_compression.png)](examples/basic/solid/large_compression.html)
 
--   ![Large stretch](images/examples/basic/solid/large_stretch.png)
+-   **Large stretch**
 
-    [**Large stretch**](examples/basic/solid/large_stretch.html)
+    [![Large stretch](images/examples/basic/solid/large_stretch.png)](examples/basic/solid/large_stretch.html)
 
--   ![Rubber stretch](images/examples/basic/solid/rubber_stretch.png)
+-   **Rubber stretch**
 
-    [**Rubber stretch**](examples/basic/solid/rubber_stretch.html)
+    [![Rubber stretch](images/examples/basic/solid/rubber_stretch.png)](examples/basic/solid/rubber_stretch.html)
 
--   ![Material rotation](images/examples/basic/solid/material_rotation.png)
+-   **Material rotation**
 
-    [**Material rotation**](examples/basic/solid/material_rotation.html)
+    [![Material rotation](images/examples/basic/solid/material_rotation.png)](examples/basic/solid/material_rotation.html)
 
--   ![Modal analysis](images/examples/basic/solid/modal.png)
+-   **Modal analysis**
 
-    [**Modal analysis**](examples/basic/solid/modal.html)
+    [![Modal analysis](images/examples/basic/solid/modal.png)](examples/basic/solid/modal.html)
 
--   ![Static heat conduction](images/examples/basic/solid/thermal_static.png)
+-   **Static heat conduction**
 
-    [**Static heat conduction**](examples/basic/solid/thermal_static.html)
+    [![Static heat conduction](images/examples/basic/solid/thermal_static.png)](examples/basic/solid/thermal_static.html)
 
--   ![Transient heat conduction](images/examples/basic/solid/thermal_transient.png)
+-   **Transient heat conduction**
 
-    [**Transient heat conduction**](examples/basic/solid/thermal_transient.html)
+    [![Transient heat conduction](images/examples/basic/solid/thermal_transient.png)](examples/basic/solid/thermal_transient.html)
 
 </div>
 
@@ -182,9 +182,9 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Shape optimization of a truss bridge](images/examples/optimization/truss/shape.png)
+-   **Shape optimization of a truss bridge**
 
-    [**Shape optimization of a truss bridge**](examples/optimization/truss/shape.html)
+    [![Shape optimization of a truss bridge](images/examples/optimization/truss/shape.png)](examples/optimization/truss/shape.html)
 
 </div>
 
@@ -192,37 +192,37 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Shape optimization of a fillet](images/examples/optimization/planar/shape.png)
+-   **Shape optimization of a fillet**
 
-    [**Shape optimization of a fillet**](examples/optimization/planar/shape.html)
+    [![Shape optimization of a fillet](images/examples/optimization/planar/shape.png)](examples/optimization/planar/shape.html)
 
--   ![Topology optimization of an MBB beam](images/examples/optimization/planar/topology.png)
+-   **Topology optimization of an MBB beam**
 
-    [**Topology optimization of an MBB beam**](examples/optimization/planar/topology.html)
+    [![Topology optimization of an MBB beam](images/examples/optimization/planar/topology.png)](examples/optimization/planar/topology.html)
 
--   ![Fiber orientation optimization of a plate with a hole](images/examples/optimization/planar/orientation.png)
+-   **Fiber orientation optimization of a plate**
 
-    [**Fiber orientation optimization of a plate with a hole**](examples/optimization/planar/orientation.html)
+    [![Fiber orientation optimization of a plate](images/examples/optimization/planar/orientation.png)](examples/optimization/planar/orientation.html)
 
--   ![Combined topology and orientation optimization](images/examples/optimization/planar/topology+orientation.png)
+-   **Combined topology and orientation**
 
-    [**Combined topology and orientation optimization**](examples/optimization/planar/topology+orientation.html)
+    [![Combined topology and orientation](images/examples/optimization/planar/topology+orientation.png)](examples/optimization/planar/topology+orientation.html)
 
--   ![Thermal topology optimization of a heat sink](images/examples/optimization/planar/topology_thermal_static.png)
+-   **Thermal topology optimization**
 
-    [**Thermal topology optimization of a heat sink**](examples/optimization/planar/topology_thermal_static.html)
+    [![Thermal topology optimization ](images/examples/optimization/planar/topology_thermal_static.png)](examples/optimization/planar/topology_thermal_static.html)
 
--   ![Neural property fields](images/examples/optimization/planar/property_fields.png)
+-   **Neural property fields**
 
-    [**Neural property fields**](examples/optimization/planar/property_fields.html)
+    [![Neural property fields](images/examples/optimization/planar/property_fields.png)](examples/optimization/planar/property_fields.html)
 
--   ![Fiber patch placement](images/examples/optimization/planar/fiber_patch_placement.png)
+-   **Fiber patch placement**
 
-    [**Fiber patch placement**](examples/optimization/planar/fiber_patch_placement.html)
+    [![Fiber patch placement](images/examples/optimization/planar/fiber_patch_placement.png)](examples/optimization/planar/fiber_patch_placement.html)
 
--   ![Orientation optimization for transient heat conduction](images/examples/optimization/planar/orientation_thermal_transient.png)
+-   **Orientation optimization for transient heat**
 
-    [**Orientation optimization for transient heat conduction**](examples/optimization/planar/orientation_thermal_transient.html)
+    [![Orientation optimization for transient heat](images/examples/optimization/planar/orientation_thermal_transient.png)](examples/optimization/planar/orientation_thermal_transient.html)
 
 </div>
 
@@ -230,13 +230,13 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Pressure vessel](images/examples/optimization/shell/pressure_vessel.png)
+-   **Pressure vessel**
 
-    [**Pressure vessel**](examples/optimization/shell/pressure_vessel.html)
+    [![Pressure vessel](images/examples/optimization/shell/pressure_vessel.png)](examples/optimization/shell/pressure_vessel.html)
 
--   ![Orientation optimization](images/examples/optimization/shell/orientation.png)
+-   **Orientation optimization**
 
-    [**Orientation optimization**](examples/optimization/shell/orientation.html)
+    [![Orientation optimization](images/examples/optimization/shell/orientation.png)](examples/optimization/shell/orientation.html)
 
 </div>
 
@@ -244,26 +244,24 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 <div class="grid cards" markdown>
 
--   ![Topology optimization of a jet engine bracket](images/examples/optimization/solid/bracket.png)
+-   **Topology optimization of a bracket**
 
-    [**Topology optimization of a jet engine bracket**](examples/optimization/solid/bracket.html)
+    [![Topology optimization of a bracket](images/examples/optimization/solid/bracket.png)](examples/optimization/solid/bracket.html)
 
--   ![Topology optimization](images/examples/optimization/solid/topology.png)
+-   **Topology optimization**
 
-    [**Topology optimization**](examples/optimization/solid/topology.html)
+    [![Topology optimization](images/examples/optimization/solid/topology.png)](examples/optimization/solid/topology.html)
 
--   ![Combined topology and orientation optimization](images/examples/optimization/solid/topology+orientation.png)
+-   **Combined topology and orientation**
 
-    [**Combined topology and orientation optimization**](examples/optimization/solid/topology+orientation.html)
+    [![Combined topology and orientation](images/examples/optimization/solid/topology+orientation.png)](examples/optimization/solid/topology+orientation.html)
 
--   ![Thermal topology optimization](images/examples/optimization/solid/topology_thermal.png)
+-   **Thermal topology optimization**
 
-    [**Thermal topology optimization**](examples/optimization/solid/topology_thermal.html)
+    [![Thermal topology optimization](images/examples/optimization/solid/topology_thermal.png)](examples/optimization/solid/topology_thermal.html)
 
+-   **Heat source recovery**
 
--   ![Heat source recovery](images/examples/optimization/solid/heat_source_recovery.png)
-
-
-    [**Heat source recovery**](examples/optimization/solid/source_recovery_thermal.html)
+    [![Heat source recovery](images/examples/optimization/solid/heat_source_recovery.png)](examples/optimization/solid/source_recovery_thermal.html)
 
 </div>
