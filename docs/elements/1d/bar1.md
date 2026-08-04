@@ -6,4 +6,4 @@
         members_order: source
 
 ## Shape functions
-![Shape functions of the Bar1 element](../../images/bar1_shape_functions.png)
+![Shape functions of the Bar1 element](../../images/Bar1_shape_functions.png)
