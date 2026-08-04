@@ -155,6 +155,13 @@ def test_solid_topology_optimization_notebook(tb):
     tb.execute()
 
 
+@testbook(
+    "examples/optimization/solid/topology_thermal.ipynb", execute=True, timeout=300
+)
+def test_solid_topology_thermal_optimization_notebook(tb):
+    tb.execute()
+
+
 @testbook("examples/optimization/planar/shape.ipynb", execute=True)
 def test_planar_shape_optimization_notebook(tb):
     tb.execute()
