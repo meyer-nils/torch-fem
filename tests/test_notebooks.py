@@ -1,191 +1,37 @@
+from pathlib import Path
+
 import pytest
+from _pytest.mark.structures import ParameterSet
 from testbook import testbook
 
 # Slow: these execute the example notebooks. Skip with `-m "not notebook"`.
 pytestmark = pytest.mark.notebook
 
-
-@testbook("examples/basic/planar/cantilever.ipynb", execute=True)
-def test_planar_cantilever_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/fillet.ipynb", execute=True)
-def test_planar_fillet_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/minimal.ipynb", execute=True)
-def test_planar_minimal_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/plasticity.ipynb", execute=True)
-def test_planar_plasticity_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/finite_strain.ipynb", execute=True)
-def test_planar_finite_strain_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/stabilization.ipynb", execute=True)
-def test_planar_stabilization_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/thermal_static.ipynb", execute=True)
-def test_planar_thermal_static_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/thermal_transient.ipynb", execute=True)
-def test_planar_thermal_transient_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/planar/modal.ipynb", execute=True)
-def test_planar_modal_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/shell/cantilever.ipynb", execute=True)
-def test_shell_cantilever_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/shell/plate.ipynb", execute=True)
-def test_shell_plate_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/shell/modal.ipynb", execute=True)
-def test_shell_modal_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/shell/cantilever_fml.ipynb", execute=True)
-def test_shell_cantilever_fml_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/shell/cantilever_laminate.ipynb", execute=True)
-def test_shell_cantilever_laminate_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/shell/copv.ipynb", execute=True)
-def test_shell_copv_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/truss/elasticity_2D.ipynb", execute=True)
-def test_truss_elasticity2d_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/truss/elasticity_3D.ipynb", execute=True)
-def test_truss_elasticity3d_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/truss/plasticity_2D.ipynb", execute=True)
-def test_truss_plasticity2d_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/truss/modal.ipynb", execute=True)
-def test_truss_modal_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/cubes.ipynb", execute=True)
-def test_solid_cubes_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/gyroid.ipynb", execute=True, timeout=90)
-def test_solid_gyroid_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/inelasticity.ipynb", execute=True)
-def test_solid_inelasticity_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/isotropic_damage.ipynb", execute=True)
-def test_solid_isotropic_damage_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/finite_strain.ipynb", execute=True)
-def test_solid_finite_strain_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/large_stretch.ipynb", execute=True)
-def test_solid_large_stretch_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/plasticity.ipynb", execute=True)
-def test_solid_plasticity_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/modal.ipynb", execute=True)
-def test_solid_modal_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/basic/solid/thermal_transient.ipynb", execute=True)
-def test_solid_thermal_transient_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/optimization/planar/topology.ipynb", execute=True)
-def test_planar_topology_optimization_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/optimization/solid/topology.ipynb", execute=True, timeout=180)
-def test_solid_topology_optimization_notebook(tb):
-    tb.execute()
-
-
-@testbook(
-    "examples/optimization/solid/topology_thermal.ipynb", execute=True, timeout=300
-)
-def test_solid_topology_thermal_optimization_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/optimization/planar/shape.ipynb", execute=True)
-def test_planar_shape_optimization_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/optimization/planar/orientation.ipynb", execute=True)
-def test_planar_orientation_optimization_notebook(tb):
-    tb.execute()
-
-
-@testbook(
-    "examples/optimization/planar/orientation_thermal_transient.ipynb",
-    execute=True,
-    timeout=180,
-)
-def test_planar_orientation_thermal_transient_optimization_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/optimization/shell/orientation.ipynb", execute=True)
-def test_shell_orientation_optimization_notebook(tb):
-    tb.execute()
-
-
-@testbook("examples/optimization/shell/pressure_vessel.ipynb", execute=True)
-def test_shell_pressure_vessel_optimization_notebook(tb):
-    tb.execute()
+EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
+
+# Notebooks that are too slow to execute on every test run.
+SKIP = {
+    "optimization/solid/bracket.ipynb": "runs for more than ten minutes",
+    "optimization/planar/property_fields.ipynb": "runs for about three minutes",
+    "optimization/solid/topology_thermal.ipynb": "runs for more than two minutes",
+    "optimization/planar/fiber_patch_placement.ipynb": "runs for about two minutes",
+}
+
+
+def _notebooks() -> list[ParameterSet]:
+    """Every example notebook, identified by its path below `examples/`."""
+    params = []
+    for path in sorted(EXAMPLES.rglob("*.ipynb")):
+        if any(part.startswith(".") for part in path.parts):
+            continue
+        name = path.relative_to(EXAMPLES).as_posix()
+        reason = SKIP.get(name)
+        marks = [pytest.mark.skip(reason=reason)] if reason else []
+        params.append(pytest.param(path, id=name, marks=marks))
+    return params
+
+
+@pytest.mark.parametrize("notebook", _notebooks())
+def test_notebook(notebook):
+    with testbook(notebook, timeout=600) as tb:
+        tb.execute()
