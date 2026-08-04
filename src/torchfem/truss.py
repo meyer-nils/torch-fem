@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pyvista
 import torch
 from matplotlib.axes import Axes
-from matplotlib.colors import Normalize
+from matplotlib.colors import Colormap, Normalize
 from pyvista import DataSet
 from torch import Tensor
 
@@ -138,7 +138,7 @@ class Truss(Mechanics):
         thickness_threshold: float = 0.0,
         bcs: bool = True,
         default_color: str = "black",
-        cmap: str = "viridis",
+        cmap: str | Colormap = "viridis",
         title: str | None = None,
         axes: bool = False,
         vmin: float | None = None,
@@ -164,7 +164,7 @@ class Truss(Mechanics):
                 the deformed configuration, only the dot is drawn, marking the
                 position the node was pulled to.
             default_color: Bar, node, and label color.
-            cmap: Matplotlib colormap name.
+            cmap: Matplotlib colormap or its name.
             title: Plot title.
             axes: If True, shows the coordinate axes.
             vmin: Lower color limit.
@@ -292,7 +292,7 @@ class Truss(Mechanics):
         u: float | Tensor = 0.0,
         element_property: dict[str, Tensor] | None = None,
         bcs: bool = True,
-        cmap: str = "viridis",
+        cmap: str | Colormap = "viridis",
         plotter: pyvista.Plotter | None = None,
     ):
         """Plot the truss with PyVista, optionally with results.

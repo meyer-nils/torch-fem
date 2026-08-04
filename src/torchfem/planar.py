@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import torch
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection, PolyCollection
+from matplotlib.colors import Colormap
 from matplotlib.tri import Triangulation
 from torch import Tensor
 
@@ -113,7 +114,7 @@ class Planar(Mechanics):
         bcs: bool = True,
         color: str = "black",
         alpha: float = 1.0,
-        cmap: str = "viridis",
+        cmap: str | Colormap = "viridis",
         linewidth: float = 1.0,
         figsize: tuple[float, float] = (8.0, 6.0),
         colorbar: bool = False,
@@ -145,7 +146,7 @@ class Planar(Mechanics):
                 position the node was pulled to.
             color: Line and marker color.
             alpha: Opacity of nodal contour plots.
-            cmap: Matplotlib colormap name.
+            cmap: Matplotlib colormap or its name.
             linewidth: Element edge line width. Set to 0.0 to hide edges.
             figsize: Figure size when a new figure is created.
             colorbar: If True, adds a colorbar.
