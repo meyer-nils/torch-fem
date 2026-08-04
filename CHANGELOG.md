@@ -1,5 +1,15 @@
 # Changelog 
 
+## Unreleased
+
+### Added
+- `integrate_body_load(...)`, `integrate_surface_load(...)` and `integrate_line_load(...)` turn a distributed load into consistent nodal loads, replacing the lumping that the examples wrote out by hand. Surfaces and lines are picked with a nodal mask, and a float load acts as a pressure along the outward normal.
+- `Element.facets` and `Element.facet_type` describe the codimension-1 facets of an element, i.e. the edges of a surface element and the faces of a volume element.
+- `FEM.integrate_shape_functions(...)` returns the integral of each shape function over its element, and `FEM.volume_scale` the volume per unit element measure.
+
+### Changed
+- `integrate_field(...)` is now a contraction of `integrate_shape_functions(...)` and returns the same values as before.
+
 ## Version 0.8.0 - August 3 2026
 
 ### Added

@@ -71,6 +71,10 @@ class Truss(Mechanics):
         end_nodes = self.nodes[self.elements[:, 1]]
         return torch.linalg.norm(end_nodes - start_nodes, dim=-1)
 
+    @property
+    def volume_scale(self) -> Tensor:
+        return self.areas
+
     def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
 

@@ -36,12 +36,27 @@ class Element(ABC):
         iso_dim (int): Reference-space dimension.
         nodes (int): Number of nodes per element.
         meshio_type (str): Mesh cell type used for meshio I/O.
+        facet_type (type[Element]): Element type of a codimension-1 facet.
+        facets (Tensor): Local node indices of the codimension-1 facets, i.e. the
+            edges of a surface element or the faces of a volume element. Faces are
+            wound so that their normal points out of the element. Line elements
+            have no facets.
     """
 
     iso_volume: float
     iso_dim: int
     nodes: int
     meshio_type: str
+    facet_type: type["Element"]
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        """Local node indices of the codimension-1 facets.
+
+        Raises:
+            NotImplementedError: For line elements, which have no facets.
+        """
+        raise NotImplementedError(f"{cls.__name__} has no facets.")
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -260,10 +275,15 @@ class Tria1(Element):
     iso_dim = 2
     nodes = 3
     meshio_type = "triangle"
+    facet_type = Bar1
 
     @classproperty
     def iso_coords(cls) -> Tensor:
         return torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor([[0, 1], [1, 2], [2, 0]])
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
@@ -327,6 +347,11 @@ class Tria2(Tria1):
 
     nodes = 6
     meshio_type = "triangle6"
+    facet_type = Bar2
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor([[0, 1, 3], [1, 2, 4], [2, 0, 5]])
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -430,10 +455,15 @@ class Quad1(Element):
     iso_dim = 2
     nodes = 4
     meshio_type = "quad"
+    facet_type = Bar1
 
     @classproperty
     def iso_coords(cls) -> Tensor:
         return torch.tensor([[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]])
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0]])
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
@@ -529,6 +559,11 @@ class Quad2(Quad1):
 
     nodes = 8
     meshio_type = "quad8"
+    facet_type = Bar2
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor([[0, 1, 4], [1, 2, 5], [2, 3, 6], [3, 0, 7]])
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -659,12 +694,17 @@ class Tetra1(Element):
     iso_dim = 3
     nodes = 4
     meshio_type = "tetra"
+    facet_type = Tria1
 
     @classproperty
     def iso_coords(cls) -> Tensor:
         return torch.tensor(
             [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
         )
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor([[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]])
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
@@ -714,6 +754,18 @@ class Tetra2(Tetra1):
 
     nodes = 10
     meshio_type = "tetra10"
+    facet_type = Tria2
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor(
+            [
+                [0, 2, 1, 6, 5, 4],
+                [0, 1, 3, 4, 8, 7],
+                [1, 2, 3, 5, 9, 8],
+                [0, 3, 2, 7, 9, 6],
+            ]
+        )
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -838,6 +890,20 @@ class Hexa1(Element):
     iso_dim = 3
     nodes = 8
     meshio_type = "hexahedron"
+    facet_type = Quad1
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor(
+            [
+                [0, 3, 2, 1],
+                [4, 5, 6, 7],
+                [0, 1, 5, 4],
+                [1, 2, 6, 5],
+                [2, 3, 7, 6],
+                [3, 0, 4, 7],
+            ]
+        )
 
     @classproperty
     def iso_coords(cls) -> Tensor:
@@ -950,6 +1016,20 @@ class Hexa2(Hexa1):
     iso_dim = 3
     nodes = 20
     meshio_type = "hexahedron20"
+    facet_type = Quad2
+
+    @classproperty
+    def facets(cls) -> Tensor:
+        return torch.tensor(
+            [
+                [0, 3, 2, 1, 11, 10, 9, 8],
+                [4, 5, 6, 7, 12, 13, 14, 15],
+                [0, 1, 5, 4, 8, 17, 12, 16],
+                [1, 2, 6, 5, 9, 18, 13, 17],
+                [2, 3, 7, 6, 10, 19, 14, 18],
+                [3, 0, 4, 7, 11, 16, 15, 19],
+            ]
+        )
 
     @classproperty
     def iso_coords(cls) -> Tensor:

@@ -226,6 +226,30 @@ class Shell(Mechanics):
         """Set element type."""
         return Tria1
 
+    @property
+    def volume_scale(self) -> Tensor:
+        return self.thickness
+
+    def integrate_surface_load(self, mask: Tensor, load: float | Tensor) -> Tensor:
+        """Consistent nodal loads from a load per unit area, e.g. a pressure.
+
+        A shell element is its own surface, so the loaded surface is made up of the
+        elements whose nodes all lie in `mask`.
+
+        Args:
+            mask: Boolean nodal mask with shape [n_nod] selecting the surface.
+            load: Load per unit area. A float is a pressure acting along the element
+                normal, while shape [3] or [n_elem, 3] is a traction in global
+                coordinates.
+
+        Returns:
+            Nodal loads with shape [n_nod, 3], to be added to `forces[:, 0:3]`.
+        """
+        conn = self.elements[mask[self.elements].all(dim=1)]
+        return self._integrate_facet_load(
+            conn, self.etype, torch.as_tensor(load, dtype=self.nodes.dtype)
+        )
+
     @cached_property
     def char_lengths(self) -> Tensor:
         """Characteristic lengths of the elements."""

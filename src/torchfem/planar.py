@@ -84,6 +84,10 @@ class Planar(Mechanics):
         areas = self.integrate_field()
         return areas ** (1 / 2)
 
+    @property
+    def volume_scale(self) -> Tensor:
+        return self.thickness
+
     def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix contribution."""
         return torch.einsum("...,...,...kl->...kl", self.thickness, detJ, BCB)

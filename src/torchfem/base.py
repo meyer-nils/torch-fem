@@ -133,6 +133,11 @@ class FEM(ABC):
         return self.material.n_state
 
     @property
+    def volume_scale(self) -> Tensor:
+        """Volume per unit element measure, i.e. thickness or cross section area."""
+        return torch.ones(self.n_elem, device=self.nodes.device)
+
+    @property
     @abstractmethod
     def n_flux(self) -> list[int]:
         """Shape of the flux tensor."""
@@ -319,6 +324,16 @@ class FEM(ABC):
             B = torch.ones((self.n_dof_per_node * self.n_nod, 1))
         return B
 
+    def integrate_shape_functions(self) -> Tensor:
+        """Integrate each shape function over its element.
+
+        Returns:
+            Integrals of the nodal shape functions with shape
+            [n_elem, nodes_per_element]. They sum to the element volume or area.
+        """
+        N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
+        return torch.einsum("i,in,ie->en", self.etype.iweights, N, detJ)
+
     def integrate_field(self, field: Tensor | None = None) -> Tensor:
         """Integrate a nodal scalar field over each element.
 
@@ -329,22 +344,10 @@ class FEM(ABC):
         Returns:
             Per-element integral values with shape [n_elem].
         """
-
-        # Default field is ones (to integrate volume)
+        w = self.integrate_shape_functions()
         if field is None:
-            field = torch.ones(self.n_nod)
-
-        # Shape functions at integration points
-        N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
-
-        # Integration weights
-        weights = self.etype.iweights
-
-        # Field at integration points
-        f_ip = torch.einsum("ej,ij->ie", field[self.elements], N)
-
-        # Integration
-        return torch.einsum("i,ie,ie->e", weights, f_ip, detJ)
+            return w.sum(dim=1)
+        return (w * field[self.elements]).sum(dim=1)
 
     def integrate_mass(self) -> Tensor:
         """Integrate mass matrix.
@@ -416,6 +419,129 @@ class FEM(ABC):
         values = f.ravel()
 
         return F.index_add_(0, indices, values)
+
+    def _scatter(self, conn: Tensor, contrib: Tensor) -> Tensor:
+        """Scatter per-node load contributions of elements or facets to the nodes."""
+        f = torch.zeros(self.n_nod, contrib.shape[-1], device=self.nodes.device)
+        return f.index_add_(0, conn.ravel(), contrib.flatten(0, 1))
+
+    def _boundary_facets(self, mask: Tensor) -> Tensor:
+        """Select boundary facets whose nodes all lie in a nodal mask.
+
+        A facet is on the boundary if it belongs to exactly one element, so facets
+        inside the selection are dropped rather than loaded twice.
+        """
+        device = self.elements.device
+        table = self.etype.facets.to(device)
+        facets = self.elements[:, table].reshape(-1, table.shape[1])
+        facets = facets[mask[facets].all(dim=1)]
+        _, inv, count = torch.unique(
+            facets.sort(dim=1).values, dim=0, return_inverse=True, return_counts=True
+        )
+        # Keep the first occurrence of each facet, so its node winding is preserved
+        first = torch.full((len(count),), len(inv), device=device)
+        first.scatter_reduce_(
+            0, inv, torch.arange(len(inv), device=device), reduce="amin"
+        )
+        return facets[first[count == 1]]
+
+    def _integrate_facet_load(
+        self, conn: Tensor, ftype: type[Element], load: Tensor
+    ) -> Tensor:
+        """Consistent nodal loads from a distributed load on the given facets."""
+        xi = ftype.ipoints
+        # The facet Jacobian is not square, so the measure is sqrt(det(J J^T))
+        J = torch.einsum("iaN,eNj->ieaj", ftype.B(xi), self.nodes[conn])
+        detJ = torch.sqrt(torch.linalg.det(J @ J.transpose(-1, -2)))
+        if load.dim() == 0 and self.n_dof_per_node > 1:
+            # A scalar is a pressure acting along the outward normal
+            if J.shape[-2] == 2:  # face of a volume element or a shell element
+                n = torch.linalg.cross(J[..., 0, :], J[..., 1, :], dim=-1)
+            else:  # edge of a planar element
+                n = torch.stack([J[..., 0, 1], -J[..., 0, 0]], dim=-1)
+            val = load * torch.nn.functional.normalize(n, dim=-1)
+        else:
+            # A uniform load is broadcast to one value per facet
+            per_facet = load if load.dim() == 2 else load.reshape(1, -1)
+            val = per_facet.expand(len(conn), -1).expand(len(xi), -1, -1)
+        contrib = torch.einsum(
+            "i,in,ie,iek->enk", ftype.iweights, ftype.N(xi), detJ, val
+        )
+        return self._scatter(conn, contrib)
+
+    def integrate_body_load(self, load: float | Tensor) -> Tensor:
+        """Consistent nodal loads from a load per unit volume, e.g. gravity.
+
+        Args:
+            load: Load per unit volume as a float, with shape [k] if uniform, or with
+                shape [n_elem, k] to vary it per element. `k` is the number of loaded
+                degrees of freedom per node, i.e. `n_dim` for a force and 1 for a heat
+                source.
+
+        Returns:
+            Nodal loads with shape [n_nod, k], to be added to `forces` or `heat_flux`.
+        """
+        load = torch.as_tensor(load, dtype=self.nodes.dtype)
+        # A uniform load is broadcast to one value per element
+        per_elem = load if load.dim() == 2 else load.reshape(1, -1)
+        w = self.integrate_shape_functions() * self.volume_scale[:, None]
+        contrib = torch.einsum("en,ek->enk", w, per_elem.expand(self.n_elem, -1))
+        return self._scatter(self.elements, contrib)
+
+    def integrate_surface_load(self, mask: Tensor, load: float | Tensor) -> Tensor:
+        """Consistent nodal loads from a load per unit area on a surface.
+
+        The surface is made up of the element faces whose nodes all lie in `mask`
+        and that are on the boundary of the mesh.
+
+        Args:
+            mask: Boolean nodal mask with shape [n_nod] selecting the surface.
+            load: Load per unit area. A float is a pressure acting along the outward
+                normal, while shape [k] or [n_face, k] is a traction in global
+                coordinates.
+
+        Returns:
+            Nodal loads with shape [n_nod, k], to be added to `forces` or `heat_flux`.
+        """
+        if self.etype.iso_dim != 3:
+            raise NotImplementedError(
+                f"{type(self).__name__} has no surfaces to load. Use "
+                "integrate_line_load(...) or integrate_body_load(...) instead."
+            )
+        return self._integrate_facet_load(
+            self._boundary_facets(mask),
+            self.etype.facet_type,
+            torch.as_tensor(load, dtype=self.nodes.dtype),
+        )
+
+    def integrate_line_load(self, mask: Tensor, load: float | Tensor) -> Tensor:
+        """Consistent nodal loads from a load per unit length on a line.
+
+        The line is made up of the element edges whose nodes all lie in `mask` and
+        that are on the boundary of the mesh.
+
+        Args:
+            mask: Boolean nodal mask with shape [n_nod] selecting the line.
+            load: Load per unit length with shape [k] or [n_edge, k]. For a planar
+                model a float is a pressure acting along the outward normal.
+
+        Returns:
+            Nodal loads with shape [n_nod, k], to be added to `forces` or `heat_flux`.
+        """
+        if self.etype.iso_dim != 2:
+            raise NotImplementedError(
+                f"{type(self).__name__} has no edges to load. Use "
+                "integrate_surface_load(...) or integrate_body_load(...) instead."
+            )
+        load = torch.as_tensor(load, dtype=self.nodes.dtype)
+        if load.dim() == 0 and self.n_dim == 3:
+            raise ValueError(
+                "A line in 3D has no unique normal, so a scalar load is ambiguous. "
+                "Pass a load vector instead."
+            )
+        return self._integrate_facet_load(
+            self._boundary_facets(mask), self.etype.facet_type, load
+        )
 
     def _report(
         self,
