@@ -224,6 +224,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Orientation optimization for transient heat](images/examples/optimization/planar/orientation_thermal_transient.png)](examples/optimization/planar/orientation_thermal_transient.html)
 
+-   **Void identification in a hyperelastic plate**
+
+    [![Void identification in a hyperelastic plate](images/examples/optimization/planar/void_identification.png)](examples/optimization/planar/void_identification.html)
+
 </div>
 
 ### Shell

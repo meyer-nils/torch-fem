@@ -15,6 +15,7 @@ SKIP = {
     "optimization/planar/property_fields.ipynb": "runs for about three minutes",
     "optimization/solid/topology_thermal.ipynb": "runs for more than two minutes",
     "optimization/planar/fiber_patch_placement.ipynb": "runs for about two minutes",
+    "optimization/planar/void_identification.ipynb": "runs for about three minutes",
 }
 
 
