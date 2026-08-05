@@ -48,6 +48,7 @@ notebook = [
     "ipywidgets",
     "pyvista[jupyter]",
     "tqdm",
+    "trame-client!=3.13.3",
 ]
 dev = [
     "basedpyright",
