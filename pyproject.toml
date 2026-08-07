@@ -46,6 +46,7 @@ notebook = [
     "imageio",
     "ipykernel",
     "ipywidgets",
+    "pygmsh",
     "pyvista[jupyter]",
     "tqdm",
     "trame-client!=3.13.3",
