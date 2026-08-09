@@ -259,7 +259,7 @@ model.plot(element_property=rho, cmap="gray_r")
 ```
 
 <figure markdown="span">
-![Optimized topology of the MBB beam](images/minimal_example_topopt.png)
+![Optimized topology of the MBB beam](images/minimal_example/topology_optimization.png)
 </figure>
 
 Since the FE solve is differentiable, this autograd sensitivity matches the classic analytical SIMP gradient $-p\,\rho_e^{p-1}\,\mathbf{u}_e \cdot \mathbf{k}_{0,e} \cdot \mathbf{u}_e$ down to machine precision. Automatic differentiation only trades a little speed for the convenience of not deriving it by hand:
