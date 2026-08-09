@@ -243,7 +243,7 @@ class Planar(Mechanics):
                 for i, node in enumerate(pos):
                     ax.annotate(
                         str(i),
-                        (node[0].item() + 0.01, node[1].item() + 0.01),
+                        (node[0].item() + 0.02 * size, node[1].item() + 0.02 * size),
                         color=color,
                     )
 
