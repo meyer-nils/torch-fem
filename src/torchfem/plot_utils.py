@@ -2,7 +2,26 @@ import base64
 import os
 import tempfile
 
-from IPython.display import HTML
+from IPython.display import HTML, display
+
+# vtk.js builds each actor with its own class defaults and applies the serialized
+# properties without redrawing, so the first frame shows an unconfigured orientation
+# triad until something triggers a redraw. Quotes would break the iframe srcdoc.
+RERENDER = (
+    "<script>let i=0,t=setInterval(()=>{"
+    "window.global?.renderWindow?.render();"
+    "if(++i>10)clearInterval(t)},200)</script>"
+)
+
+
+def show_html(plotter):
+    """Display a plotter in a notebook, redrawing it while the scene loads."""
+    viewer = plotter.show(jupyter_backend="html", return_viewer=True)
+    if viewer is None:
+        # Outside a notebook, show() already opened a window.
+        return
+    viewer.value = viewer.value.replace("</body>", RERENDER + "</body>")
+    display(viewer)
 
 
 def embed_animation_gif(ani, fps=20):

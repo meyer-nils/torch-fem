@@ -291,6 +291,7 @@ class Truss(Mechanics):
         self,
         u: float | Tensor = 0.0,
         element_property: dict[str, Tensor] | None = None,
+        axes: bool = False,
         bcs: bool = True,
         cmap: str | Colormap = "viridis",
         plotter: pyvista.Plotter | None = None,
@@ -301,6 +302,7 @@ class Truss(Mechanics):
             u: Nodal displacements added to the positions, e.g. to plot the
                 deformed configuration. Defaults to 0.0 (undeformed).
             element_property: Named element fields coloring the bars.
+            axes: If True, shows labeled coordinate axes around the truss.
             bcs: If True, renders boundary conditions: arrows for forces and
                 prescribed displacements, spheres at displacement tips, and a
                 cone per constrained DOF.
@@ -310,6 +312,7 @@ class Truss(Mechanics):
         pyvista.set_plot_theme("document")
         pl = pyvista.Plotter() if plotter is None else plotter
         pl.enable_anti_aliasing("ssaa")
+        pl.renderer.add_axes()
 
         # Nodes
         pos = self.nodes + u
@@ -405,5 +408,10 @@ class Truss(Mechanics):
             )
             glyph(pos[node], cone, torch.eye(3)[dof], color="gray")
 
+        if axes:
+            pl.renderer.show_grid()
+
         if plotter is None:
-            pl.show(jupyter_backend="html")
+            from .plot_utils import show_html
+
+            show_html(pl)

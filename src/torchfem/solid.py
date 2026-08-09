@@ -77,6 +77,7 @@ class Solid(Mechanics):
         show_edges: bool = True,
         show_undeformed: bool = False,
         show_outline: bool = False,
+        axes: bool = False,
         bcs: bool = False,
         clip: tuple[str, float] | None = None,
         plotter: pyvista.Plotter | None = None,
@@ -100,6 +101,8 @@ class Solid(Mechanics):
                 Show undeformed mesh. Defaults to False.
             show_outline (bool, optional):
                 Show a box around the full mesh. Defaults to False.
+            axes (bool, optional):
+                Show labeled coordinate axes around the mesh. Defaults to False.
             bcs (bool, optional):
                 If True, render boundary conditions (forces as arrows,
                 prescribed displacements as arrows and tip markers,
@@ -116,6 +119,7 @@ class Solid(Mechanics):
         pyvista.set_plot_theme("document")
         pl = pyvista.Plotter() if plotter is None else plotter
         pl.enable_anti_aliasing("ssaa")
+        pl.renderer.add_axes()
 
         # VTK cell types
         if self.etype is Tetra1:
@@ -260,8 +264,13 @@ class Solid(Mechanics):
             )
             glyph(pos[node], cone, torch.eye(3, dtype=pos.dtype)[dof])
 
+        if axes:
+            pl.renderer.show_grid()
+
         if plotter is None:
-            pl.show(jupyter_backend="html")
+            from .plot_utils import show_html
+
+            show_html(pl)
 
 
 class SolidHeat(Heat, Solid):

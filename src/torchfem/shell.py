@@ -595,6 +595,7 @@ class Shell(Mechanics):
         thickness: bool = False,
         mirror: tuple[bool, bool, bool] = (False, False, False),
         show_undeformed: bool = False,
+        axes: bool = False,
         bcs: bool = False,
         plotter: pyvista.Plotter | None = None,
         **kwargs,
@@ -616,6 +617,7 @@ class Shell(Mechanics):
                 plane are not constrained to enforce that symmetry.
             show_undeformed: If True, draws the undeformed mesh as a grey
                 wireframe.
+            axes: If True, shows labeled coordinate axes around the mesh.
             bcs: If True, renders boundary conditions on the unmirrored mesh:
                 arrows for forces and prescribed displacements, spheres at
                 displacement tips, and a cone per constrained DOF. Rotational
@@ -628,6 +630,7 @@ class Shell(Mechanics):
         pyvista.set_plot_theme("document")
         pl = pyvista.Plotter() if plotter is None else plotter
         pl.enable_anti_aliasing("ssaa")
+        pl.renderer.add_axes()
 
         # VTK element list
         elements = []
@@ -806,5 +809,10 @@ class Shell(Mechanics):
                 node, dof = torch.nonzero(fixed[:, dofs]).T
                 glyph(points[node], geom, unit[dof])
 
+        if axes:
+            pl.renderer.show_grid()
+
         if plotter is None:
-            pl.show(jupyter_backend="html")
+            from .plot_utils import show_html
+
+            show_html(pl)
