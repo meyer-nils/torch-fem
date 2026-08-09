@@ -29,7 +29,8 @@ dist
 site
 
 # Benchmark plots, generated from benchmarks/results by benchmarks/plot.py
-docs/images/benchmark
+docs/images/benchmark/*.png
+!docs/images/benchmark/*_model_*.png
 
 # Coverage
 .coverage

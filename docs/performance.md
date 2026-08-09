@@ -4,22 +4,17 @@ icon: lucide/gauge
 
 # Performance
 
-This page documents the scaling behavior of *torch-fem* on canonical benchmark problems and shows how to reproduce the results on your own hardware. All benchmarks measure the same three phases per run:
+Scaling behavior of *torch-fem* on three benchmark problems across several machines. Every run is timed in three phases: 
+1. **Setup:** mostly computing the sparsity pattern
+2. **Forward solve:** assembly and sparse linear solve 
+3. **Backward solve:** reverse-mode AD through the solve via `autograd`.
 
-- **Setup** — mostly computing the sparsity pattern.
-- **Forward solve** — assembly and sparse linear system solve.
-- **Backward solve** — reverse-mode AD through the solve via `autograd`.
+## Cube extension
 
-Peak RAM is tracked by polling the child-process RSS every 50 ms; peak VRAM is sampled at the driver level.
+![Cube extension, displacement magnitude](images/benchmark/cube_model_light.png#only-light)
+![Cube extension, displacement magnitude](images/benchmark/cube_model_dark.png#only-dark)
 
-## Structural benchmark: cube extension
-
-A unit cube is subjected to one-dimensional extension:
-
-- Discretised with $N \times N \times N$ linear hexahedral (Hexa1) elements ($3N^3$ degrees of freedom).
-- Material: isotropic linear elasticity, $E = 1000$, $\nu = 0.3$.
-- Boundary conditions: fully clamped at $x = 0$; prescribed displacement $u_x = 0.1$ at $x = 1$.
-- Backward pass: gradient of `u.sum()` w.r.t. nodal forces.
+A unit cube from linear hexahedras with $N$ nodes along each edge ($3N^3$ degrees of freedom) in isotropic linear elasticity ($E = 1000$, $\nu = 0.3$), clamped at $x = 0$ and pulled to $u_x = 0.1$ at $x = 1$. The backward pass takes the gradient of `u.sum()` with respect to the nodal forces.
 
 ![Solve time scaling (forward)](images/benchmark/cube_timing_light.png#only-light)
 ![Solve time scaling (forward)](images/benchmark/cube_timing_dark.png#only-dark)
@@ -30,14 +25,12 @@ A unit cube is subjected to one-dimensional extension:
 ![Peak RAM scaling](images/benchmark/cube_ram_light.png#only-light)
 ![Peak RAM scaling](images/benchmark/cube_ram_dark.png#only-dark)
 
-## Thermal benchmark: SIMP heated slab
+## Thermal SIMP slab
 
-A quasi-2D heated slab with SIMP-penalized conductivity, mirroring the *thermal-mesh* problem of the [mosaic benchmark suite](https://github.com/pasteurlabs/mosaic), which compares differentiable solvers (including *torch-fem*) across frameworks:
+![Heated slab, temperature field](images/benchmark/thermal_model_light.png#only-light)
+![Heated slab, temperature field](images/benchmark/thermal_model_dark.png#only-dark)
 
-- Domain $[0,2] \times [0,1] \times [0,1]$, discretised with a single layer of $N \times N/2 \times 1$ linear hexahedral (Hexa1) elements — one temperature degree of freedom per node.
-- Material: isotropic conductivity with SIMP penalization $k(\rho) = k_\min + (k_\max - k_\min)\,\rho^3$, $k_\min = 10^{-3} k_\max$, at uniform density $\rho = 0.5$.
-- Boundary conditions: $T = 0$ at $x = 0$; uniform heat flux $Q = 1$ on the face at $x = 2$.
-- Backward pass: gradient of the thermal compliance $C = \oint_{\Gamma_N} q_n T \, d\Gamma$ w.r.t. the per-element densities $\rho$ — the adjoint sensitivity used in topology optimization.
+A quasi-2D slab on $[0,2] \times [0,1] \times [0,1]$, one layer of hexahedra deep, with SIMP-penalized conductivity $k(\rho) = k_\text{min} + (k_\text{max} - k_\text{min})\rho^3$ at uniform $\rho = 0.5$. It is cold at $x = 0$ and heated by a uniform flux at $x = 2$; the backward pass is the adjoint sensitivity of the thermal compliance with respect to the per-element densities. This mirrors the *thermal-mesh* problem of the [mosaic benchmark suite](https://github.com/pasteurlabs/mosaic).
 
 ![Solve time scaling (forward)](images/benchmark/thermal_timing_light.png#only-light)
 ![Solve time scaling (forward)](images/benchmark/thermal_timing_dark.png#only-dark)
@@ -48,17 +41,12 @@ A quasi-2D heated slab with SIMP-penalized conductivity, mirroring the *thermal-
 ![Peak RAM scaling](images/benchmark/thermal_ram_light.png#only-light)
 ![Peak RAM scaling](images/benchmark/thermal_ram_dark.png#only-dark)
 
-## Hyperelastic benchmark: Neo-Hookean large stretch
+## Neo-Hookean stretch
 
-A unit cube is stretched to twenty times its original length, mirroring the [large stretch example](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/solid/large_stretch.ipynb):
+![Stretched bar, displacement magnitude, with the undeformed cube for scale](images/benchmark/hyperelasticity_model_light.png#only-light)
+![Stretched bar, displacement magnitude, with the undeformed cube for scale](images/benchmark/hyperelasticity_model_dark.png#only-dark)
 
-- Discretised with $(N-1) \times (N-1) \times (N-1)$ linear hexahedral (Hexa1) elements ($3N^3$ degrees of freedom, $N$ odd).
-- Material: Neo-Hookean strain energy $\psi(\mathbf{C}) = \frac{\mu}{2}(\textrm{tr}(\mathbf{C}) - 3) - \mu \ln J + \frac{\lambda}{2} (\ln J)^2$ with $E = 1000$, $\nu = 0.3$.
-- Boundary conditions: $u_x = 0$ at $x = 0$; prescribed displacement $u_x = 19$ at $x = 1$ (stretch $\lambda = 20$); symmetry constraints on the center planes.
-- Load applied in 21 increments that are geometric in the stretch, with full Newton iterations (`nlgeom=True`) per increment.
-- Backward pass: gradient of the total reaction force w.r.t. the Lamé parameters $(\mu, \lambda)$ — the adjoint used in material parameter calibration.
-
-The forward solution matches the analytical uniaxial Neo-Hookean response.
+A unit cube of Neo-Hookean material stretched to twenty times its length in 21 increments with full Newton iterations (`nlgeom=True`), mirroring the [large stretch example](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/solid/large_stretch.ipynb). The forward solution matches the analytical uniaxial response; the backward pass is the adjoint of the total reaction force with respect to the Lamé parameters, as used in material calibration.
 
 ![Solve time scaling (forward)](images/benchmark/hyperelasticity_timing_light.png#only-light)
 ![Solve time scaling (forward)](images/benchmark/hyperelasticity_timing_dark.png#only-dark)
