@@ -77,7 +77,10 @@ cantilever.plot(node_markers="o", node_labels=True)
 ```
 This creates a minimal planar FEM model:
 
-![minimal](https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_dark.png">
+  <img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_light.png">
+</picture>
 
 ```python
 # Solve
@@ -88,7 +91,10 @@ cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 This solves the model and plots the result:
 
-![minimal](https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_dark.png">
+  <img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_light.png">
+</picture>
 
 If we want to compute gradients through the FEM model, we simply need to define the variables that require gradients. Automatic differentiation is performed through the entire FE solver. Rather than differentiating through individual solver iterations or Newton iterations (this would explode in memory and autograd graph size) though, the *implicit function theorem* is used to formulate an adjoint backward for `solve()`.
 ```python 
