@@ -5,14 +5,19 @@ icon: lucide/gauge
 # Performance
 
 Scaling behavior of *torch-fem* on three benchmark problems across several machines. Every run is timed in three phases: 
-1. **Setup:** mostly computing the sparsity pattern
-2. **Forward solve:** assembly and sparse linear solve 
+
+1. **Setup:** mostly computing the sparsity pattern.
+
+2. **Forward solve:** assembly and sparse linear solve.
+
 3. **Backward solve:** reverse-mode AD through the solve via `autograd`.
 
 ## Cube extension
 
-![Cube extension, displacement magnitude](images/benchmark/cube_model_light.png#only-light)
-![Cube extension, displacement magnitude](images/benchmark/cube_model_dark.png#only-dark)
+<figure markdown="span">
+![Cube extension, displacement magnitude](images/benchmark/cube_model_light.png#only-light){ width="420" }
+![Cube extension, displacement magnitude](images/benchmark/cube_model_dark.png#only-dark){ width="420" }
+</figure>
 
 A unit cube from linear hexahedras with $N$ nodes along each edge ($3N^3$ degrees of freedom) in isotropic linear elasticity ($E = 1000$, $\nu = 0.3$), clamped at $x = 0$ and pulled to $u_x = 0.1$ at $x = 1$. The backward pass takes the gradient of `u.sum()` with respect to the nodal forces.
 
@@ -27,8 +32,10 @@ A unit cube from linear hexahedras with $N$ nodes along each edge ($3N^3$ degree
 
 ## Thermal SIMP slab
 
-![Heated slab, temperature field](images/benchmark/thermal_model_light.png#only-light)
-![Heated slab, temperature field](images/benchmark/thermal_model_dark.png#only-dark)
+<figure markdown="span">
+![Heated slab, temperature field](images/benchmark/thermal_model_light.png#only-light){ width="420" }
+![Heated slab, temperature field](images/benchmark/thermal_model_dark.png#only-dark){ width="420" }
+</figure>
 
 A quasi-2D slab on $[0,2] \times [0,1] \times [0,1]$, one layer of hexahedra deep, with SIMP-penalized conductivity $k(\rho) = k_\text{min} + (k_\text{max} - k_\text{min})\rho^3$ at uniform $\rho = 0.5$. It is cold at $x = 0$ and heated by a uniform flux at $x = 2$; the backward pass is the adjoint sensitivity of the thermal compliance with respect to the per-element densities. This mirrors the *thermal-mesh* problem of the [mosaic benchmark suite](https://github.com/pasteurlabs/mosaic).
 
@@ -43,8 +50,10 @@ A quasi-2D slab on $[0,2] \times [0,1] \times [0,1]$, one layer of hexahedra dee
 
 ## Neo-Hookean stretch
 
-![Stretched bar, displacement magnitude, with the undeformed cube for scale](images/benchmark/hyperelasticity_model_light.png#only-light)
-![Stretched bar, displacement magnitude, with the undeformed cube for scale](images/benchmark/hyperelasticity_model_dark.png#only-dark)
+<figure markdown="span">
+![Neo-Hookean stretch, displacement magnitude at a 2x stretch](images/benchmark/hyperelasticity_model_light.png#only-light){ width="420" }
+![Neo-Hookean stretch, displacement magnitude at a 2x stretch](images/benchmark/hyperelasticity_model_dark.png#only-dark){ width="420" }
+</figure>
 
 A unit cube of Neo-Hookean material stretched to twenty times its length in 21 increments with full Newton iterations (`nlgeom=True`), mirroring the [large stretch example](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/solid/large_stretch.ipynb). The forward solution matches the analytical uniaxial response; the backward pass is the adjoint of the total reaction force with respect to the Lamé parameters, as used in material calibration.
 
