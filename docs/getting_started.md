@@ -71,7 +71,10 @@ cantilever.plot(node_markers=True, node_labels=True)
 ```
 gives 
 
-![Plot of the two-element model](images/minimal_example_bare.png)
+<figure markdown="span">
+![Plot of the two-element model](images/minimal_example/minimal_example_bare_light.png#only-light)
+![Plot of the two-element model](images/minimal_example/minimal_example_bare_dark.png#only-dark)
+</figure>
 
 ### Boundary conditions 
 
@@ -94,7 +97,10 @@ cantilever.plot(node_markers=True, node_labels=True)
 ```
 with triangles indicating constraint directions and arrows indicating forces acting on the nodes.
 
-![Plot of the two-element model with boundary conditions](images/minimal_example.png)
+<figure markdown="span">
+![Plot of the two-element model with boundary conditions](images/minimal_example/minimal_example_light.png#only-light)
+![Plot of the two-element model with boundary conditions](images/minimal_example/minimal_example_dark.png#only-dark)
+</figure>
 
 ### Solve 
 As soon as the problem is fully defined, we can solve the model with 
@@ -126,7 +132,10 @@ cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 where the first argument `u` visualizes the deformed configuration, while `node_property` is used to color the mesh (here: displacement magnitude).
 
-![Plot of the two-element model](images/minimal_example_solved.png)
+<figure markdown="span">
+![Plot of the two-element model](images/minimal_example/minimal_example_solved_light.png#only-light)
+![Plot of the two-element model](images/minimal_example/minimal_example_solved_dark.png#only-dark)
+</figure>
 
 
 ### Automatic differentiation 
@@ -249,7 +258,9 @@ The 100 iterations take a couple of seconds on a laptop CPU. The compliance drop
 model.plot(element_property=rho, cmap="gray_r")
 ```
 
+<figure markdown="span">
 ![Optimized topology of the MBB beam](images/minimal_example_topopt.png)
+</figure>
 
 Since the FE solve is differentiable, this autograd sensitivity matches the classic analytical SIMP gradient $-p\,\rho_e^{p-1}\,\mathbf{u}_e \cdot \mathbf{k}_{0,e} \cdot \mathbf{u}_e$ down to machine precision. Automatic differentiation only trades a little speed for the convenience of not deriving it by hand:
 
