@@ -69,8 +69,9 @@ def test_plot(elem):
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir)
         elem.plot(path=path)
-        result = path / f"{elem.__name__}_shape_functions.png"
-        assert result.exists()
+        for theme in ["light", "dark"]:
+            result = path / f"{elem.__name__}_{theme}.png"
+            assert result.exists()
     plt.close("all")
 
 

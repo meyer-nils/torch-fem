@@ -11,6 +11,7 @@
 ### Changed
 - `integrate_field(...)` is now a contraction of `integrate_shape_functions(...)` and returns the same values as before.
 - The PyVista plots always show the orientation axes in the corner, which a plain `pyvista.Plotter` skips.
+- `Element.plot(...)` writes a transparent light and dark figure to `docs/images/shape_functions/`, `<Element>_light.png` and `<Element>_dark.png`, instead of a single opaque one.
 - In notebooks, the PyVista plots redraw shortly after loading via `plot_utils.show_html(...)`, so vtk.js does not keep the first frame it draws from its own defaults.
 
 ## Version 0.8.0 - August 3 2026

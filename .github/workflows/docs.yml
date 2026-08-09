@@ -38,8 +38,10 @@ jobs:
 
       - run: pip install zensical mkdocs mkdocstrings-python psutil
 
-      - name: Generate benchmark plots
-        run: python benchmarks/plot.py
+      - name: Generate documentation plots
+        run: |
+          python benchmarks/plot.py
+          python docs/images/shape_functions/plot_elements.py
 
       - run: zensical build --clean
 

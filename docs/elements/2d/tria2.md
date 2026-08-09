@@ -6,4 +6,5 @@
         members_order: source
 
 ## Shape functions
-![Shape functions of the Tria2 element](../../images/Tria2_shape_functions.png)
+![Shape functions of the Tria2 element](../../images/shape_functions/Tria2_light.png#only-light)
+![Shape functions of the Tria2 element](../../images/shape_functions/Tria2_dark.png#only-dark)

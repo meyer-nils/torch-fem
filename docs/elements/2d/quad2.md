@@ -6,4 +6,5 @@
         members_order: source
 
 ## Shape functions
-![Shape functions of the Quad2 element](../../images/Quad2_shape_functions.png)
+![Shape functions of the Quad2 element](../../images/shape_functions/Quad2_light.png#only-light)
+![Shape functions of the Quad2 element](../../images/shape_functions/Quad2_dark.png#only-dark)
