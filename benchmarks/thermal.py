@@ -64,7 +64,7 @@ def setup(N):
 PROBLEM = Problem(
     id="thermal_slab_simp",
     title="Thermal SIMP slab benchmark",
-    plot_prefix="benchmark_thermal",
+    plot_prefix="thermal",
     default_N=[16, 32, 64, 128, 256, 512, 1024],
     setup=setup,
 )

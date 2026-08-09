@@ -40,7 +40,7 @@ class Problem:
 
     id: str  # stored in result JSONs and used to group them
     title: str  # plot suite title
-    plot_prefix: str  # image filename prefix in docs/images
+    plot_prefix: str  # image filename prefix in docs/images/benchmark
     default_N: list[int]
     setup: Callable[[int], Case]
 

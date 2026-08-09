@@ -36,7 +36,11 @@ jobs:
           python -m pip install jupyter nbconvert nest_asyncio2
           python -m pip install ".[notebook]"
 
-      - run: pip install zensical mkdocs mkdocstrings-python       
+      - run: pip install zensical mkdocs mkdocstrings-python psutil
+
+      - name: Generate benchmark plots
+        run: python benchmarks/plot.py
+
       - run: zensical build --clean
 
       - name: Convert planar notebooks to HTML

@@ -8,7 +8,7 @@ import matplotlib.ticker as ticker
 from run import PROBLEMS
 
 RESULTS_DIR = Path(__file__).parent / "results"
-IMAGES_DIR = Path(__file__).parent.parent / "docs" / "images"
+IMAGES_DIR = Path(__file__).parent.parent / "docs" / "images" / "benchmark"
 
 # problem id -> (plot title, image filename prefix)
 PROBLEM_META = {
@@ -72,7 +72,7 @@ def plot_timing(
 
     fig.suptitle(f"{suite} — {title.lower()}", fontweight="bold")
     fig.tight_layout()
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"Saved {out_path}")
 
@@ -125,7 +125,7 @@ def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
 
     fig.suptitle(f"{suite} — memory", fontweight="bold")
     fig.tight_layout()
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"Saved {out_path}")
 
@@ -133,22 +133,25 @@ def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
 def main():
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     for problem, datasets in load_results().items():
-        suite, prefix = PROBLEM_META.get(problem, (problem, f"benchmark_{problem}"))
-        plot_timing(
-            datasets,
-            IMAGES_DIR / f"{prefix}_timing.png",
-            "fwd_s",
-            "Forward solve",
-            suite,
-        )
-        plot_timing(
-            datasets,
-            IMAGES_DIR / f"{prefix}_backward.png",
-            "bwd_s",
-            "Backward solve",
-            suite,
-        )
-        plot_ram(datasets, IMAGES_DIR / f"{prefix}_ram.png", suite)
+        suite, prefix = PROBLEM_META.get(problem, (problem, problem))
+        # One variant per docs color scheme, selected via #only-light / #only-dark.
+        for theme, style in (("light", "default"), ("dark", "dark_background")):
+            with plt.style.context(style):
+                plot_timing(
+                    datasets,
+                    IMAGES_DIR / f"{prefix}_timing_{theme}.png",
+                    "fwd_s",
+                    "Forward solve",
+                    suite,
+                )
+                plot_timing(
+                    datasets,
+                    IMAGES_DIR / f"{prefix}_backward_{theme}.png",
+                    "bwd_s",
+                    "Backward solve",
+                    suite,
+                )
+                plot_ram(datasets, IMAGES_DIR / f"{prefix}_ram_{theme}.png", suite)
 
 
 if __name__ == "__main__":

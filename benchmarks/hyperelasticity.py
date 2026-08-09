@@ -77,7 +77,7 @@ def setup(N):
 PROBLEM = Problem(
     id="hyperelasticity_stretch",
     title="Neo-Hookean stretch benchmark",
-    plot_prefix="benchmark_hyperelasticity",
+    plot_prefix="hyperelasticity",
     default_N=[5, 9, 13],
     setup=setup,
 )

@@ -21,11 +21,14 @@ A unit cube is subjected to one-dimensional extension:
 - Boundary conditions: fully clamped at $x = 0$; prescribed displacement $u_x = 0.1$ at $x = 1$.
 - Backward pass: gradient of `u.sum()` w.r.t. nodal forces.
 
-![Solve time scaling (forward)](images/benchmark_timing.png)
+![Solve time scaling (forward)](images/benchmark/cube_timing_light.png#only-light)
+![Solve time scaling (forward)](images/benchmark/cube_timing_dark.png#only-dark)
 
-![Solve time scaling (backward)](images/benchmark_backward.png)
+![Solve time scaling (backward)](images/benchmark/cube_backward_light.png#only-light)
+![Solve time scaling (backward)](images/benchmark/cube_backward_dark.png#only-dark)
 
-![Peak RAM scaling](images/benchmark_ram.png)
+![Peak RAM scaling](images/benchmark/cube_ram_light.png#only-light)
+![Peak RAM scaling](images/benchmark/cube_ram_dark.png#only-dark)
 
 ## Thermal benchmark: SIMP heated slab
 
@@ -36,11 +39,14 @@ A quasi-2D heated slab with SIMP-penalized conductivity, mirroring the *thermal-
 - Boundary conditions: $T = 0$ at $x = 0$; uniform heat flux $Q = 1$ on the face at $x = 2$.
 - Backward pass: gradient of the thermal compliance $C = \oint_{\Gamma_N} q_n T \, d\Gamma$ w.r.t. the per-element densities $\rho$ — the adjoint sensitivity used in topology optimization.
 
-![Solve time scaling (forward)](images/benchmark_thermal_timing.png)
+![Solve time scaling (forward)](images/benchmark/thermal_timing_light.png#only-light)
+![Solve time scaling (forward)](images/benchmark/thermal_timing_dark.png#only-dark)
 
-![Solve time scaling (backward)](images/benchmark_thermal_backward.png)
+![Solve time scaling (backward)](images/benchmark/thermal_backward_light.png#only-light)
+![Solve time scaling (backward)](images/benchmark/thermal_backward_dark.png#only-dark)
 
-![Peak RAM scaling](images/benchmark_thermal_ram.png)
+![Peak RAM scaling](images/benchmark/thermal_ram_light.png#only-light)
+![Peak RAM scaling](images/benchmark/thermal_ram_dark.png#only-dark)
 
 ## Hyperelastic benchmark: Neo-Hookean large stretch
 
@@ -54,11 +60,14 @@ A unit cube is stretched to twenty times its original length, mirroring the [lar
 
 The forward solution matches the analytical uniaxial Neo-Hookean response.
 
-![Solve time scaling (forward)](images/benchmark_hyperelasticity_timing.png)
+![Solve time scaling (forward)](images/benchmark/hyperelasticity_timing_light.png#only-light)
+![Solve time scaling (forward)](images/benchmark/hyperelasticity_timing_dark.png#only-dark)
 
-![Solve time scaling (backward)](images/benchmark_hyperelasticity_backward.png)
+![Solve time scaling (backward)](images/benchmark/hyperelasticity_backward_light.png#only-light)
+![Solve time scaling (backward)](images/benchmark/hyperelasticity_backward_dark.png#only-dark)
 
-![Peak RAM scaling](images/benchmark_hyperelasticity_ram.png)
+![Peak RAM scaling](images/benchmark/hyperelasticity_ram_light.png#only-light)
+![Peak RAM scaling](images/benchmark/hyperelasticity_ram_dark.png#only-dark)
 
 ## Reproducing the results
 
@@ -86,5 +95,4 @@ The label identifies the machine; results are written to `benchmarks/results/<pr
 python benchmarks/plot.py
 ```
 
-This reads all JSON files in `benchmarks/results/`, groups them by problem, and writes the timing, backward, and RAM plots to `docs/images/benchmark_*.png` (structural) and `docs/images/benchmark_thermal_*.png` (thermal).
-
+This reads all JSON files in `benchmarks/results/`, groups them by problem, and writes the timing, backward, and RAM plots to `docs/images/benchmark/<problem>_*.png`. 
