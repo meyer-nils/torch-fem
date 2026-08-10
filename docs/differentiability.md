@@ -79,7 +79,8 @@ $$
 
 We solve the FEM problem with this exact field to get a synthetic ground truth of the deformation $u_\textrm{ref}$:
 
-![Deformation of the structure with a property field](images/property_field.png)
+![Deformation of the structure with a property field](images/property_field_light.png#only-light)
+![Deformation of the structure with a property field](images/property_field_dark.png#only-dark)
 
 ### Direct solution of the inverse problem
 
@@ -91,7 +92,8 @@ $$
 
 with the computed deformation field $u$ given the modulus field $E$ on elements and some observation noise $u_\textrm{noise}$. We solve this problem directly by taking the modulus of each element as the design variable and performing a gradient descent with Adam. Note that this is only possible, because we can call `.backward()` on our loss function and compute the gradients via automatic differentiation.
 
-![Direct reconstruction of the property field](images/property_field_direct.png)
+![Direct reconstruction of the property field](images/property_field_direct_light.png#only-light)
+![Direct reconstruction of the property field](images/property_field_direct_dark.png#only-dark)
 
 ### Solution of the inverse problem with a neural field
 
@@ -101,11 +103,14 @@ The stiffness must be positive, in particular we know
 $$
 E(x) > 1 \quad \forall x \in \Omega
 $$
-a priori in this task. Therefore, we enforce this physical property in the NN design with a ReLU output activation layer and addition of a constant in the output layer.
+a priori in this task. Therefore, we enforce this physical property in the NN design with a softplus output activation layer and addition of a constant in the output layer.
 
-Training the neural field takes more iterations in order to get to a comparable accuracy. However, the neural field regularizes the property field and gives a much smoother representation that is less susceptible to noise. This training strategy is only possible because gradients can flow seamlessly between FEM and neural network.
+At the same number of iterations, the neural field regularizes the property field and gives a much smoother representation that is less susceptible to noise. This training strategy is only possible because gradients can flow seamlessly between FEM and neural network.
 
-![Reconstruction of the property field with a neural field](images/property_field_neural.png)
+![Reconstruction of the property field with a neural field](images/property_field_neural_light.png#only-light)
+![Reconstruction of the property field with a neural field](images/property_field_neural_dark.png#only-dark)
+
+Both reconstructions are trained for 2500 iterations to keep the example fast. A higher iteration count yields a more precise reconstruction, in particular for the right end of the neural field.
 
 
 
