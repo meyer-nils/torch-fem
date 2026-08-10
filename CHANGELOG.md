@@ -9,6 +9,7 @@
 - `axes` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` shows labeled coordinate axes, matching the matplotlib plotters.
 
 ### Changed
+- `solve(...)` accepts increments that fall as well as rise, so a load cycle like `[0, 1, 0]` unloads instead of silently repeating the state at its peak.
 - `integrate_field(...)` is now a contraction of `integrate_shape_functions(...)` and returns the same values as before.
 - The PyVista plots always show the orientation axes in the corner, which a plain `pyvista.Plotter` skips.
 - `Element.plot(...)` writes a transparent light and dark figure to `docs/images/shape_functions/`, `<Element>_light.png` and `<Element>_dark.png`, instead of a single opaque one.

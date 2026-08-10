@@ -593,10 +593,12 @@ class FEM(ABC):
         """Solve the quasi-static finite-element problem by load increments.
 
         Args:
-            increments: Monotonic load scale factors, typically [0, 1]. Results
-                are always returned at exactly these values. If a Newton solve
-                does not converge, the increment is subdivided internally and
-                retried, and the substep is grown again after each success.
+            increments: Load scale factors, typically [0, 1]. They may rise and
+                fall, so a load cycle is expressed as a sequence like
+                [0, 1, 0]. Results are always returned at exactly these values.
+                If a Newton solve does not converge, the increment is subdivided
+                internally and retried, and the substep is grown again after
+                each success.
             max_iter: Maximum Newton iterations before an increment is cut back.
             rtol: Relative residual tolerance for Newton convergence.
             atol: Absolute residual tolerance for Newton convergence.
@@ -738,12 +740,13 @@ class FEM(ABC):
                 report.begin(n, target)
 
             span = target - lam
-            step_size = step_frac * span
+            direction = math.copysign(1.0, span)
+            step_size = step_frac * abs(span)
             min_step = abs(span) * cutback_factor**max_cutbacks
 
-            while target - lam > 1e-12 * max(1.0, abs(target)):
+            while abs(target - lam) > 1e-12 * max(1.0, abs(target)):
                 # Never step past the requested increment
-                step = min(step_size, target - lam)
+                step = direction * min(step_size, abs(target - lam))
 
                 # Load at the end of the substep, and the substep's increments
                 F_ext = (lam + step) * self._neumann.ravel()
@@ -754,10 +757,10 @@ class FEM(ABC):
                 # linear model caches K, so it must be rebuilt when it changes.
                 k_visc = None
                 if m is not None:
-                    k_visc = alpha / step * m
-                    if step != k_step:
+                    k_visc = alpha / abs(step) * m
+                    if abs(step) != k_step:
                         self.K = torch.empty(0)
-                    k_step = step
+                    k_step = abs(step)
 
                 # Previous state passed to the Newton solver. The adjoint
                 # backward differentiates the residual w.r.t. this state, which
@@ -803,7 +806,7 @@ class FEM(ABC):
                     )
                 except RuntimeError as err:
                     # Cut the substep back and retry from the same state
-                    step_size = cutback_factor * step
+                    step_size = cutback_factor * abs(step)
                     if step_size < min_step:
                         raise RuntimeError(
                             f"Newton-Raphson did not converge in increment {n} "
@@ -849,7 +852,7 @@ class FEM(ABC):
                 step_size = min(growth_factor * step_size, abs(span))
 
             # Carry the achieved fraction into the next increment
-            step_frac = min(step_size / span, 1.0) if span > 0.0 else 1.0
+            step_frac = min(step_size / abs(span), 1.0) if span != 0.0 else 1.0
 
             # Store the results at the requested increment
             u[n] = u_cur
