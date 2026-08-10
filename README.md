@@ -118,7 +118,7 @@ The subdirectory `examples/basic` contains a couple of Jupyter notebooks demonst
 <table>
     <tbody>
         <tr>
-            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity.png" alt="Planar plate with a hole plasticity example"></a></td>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity_light.png" alt="Planar plate with a hole plasticity example"></a></td>
         </tr>
         <tr>
             <td colspan="2" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
