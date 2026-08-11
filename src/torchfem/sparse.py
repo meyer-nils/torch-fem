@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 ERR_CUPY_MISSING = (
     "CuPy is not available.\n\n"
     "Please install CuPy to use GPU acceleration:\n"
-    "> pip install cupy-cuda11x # v11.2 - 11.8\n"
-    "> pip install cupy-cuda12x # v12.x"
+    "> pip install cupy-cuda12x # v12.x\n"
+    "> pip install cupy-cuda13x # v13.x"
 )
 
 ERR_PYPARDISO_MISSING = (

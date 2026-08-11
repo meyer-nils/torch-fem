@@ -15,18 +15,18 @@ pip install torch-fem[notebook]
 ```
 
 ## GPU support (optional)
-For optional GPU support, install CUDA, PyTorch for CUDA, and the corresponding CuPy version.
-
-For CUDA 11.8: 
-``` sh
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install cupy-cuda11x # v11.2 - 11.8
-```
+For optional GPU support, install CUDA, PyTorch for CUDA, and the corresponding CuPy version. CUDA 12 and 13 are supported.
 
 For CUDA 12.9:
 ``` sh
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
 pip install cupy-cuda12x # v12.x
+```
+
+For CUDA 13.0:
+``` sh
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+pip install cupy-cuda13x # v13.x
 ```
 
 
