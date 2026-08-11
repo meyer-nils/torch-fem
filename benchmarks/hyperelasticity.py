@@ -11,15 +11,18 @@ from torchfem.mesh import cube_hexa
 # Neo-Hookean material, following examples/basic/solid/large_stretch.ipynb:
 # prescribed x-displacement on the right face, fixed x on the left face, and
 # symmetry constraints on the center planes (requires an odd number of nodes
-# per edge). The load is applied in N_INC increments that are geometric in the
-# stretch (constant relative stretch per step), which keeps Newton convergent
-# on fine meshes where the notebook's uniform increments fail.
+# along y and z). The load is applied in N_INC increments that are geometric in
+# the stretch (constant relative stretch per step), which keeps Newton
+# convergent where the notebook's uniform increments fail. N refines y and z
+# only, at a fixed discretization along x: the first Newton iterate puts the
+# whole prescribed jump on one element layer, so a finer x drives the tangent
+# indefinite. The stretch solution is homogeneous anyway.
 E = 1000.0
 NU = 0.3
 LBD = E * NU / ((1.0 + NU) * (1.0 - 2.0 * NU))
 MU = E / (2.0 * (1.0 + NU))
 U = 19.0
-N_INC = 21
+N_INC = 11
 
 
 def psi(F, params):
@@ -33,8 +36,8 @@ def psi(F, params):
 
 def get_stretch(N):
     if N % 2 == 0:
-        raise ValueError("N must be odd to place nodes on the center planes.")
-    nodes, elements = cube_hexa(N, N, N)
+        raise ValueError("N must be odd to place nodes on the y and z center planes.")
+    nodes, elements = cube_hexa(5, N, N)
 
     # Lamé parameters as differentiable parameters (material calibration)
     params = torch.tensor([MU, LBD], requires_grad=True)
@@ -78,7 +81,7 @@ PROBLEM = Problem(
     id="hyperelasticity_stretch",
     title="Neo-Hookean stretch benchmark",
     plot_prefix="hyperelasticity",
-    default_N=[5, 9, 13],
+    default_N=[25, 35, 45, 55, 65],
     setup=setup,
 )
 

@@ -2,35 +2,53 @@
   "hardware": "Apple M1 Pro",
   "device": "cpu",
   "python": "3.10.13",
-  "libraries": "SciPy 1.15.3, PyTorch 2.11.0",
+  "libraries": "SciPy 1.15.3, PyTorch 2.13.0",
   "dtype": "float64",
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
-      "N": 5,
-      "dofs": 375,
-      "setup_s": 0.0035,
-      "fwd_s": 4.4269,
-      "bwd_s": 0.8912,
-      "peak_ram_mb": 498.6,
+      "N": 25,
+      "dofs": 9375,
+      "setup_s": 0.0707,
+      "fwd_s": 24.6016,
+      "bwd_s": 4.857,
+      "peak_ram_mb": 1479.5,
       "peak_vram_mb": null
     },
     {
-      "N": 9,
-      "dofs": 2187,
-      "setup_s": 0.0159,
-      "fwd_s": 10.0621,
-      "bwd_s": 2.2436,
-      "peak_ram_mb": 889.9,
+      "N": 35,
+      "dofs": 18375,
+      "setup_s": 0.1394,
+      "fwd_s": 57.2578,
+      "bwd_s": 11.1059,
+      "peak_ram_mb": 2322.4,
       "peak_vram_mb": null
     },
     {
-      "N": 13,
-      "dofs": 6591,
-      "setup_s": 0.0503,
-      "fwd_s": 25.379,
-      "bwd_s": 5.158,
-      "peak_ram_mb": 1655.8,
+      "N": 45,
+      "dofs": 30375,
+      "setup_s": 0.2188,
+      "fwd_s": 118.0155,
+      "bwd_s": 20.4701,
+      "peak_ram_mb": 2951.7,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 55,
+      "dofs": 45375,
+      "setup_s": 0.3504,
+      "fwd_s": 221.0523,
+      "bwd_s": 37.3029,
+      "peak_ram_mb": 3861.9,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 65,
+      "dofs": 63375,
+      "setup_s": 0.4531,
+      "fwd_s": 363.5606,
+      "bwd_s": 56.5319,
+      "peak_ram_mb": 4376.6,
       "peak_vram_mb": null
     }
   ]
