@@ -816,7 +816,7 @@ class FEM(ABC):
                         report.cutback()
                     continue
 
-                # Evaluate converged state
+                # Evaluate converged state. Tangent not needed (compute_stiffness=False)
                 du_eval = du.clone()
                 du_eval[con] = DU[con]
                 _, f_i, grad_cur, flux_cur, state_cur = self.integrate_material(
@@ -828,6 +828,7 @@ class FEM(ABC):
                     de0,
                     max_iter,
                     nlgeom,
+                    compute_stiffness=False,
                 )
                 F_int = self.assemble_rhs(f_i)
 
