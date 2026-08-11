@@ -13,6 +13,7 @@ from typing import cast
 import numpy as np
 import pyvista
 import torch
+from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import Mechanics
@@ -598,6 +599,7 @@ class Shell(Mechanics):
         axes: bool = False,
         bcs: bool = False,
         plotter: pyvista.Plotter | None = None,
+        camera: CameraPositionOptions | None = None,
         **kwargs,
     ):
         """Plot the shell mesh with PyVista, optionally with results.
@@ -625,6 +627,9 @@ class Shell(Mechanics):
                 Constraints enforcing the symmetry of a mirrored plane are
                 skipped, since the mirrored copy shows that symmetry already.
             plotter: PyVista plotter. Defaults to None.
+            camera: Camera position, either a plane ("xy", "xz", "yz"), "iso",
+                or an explicit position, focal point and view up. Defaults to
+                None.
             **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
         """
         pyvista.set_plot_theme("document")
@@ -811,6 +816,9 @@ class Shell(Mechanics):
 
         if axes:
             pl.renderer.show_grid()
+
+        if camera is not None:
+            pl.camera_position = camera
 
         if plotter is None:
             from .plot_utils import show_html

@@ -7,6 +7,7 @@
 - `Element.facets` and `Element.facet_type` describe the codimension-1 facets of an element, i.e. the edges of a surface element and the faces of a volume element.
 - `FEM.integrate_shape_functions(...)` returns the integral of each shape function over its element, and `FEM.volume_scale` the volume per unit element measure.
 - `axes` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` shows labeled coordinate axes, matching the matplotlib plotters.
+- `camera` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` sets the camera to a coordinate plane, "iso", or an explicit position, focal point and view up.
 
 ### Changed
 - GPU support requires CUDA 12 or 13, dropping CUDA 11, whose last CuPy wheel predates the solver signatures used here.

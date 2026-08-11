@@ -4,6 +4,7 @@ from functools import cached_property
 import pyvista
 import torch
 from pyvista import DataSet
+from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import Heat, Mechanics
@@ -81,6 +82,7 @@ class Solid(Mechanics):
         bcs: bool = False,
         clip: tuple[str, float] | None = None,
         plotter: pyvista.Plotter | None = None,
+        camera: CameraPositionOptions | None = None,
         **kwargs,
     ):
         """Plot the mesh with optional node and element properties.
@@ -112,6 +114,9 @@ class Solid(Mechanics):
                 boundary conditions with it. Defaults to None.
             plotter (pyvista.Plotter, optional):
                 PyVista plotter. Defaults to None.
+            camera (str or list, optional):
+                Camera position, either a plane ("xy", "xz", "yz"), "iso", or an
+                explicit position, focal point and view up. Defaults to None.
             **kwargs:
                 Additional keyword arguments passed to pyvista.Plotter.add_mesh.
         """
@@ -266,6 +271,9 @@ class Solid(Mechanics):
 
         if axes:
             pl.renderer.show_grid()
+
+        if camera is not None:
+            pl.camera_position = camera
 
         if plotter is None:
             from .plot_utils import show_html

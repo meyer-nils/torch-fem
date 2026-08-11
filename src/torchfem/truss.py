@@ -7,6 +7,7 @@ import torch
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap, Normalize
 from pyvista import DataSet
+from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import Mechanics
@@ -295,6 +296,7 @@ class Truss(Mechanics):
         bcs: bool = True,
         cmap: str | Colormap = "viridis",
         plotter: pyvista.Plotter | None = None,
+        camera: CameraPositionOptions | None = None,
     ):
         """Plot the truss with PyVista, optionally with results.
 
@@ -308,6 +310,9 @@ class Truss(Mechanics):
                 cone per constrained DOF.
             cmap: Colormap name for `element_property`.
             plotter: PyVista plotter. Defaults to None.
+            camera: Camera position, either a plane ("xy", "xz", "yz"), "iso",
+                or an explicit position, focal point and view up. Defaults to
+                None.
         """
         pyvista.set_plot_theme("document")
         pl = pyvista.Plotter() if plotter is None else plotter
@@ -410,6 +415,9 @@ class Truss(Mechanics):
 
         if axes:
             pl.renderer.show_grid()
+
+        if camera is not None:
+            pl.camera_position = camera
 
         if plotter is None:
             from .plot_utils import show_html
