@@ -41,7 +41,7 @@ PROBLEM = Problem(
     id="cube_hexa_extension",
     title="Cube extension benchmark",
     plot_prefix="cube",
-    default_N=[10, 20, 30, 40, 50, 60, 70, 80],
+    default_N=[20, 30, 40, 50, 60, 70, 80],
     setup=setup,
 )
 

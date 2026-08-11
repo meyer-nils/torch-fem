@@ -7,14 +7,6 @@
   "problem": "cube_hexa_extension",
   "rows": [
     {
-      "N": 10,
-      "dofs": 3000,
-      "setup_s": 0.02,
-      "fwd_s": 0.16,
-      "bwd_s": 0.37,
-      "peak_ram_mb": 490.4
-    },
-    {
       "N": 20,
       "dofs": 24000,
       "setup_s": 0.14,

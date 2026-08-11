@@ -7,33 +7,6 @@
   "problem": "thermal_slab_simp",
   "rows": [
     {
-      "N": 16,
-      "dofs": 306,
-      "setup_s": 0.0013,
-      "fwd_s": 0.0071,
-      "bwd_s": 0.101,
-      "peak_ram_mb": 419.4,
-      "peak_vram_mb": null
-    },
-    {
-      "N": 32,
-      "dofs": 1122,
-      "setup_s": 0.0018,
-      "fwd_s": 0.0106,
-      "bwd_s": 0.0988,
-      "peak_ram_mb": 423.9,
-      "peak_vram_mb": null
-    },
-    {
-      "N": 64,
-      "dofs": 4290,
-      "setup_s": 0.0044,
-      "fwd_s": 0.0288,
-      "bwd_s": 0.1178,
-      "peak_ram_mb": 465.1,
-      "peak_vram_mb": null
-    },
-    {
       "N": 128,
       "dofs": 16770,
       "setup_s": 0.0145,
