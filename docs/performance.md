@@ -4,7 +4,7 @@ icon: lucide/gauge
 
 # Performance
 
-Scaling behavior of *torch-fem* on three benchmark problems across several machines. Every run is timed in three phases: 
+Scaling behavior of *torch-fem* on three benchmark problems across several machines. The plotted time is the total of three phases, each of which is recorded separately in the [result files](https://github.com/meyer-nils/torch-fem/tree/main/benchmarks/results):
 
 1. **Setup:** mostly computing the sparsity pattern.
 
@@ -21,11 +21,8 @@ Scaling behavior of *torch-fem* on three benchmark problems across several machi
 
 A unit cube from linear hexahedra with $N$ nodes along each edge ($3N^3$ degrees of freedom) in isotropic linear elasticity ($E = 1000$, $\nu = 0.3$), clamped at $x = 0$ and pulled to $u_x = 0.1$ at $x = 1$. The backward pass takes the gradient of `u.sum()` with respect to the nodal forces.
 
-![Solve time scaling (forward)](images/benchmark/cube_timing_light.png#only-light)
-![Solve time scaling (forward)](images/benchmark/cube_timing_dark.png#only-dark)
-
-![Solve time scaling (backward)](images/benchmark/cube_backward_light.png#only-light)
-![Solve time scaling (backward)](images/benchmark/cube_backward_dark.png#only-dark)
+![Total time scaling](images/benchmark/cube_timing_light.png#only-light)
+![Total time scaling](images/benchmark/cube_timing_dark.png#only-dark)
 
 ![Peak RAM scaling](images/benchmark/cube_ram_light.png#only-light)
 ![Peak RAM scaling](images/benchmark/cube_ram_dark.png#only-dark)
@@ -39,11 +36,8 @@ A unit cube from linear hexahedra with $N$ nodes along each edge ($3N^3$ degrees
 
 A quasi-2D slab on $[0,2] \times [0,1] \times [0,1]$, one layer of hexahedra deep and $N$ elements along the long edge, carrying SIMP-penalized conductivity $k(\rho) = k_\text{min} + (k_\text{max} - k_\text{min})\rho^3$ at uniform $\rho = 0.5$. It is cold at $x = 0$ and heated by a uniform flux at $x = 2$; the backward pass is the adjoint sensitivity of the thermal compliance with respect to the per-element densities. This mirrors the *thermal-mesh* problem of the [mosaic benchmark suite](https://github.com/pasteurlabs/mosaic).
 
-![Solve time scaling (forward)](images/benchmark/thermal_timing_light.png#only-light)
-![Solve time scaling (forward)](images/benchmark/thermal_timing_dark.png#only-dark)
-
-![Solve time scaling (backward)](images/benchmark/thermal_backward_light.png#only-light)
-![Solve time scaling (backward)](images/benchmark/thermal_backward_dark.png#only-dark)
+![Total time scaling](images/benchmark/thermal_timing_light.png#only-light)
+![Total time scaling](images/benchmark/thermal_timing_dark.png#only-dark)
 
 ![Peak RAM scaling](images/benchmark/thermal_ram_light.png#only-light)
 ![Peak RAM scaling](images/benchmark/thermal_ram_dark.png#only-dark)
@@ -57,11 +51,8 @@ A quasi-2D slab on $[0,2] \times [0,1] \times [0,1]$, one layer of hexahedra dee
 
 A unit cube of Neo-Hookean material stretched to twenty times its length in 10 increments, geometric in the stretch, with full Newton iterations (`nlgeom=True`), mirroring the [large stretch example](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/solid/large_stretch.ipynb). Only $y$ and $z$ are refined, with $N$ nodes each at a fixed four elements along the stretch direction ($15N^2$ degrees of freedom), since a finer $x$ drives the tangent indefinite and the solution is homogeneous anyway. The forward solution matches the analytical uniaxial response; the backward pass is the adjoint of the total reaction force with respect to the Lamé parameters, as used in material calibration.
 
-![Solve time scaling (forward)](images/benchmark/hyperelasticity_timing_light.png#only-light)
-![Solve time scaling (forward)](images/benchmark/hyperelasticity_timing_dark.png#only-dark)
-
-![Solve time scaling (backward)](images/benchmark/hyperelasticity_backward_light.png#only-light)
-![Solve time scaling (backward)](images/benchmark/hyperelasticity_backward_dark.png#only-dark)
+![Total time scaling](images/benchmark/hyperelasticity_timing_light.png#only-light)
+![Total time scaling](images/benchmark/hyperelasticity_timing_dark.png#only-dark)
 
 ![Peak RAM scaling](images/benchmark/hyperelasticity_ram_light.png#only-light)
 ![Peak RAM scaling](images/benchmark/hyperelasticity_ram_dark.png#only-dark)

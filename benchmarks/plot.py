@@ -17,6 +17,10 @@ PROBLEM_META = {
 }
 
 
+# Phase breakdown of a run, in the order they are stacked.
+PHASES = (("setup_s", "Setup"), ("fwd_s", "Forward"), ("bwd_s", "Backward"))
+
+
 def load_results() -> dict[str, list[dict]]:
     """Load all result JSONs, grouped by problem id."""
     files = sorted(RESULTS_DIR.glob("*.json"))
@@ -25,6 +29,8 @@ def load_results() -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = {}
     for f in files:
         ds = json.loads(f.read_text())
+        for row in ds["rows"]:
+            row["total_s"] = sum(row[metric] for metric, _ in PHASES)
         grouped.setdefault(ds["problem"], []).append(ds)
     return grouped
 
@@ -157,15 +163,8 @@ def main():
                 plot_timing(
                     datasets,
                     IMAGES_DIR / f"{prefix}_timing_{theme}.png",
-                    "fwd_s",
-                    "Forward solve",
-                    suite,
-                )
-                plot_timing(
-                    datasets,
-                    IMAGES_DIR / f"{prefix}_backward_{theme}.png",
-                    "bwd_s",
-                    "Backward solve",
+                    "total_s",
+                    "Total time",
                     suite,
                 )
                 plot_ram(datasets, IMAGES_DIR / f"{prefix}_ram_{theme}.png", suite)
