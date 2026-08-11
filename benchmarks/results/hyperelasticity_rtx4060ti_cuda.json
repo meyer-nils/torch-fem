@@ -2,36 +2,54 @@
   "hardware": "RTX 4060 Ti",
   "device": "cuda",
   "python": "3.12.12",
-  "libraries": "CuPy 13.6.0, CUDA 12.9",
+  "libraries": "CuPy 14.1.1, CUDA 12.9",
   "dtype": "float64",
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
-      "N": 5,
-      "dofs": 375,
-      "setup_s": 0.1457,
-      "fwd_s": 12.6191,
-      "bwd_s": 3.4689,
+      "N": 25,
+      "dofs": 9375,
+      "setup_s": 0.1434,
+      "fwd_s": 19.216,
+      "bwd_s": 4.5958,
       "peak_ram_mb": null,
-      "peak_vram_mb": 108.0
+      "peak_vram_mb": 824.0
     },
     {
-      "N": 9,
-      "dofs": 2187,
-      "setup_s": 0.1415,
-      "fwd_s": 15.491,
-      "bwd_s": 4.6656,
+      "N": 35,
+      "dofs": 18375,
+      "setup_s": 0.1563,
+      "fwd_s": 26.1865,
+      "bwd_s": 6.8745,
       "peak_ram_mb": null,
-      "peak_vram_mb": 346.0
+      "peak_vram_mb": 1602.0
     },
     {
-      "N": 13,
-      "dofs": 6591,
-      "setup_s": 0.1424,
-      "fwd_s": 22.9749,
-      "bwd_s": 5.8248,
+      "N": 45,
+      "dofs": 30375,
+      "setup_s": 0.1574,
+      "fwd_s": 36.9821,
+      "bwd_s": 9.6076,
       "peak_ram_mb": null,
-      "peak_vram_mb": 980.0
+      "peak_vram_mb": 2614.0
+    },
+    {
+      "N": 55,
+      "dofs": 45375,
+      "setup_s": 0.1459,
+      "fwd_s": 51.7121,
+      "bwd_s": 12.9006,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 3850.0
+    },
+    {
+      "N": 65,
+      "dofs": 63375,
+      "setup_s": 0.159,
+      "fwd_s": 66.5857,
+      "bwd_s": 16.4788,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 5328.0
     }
   ]
 }
