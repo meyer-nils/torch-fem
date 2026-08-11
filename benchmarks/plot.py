@@ -77,11 +77,28 @@ def plot_timing(
     print(f"Saved {out_path}")
 
 
+class PlainLogFormatter(ticker.LogFormatterSciNotation):
+    """Log tick labels as plain numbers: 100 instead of 10^2, 0.1 instead of 10^-1."""
+
+    def __call__(self, x: float, pos=None) -> str:
+        # The parent decides which ticks carry a label; only the text differs.
+        if not super().__call__(x, pos):
+            return ""
+        return f"{x:,.0f}" if x >= 1 else f"{x:g}"
+
+
 def _setup_ax(ax, title: str, ylabel: str) -> None:
     ax.set_title(title)
     ax.set_xlabel("Degrees of freedom")
     ax.set_ylabel(ylabel)
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{x:,.0f}"))
+    for axis, (lo, hi) in ((ax.xaxis, ax.get_xlim()), (ax.yaxis, ax.get_ylim())):
+        # An axis holding fewer than two decades labels its minor ticks as well,
+        # so that a narrow range never comes out with a single label.
+        decades = sum(lo <= t <= hi for t in axis.get_majorticklocs())
+        axis.set_major_formatter(PlainLogFormatter())
+        axis.set_minor_formatter(
+            PlainLogFormatter(minor_thresholds=(1, 0.4) if decades > 1 else (2, 0.4))
+        )
     ax.grid(True, which="both", linestyle="--", alpha=0.4)
     handles, labels = ax.get_legend_handles_labels()
     if handles:
@@ -103,25 +120,25 @@ def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
             lbl = _label(ds)
             ax.loglog(
                 [r["dofs"] for r in ds["rows"]],
-                [r["peak_ram_mb"] for r in ds["rows"]],
+                [r["peak_ram_mb"] / 1024 for r in ds["rows"]],
                 marker="o",
                 label=lbl,
                 color=colors[lbl],
             )
-        _setup_ax(ax, "Peak RAM (CPU)", "Peak RAM (MB)")
+        _setup_ax(ax, "Peak RAM (CPU)", "Peak RAM (GB)")
 
     if gpu_ds:
         ax = axes[-1]
         for ds in gpu_ds:
             dofs = [r["dofs"] for r in ds["rows"]]
             vram = [r.get("peak_vram_mb") for r in ds["rows"]]
-            pairs = [(d, v) for d, v in zip(dofs, vram) if v is not None]
+            pairs = [(d, v / 1024) for d, v in zip(dofs, vram) if v is not None]
             if not pairs:
                 continue
             x, y = zip(*pairs)
             lbl = _label(ds)
             ax.loglog(x, y, marker="o", label=lbl, color=colors[lbl])
-        _setup_ax(ax, "Peak VRAM (GPU)", "Peak VRAM (MB)")
+        _setup_ax(ax, "Peak VRAM (GPU)", "Peak VRAM (GB)")
 
     fig.suptitle(f"{suite} — memory", fontweight="bold")
     fig.tight_layout()
