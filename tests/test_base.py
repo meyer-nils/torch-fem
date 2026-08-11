@@ -1,10 +1,11 @@
 import pytest
 import torch
 
-from torchfem import Planar, PlanarHeat, SolidHeat
+from torchfem import Planar, PlanarHeat, Solid, SolidHeat
 from torchfem.materials import (
     IsotropicConductivity2D,
     IsotropicConductivity3D,
+    IsotropicDamage3D,
     IsotropicElasticityPlaneStress,
 )
 from torchfem.mesh import cube_hexa, rect_quad
@@ -124,3 +125,63 @@ class TestHeatConductivityMatrix:
         assert k.shape == (model.n_elem, 8, 8)
         assert torch.allclose(k, k.transpose(-1, -2))
         assert torch.allclose(k.sum(-1), torch.zeros(model.n_elem, 8), atol=1e-10)
+
+
+CYCLE = torch.tensor([0.0, 0.5, 1.0, 0.5, 0.0])
+
+
+class TestLoadCycle:
+    """Increments may fall as well as rise, so a solve can unload."""
+
+    @pytest.mark.parametrize("control", ["force", "displacement"])
+    def test_elastic_cycle_retraces(self, control):
+        model = _planar()
+        top = model.nodes[:, 1] > 1.0 - 1e-6
+        model.constraints[model.nodes[:, 1] < 1e-6] = True
+        if control == "force":
+            model.forces[top, 1] = -1.0
+        else:
+            model.constraints[top, 1] = True
+            model.displacements[top, 1] = -0.01
+
+        u, f, _, _, _ = model.solve(increments=CYCLE, return_intermediate=True)
+        u_top = u[:, top, 1].mean(dim=1)
+        f_top = f[:, top, 1].sum(dim=1)
+
+        # Elastic unloading retraces the loading path back to the origin
+        assert torch.allclose(u_top, CYCLE * u_top[2])
+        assert torch.allclose(f_top, CYCLE * f_top[2], atol=1e-10)
+
+    def test_damage_unloads_on_a_secant(self):
+        eps_0, eps_f = 1.0e-3, 1.0e-2
+
+        def d(kappa, cl):
+            evolution = 1.0 - eps_0 / kappa * torch.exp(-(kappa - eps_0) / eps_f)
+            evolution[kappa < eps_0] = 0.0
+            return evolution
+
+        def d_prime(kappa, cl):
+            derivative = (
+                eps_0 * torch.exp(-(kappa - eps_0) / eps_f) * (1 / kappa**2 + 1 / eps_f)
+            )
+            derivative[kappa < eps_0] = 0.0
+            return derivative
+
+        material = IsotropicDamage3D(1000.0, 0.3, d, d_prime, "rankine")
+        model = Solid(*cube_hexa(3, 3, 3), material)
+        top = model.nodes[:, 2] > 1.0 - 1e-6
+        model.constraints[model.nodes[:, 2] < 1e-6] = True
+        model.constraints[top, 2] = True
+        model.displacements[top, 2] = 0.02
+
+        u, f, _, _, state = model.solve(increments=CYCLE, return_intermediate=True)
+        f_top = f[:, top, 2].sum(dim=1)
+
+        # Damage is irreversible, so unloading holds the state it reached
+        assert state[2, :, 1].max() > 0.0
+        assert torch.equal(state[2], state[3]) and torch.equal(state[3], state[4])
+
+        # ... and the reaction returns to the origin along the degraded secant
+        assert f_top[3] == pytest.approx(0.5 * f_top[2])
+        assert f_top[4] == pytest.approx(0.0, abs=1e-8)
+        assert u[4, top, 2].mean() == pytest.approx(0.0, abs=1e-12)
