@@ -1,0 +1,37 @@
+{
+  "hardware": "RTX 4090",
+  "device": "cuda",
+  "python": "3.13.15",
+  "libraries": "CuPy 14.1.1, CUDA 13.2",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 5,
+      "dofs": 375,
+      "setup_s": 0.1525,
+      "fwd_s": 15.1167,
+      "bwd_s": 4.1169,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 158.0
+    },
+    {
+      "N": 9,
+      "dofs": 2187,
+      "setup_s": 0.1497,
+      "fwd_s": 19.2845,
+      "bwd_s": 5.745,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 392.0
+    },
+    {
+      "N": 13,
+      "dofs": 6591,
+      "setup_s": 0.1569,
+      "fwd_s": 24.8188,
+      "bwd_s": 7.1145,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1026.0
+    }
+  ]
+}

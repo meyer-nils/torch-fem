@@ -1,0 +1,73 @@
+{
+  "hardware": "RTX 4090",
+  "device": "cuda",
+  "python": "3.13.15",
+  "libraries": "CuPy 14.1.1, CUDA 13.2",
+  "dtype": "float64",
+  "problem": "thermal_slab_simp",
+  "rows": [
+    {
+      "N": 16,
+      "dofs": 306,
+      "setup_s": 0.1879,
+      "fwd_s": 0.324,
+      "bwd_s": 0.4357,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 124.0
+    },
+    {
+      "N": 32,
+      "dofs": 1122,
+      "setup_s": 0.2031,
+      "fwd_s": 0.3402,
+      "bwd_s": 0.4468,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 128.0
+    },
+    {
+      "N": 64,
+      "dofs": 4290,
+      "setup_s": 0.1879,
+      "fwd_s": 0.3897,
+      "bwd_s": 0.5061,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 170.0
+    },
+    {
+      "N": 128,
+      "dofs": 16770,
+      "setup_s": 0.1946,
+      "fwd_s": 0.6546,
+      "bwd_s": 0.7002,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 214.0
+    },
+    {
+      "N": 256,
+      "dofs": 66306,
+      "setup_s": 0.1935,
+      "fwd_s": 1.0112,
+      "bwd_s": 1.0345,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 800.0
+    },
+    {
+      "N": 512,
+      "dofs": 263682,
+      "setup_s": 0.1998,
+      "fwd_s": 1.681,
+      "bwd_s": 1.6378,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 2806.0
+    },
+    {
+      "N": 1024,
+      "dofs": 1051650,
+      "setup_s": 0.2263,
+      "fwd_s": 3.5144,
+      "bwd_s": 3.2758,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 10866.0
+    }
+  ]
+}

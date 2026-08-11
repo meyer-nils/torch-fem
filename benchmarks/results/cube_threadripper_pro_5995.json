@@ -1,0 +1,82 @@
+{
+  "hardware": "Threadripper PRO 5995WX",
+  "device": "cpu",
+  "python": "3.13.15",
+  "libraries": "SciPy 1.18.0, PyTorch 2.13.0+cu132",
+  "dtype": "float64",
+  "problem": "cube_hexa_extension",
+  "rows": [
+    {
+      "N": 10,
+      "dofs": 3000,
+      "setup_s": 0.0749,
+      "fwd_s": 0.2275,
+      "bwd_s": 0.6213,
+      "peak_ram_mb": 753.0,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 20,
+      "dofs": 24000,
+      "setup_s": 0.58,
+      "fwd_s": 0.717,
+      "bwd_s": 0.6734,
+      "peak_ram_mb": 972.1,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 30,
+      "dofs": 81000,
+      "setup_s": 1.9444,
+      "fwd_s": 2.6474,
+      "bwd_s": 1.3035,
+      "peak_ram_mb": 1771.9,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 40,
+      "dofs": 192000,
+      "setup_s": 4.6786,
+      "fwd_s": 5.8149,
+      "bwd_s": 1.9709,
+      "peak_ram_mb": 2883.1,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 50,
+      "dofs": 375000,
+      "setup_s": 13.9221,
+      "fwd_s": 11.4793,
+      "bwd_s": 3.4978,
+      "peak_ram_mb": 5688.0,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 60,
+      "dofs": 648000,
+      "setup_s": 16.548,
+      "fwd_s": 20.2797,
+      "bwd_s": 5.2058,
+      "peak_ram_mb": 9212.7,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 70,
+      "dofs": 1029000,
+      "setup_s": 26.9105,
+      "fwd_s": 33.1471,
+      "bwd_s": 7.9221,
+      "peak_ram_mb": 11407.9,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 80,
+      "dofs": 1536000,
+      "setup_s": 41.8784,
+      "fwd_s": 52.3479,
+      "bwd_s": 12.3341,
+      "peak_ram_mb": 17431.6,
+      "peak_vram_mb": null
+    }
+  ]
+}
