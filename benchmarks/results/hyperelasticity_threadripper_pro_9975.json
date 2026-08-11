@@ -1,0 +1,37 @@
+{
+  "hardware": "Threadripper PRO 9975WX",
+  "device": "cpu",
+  "python": "3.13.12",
+  "libraries": "SciPy 1.15.3, PyTorch 2.11.0+cu128",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 5,
+      "dofs": 375,
+      "setup_s": 0.0155,
+      "fwd_s": 4.3922,
+      "bwd_s": 0.8221,
+      "peak_ram_mb": 823.3,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 9,
+      "dofs": 2187,
+      "setup_s": 0.0382,
+      "fwd_s": 6.5171,
+      "bwd_s": 1.4248,
+      "peak_ram_mb": 1135.9,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 13,
+      "dofs": 6591,
+      "setup_s": 0.1067,
+      "fwd_s": 12.5002,
+      "bwd_s": 2.8571,
+      "peak_ram_mb": 1874.0,
+      "peak_vram_mb": null
+    }
+  ]
+}

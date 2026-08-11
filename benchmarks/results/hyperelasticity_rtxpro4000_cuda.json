@@ -1,0 +1,37 @@
+{
+  "hardware": "RTX PRO 4000",
+  "device": "cuda",
+  "python": "3.13.12",
+  "libraries": "CuPy 14.0.1, CUDA 12.9",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 5,
+      "dofs": 375,
+      "setup_s": 0.1139,
+      "fwd_s": 7.7061,
+      "bwd_s": 1.855,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 130.0
+    },
+    {
+      "N": 9,
+      "dofs": 2187,
+      "setup_s": 0.1337,
+      "fwd_s": 8.9361,
+      "bwd_s": 2.4967,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 366.0
+    },
+    {
+      "N": 13,
+      "dofs": 6591,
+      "setup_s": 0.1137,
+      "fwd_s": 13.8449,
+      "bwd_s": 3.5182,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1002.0
+    }
+  ]
+}
