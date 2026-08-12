@@ -31,12 +31,14 @@ converged on all of them, with about 25% fewer iterations and less wall time
 than scalar wherever both converged. `_solve_gpu` therefore derives the block
 size from `B` and passes it in.
 
-`_DEFAULT_CONFIG` is AmgX's shipped `PCG_AGGREGATION_JACOBI.json`, which is why
 `resolve_method` never selects `amgx` on its own -- it is opt-in per call.
 Measured against the CuPy Jacobi path at `stol=1e-10` on an RTX 4060 Ti, it
-takes 2.3-2.6x fewer iterations on both linear elasticity (blocked) and scalar
-heat conduction. Solves that fail to converge raise, so callers can fall back
-to `cg` or `minres`.
+takes 3.9-6.4x fewer iterations across 24k-648k dof on both linear elasticity
+(blocked) and scalar heat conduction. A V-cycle costs far more than a diagonal
+scaling, though, so that only pays for itself in wall time on heat conduction
+and the smaller elasticity systems; past ~200k dof of elasticity it is about
+30% slower than Jacobi despite needing a fifth of the iterations. Solves that
+fail to converge raise, so callers can fall back to `cg` or `minres`.
 
 One load-order caveat, which is why `sparse.py` imports torch first: AmgX's
 `cublasDdot` returns `CUBLAS_STATUS_NOT_SUPPORTED` unless torch is imported
@@ -69,14 +71,20 @@ _AMGX_RC_OK = 0
 _AMGX_SOLVE_SUCCESS = 0
 _AMGX_SOLVE_STATUS_NAMES = {1: "FAILED", 2: "DIVERGED", 3: "NOT_CONVERGED"}
 
-# solver: PCG outer with aggregation-AMG/block-Jacobi preconditioning, mirroring
-# the CPU default (pyamg smoothed_aggregation_solver, smooth="jacobi"). `tolerance`
-# is overwritten per solve with the caller's `stol`.
+# Aggregation AMG with a Jacobi smoother, mirroring the CPU default (pyamg
+# smoothed_aggregation_solver, smooth="jacobi"). `tolerance` is overwritten per
+# solve with the caller's `stol`.
+#
+# The V-cycle sweeps asymmetrically, so the preconditioner is not symmetric and
+# PCG loses orthogonality: it stalls short of a tight `stol` on the larger
+# elasticity systems, while symmetric sweeps cost an order of magnitude more
+# iterations. BiCGStab does not assume a symmetric preconditioner and converged
+# on every system tested, with the lowest iteration counts of the methods tried.
 _DEFAULT_CONFIG: dict[str, Any] = {
     "config_version": 2,
     "determinism_flag": 1,
     "solver": {
-        "solver": "PCG",
+        "solver": "PBICGSTAB",
         "convergence": "RELATIVE_INI",
         "norm": "L2",
         "max_iters": 1000,
@@ -277,7 +285,10 @@ class AmgXSolver:
 
         bs = self.block_size
         coo = A_cp.tocoo()
-        key = (coo.row // bs) * self.n_rows + (coo.col // bs)
+        # int64, since the key runs to n_rows**2 and overflows the int32 column
+        # indices at about 46k block rows.
+        rows = (coo.row // bs).astype(cupy.int64)
+        key = rows * self.n_rows + (coo.col // bs)
         uniq, inverse = cupy.unique(key, return_inverse=True)  # type: ignore
         values = cupy.zeros(len(uniq) * bs * bs)
         values[inverse * bs * bs + (coo.row % bs) * bs + (coo.col % bs)] = coo.data
