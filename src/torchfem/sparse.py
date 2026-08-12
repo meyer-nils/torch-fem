@@ -17,6 +17,7 @@ from torch import Tensor
 from torch.autograd import Function
 
 if TYPE_CHECKING:
+    from .amgx import AmgXSolver
     from .report import SolveReport
 
 ERR_CUPY_MISSING = (
@@ -30,6 +31,13 @@ ERR_PYPARDISO_MISSING = (
     "PyPardiso is not available.\n\n"
     "Please install Pypardiso separately:\n"
     "> pip install pypardiso"
+)
+
+ERR_AMGX_MISSING = (
+    "AmgX is not available.\n\n"
+    "AmgX ships no wheels, so build it from source and point AMGX_DLL at the "
+    "shared library:\n"
+    "> export AMGX_DLL=/path/to/libamgxsh.so # amgxsh.dll on Windows"
 )
 
 available_backends = ["scipy"]
@@ -55,6 +63,13 @@ try:
 except ImportError:
     pass
 
+try:
+    from .amgx import AmgXSolver
+
+    available_backends.append("amgx")
+except ImportError:
+    pass
+
 
 def resolve_method(n_dofs: int, device: str, method: str | None) -> str:
     """Return the backend that `sparse_solve` uses for a system of this size."""
@@ -73,9 +88,13 @@ def describe_method(n_dofs: int, device: str, method: str | None) -> str:
     kind = "direct"
     if resolved in ("minres", "cg"):
         kind = "iterative · " + ("jacobi" if device == "cuda" else "AMG")
+    elif resolved == "amgx":
+        kind = "iterative · AMG"
     library = "cupy" if device == "cuda" else "scipy"
     if resolved == "pardiso":
         library = "pypardiso"
+    elif resolved == "amgx":
+        library = "amgx"
     return f"{resolved} · {kind} · {library} · {device}"
 
 
@@ -124,10 +143,10 @@ class Solve(Function):
         stol: float = 1e-10,
         device: str | None = None,
         method: str | None = None,
-        M: LinearOperator | None = None,
+        M: LinearOperator | AmgXSolver | None = None,
         cached_solve: CachedSolve | None = None,
         update_cache: bool = False,
-    ) -> tuple[Tensor, LinearOperator | None]:
+    ) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
         """Solve `A x = b`, warm-starting from `cached_solve`.
 
         See `sparse_solve` for the arguments.
@@ -135,8 +154,9 @@ class Solve(Function):
         Returns:
             x (Tensor): Solution vector.
                 *Shape:* `(n_dofs,)`.
-            M (LinearOperator | None): Preconditioner built or reused by the
-                solve, passed on to `backward` for the adjoint system.
+            M (LinearOperator | AmgXSolver | None): Preconditioner or AmgX
+                solver built or reused by the solve, passed on to `backward`
+                for the adjoint system.
         """
         x0 = None
         if cached_solve is not None and cached_solve.previous_x is not None:
@@ -215,7 +235,7 @@ def differentiable_sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
-    M: LinearOperator | None = None,
+    M: LinearOperator | AmgXSolver | None = None,
     cached_solve: CachedSolve | None = None,
     update_cache: bool = False,
 ) -> Tensor:
@@ -240,9 +260,9 @@ def sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
-    M: LinearOperator | None = None,
+    M: LinearOperator | AmgXSolver | None = None,
     x0: Tensor | None = None,
-) -> tuple[Tensor, LinearOperator | None]:
+) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
     """
     Solve the linear system Ax = b.
 
@@ -255,17 +275,18 @@ def sparse_solve(
         device (str, optional): Device to run the computation on ('cpu' or 'cuda').
             Defaults to None, which uses the current device.
         method (str, optional): Method to use for solving ('spsolve', 'minres',
-            'cg', 'pardiso'). Defaults to None for automatic selection based on the
-            input size and available backends.
-        M (Tensor, optional): Preconditioner matrix for iterative methods.
-            Defaults to None.
+            'cg', 'pardiso', 'amgx'). Defaults to None for automatic selection based
+            on the input size and available backends. 'amgx' is never chosen
+            automatically and requires an AmgX build (see `torchfem._amgx`).
+        M (Tensor, optional): Preconditioner matrix for iterative methods, or an
+            `AmgXSolver` to reuse for method='amgx'. Defaults to None.
         x0 (Tensor, optional): Initial guess for iterative solvers. Defaults to None.
 
     Returns:
         x (Tensor): Solution vector.
             *Shape:* `(n_dofs,)`.
-        M (LinearOperator | None): Preconditioner built or reused by the solve,
-            `None` for direct methods.
+        M (LinearOperator | AmgXSolver | None): Preconditioner or AmgX solver
+            built or reused by the solve, `None` for direct methods.
     """
     # Check the input shape
     if A.ndim != 2 or (A.shape[0] != A.shape[1]):
@@ -274,10 +295,16 @@ def sparse_solve(
     out_device = b.device
 
     # Check the input method
-    if method is not None and method not in ["spsolve", "minres", "cg", "pardiso"]:
+    if method is not None and method not in [
+        "spsolve",
+        "minres",
+        "cg",
+        "pardiso",
+        "amgx",
+    ]:
         raise ValueError(
             f"Method {method} is not supported. "
-            "Choose from 'spsolve', 'minres', 'cg', or 'pardiso'."
+            "Choose from 'spsolve', 'minres', 'cg', 'pardiso', or 'amgx'."
         )
 
     # Move to requested device, if available
@@ -310,14 +337,16 @@ def _solve_gpu(
     B: Tensor | None,
     method: str,
     stol: float,
-    M: LinearOperator | None,
+    M: LinearOperator | AmgXSolver | None,
     shape: torch.Size,
     x0: Tensor | None,
 ) -> tuple[Any, Any]:
     """Solve `A x = b` on the GPU via CuPy. See `sparse_solve` for arguments.
 
-    Iterative methods use a Jacobi preconditioner, so `B` and any supplied `M`
-    are ignored. `pardiso` is CPU only and raises.
+    Iterative methods build a Jacobi preconditioner from `A` unless `M` is
+    supplied, mirroring `_solve_cpu`. `amgx` reuses `M` as an `AmgXSolver` the
+    same way, refreshing coefficients instead of a fresh setup, and reads the
+    nodal block size off `B`. `pardiso` is CPU only and raises.
     """
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
@@ -345,19 +374,36 @@ def _solve_gpu(
         x_xp = cupy_spsolve(A_cp, b_cp)
         M = None
     elif method == "minres":
-        # Jacobi preconditioner
-        M = cupy_diags(1.0 / A_cp.diagonal())
+        # Jacobi preconditioner, unless one was already built and passed in
+        if M is None:
+            M = cupy_diags(1.0 / A_cp.diagonal())
         # Solve with minres
         x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
         if exit_code != 0:
             raise RuntimeError(f"minres failed with exit code {exit_code}")
     elif method == "cg":
-        # Jacobi preconditioner
-        M = cupy_diags(1.0 / A_cp.diagonal())
+        # Jacobi preconditioner, unless one was already built and passed in
+        if M is None:
+            M = cupy_diags(1.0 / A_cp.diagonal())
         # Solve with conjugate gradients
         x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, rtol=stol, x0=x0_cp)
         if exit_code != 0:
             raise RuntimeError(f"CG failed with exit code {exit_code}")
+    elif method == "amgx":
+        if "amgx" not in available_backends:
+            raise RuntimeError(ERR_AMGX_MISSING)
+        # AMG hierarchy, built from scratch unless one was already passed in,
+        # in which case only its coefficients are refreshed.
+        if M is None:
+            # The rigid-body mode count gives away the DOFs per node, which is
+            # the nodal block size AmgX aggregates over.
+            block_size = {6: 3, 3: 2}.get(B.shape[1], 1) if B is not None else 1
+            M = AmgXSolver(shape[0], stol, block_size)
+            M.setup(A_cp)
+        else:
+            assert isinstance(M, AmgXSolver)
+            M.resetup(A_cp)
+        x_xp = M.solve(b_cp, x0_cp)
 
     return x_xp, M
 
@@ -368,10 +414,10 @@ def _solve_cpu(
     B: Tensor | None,
     method: str,
     stol: float,
-    M: LinearOperator | None,
+    M: LinearOperator | AmgXSolver | None,
     shape: torch.Size,
     x0: Tensor | None,
-) -> tuple[Any, LinearOperator | None]:
+) -> tuple[Any, LinearOperator | AmgXSolver | None]:
     """Solve `A x = b` on the CPU via SciPy. See `sparse_solve` for arguments.
 
     Iterative methods build an AMG preconditioner from `A` and `B` unless `M` is
