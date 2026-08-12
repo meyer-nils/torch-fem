@@ -33,12 +33,12 @@ size from `B` and passes it in.
 
 `resolve_method` never selects `amgx` on its own -- it is opt-in per call.
 Measured against the CuPy Jacobi path at `stol=1e-10` on an RTX 4060 Ti, it
-takes 3.9-6.4x fewer iterations across 24k-648k dof on both linear elasticity
-(blocked) and scalar heat conduction. A V-cycle costs far more than a diagonal
-scaling, though, so that only pays for itself in wall time on heat conduction
-and the smaller elasticity systems; past ~200k dof of elasticity it is about
-30% slower than Jacobi despite needing a fifth of the iterations. Solves that
-fail to converge raise, so callers can fall back to `cg` or `minres`.
+takes 6-44x fewer iterations, and the gap widens with the problem: at the top
+of the benchmark range it is 1.4x quicker on elasticity (648k dof) and 8x on
+heat conduction (1.05M dof). A V-cycle costs several times more than a diagonal
+scaling, so the crossover sits near 100k dof for elasticity, below which the
+Jacobi path is quicker; heat conduction pays off at every size measured. Solves
+that fail to converge raise, so callers can fall back to `cg` or `minres`.
 
 One load-order caveat, which is why `sparse.py` imports torch first: AmgX's
 `cublasDdot` returns `CUBLAS_STATUS_NOT_SUPPORTED` unless torch is imported
@@ -71,15 +71,19 @@ _AMGX_RC_OK = 0
 _AMGX_SOLVE_SUCCESS = 0
 _AMGX_SOLVE_STATUS_NAMES = {1: "FAILED", 2: "DIVERGED", 3: "NOT_CONVERGED"}
 
-# Aggregation AMG with a Jacobi smoother, mirroring the CPU default (pyamg
-# smoothed_aggregation_solver, smooth="jacobi"). `tolerance` is overwritten per
-# solve with the caller's `stol`.
+# Aggregation AMG, shaped after the CPU default (pyamg
+# smoothed_aggregation_solver, smooth="jacobi"): a symmetric Gauss-Seidel sweep
+# on each side of the cycle and an exact solve on the coarsest grid. AmgX offers
+# no prolongation smoothing, so this is unsmoothed aggregation, but the rest of
+# the recipe carries over and roughly halves the iteration count against
+# AmgX's own shipped defaults. `tolerance` is overwritten per solve with `stol`.
 #
-# The V-cycle sweeps asymmetrically, so the preconditioner is not symmetric and
-# PCG loses orthogonality: it stalls short of a tight `stol` on the larger
-# elasticity systems, while symmetric sweeps cost an order of magnitude more
-# iterations. BiCGStab does not assume a symmetric preconditioner and converged
-# on every system tested, with the lowest iteration counts of the methods tried.
+# SIZE_8 coarsens eight nodes at a time, which shortens the hierarchy enough to
+# more than pay for the extra iterations it costs. BiCGStab wraps it because the
+# V-cycle sweeps are not a symmetric operator: PCG loses orthogonality and
+# stalls short of a tight `stol` on the larger systems. FGMRES is ~10% quicker
+# on large elasticity but slower on heat conduction and has to store its restart
+# vectors, so BiCGStab is the better default.
 _DEFAULT_CONFIG: dict[str, Any] = {
     "config_version": 2,
     "determinism_flag": 1,
@@ -92,14 +96,18 @@ _DEFAULT_CONFIG: dict[str, Any] = {
         "preconditioner": {
             "solver": "AMG",
             "algorithm": "AGGREGATION",
-            "selector": "SIZE_2",
+            "selector": "SIZE_8",
             "interpolator": "D2",
-            "smoother": {"solver": "BLOCK_JACOBI", "relaxation_factor": 0.8},
-            "presweeps": 0,
-            "postsweeps": 3,
+            "smoother": {"solver": "MULTICOLOR_GS"},
+            "symmetric_GS": 1,
+            "matrix_coloring_scheme": "MIN_MAX",
+            "max_uncolored_percentage": 0.15,
+            "presweeps": 1,
+            "postsweeps": 1,
             "cycle": "V",
             "max_iters": 1,
-            "coarse_solver": "NOSOLVER",
+            "coarse_solver": "DENSE_LU_SOLVER",
+            "min_coarse_rows": 16,
             "max_levels": 50,
         },
     },
