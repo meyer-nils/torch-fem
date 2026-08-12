@@ -7,31 +7,49 @@
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
-      "N": 5,
-      "dofs": 375,
-      "setup_s": 0.1525,
-      "fwd_s": 15.1167,
-      "bwd_s": 4.1169,
+      "N": 25,
+      "dofs": 9375,
+      "setup_s": 0.1499,
+      "fwd_s": 22.8712,
+      "bwd_s": 5.6769,
       "peak_ram_mb": null,
-      "peak_vram_mb": 158.0
+      "peak_vram_mb": 874.0
     },
     {
-      "N": 9,
-      "dofs": 2187,
-      "setup_s": 0.1497,
-      "fwd_s": 19.2845,
-      "bwd_s": 5.745,
+      "N": 35,
+      "dofs": 18375,
+      "setup_s": 0.151,
+      "fwd_s": 27.3168,
+      "bwd_s": 7.3572,
       "peak_ram_mb": null,
-      "peak_vram_mb": 392.0
+      "peak_vram_mb": 1664.0
     },
     {
-      "N": 13,
-      "dofs": 6591,
-      "setup_s": 0.1569,
-      "fwd_s": 24.8188,
-      "bwd_s": 7.1145,
+      "N": 45,
+      "dofs": 30375,
+      "setup_s": 0.1537,
+      "fwd_s": 35.4595,
+      "bwd_s": 9.1249,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1026.0
+      "peak_vram_mb": 2726.0
+    },
+    {
+      "N": 55,
+      "dofs": 45375,
+      "setup_s": 0.1516,
+      "fwd_s": 43.0975,
+      "bwd_s": 10.999,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 3984.0
+    },
+    {
+      "N": 65,
+      "dofs": 63375,
+      "setup_s": 0.1537,
+      "fwd_s": 55.5837,
+      "bwd_s": 13.7506,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 5460.0
     }
   ]
 }
