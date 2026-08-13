@@ -8,7 +8,8 @@
 - `FEM.integrate_shape_functions(...)` returns the integral of each shape function over its element, and `FEM.volume_scale` the volume per unit element measure.
 - `axes` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` shows labeled coordinate axes, matching the matplotlib plotters.
 - `camera` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` sets the camera to a coordinate plane, "iso", or an explicit position, focal point and view up.
-- `method="amgx"` solves on the GPU with AmgX algebraic multigrid, an optional backend that needs AmgX built from source and pointed at by `AMGX_DLL`. It is never selected automatically and pays off on scalar or heterogeneous problems, where it takes 5 to 15 times fewer iterations than the Jacobi preconditioner.
+- `method="amgx"` solves on the GPU with AmgX algebraic multigrid, an optional backend that needs AmgX built from source and pointed at by `AMGX_DLL`. Iterative solves on CUDA use it automatically once it is installed, needing far fewer iterations than the Jacobi preconditioner. It does not converge on an indefinite tangent, where `method="cg"` or `method="minres"` still do.
+- `-method` on `benchmarks/run.py` overrides the linear solver a benchmark problem uses, and every result row now records the backend it actually ran on.
 - A fourth benchmark problem `topopt`, mirroring the *structural-mesh* problem of the mosaic benchmark suite: a SIMP cantilever on a random density field, whose 762-fold stiffness spread conditions the system far worse than the uniform fields of the other problems.
 
 ### Changed
@@ -20,6 +21,8 @@
 - The PyVista plots always show the orientation axes in the corner, which a plain `pyvista.Plotter` skips.
 - `Element.plot(...)` writes a transparent light and dark figure to `docs/images/shape_functions/`, `<Element>_light.png` and `<Element>_dark.png`, instead of a single opaque one.
 - In notebooks, the PyVista plots redraw shortly after loading via `plot_utils.show_html(...)`, so vtk.js does not keep the first frame it draws from its own defaults.
+- The `thermal` and `hyperelasticity` benchmarks keep their elements cubic as `N` grows, where a fixed depth used to stretch them into slivers, so both measure problem size rather than element aspect ratio. Their published results predate this and are not comparable.
+- `verbose=True` no longer raises on a console whose codepage lacks the characters the report is drawn with, as a Windows console does by default.
 
 ## Version 0.8.0 - August 3 2026
 
