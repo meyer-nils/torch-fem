@@ -22,8 +22,6 @@ from dataclasses import dataclass
 import psutil
 import torch
 
-_TAG_RE = re.compile(r"(\w+):(\d+(?:\.\d+)?)")
-
 
 @dataclass
 class Case:
@@ -66,22 +64,22 @@ def run_case(problem: Problem) -> None:
     if monitor is not None:
         monitor.start()
 
-    print(f"START:{time.time()}")
+    print(f"\nSTART:{time.time()}", flush=True)
 
     case = problem.setup(args.N, args.method)
-    print(f"DOFS:{case.dofs}")
-    print(f"SETUP_DONE:{time.time()}")
+    print(f"\nDOFS:{case.dofs}", flush=True)
+    print(f"\nSETUP_DONE:{time.time()}", flush=True)
 
     case.forward()
-    print(f"FWD_DONE:{time.time()}")
+    print(f"\nFWD_DONE:{time.time()}", flush=True)
 
     case.backward()
-    print(f"BWD_DONE:{time.time()}")
+    print(f"\nBWD_DONE:{time.time()}", flush=True)
 
     if monitor is not None:
         monitor.stop()
         for tag, val in monitor.report().items():
-            print(f"{tag}:{val}")
+            print(f"\n{tag}:{val}", flush=True)
 
 
 class VramMonitor:
@@ -142,7 +140,9 @@ class VramMonitor:
 
 
 def _parse_tags(stdout_data: str) -> dict[str, float]:
-    return {tag: float(val) for tag, val in _TAG_RE.findall(stdout_data)}
+    # Anchored, so text a library leaves on the line cannot be read as a tag.
+    pairs = re.findall(r"^(\w+):(\d+(?:\.\d+)?)", stdout_data, re.M)
+    return {tag: float(val) for tag, val in pairs}
 
 
 def profile_and_capture_cpu(
