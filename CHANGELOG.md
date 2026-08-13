@@ -9,6 +9,7 @@
 - `axes` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` shows labeled coordinate axes, matching the matplotlib plotters.
 - `camera` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` sets the camera to a coordinate plane, "iso", or an explicit position, focal point and view up.
 - `method="amgx"` solves on the GPU with AmgX algebraic multigrid, an optional backend that needs AmgX built from source and pointed at by `AMGX_DLL`. It is never selected automatically and pays off on scalar or heterogeneous problems, where it takes 5 to 15 times fewer iterations than the Jacobi preconditioner.
+- A fourth benchmark problem `topopt`, mirroring the *structural-mesh* problem of the mosaic benchmark suite: a SIMP cantilever on a random density field, whose 762-fold stiffness spread conditions the system far worse than the uniform fields of the other problems.
 
 ### Changed
 - GPU support requires CUDA 12 or 13, dropping CUDA 11, whose last CuPy wheel predates the solver signatures used here.
