@@ -7,16 +7,6 @@
   "problem": "structural_cantilever_simp",
   "rows": [
     {
-      "N": 10,
-      "dofs": 7623,
-      "setup_s": 0.1609,
-      "fwd_s": 0.5667,
-      "bwd_s": 0.926,
-      "peak_ram_mb": 788.2,
-      "peak_vram_mb": null,
-      "solver": "spsolve | direct | scipy | cpu"
-    },
-    {
       "N": 20,
       "dofs": 54243,
       "setup_s": 1.7771,
