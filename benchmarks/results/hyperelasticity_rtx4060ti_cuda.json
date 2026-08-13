@@ -9,47 +9,47 @@
     {
       "N": 25,
       "dofs": 9375,
-      "setup_s": 0.1434,
-      "fwd_s": 19.216,
-      "bwd_s": 4.5958,
+      "setup_s": 0.1433,
+      "fwd_s": 11.9934,
+      "bwd_s": 3.7203,
       "peak_ram_mb": null,
-      "peak_vram_mb": 824.0
+      "peak_vram_mb": 828.0
     },
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.1563,
-      "fwd_s": 26.1865,
-      "bwd_s": 6.8745,
+      "setup_s": 0.1459,
+      "fwd_s": 16.3204,
+      "bwd_s": 5.4055,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1602.0
+      "peak_vram_mb": 1600.0
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.1574,
-      "fwd_s": 36.9821,
-      "bwd_s": 9.6076,
+      "setup_s": 0.1488,
+      "fwd_s": 22.6167,
+      "bwd_s": 7.392,
       "peak_ram_mb": null,
-      "peak_vram_mb": 2614.0
+      "peak_vram_mb": 2624.0
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.1459,
-      "fwd_s": 51.7121,
-      "bwd_s": 12.9006,
+      "setup_s": 0.1516,
+      "fwd_s": 30.5464,
+      "bwd_s": 9.9003,
       "peak_ram_mb": null,
-      "peak_vram_mb": 3850.0
+      "peak_vram_mb": 3858.0
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.159,
-      "fwd_s": 66.5857,
-      "bwd_s": 16.4788,
+      "setup_s": 0.1495,
+      "fwd_s": 40.2428,
+      "bwd_s": 12.9617,
       "peak_ram_mb": null,
-      "peak_vram_mb": 5328.0
+      "peak_vram_mb": 5302.0
     }
   ]
 }
