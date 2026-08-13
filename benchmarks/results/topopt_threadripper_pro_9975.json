@@ -1,0 +1,60 @@
+{
+  "hardware": "Threadripper PRO 9975WX",
+  "device": "cpu",
+  "python": "3.13.12",
+  "libraries": "SciPy 1.15.3, PyTorch 2.11.0+cu128",
+  "dtype": "float64",
+  "problem": "structural_cantilever_simp",
+  "rows": [
+    {
+      "N": 20,
+      "dofs": 54243,
+      "setup_s": 0.9556,
+      "fwd_s": 1.2666,
+      "bwd_s": 0.9344,
+      "peak_ram_mb": 1392.6,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 30,
+      "dofs": 175863,
+      "setup_s": 3.2449,
+      "fwd_s": 3.9043,
+      "bwd_s": 2.1673,
+      "peak_ram_mb": 2886.4,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 40,
+      "dofs": 408483,
+      "setup_s": 7.4631,
+      "fwd_s": 10.3397,
+      "bwd_s": 5.5317,
+      "peak_ram_mb": 5957.8,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 50,
+      "dofs": 788103,
+      "setup_s": 15.328,
+      "fwd_s": 17.3493,
+      "bwd_s": 8.5263,
+      "peak_ram_mb": 12186.4,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 60,
+      "dofs": 1350723,
+      "setup_s": 25.4659,
+      "fwd_s": 30.3912,
+      "bwd_s": 14.9163,
+      "peak_ram_mb": 19728.7,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    }
+  ]
+}

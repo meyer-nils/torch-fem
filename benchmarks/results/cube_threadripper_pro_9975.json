@@ -1,0 +1,80 @@
+{
+  "hardware": "Threadripper PRO 9975WX",
+  "device": "cpu",
+  "python": "3.13.12",
+  "libraries": "SciPy 1.15.3, PyTorch 2.11.0+cu128",
+  "dtype": "float64",
+  "problem": "cube_hexa_extension",
+  "rows": [
+    {
+      "N": 20,
+      "dofs": 24000,
+      "setup_s": 0.4482,
+      "fwd_s": 0.4446,
+      "bwd_s": 0.5524,
+      "peak_ram_mb": 960.1,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 30,
+      "dofs": 81000,
+      "setup_s": 1.452,
+      "fwd_s": 1.389,
+      "bwd_s": 0.7283,
+      "peak_ram_mb": 1704.9,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 40,
+      "dofs": 192000,
+      "setup_s": 3.4325,
+      "fwd_s": 3.2638,
+      "bwd_s": 1.1047,
+      "peak_ram_mb": 3368.9,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 50,
+      "dofs": 375000,
+      "setup_s": 6.9246,
+      "fwd_s": 6.6913,
+      "bwd_s": 2.1729,
+      "peak_ram_mb": 5133.1,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 60,
+      "dofs": 648000,
+      "setup_s": 12.1068,
+      "fwd_s": 11.7882,
+      "bwd_s": 3.1216,
+      "peak_ram_mb": 9177.6,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 70,
+      "dofs": 1029000,
+      "setup_s": 19.4438,
+      "fwd_s": 18.1757,
+      "bwd_s": 4.7399,
+      "peak_ram_mb": 14624.7,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 80,
+      "dofs": 1536000,
+      "setup_s": 29.5032,
+      "fwd_s": 30.3392,
+      "bwd_s": 7.0555,
+      "peak_ram_mb": 17656.0,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    }
+  ]
+}
