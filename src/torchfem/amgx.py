@@ -15,20 +15,25 @@ order-dependent and a stale handle segfaults rather than raises. Nothing calls
 `AMGX_finalize()`, so a dropped solver leaks until the process exits, which
 beats risking a bad teardown order.
 
-The C API takes no near-null-space basis, pyamg's `B`. Vector problems instead
-aggregate over `block_size x block_size` nodal blocks, which holds the
-translational rigid-body modes implicitly; `_solve_gpu` reads that size off `B`.
-Scalar mode diverged on half the elasticity systems tried, 3x3 blocks on none.
+The C API takes no near-null-space basis, pyamg's `B`, which costs dearly on
+elasticity. Two things recover most of it. Aggregating over
+`block_size x block_size` nodal blocks holds the translational rigid-body modes
+implicitly, and passing nodal coordinates to `AMGX_matrix_attach_geometry` lets
+the `GEO` selector aggregate geometrically, which is where the rotational modes
+hide. Together they bring it close to what pyamg reaches with the same
+unsmoothed prolongation and an explicit `B`. `_solve_gpu` takes both the block
+size and the coordinates off `B`, so nothing extra is threaded through.
+Coordinates are solids only; scalar and planar problems keep the algebraic
+`SIZE_8` selector, which `GEO` cannot replace without geometry.
 
-`resolve_method` never picks `amgx`, since whether it wins depends on the matrix
-rather than on anything the selection can cheaply inspect. Against the CuPy
-Jacobi path at `stol=1e-10` on an RTX 4060 Ti it is 1.7-2.7x quicker on scalar
-heat conduction and up to 2.1x on elasticity of varying stiffness, but 1.5-1.8x
-slower on uniform elasticity, where a smooth solution leaves multigrid little to
-remove and a V-cycle costs some seven Jacobi iterations. Aggregation also wants
-a definite operator: an indefinite tangent costs every AMG an order of magnitude
-more iterations, so `max_iters` stays low and a solve that exhausts it raises,
-on the grounds that such a tangent is worth reformulating instead.
+`resolve_method` prefers `amgx` for iterative solves on CUDA once it is
+installed. It wins comfortably wherever the operator is awkward, most of all on
+scalar conduction and on elasticity whose stiffness varies element to element,
+and gives up a little only on uniform stiffness under smooth loading, where the
+solution leaves multigrid little to remove. Aggregation also wants a definite
+operator, an indefinite tangent costing every AMG an order of magnitude more
+iterations, so `max_iters` stays low and a solve that exhausts it raises, on the
+grounds that such a tangent is worth reformulating instead.
 
 `sparse.py` imports torch first because AmgX's `cublasDdot` returns
 CUBLAS_STATUS_NOT_SUPPORTED otherwise; importing torchfem is enough.
@@ -123,6 +128,10 @@ _SIGNATURES: dict[str, tuple[list[Any], Any]] = {
         [C.c_void_p, C.c_int, C.c_int, C.c_void_p, C.c_void_p],
         C.c_int,
     ),
+    "AMGX_matrix_attach_geometry": (
+        [C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p, C.c_int],
+        C.c_int,
+    ),
     "AMGX_vector_create": ([C.POINTER(C.c_void_p), C.c_void_p, C.c_int], C.c_int),
     "AMGX_vector_destroy": ([C.c_void_p], C.c_int),
     "AMGX_vector_upload": ([C.c_void_p, C.c_int, C.c_int, C.c_void_p], C.c_int),
@@ -196,17 +205,27 @@ class AmgXSolver:
     `setup()` builds the hierarchy from a `cupyx.scipy.sparse.csr_matrix` with
     float64 data and int32 indices; `resetup()` reuses it across a Newton loop
     where only the coefficients change. `block_size` is the degrees of freedom
-    per node, which AmgX aggregates as a unit.
+    per node, which AmgX aggregates as a unit. `coords` are host arrays of nodal
+    x, y and z, which switch aggregation to `GEO`; see the module docstring.
     """
 
-    def __init__(self, n: int, stol: float, block_size: int = 1) -> None:
+    def __init__(
+        self,
+        n: int,
+        stol: float,
+        block_size: int = 1,
+        coords: tuple[Any, Any, Any] | None = None,
+    ) -> None:
         _initialize()
         lib = _lib
         self._lib = lib
         self._closed = False
+        self._coords = coords
 
         config = deepcopy(_DEFAULT_CONFIG)
         config["solver"]["tolerance"] = stol
+        if coords is not None:
+            config["solver"]["preconditioner"]["selector"] = "GEO"
         cfg = C.c_void_p()
         _check(lib, lib.AMGX_config_create(C.byref(cfg), json.dumps(config).encode()))
         self._cfg = cfg
@@ -256,10 +275,45 @@ class AmgXSolver:
         )
         del indptr, indices, data
         _free_pool()
+        if self._coords is not None:
+            # Host pointers: AmgX copies these element by element on the CPU,
+            # unlike the uploads above.
+            x, y, z = self._coords
+            _check(
+                lib,
+                lib.AMGX_matrix_attach_geometry(
+                    self._mtx, x.ctypes.data, y.ctypes.data, z.ctypes.data, self.n_rows
+                ),
+            )
         _check(lib, lib.AMGX_solver_setup(self._slv, self._mtx))
 
+    def _recreate(self) -> None:
+        """Replace the matrix and solver handles, keeping config and resources."""
+        lib = self._lib
+        lib.AMGX_solver_destroy(self._slv)
+        lib.AMGX_matrix_destroy(self._mtx)
+        mtx = C.c_void_p()
+        _check(lib, lib.AMGX_matrix_create(C.byref(mtx), self._rsc, _MODE_dDDI))
+        self._mtx = mtx
+        slv = C.c_void_p()
+        _check(
+            lib, lib.AMGX_solver_create(C.byref(slv), self._rsc, _MODE_dDDI, self._cfg)
+        )
+        self._slv = slv
+
     def resetup(self, A_cp: Any) -> None:
-        """Refresh coefficients in place and rebuild only what changed."""
+        """Refresh coefficients in place and rebuild only what changed.
+
+        Geometry is the exception: AmgX consumes the attached coordinates during
+        the first setup and a hierarchy rebuilt without them takes three times
+        the iterations, so the handles are replaced and the hierarchy is built
+        again. That costs a few hundredths of a second and is well repaid.
+        """
+        if self._coords is not None:
+            self._recreate()
+            self.setup(A_cp)
+            return
+
         lib = self._lib
         _, _, data, n_blocks = self._blocks(A_cp)
         _check(

@@ -28,11 +28,11 @@ pip install pypardiso
 ```
 Once installed, *torch-fem* uses it automatically for small models on CPU, where a direct solve beats an iterative one. Pass `method="pardiso"` to force it.
 
-**AmgX** is NVIDIA's GPU algebraic multigrid library, which takes 5 to 15 times fewer iterations than the Jacobi preconditioner of the GPU default. It ships no wheels, so build it from source against a matching CUDA toolkit by following the instructions in the [AmgX repository](https://github.com/NVIDIA/AMGX), then point *torch-fem* at the resulting shared library:
+**AmgX** is NVIDIA's GPU algebraic multigrid library, which needs far fewer iterations than the Jacobi preconditioner of the GPU default. It ships no wheels, so build it from source against a matching CUDA toolkit by following the instructions in the [AmgX repository](https://github.com/NVIDIA/AMGX), then point *torch-fem* at the resulting shared library:
 ``` sh
 export AMGX_DLL=/path/to/libamgxsh.so # amgxsh.dll on Windows
 ```
-Pass `method="amgx"` to use it. It is never selected automatically.
+Iterative solves on the GPU then use it automatically. Pass `method="cg"` or `method="minres"` to fall back to the Jacobi-preconditioned default.
 
 ## Development (optional)
 To develop new features for *torch-fem*, you should fork the GitHub repository and clone it to your machine via 

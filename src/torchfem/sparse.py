@@ -79,6 +79,8 @@ def resolve_method(n_dofs: int, device: str, method: str | None) -> str:
         if device == "cpu" and "pypardiso" in available_backends:
             return "pardiso"
         return "spsolve"
+    if device == "cuda" and "amgx" in available_backends:
+        return "amgx"
     return "minres"
 
 
@@ -395,10 +397,16 @@ def _solve_gpu(
         # AMG hierarchy, built from scratch unless one was already passed in,
         # in which case only its coefficients are refreshed.
         if M is None:
-            # The rigid-body mode count gives away the DOFs per node, which is
-            # the nodal block size AmgX aggregates over.
+            # AmgX uses coordinates insteas of null space B
+            coords = None
             block_size = {6: 3, 3: 2}.get(B.shape[1], 1) if B is not None else 1
-            M = AmgXSolver(shape[0], stol, block_size)
+            if B is not None and B.shape[1] == 6:
+                x, y, z = (
+                    np.ascontiguousarray(c.detach().cpu().numpy())
+                    for c in (B[1::3, 5], B[2::3, 3], B[0::3, 4])
+                )
+                coords = x, y, z
+            M = AmgXSolver(shape[0], stol, block_size, coords)
             M.setup(A_cp)
         else:
             assert isinstance(M, AmgXSolver)
