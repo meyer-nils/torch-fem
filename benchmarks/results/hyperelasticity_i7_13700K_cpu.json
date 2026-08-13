@@ -1,0 +1,55 @@
+{
+  "hardware": "i7-13700K",
+  "device": "cpu",
+  "python": "3.12.12",
+  "libraries": "SciPy 1.15.3, PyTorch 2.10.0+cu126",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 25,
+      "dofs": 9375,
+      "setup_s": 0.1903,
+      "fwd_s": 13.6913,
+      "bwd_s": 4.125,
+      "peak_ram_mb": 1588.0,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 35,
+      "dofs": 18375,
+      "setup_s": 0.4921,
+      "fwd_s": 24.0937,
+      "bwd_s": 6.7807,
+      "peak_ram_mb": 2559.8,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 45,
+      "dofs": 30375,
+      "setup_s": 0.8715,
+      "fwd_s": 37.6536,
+      "bwd_s": 9.9837,
+      "peak_ram_mb": 4043.8,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 55,
+      "dofs": 45375,
+      "setup_s": 1.3087,
+      "fwd_s": 53.0016,
+      "bwd_s": 14.4403,
+      "peak_ram_mb": 5296.6,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 65,
+      "dofs": 63375,
+      "setup_s": 1.9428,
+      "fwd_s": 75.821,
+      "bwd_s": 20.1065,
+      "peak_ram_mb": 6954.8,
+      "peak_vram_mb": null
+    }
+  ]
+}
