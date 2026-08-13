@@ -7,21 +7,17 @@ from torchfem import Solid
 from torchfem.materials import Hyperelastic3D
 from torchfem.mesh import cube_hexa
 
-# Uniaxial stretch of a unit cube to twenty times its original length with a
-# Neo-Hookean material, following examples/basic/solid/large_stretch.ipynb:
-# prescribed x-displacement on the right face, fixed x on the left face, and
-# symmetry constraints on the center planes (requires an odd number of nodes
-# along y and z). The load is applied in N_INC increments that are geometric in
-# the stretch (constant relative stretch per step), which keeps Newton
-# convergent where the notebook's uniform increments fail. N refines y and z
-# only, at a fixed discretization along x: the first Newton iterate puts the
-# whole prescribed jump on one element layer, so a finer x drives the tangent
-# indefinite. The stretch solution is homogeneous anyway.
+# Uniaxial stretch of a Neo-Hookean box, following
+# examples/basic/solid/large_stretch.ipynb. N refines y and z only, over four
+# cubic elements along x, so the benchmark measures size rather than element
+# aspect ratio. Increments are geometric in the stretch, which keeps Newton
+# convergent where uniform ones fail. Stretching beyond ten turns the tangent
+# indefinite, which every algebraic multigrid preconditioner handles far worse.
+STRETCH = 10.0
 E = 1000.0
 NU = 0.3
 LBD = E * NU / ((1.0 + NU) * (1.0 - 2.0 * NU))
 MU = E / (2.0 * (1.0 + NU))
-U = 19.0
 N_INC = 11
 
 
@@ -37,7 +33,9 @@ def psi(F, params):
 def get_stretch(N):
     if N % 2 == 0:
         raise ValueError("N must be odd to place nodes on the y and z center planes.")
-    nodes, elements = cube_hexa(5, N, N)
+    # Four elements deep, matching the y and z spacing
+    lx = 4.0 / (N - 1)
+    nodes, elements = cube_hexa(5, N, N, lx, 1.0, 1.0)
 
     # Lamé parameters as differentiable parameters (material calibration)
     params = torch.tensor([MU, LBD], requires_grad=True)
@@ -45,20 +43,20 @@ def get_stretch(N):
 
     # Boundary conditions
     left = nodes[:, 0] == 0.0
-    right = nodes[:, 0] == 1.0
+    right = nodes[:, 0] == lx
     box.constraints[left, 0] = True
     box.constraints[right, 0] = True
     box.constraints[nodes[:, 1] == 0.5, 1] = True
     box.constraints[nodes[:, 2] == 0.5, 2] = True
-    box.displacements[right, 0] = U
+    box.displacements[right, 0] = (STRETCH - 1.0) * lx
 
     return box, params, right
 
 
 def setup(N):
     box, params, right = get_stretch(N)
-    lam = torch.logspace(0, math.log10(1.0 + U), N_INC)
-    increments = (lam - 1.0) / U
+    lam = torch.logspace(0, math.log10(STRETCH), N_INC)
+    increments = (lam - 1.0) / (STRETCH - 1.0)
     result = {}
 
     def forward():
