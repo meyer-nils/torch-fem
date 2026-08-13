@@ -9,47 +9,52 @@
     {
       "N": 25,
       "dofs": 9375,
-      "setup_s": 0.0882,
-      "fwd_s": 11.6085,
-      "bwd_s": 2.6963,
-      "peak_ram_mb": 1341.1,
-      "peak_vram_mb": null
+      "setup_s": 0.0625,
+      "fwd_s": 11.7412,
+      "bwd_s": 2.6957,
+      "peak_ram_mb": 1398.3,
+      "peak_vram_mb": null,
+      "solver": "spsolve | direct | scipy | cpu"
     },
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.1177,
-      "fwd_s": 20.445,
-      "bwd_s": 4.8632,
-      "peak_ram_mb": 1943.6,
-      "peak_vram_mb": null
+      "setup_s": 0.1221,
+      "fwd_s": 20.5309,
+      "bwd_s": 4.8503,
+      "peak_ram_mb": 2452.5,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.2005,
-      "fwd_s": 35.3952,
-      "bwd_s": 8.407,
-      "peak_ram_mb": 2823.0,
-      "peak_vram_mb": null
+      "setup_s": 0.2038,
+      "fwd_s": 34.6549,
+      "bwd_s": 8.2509,
+      "peak_ram_mb": 3623.7,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.2929,
-      "fwd_s": 46.637,
-      "bwd_s": 11.6509,
-      "peak_ram_mb": 3471.2,
-      "peak_vram_mb": null
+      "setup_s": 0.2981,
+      "fwd_s": 49.3342,
+      "bwd_s": 12.1028,
+      "peak_ram_mb": 5309.2,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.4234,
-      "fwd_s": 66.0401,
-      "bwd_s": 16.8443,
-      "peak_ram_mb": 4489.6,
-      "peak_vram_mb": null
+      "setup_s": 0.4408,
+      "fwd_s": 71.5037,
+      "bwd_s": 17.2343,
+      "peak_ram_mb": 6337.8,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
     }
   ]
 }
