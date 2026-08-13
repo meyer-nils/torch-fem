@@ -1,3 +1,5 @@
+import re
+
 import torch
 
 from torchfem import Planar, PlanarHeat
@@ -33,8 +35,9 @@ class TestSolveReport:
         # No row is ever elided, so the count also pins the table height.
         assert len(out.splitlines()) == 9
         # One linear solve each: the residual opening a substep is not counted.
-        assert "3 increments · 3 iterations" in out
-        assert "↓" not in out
+        assert "3 increments | 3 iterations" in out
+        # No substep flag in the right margin, since none was cut back or grown.
+        assert not re.search(r"[v^]\d", out)
 
     def test_cutbacks_and_growths_are_counted(self, capsys):
         report = SolveReport("title", {})
@@ -57,9 +60,9 @@ class TestSolveReport:
         assert row.split()[:5] == ["1", "1", "4", "1", "1.00e-12"]
         # The flags count both events and live in the right margin, so the row
         # still fits the rule.
-        assert row.endswith("↓3 ↑2")
+        assert row.endswith("v3 ^2")
         assert len(row) <= WIDTH
-        assert "1 increment · 1 iteration" in out
+        assert "1 increment | 1 iteration" in out
 
 
 class TestVerboseSolve:
@@ -88,7 +91,7 @@ class TestVerboseSolve:
         model.time_integration(torch.tensor([2.0]), delta_t=1.0, verbose=True)
 
         out = capsys.readouterr().out
-        assert "torch-fem · time integration" in out
+        assert "torch-fem | time integration" in out
         assert "2 time steps" in out
 
 
@@ -98,6 +101,6 @@ class TestMachine:
         threads = torch.get_num_threads()
         try:
             torch.set_num_threads(1)
-            assert "1 thread ·" in machine()
+            assert "1 thread |" in machine()
         finally:
             torch.set_num_threads(threads)

@@ -14,7 +14,7 @@
       "bwd_s": 3.7533,
       "peak_ram_mb": null,
       "peak_vram_mb": 828.0,
-      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
+      "solver": "cg | iterative | jacobi | cupy | cuda"
     },
     {
       "N": 35,
@@ -24,7 +24,7 @@
       "bwd_s": 5.3936,
       "peak_ram_mb": null,
       "peak_vram_mb": 1600.0,
-      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
+      "solver": "cg | iterative | jacobi | cupy | cuda"
     },
     {
       "N": 45,
@@ -34,7 +34,7 @@
       "bwd_s": 8.3208,
       "peak_ram_mb": null,
       "peak_vram_mb": 2624.0,
-      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
+      "solver": "cg | iterative | jacobi | cupy | cuda"
     },
     {
       "N": 55,
@@ -44,7 +44,7 @@
       "bwd_s": 9.9785,
       "peak_ram_mb": null,
       "peak_vram_mb": 3858.0,
-      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
+      "solver": "cg | iterative | jacobi | cupy | cuda"
     },
     {
       "N": 65,
@@ -54,7 +54,7 @@
       "bwd_s": 17.3374,
       "peak_ram_mb": null,
       "peak_vram_mb": 5330.0,
-      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
+      "solver": "cg | iterative | jacobi | cupy | cuda"
     }
   ]
 }
