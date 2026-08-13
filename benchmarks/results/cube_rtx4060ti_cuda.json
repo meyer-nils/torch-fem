@@ -2,54 +2,63 @@
   "hardware": "RTX 4060 Ti",
   "device": "cuda",
   "python": "3.12.12",
-  "libraries": "CuPy 13.6.0, CUDA 12.9",
+  "libraries": "CuPy 14.1.1, CUDA 12.9",
   "dtype": "float64",
   "problem": "cube_hexa_extension",
   "rows": [
     {
       "N": 20,
       "dofs": 24000,
-      "setup_s": 0.1435,
-      "fwd_s": 0.5682,
-      "bwd_s": 0.7255,
+      "setup_s": 0.1444,
+      "fwd_s": 0.5705,
+      "bwd_s": 0.6167,
       "peak_ram_mb": null,
-      "peak_vram_mb": 354.0
+      "peak_vram_mb": 370.0
     },
     {
       "N": 30,
       "dofs": 81000,
-      "setup_s": 0.159,
-      "fwd_s": 0.8831,
-      "bwd_s": 0.9504,
+      "setup_s": 0.1594,
+      "fwd_s": 0.8858,
+      "bwd_s": 0.7891,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1114.0
+      "peak_vram_mb": 1076.0
     },
     {
       "N": 40,
       "dofs": 192000,
-      "setup_s": 0.1831,
-      "fwd_s": 1.4628,
-      "bwd_s": 1.3314,
+      "setup_s": 0.1817,
+      "fwd_s": 1.4778,
+      "bwd_s": 1.1424,
       "peak_ram_mb": null,
-      "peak_vram_mb": 2338.0
+      "peak_vram_mb": 2528.0
     },
     {
       "N": 50,
       "dofs": 375000,
-      "setup_s": 0.2559,
-      "fwd_s": 2.4687,
-      "bwd_s": 2.0269,
+      "setup_s": 0.2473,
+      "fwd_s": 2.4876,
+      "bwd_s": 1.7096,
       "peak_ram_mb": null,
-      "peak_vram_mb": 4604.0
+      "peak_vram_mb": 4766.0
     },
     {
       "N": 60,
       "dofs": 648000,
-      "setup_s": 0.3406,
-      "fwd_s": 4.0181,
-      "bwd_s": 3.1328,
+      "setup_s": 0.3401,
+      "fwd_s": 4.0781,
+      "bwd_s": 2.6661,
       "peak_ram_mb": null,
-      "peak_vram_mb": 8574.0
+      "peak_vram_mb": 8078.0
+    },
+    {
+      "N": 70,
+      "dofs": 1029000,
+      "setup_s": 0.4711,
+      "fwd_s": 6.4052,
+      "bwd_s": 4.2857,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 15225.0
     }
   ]
 }
