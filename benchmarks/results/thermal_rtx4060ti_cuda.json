@@ -2,45 +2,45 @@
   "hardware": "RTX 4060 Ti",
   "device": "cuda",
   "python": "3.12.12",
-  "libraries": "CuPy 13.6.0, CUDA 12.9",
+  "libraries": "CuPy 14.1.1, CUDA 12.9",
   "dtype": "float64",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.1692,
-      "fwd_s": 0.5269,
-      "bwd_s": 0.6827,
+      "setup_s": 0.1686,
+      "fwd_s": 0.5194,
+      "bwd_s": 0.5775,
       "peak_ram_mb": null,
-      "peak_vram_mb": 176.0
+      "peak_vram_mb": 164.0
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.186,
-      "fwd_s": 0.7901,
-      "bwd_s": 0.9233,
+      "setup_s": 0.1681,
+      "fwd_s": 0.762,
+      "bwd_s": 0.7811,
       "peak_ram_mb": null,
-      "peak_vram_mb": 542.0
+      "peak_vram_mb": 462.0
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.1791,
-      "fwd_s": 1.5626,
-      "bwd_s": 1.5701,
+      "setup_s": 0.1762,
+      "fwd_s": 1.5261,
+      "bwd_s": 1.3543,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1956.0
+      "peak_vram_mb": 1620.0
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.2272,
-      "fwd_s": 5.1387,
-      "bwd_s": 4.5628,
+      "setup_s": 0.2305,
+      "fwd_s": 5.2814,
+      "bwd_s": 4.4042,
       "peak_ram_mb": null,
-      "peak_vram_mb": 7550.0
+      "peak_vram_mb": 6292.0
     }
   ]
 }
