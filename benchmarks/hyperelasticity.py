@@ -53,7 +53,7 @@ def get_stretch(N):
     return box, params, right
 
 
-def setup(N):
+def setup(N, method=None):
     box, params, right = get_stretch(N)
     lam = torch.logspace(0, math.log10(STRETCH), N_INC)
     increments = (lam - 1.0) / (STRETCH - 1.0)
@@ -64,7 +64,7 @@ def setup(N):
             increments=increments,
             nlgeom=True,
             differentiable_parameters=params,
-            method="cg",
+            method=method,
         )
 
     def backward():
@@ -81,6 +81,7 @@ PROBLEM = Problem(
     plot_prefix="hyperelasticity",
     default_N=[25, 35, 45, 55, 65],
     setup=setup,
+    method="cg",
 )
 
 if __name__ == "__main__":

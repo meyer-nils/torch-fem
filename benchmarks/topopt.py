@@ -50,12 +50,12 @@ def get_cantilever(N):
     return model, rho
 
 
-def setup(N):
+def setup(N, method=None):
     model, rho = get_cantilever(N)
     result = {}
 
     def forward():
-        result["u"], *_ = model.solve(differentiable_parameters=rho)
+        result["u"], *_ = model.solve(differentiable_parameters=rho, method=method)
 
     def backward():
         # Structural compliance w.r.t. SIMP densities
@@ -69,7 +69,7 @@ PROBLEM = Problem(
     id="structural_cantilever_simp",
     title="SIMP cantilever benchmark",
     plot_prefix="topopt",
-    default_N=[20, 30, 40, 50, 60],
+    default_N=[10, 20, 30, 40, 50, 60],
     setup=setup,
 )
 

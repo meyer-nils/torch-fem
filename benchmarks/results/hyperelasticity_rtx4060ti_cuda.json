@@ -9,47 +9,52 @@
     {
       "N": 25,
       "dofs": 9375,
-      "setup_s": 0.1433,
-      "fwd_s": 11.9934,
-      "bwd_s": 3.7203,
+      "setup_s": 0.1412,
+      "fwd_s": 11.7689,
+      "bwd_s": 3.7533,
       "peak_ram_mb": null,
-      "peak_vram_mb": 828.0
+      "peak_vram_mb": 828.0,
+      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
     },
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.1459,
-      "fwd_s": 16.3204,
-      "bwd_s": 5.4055,
+      "setup_s": 0.1408,
+      "fwd_s": 16.2676,
+      "bwd_s": 5.3936,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1600.0
+      "peak_vram_mb": 1600.0,
+      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.1488,
-      "fwd_s": 22.6167,
-      "bwd_s": 7.392,
+      "setup_s": 0.1445,
+      "fwd_s": 22.5382,
+      "bwd_s": 8.3208,
       "peak_ram_mb": null,
-      "peak_vram_mb": 2624.0
+      "peak_vram_mb": 2624.0,
+      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.1516,
-      "fwd_s": 30.5464,
-      "bwd_s": 9.9003,
+      "setup_s": 0.1447,
+      "fwd_s": 30.829,
+      "bwd_s": 9.9785,
       "peak_ram_mb": null,
-      "peak_vram_mb": 3858.0
+      "peak_vram_mb": 3858.0,
+      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.1495,
-      "fwd_s": 40.2428,
-      "bwd_s": 12.9617,
+      "setup_s": 0.1497,
+      "fwd_s": 41.6029,
+      "bwd_s": 17.3374,
       "peak_ram_mb": null,
-      "peak_vram_mb": 5302.0
+      "peak_vram_mb": 5330.0,
+      "solver": "cg \u00b7 iterative \u00b7 jacobi \u00b7 cupy \u00b7 cuda"
     }
   ]
 }

@@ -9,38 +9,42 @@
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.1686,
-      "fwd_s": 0.5194,
-      "bwd_s": 0.5775,
+      "setup_s": 0.1701,
+      "fwd_s": 0.3766,
+      "bwd_s": 0.4516,
       "peak_ram_mb": null,
-      "peak_vram_mb": 164.0
+      "peak_vram_mb": 446.0,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.1681,
-      "fwd_s": 0.762,
-      "bwd_s": 0.7811,
+      "setup_s": 0.1667,
+      "fwd_s": 0.5339,
+      "bwd_s": 0.5778,
       "peak_ram_mb": null,
-      "peak_vram_mb": 462.0
+      "peak_vram_mb": 668.0,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.1762,
-      "fwd_s": 1.5261,
-      "bwd_s": 1.3543,
+      "setup_s": 0.177,
+      "fwd_s": 0.9643,
+      "bwd_s": 0.8121,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1620.0
+      "peak_vram_mb": 1662.0,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.2305,
-      "fwd_s": 5.2814,
-      "bwd_s": 4.4042,
+      "setup_s": 0.2242,
+      "fwd_s": 2.7881,
+      "bwd_s": 1.9618,
       "peak_ram_mb": null,
-      "peak_vram_mb": 6292.0
+      "peak_vram_mb": 6188.0,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
     }
   ]
 }

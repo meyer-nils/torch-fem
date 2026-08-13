@@ -1,0 +1,60 @@
+{
+  "hardware": "RTX 4060 Ti",
+  "device": "cuda",
+  "python": "3.12.12",
+  "libraries": "CuPy 14.1.1, CUDA 12.9",
+  "dtype": "float64",
+  "problem": "structural_cantilever_simp",
+  "rows": [
+    {
+      "N": 10,
+      "dofs": 7623,
+      "setup_s": 0.1689,
+      "fwd_s": 0.8655,
+      "bwd_s": 0.9748,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 424.0,
+      "solver": "spsolve \u00b7 direct \u00b7 cupy \u00b7 cuda"
+    },
+    {
+      "N": 20,
+      "dofs": 54243,
+      "setup_s": 0.1763,
+      "fwd_s": 1.029,
+      "bwd_s": 0.9641,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1208.0,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
+    },
+    {
+      "N": 30,
+      "dofs": 175863,
+      "setup_s": 0.2067,
+      "fwd_s": 2.1333,
+      "bwd_s": 1.7222,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 2948.0,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
+    },
+    {
+      "N": 40,
+      "dofs": 408483,
+      "setup_s": 0.2942,
+      "fwd_s": 3.8156,
+      "bwd_s": 2.784,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 6676.0,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
+    },
+    {
+      "N": 50,
+      "dofs": 788103,
+      "setup_s": 0.4244,
+      "fwd_s": 8.0763,
+      "bwd_s": 6.2581,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 14751.4,
+      "solver": "amgx \u00b7 iterative \u00b7 AMG \u00b7 amgx \u00b7 cuda"
+    }
+  ]
+}

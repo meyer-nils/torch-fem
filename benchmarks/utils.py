@@ -42,7 +42,8 @@ class Problem:
     title: str  # plot suite title
     plot_prefix: str  # image filename prefix in docs/images/benchmark
     default_N: list[int]
-    setup: Callable[[int], Case]
+    setup: Callable[[int, str | None], Case]
+    method: str | None = None  # linear solver, None to let the size decide
 
 
 def run_case(problem: Problem) -> None:
@@ -52,6 +53,9 @@ def run_case(problem: Problem) -> None:
         "-N", type=int, help="Problem size", default=problem.default_N[0]
     )
     parser.add_argument("-device", type=str, help="Torch default device", default="cpu")
+    parser.add_argument(
+        "-method", type=str, help="Linear solver backend", default=problem.method
+    )
     args = parser.parse_args()
 
     torch.set_default_dtype(torch.float64)
@@ -64,7 +68,7 @@ def run_case(problem: Problem) -> None:
 
     print(f"START:{time.time()}")
 
-    case = problem.setup(args.N)
+    case = problem.setup(args.N, args.method)
     print(f"DOFS:{case.dofs}")
     print(f"SETUP_DONE:{time.time()}")
 

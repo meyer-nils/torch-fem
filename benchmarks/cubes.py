@@ -24,12 +24,14 @@ def get_cube(N):
     return cube
 
 
-def setup(N):
+def setup(N, method=None):
     cube = get_cube(N)
     result = {}
 
     def forward():
-        result["u"], *_ = cube.solve(differentiable_parameters=cube.forces)
+        result["u"], *_ = cube.solve(
+            differentiable_parameters=cube.forces, method=method
+        )
 
     def backward():
         result["u"].sum().backward()
