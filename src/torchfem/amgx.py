@@ -191,12 +191,20 @@ def _free_pool() -> None:
     cupy.get_default_memory_pool().free_all_blocks()
 
 
-def _check(lib: C.CDLL, rc: int) -> None:
+def _check(rc: int) -> None:
+    """Raise with AmgX's own message unless `rc` reports success."""
     if rc == _AMGX_RC_OK:
         return
     buf = C.create_string_buffer(4096)
-    lib.AMGX_get_error_string(rc, buf, len(buf))
+    _lib.AMGX_get_error_string(rc, buf, len(buf))
     raise RuntimeError(f"AmgX error {rc}: {buf.value.decode(errors='replace')}")
+
+
+def _create(entry_point: Any, *args: Any) -> C.c_void_p:
+    """Return a new handle from one of AmgX's `*_create` entry points."""
+    handle = C.c_void_p()
+    _check(entry_point(C.byref(handle), *args))
+    return handle
 
 
 class AmgXSolver:
@@ -217,8 +225,6 @@ class AmgXSolver:
         coords: tuple[Any, Any, Any] | None = None,
     ) -> None:
         _initialize()
-        lib = _lib
-        self._lib = lib
         self._closed = False
         self._coords = coords
 
@@ -226,29 +232,13 @@ class AmgXSolver:
         config["solver"]["tolerance"] = stol
         if coords is not None:
             config["solver"]["preconditioner"]["selector"] = "GEO"
-        cfg = C.c_void_p()
-        _check(lib, lib.AMGX_config_create(C.byref(cfg), json.dumps(config).encode()))
-        self._cfg = cfg
 
-        rsc = C.c_void_p()
-        _check(lib, lib.AMGX_resources_create_simple(C.byref(rsc), cfg))
-        self._rsc = rsc
-
-        mtx = C.c_void_p()
-        _check(lib, lib.AMGX_matrix_create(C.byref(mtx), rsc, _MODE_dDDI))
-        self._mtx = mtx
-
-        rhs = C.c_void_p()
-        _check(lib, lib.AMGX_vector_create(C.byref(rhs), rsc, _MODE_dDDI))
-        self._rhs = rhs
-
-        sol = C.c_void_p()
-        _check(lib, lib.AMGX_vector_create(C.byref(sol), rsc, _MODE_dDDI))
-        self._sol = sol
-
-        slv = C.c_void_p()
-        _check(lib, lib.AMGX_solver_create(C.byref(slv), rsc, _MODE_dDDI, cfg))
-        self._slv = slv
+        self._cfg = _create(_lib.AMGX_config_create, json.dumps(config).encode())
+        self._rsc = _create(_lib.AMGX_resources_create_simple, self._cfg)
+        self._mtx = _create(_lib.AMGX_matrix_create, self._rsc, _MODE_dDDI)
+        self._rhs = _create(_lib.AMGX_vector_create, self._rsc, _MODE_dDDI)
+        self._sol = _create(_lib.AMGX_vector_create, self._rsc, _MODE_dDDI)
+        self._slv = _create(_lib.AMGX_solver_create, self._rsc, _MODE_dDDI, self._cfg)
 
         self.n = n
         self.block_size = block_size
@@ -256,12 +246,9 @@ class AmgXSolver:
 
     def setup(self, A_cp: Any) -> None:
         """Upload `A_cp` and build the AMG hierarchy from scratch."""
-        lib = self._lib
         indptr, indices, data, n_blocks = self._blocks(A_cp)
-        self._n_blocks = n_blocks
         _check(
-            lib,
-            lib.AMGX_matrix_upload_all(
+            _lib.AMGX_matrix_upload_all(
                 self._mtx,
                 self.n_rows,
                 n_blocks,
@@ -271,7 +258,7 @@ class AmgXSolver:
                 indices.data.ptr,
                 data.data.ptr,
                 None,
-            ),
+            )
         )
         del indptr, indices, data
         _free_pool()
@@ -280,26 +267,11 @@ class AmgXSolver:
             # unlike the uploads above.
             x, y, z = self._coords
             _check(
-                lib,
-                lib.AMGX_matrix_attach_geometry(
+                _lib.AMGX_matrix_attach_geometry(
                     self._mtx, x.ctypes.data, y.ctypes.data, z.ctypes.data, self.n_rows
-                ),
+                )
             )
-        _check(lib, lib.AMGX_solver_setup(self._slv, self._mtx))
-
-    def _recreate(self) -> None:
-        """Replace the matrix and solver handles, keeping config and resources."""
-        lib = self._lib
-        lib.AMGX_solver_destroy(self._slv)
-        lib.AMGX_matrix_destroy(self._mtx)
-        mtx = C.c_void_p()
-        _check(lib, lib.AMGX_matrix_create(C.byref(mtx), self._rsc, _MODE_dDDI))
-        self._mtx = mtx
-        slv = C.c_void_p()
-        _check(
-            lib, lib.AMGX_solver_create(C.byref(slv), self._rsc, _MODE_dDDI, self._cfg)
-        )
-        self._slv = slv
+        _check(_lib.AMGX_solver_setup(self._slv, self._mtx))
 
     def resetup(self, A_cp: Any) -> None:
         """Refresh coefficients in place and rebuild only what changed.
@@ -310,21 +282,24 @@ class AmgXSolver:
         again. That costs a few hundredths of a second and is well repaid.
         """
         if self._coords is not None:
-            self._recreate()
+            _lib.AMGX_solver_destroy(self._slv)
+            _lib.AMGX_matrix_destroy(self._mtx)
+            self._mtx = _create(_lib.AMGX_matrix_create, self._rsc, _MODE_dDDI)
+            self._slv = _create(
+                _lib.AMGX_solver_create, self._rsc, _MODE_dDDI, self._cfg
+            )
             self.setup(A_cp)
             return
 
-        lib = self._lib
         _, _, data, n_blocks = self._blocks(A_cp)
         _check(
-            lib,
-            lib.AMGX_matrix_replace_coefficients(
+            _lib.AMGX_matrix_replace_coefficients(
                 self._mtx, self.n_rows, n_blocks, data.data.ptr, None
-            ),
+            )
         )
         del data
         _free_pool()
-        _check(lib, lib.AMGX_solver_resetup(self._slv, self._mtx))
+        _check(_lib.AMGX_solver_resetup(self._slv, self._mtx))
 
     def _blocks(self, A_cp: Any) -> tuple[Any, Any, Any, int]:
         """Return `A_cp` as `(indptr, indices, values, count)` over nodal blocks.
@@ -367,16 +342,15 @@ class AmgXSolver:
         """Solve for `b_cp` as a CuPy array, warm-started from `x0_cp`."""
         import cupy
 
-        lib = self._lib
         x_cp = cupy.zeros(self.n) if x0_cp is None else cupy.asarray(x0_cp).copy()
         rows, bs = self.n_rows, self.block_size
 
-        _check(lib, lib.AMGX_vector_upload(self._rhs, rows, bs, b_cp.data.ptr))
-        _check(lib, lib.AMGX_vector_upload(self._sol, rows, bs, x_cp.data.ptr))
-        _check(lib, lib.AMGX_solver_solve(self._slv, self._rhs, self._sol))
+        _check(_lib.AMGX_vector_upload(self._rhs, rows, bs, b_cp.data.ptr))
+        _check(_lib.AMGX_vector_upload(self._sol, rows, bs, x_cp.data.ptr))
+        _check(_lib.AMGX_solver_solve(self._slv, self._rhs, self._sol))
 
         status = C.c_int()
-        _check(lib, lib.AMGX_solver_get_status(self._slv, C.byref(status)))
+        _check(_lib.AMGX_solver_get_status(self._slv, C.byref(status)))
         if status.value != _AMGX_SOLVE_SUCCESS:
             name = _AMGX_SOLVE_STATUS_NAMES.get(status.value, str(status.value))
             raise RuntimeError(
@@ -385,16 +359,13 @@ class AmgXSolver:
                 "_DEFAULT_CONFIG for this problem."
             )
 
-        _check(lib, lib.AMGX_vector_download(self._sol, x_cp.data.ptr))
+        _check(_lib.AMGX_vector_download(self._sol, x_cp.data.ptr))
         return x_cp
 
     @property
     def iterations(self) -> int:
         n = C.c_int()
-        _check(
-            self._lib,
-            self._lib.AMGX_solver_get_iterations_number(self._slv, C.byref(n)),
-        )
+        _check(_lib.AMGX_solver_get_iterations_number(self._slv, C.byref(n)))
         return n.value
 
     def close(self) -> None:
@@ -402,10 +373,9 @@ class AmgXSolver:
         if self._closed:
             return
         self._closed = True
-        lib = self._lib
-        lib.AMGX_solver_destroy(self._slv)
-        lib.AMGX_vector_destroy(self._sol)
-        lib.AMGX_vector_destroy(self._rhs)
-        lib.AMGX_matrix_destroy(self._mtx)
-        lib.AMGX_resources_destroy(self._rsc)
-        lib.AMGX_config_destroy(self._cfg)
+        _lib.AMGX_solver_destroy(self._slv)
+        _lib.AMGX_vector_destroy(self._sol)
+        _lib.AMGX_vector_destroy(self._rhs)
+        _lib.AMGX_matrix_destroy(self._mtx)
+        _lib.AMGX_resources_destroy(self._rsc)
+        _lib.AMGX_config_destroy(self._cfg)
