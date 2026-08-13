@@ -340,13 +340,22 @@ class AmgXSolver:
 
         bs = self.block_size
         coo = A_cp.tocoo()
-        # int64, since the key runs to n_rows**2 and overflows the int32 column
-        # indices at about 46k block rows.
-        rows = (coo.row // bs).astype(cupy.int64)
-        key = rows * self.n_rows + (coo.col // bs)
-        uniq, inverse = cupy.unique(key, return_inverse=True)  # type: ignore
+        # The key runs to n_rows**2, which overflows the int32 column indices at
+        # about 46k block rows, so it is int64. Both it and the scatter index are
+        # built in place and dropped as soon as they are spent: at tens of
+        # millions of entries every spare copy costs hundreds of megabytes.
+        key = (coo.row // bs).astype(cupy.int64)
+        key *= self.n_rows
+        key += coo.col // bs
+        uniq: Any = cupy.unique(key)
+        idx = cupy.searchsorted(uniq, key)
+        del key
+        idx *= bs * bs
+        idx += (coo.row % bs).astype(idx.dtype) * bs
+        idx += coo.col % bs
         values = cupy.zeros(len(uniq) * bs * bs)
-        values[inverse * bs * bs + (coo.row % bs) * bs + (coo.col % bs)] = coo.data
+        values[idx] = coo.data
+        del idx
         indices = (uniq % self.n_rows).astype(cupy.int32)
         indptr = cupy.zeros(self.n_rows + 1, dtype=cupy.int32)
         indptr[1:] = cupy.cumsum(
