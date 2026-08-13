@@ -1,49 +1,37 @@
 """Thin ctypes binding for AmgX (github.com/NVIDIA/AMGX), an optional GPU AMG backend.
 
-AmgX ships no wheels; using it requires building `amgxsh.dll`/`libamgxsh.so`
-from source against a matching CUDA toolkit and pointing the `AMGX_DLL`
-environment variable at it. Importing this module raises `ImportError` when
-that library is missing, so `sparse.py` can guard it with the same
-try/except that guards CuPy and PyPardiso. Binding the symbols touches no
-GPU; `AMGX_initialize()` is deferred to the first solver, so importing
-torchfem never creates a CUDA context.
+AmgX ships no wheels: build it from source and point `AMGX_DLL` at the shared
+library. Importing raises `ImportError` when it is missing, so `sparse.py` can
+guard it like CuPy and PyPardiso. Binding touches no GPU -- `AMGX_initialize()`
+waits for the first solver, so importing torchfem creates no CUDA context.
 
-Only the scalar "dDDI" mode is supported (device-resident, double matrix,
-double vector, int32 index), matching the CSR matrices `_solve_gpu` already
-builds. Matrix/vector uploads and downloads are pointed directly at CuPy
-device pointers (`.data.ptr`); AmgX resolves these via `cudaMemcpyDefault`
-(confirmed in `src/amgx_c.cu`), so there is no host round-trip.
+Only mode "dDDI" is used (device, double matrix, double vector, int32 index),
+matching the CSR that `_solve_gpu` already builds. Uploads point straight at
+CuPy device pointers, which AmgX resolves with `cudaMemcpyDefault`, so nothing
+round-trips through the host.
 
-Handle lifetimes are managed explicitly, never via `__del__` or
-`weakref.finalize`: destruction order matters (`AMGX_finalize` must be last),
-and getting it wrong segfaults rather than raising, especially once CuPy's
-memory pool and Python's GC are both in the picture. `AmgXSolver.close()`
-frees a solver's own handles; nothing calls `AMGX_finalize()` at all, so a
-solver that is simply dropped without `close()` leaks its GPU resources for
-the remainder of the process rather than risking a bad teardown order.
+Handles are freed explicitly by `close()`, never from `__del__`: destruction is
+order-dependent and a stale handle segfaults rather than raises. Nothing calls
+`AMGX_finalize()`, so a dropped solver leaks until the process exits, which
+beats risking a bad teardown order.
 
-The C API has no equivalent of pyamg's `B` argument -- no near-null-space basis
-can be handed to AmgX. Its answer for vector problems is instead to aggregate
-over `block_size x block_size` nodal blocks, which keeps the translational
-rigid-body modes in the coarse space implicitly. That is worth doing: on linear
-elasticity, scalar mode diverged on three of six test systems, while 3x3 blocks
-converged on all of them, with about 25% fewer iterations and less wall time
-than scalar wherever both converged. `_solve_gpu` therefore derives the block
-size from `B` and passes it in.
+The C API takes no near-null-space basis, pyamg's `B`. Vector problems instead
+aggregate over `block_size x block_size` nodal blocks, which holds the
+translational rigid-body modes implicitly; `_solve_gpu` reads that size off `B`.
+Scalar mode diverged on half the elasticity systems tried, 3x3 blocks on none.
 
-`resolve_method` never selects `amgx` on its own -- it is opt-in per call.
-Measured against the CuPy Jacobi path at `stol=1e-10` on an RTX 4060 Ti, it
-takes 6-44x fewer iterations, and the gap widens with the problem: at the top
-of the benchmark range it is 1.4x quicker on elasticity (648k dof) and 8x on
-heat conduction (1.05M dof). A V-cycle costs several times more than a diagonal
-scaling, so the crossover sits near 100k dof for elasticity, below which the
-Jacobi path is quicker; heat conduction pays off at every size measured. Solves
-that fail to converge raise, so callers can fall back to `cg` or `minres`.
+`resolve_method` never picks `amgx`, since whether it wins depends on the matrix
+rather than on anything the selection can cheaply inspect. Against the CuPy
+Jacobi path at `stol=1e-10` on an RTX 4060 Ti it is 1.7-2.7x quicker on scalar
+heat conduction and up to 2.1x on elasticity of varying stiffness, but 1.5-1.8x
+slower on uniform elasticity, where a smooth solution leaves multigrid little to
+remove and a V-cycle costs some seven Jacobi iterations. Aggregation also wants
+a definite operator: an indefinite tangent costs every AMG an order of magnitude
+more iterations, so `max_iters` stays low and a solve that exhausts it raises,
+on the grounds that such a tangent is worth reformulating instead.
 
-One load-order caveat, which is why `sparse.py` imports torch first: AmgX's
-`cublasDdot` returns `CUBLAS_STATUS_NOT_SUPPORTED` unless torch is imported
-before the first solve, presumably because torch loads a cuBLAS this build is
-happy with. Importing torchfem at all satisfies this.
+`sparse.py` imports torch first because AmgX's `cublasDdot` returns
+CUBLAS_STATUS_NOT_SUPPORTED otherwise; importing torchfem is enough.
 """
 
 from __future__ import annotations
@@ -71,19 +59,14 @@ _AMGX_RC_OK = 0
 _AMGX_SOLVE_SUCCESS = 0
 _AMGX_SOLVE_STATUS_NAMES = {1: "FAILED", 2: "DIVERGED", 3: "NOT_CONVERGED"}
 
-# Aggregation AMG, shaped after the CPU default (pyamg
+# Aggregation AMG shaped after the CPU default (pyamg
 # smoothed_aggregation_solver, smooth="jacobi"): a symmetric Gauss-Seidel sweep
-# on each side of the cycle and an exact solve on the coarsest grid. AmgX offers
-# no prolongation smoothing, so this is unsmoothed aggregation, but the rest of
-# the recipe carries over and roughly halves the iteration count against
-# AmgX's own shipped defaults. `tolerance` is overwritten per solve with `stol`.
-#
-# SIZE_8 coarsens eight nodes at a time, which shortens the hierarchy enough to
-# more than pay for the extra iterations it costs. BiCGStab wraps it because the
-# V-cycle sweeps are not a symmetric operator: PCG loses orthogonality and
-# stalls short of a tight `stol` on the larger systems. FGMRES is ~10% quicker
-# on large elasticity but slower on heat conduction and has to store its restart
-# vectors, so BiCGStab is the better default.
+# either side of the cycle and an exact coarse solve, which roughly halves the
+# iterations AmgX's own defaults need. SIZE_8 then shortens the hierarchy by
+# more than the iterations it costs. BiCGStab wraps it because the sweeps are
+# not symmetric, so PCG stalls short of a tight `stol`; FGMRES matches it on
+# elasticity but is slower on heat conduction and stores restart vectors.
+# `tolerance` is overwritten per solve with `stol`.
 _DEFAULT_CONFIG: dict[str, Any] = {
     "config_version": 2,
     "determinism_flag": 1,
@@ -199,13 +182,10 @@ def _check(lib: C.CDLL, rc: int) -> None:
 class AmgXSolver:
     """Owns one AmgX config/resources/matrix/vector/solver handle set.
 
-    `setup()` builds the AMG hierarchy from a CSR matrix; `resetup()` reuses it
-    across a Newton loop where only the coefficients change, via
-    `AMGX_matrix_replace_coefficients` + `AMGX_solver_resetup`. `A_cp` must be a
-    `cupyx.scipy.sparse.csr_matrix` with float64 data and int32 indices/indptr.
-
-    `block_size` is the number of degrees of freedom per node, which AmgX
-    aggregates as a unit; see the module docstring for why that matters.
+    `setup()` builds the hierarchy from a `cupyx.scipy.sparse.csr_matrix` with
+    float64 data and int32 indices; `resetup()` reuses it across a Newton loop
+    where only the coefficients change. `block_size` is the degrees of freedom
+    per node, which AmgX aggregates as a unit.
     """
 
     def __init__(self, n: int, stol: float, block_size: int = 1) -> None:
@@ -278,13 +258,11 @@ class AmgXSolver:
         _check(lib, lib.AMGX_solver_resetup(self._slv, self._mtx))
 
     def _blocks(self, A_cp: Any) -> tuple[Any, Any, Any, int]:
-        """Return `A_cp` as `(indptr, indices, values, count)` over `block_size` blocks.
+        """Return `A_cp` as `(indptr, indices, values, count)` over nodal blocks.
 
-        A scalar problem passes the CSR arrays straight through. Otherwise the
-        entries are gathered into dense row-major blocks, which is what AmgX
-        aggregates over. The block sparsity follows from the entry pattern
-        alone, so a `resetup` on a matrix with unchanged structure reproduces
-        this ordering and may replace the values in place.
+        A scalar problem passes the CSR arrays straight through. The ordering
+        follows from the entry pattern alone, so `resetup` on an unchanged
+        structure reproduces it and can replace the values in place.
         """
         if self.block_size == 1:
             return A_cp.indptr, A_cp.indices, A_cp.data, A_cp.nnz
@@ -308,10 +286,7 @@ class AmgXSolver:
         return indptr, indices, values, len(uniq)
 
     def solve(self, b_cp: Any, x0_cp: Any | None) -> Any:
-        """Solve for `b_cp`, warm-started from `x0_cp` (zeros if None).
-
-        Returns the solution as a CuPy array.
-        """
+        """Solve for `b_cp` as a CuPy array, warm-started from `x0_cp`."""
         import cupy
 
         lib = self._lib

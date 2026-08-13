@@ -277,7 +277,7 @@ def sparse_solve(
         method (str, optional): Method to use for solving ('spsolve', 'minres',
             'cg', 'pardiso', 'amgx'). Defaults to None for automatic selection based
             on the input size and available backends. 'amgx' is never chosen
-            automatically and requires an AmgX build (see `torchfem._amgx`).
+            automatically and requires an AmgX build (see `torchfem.amgx`).
         M (Tensor, optional): Preconditioner matrix for iterative methods, or an
             `AmgXSolver` to reuse for method='amgx'. Defaults to None.
         x0 (Tensor, optional): Initial guess for iterative solvers. Defaults to None.
