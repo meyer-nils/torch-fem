@@ -4,7 +4,7 @@ icon: lucide/gauge
 
 # Performance
 
-Scaling behavior of *torch-fem* on three benchmark problems across several machines. The plotted time is the total of three phases, each of which is recorded separately in the [result files](https://github.com/meyer-nils/torch-fem/tree/main/benchmarks/results):
+Scaling behavior of *torch-fem* on four benchmark problems across several machines. The plotted time is the total of three phases, each of which is recorded separately in the [result files](https://github.com/meyer-nils/torch-fem/tree/main/benchmarks/results):
 
 1. **Setup:** mostly computing the sparsity pattern.
 
@@ -42,6 +42,21 @@ A quasi-2D slab on $[0,2] \times [0,1]$, one layer of cubic hexahedra deep and $
 ![Peak RAM scaling](images/benchmark/thermal_ram_light.png#only-light)
 ![Peak RAM scaling](images/benchmark/thermal_ram_dark.png#only-dark)
 
+## SIMP cantilever
+
+<figure markdown="span">
+![SIMP cantilever, density field on the deflected beam](images/benchmark/topopt_model_light.png#only-light){ width="420" }
+![SIMP cantilever, density field on the deflected beam](images/benchmark/topopt_model_dark.png#only-dark){ width="420" }
+</figure>
+
+A cantilever on $[0,2] \times [0,1] \times [0,1]$ of $2N \times N \times N$ cubic hexahedra, carrying SIMP-penalized stiffness $E(\rho) = E_\text{min} + (E_\text{max} - E_\text{min})\rho^3$ at $E_\text{max} = 70{,}000$. It is clamped at $x = 0$ and pulled down by a uniform traction at $x = 2$; the backward pass is the adjoint sensitivity of the compliance $C = \mathbf{F}^\top \mathbf{u}$ with respect to the per-element densities. Those are random, $\rho \sim \mathcal{N}(0.5, 0.3)$ clipped to $[0.05, 0.95]$, which spreads element stiffness over a factor of 762 and roughly doubles the iteration count of the preconditioned solver. This mirrors the *structural-mesh* problem of the [mosaic benchmark suite](https://github.com/pasteurlabs/mosaic) and reproduces its published compliances to a relative error of $10^{-7}$.
+
+![Total time scaling](images/benchmark/topopt_timing_light.png#only-light)
+![Total time scaling](images/benchmark/topopt_timing_dark.png#only-dark)
+
+![Peak RAM scaling](images/benchmark/topopt_ram_light.png#only-light)
+![Peak RAM scaling](images/benchmark/topopt_ram_dark.png#only-dark)
+
 ## Neo-Hookean stretch
 
 <figure markdown="span">
@@ -72,6 +87,9 @@ python benchmarks/run.py -problem cube -device cuda --label rtx5090_cuda --hardw
 
 # Thermal benchmark
 python benchmarks/run.py -problem thermal --label m1_pro_cpu --hardware "Apple M1 Pro"
+
+# SIMP cantilever benchmark
+python benchmarks/run.py -problem topopt --label m1_pro_cpu --hardware "Apple M1 Pro"
 
 ```
 

@@ -1,0 +1,55 @@
+{
+  "hardware": "Apple M1 Pro",
+  "device": "cpu",
+  "python": "3.10.13",
+  "libraries": "SciPy 1.15.3, PyTorch 2.13.0",
+  "dtype": "float64",
+  "problem": "structural_cantilever_simp",
+  "rows": [
+    {
+      "N": 20,
+      "dofs": 54243,
+      "setup_s": 0.4102,
+      "fwd_s": 2.1018,
+      "bwd_s": 1.0842,
+      "peak_ram_mb": 1227.5,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 30,
+      "dofs": 175863,
+      "setup_s": 1.4136,
+      "fwd_s": 6.9904,
+      "bwd_s": 2.8354,
+      "peak_ram_mb": 2155.6,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 40,
+      "dofs": 408483,
+      "setup_s": 3.4388,
+      "fwd_s": 17.4698,
+      "bwd_s": 6.7582,
+      "peak_ram_mb": 3760.6,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 50,
+      "dofs": 788103,
+      "setup_s": 7.0257,
+      "fwd_s": 37.0459,
+      "bwd_s": 13.3895,
+      "peak_ram_mb": 5305.7,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 60,
+      "dofs": 1350723,
+      "setup_s": 12.765,
+      "fwd_s": 66.556,
+      "bwd_s": 25.0554,
+      "peak_ram_mb": 8042.1,
+      "peak_vram_mb": null
+    }
+  ]
+}
