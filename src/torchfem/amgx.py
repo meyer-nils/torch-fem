@@ -171,6 +171,17 @@ def _initialize() -> None:
     _initialized = True
 
 
+def _free_pool() -> None:
+    """Hand CuPy's cached blocks back to the driver, for AmgX to allocate from.
+
+    Converting to nodal blocks is transient but leaves the pool holding a few
+    GB on a large system, which AmgX then cannot use for its hierarchy.
+    """
+    import cupy
+
+    cupy.get_default_memory_pool().free_all_blocks()
+
+
 def _check(lib: C.CDLL, rc: int) -> None:
     if rc == _AMGX_RC_OK:
         return
@@ -243,6 +254,8 @@ class AmgXSolver:
                 None,
             ),
         )
+        del indptr, indices, data
+        _free_pool()
         _check(lib, lib.AMGX_solver_setup(self._slv, self._mtx))
 
     def resetup(self, A_cp: Any) -> None:
@@ -255,6 +268,8 @@ class AmgXSolver:
                 self._mtx, self.n_rows, n_blocks, data.data.ptr, None
             ),
         )
+        del data
+        _free_pool()
         _check(lib, lib.AMGX_solver_resetup(self._slv, self._mtx))
 
     def _blocks(self, A_cp: Any) -> tuple[Any, Any, Any, int]:
