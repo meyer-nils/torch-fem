@@ -1,0 +1,55 @@
+{
+  "hardware": "Apple M1 Pro",
+  "device": "cpu",
+  "python": "3.10.13",
+  "libraries": "SciPy 1.15.3, PyTorch 2.13.0",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 25,
+      "dofs": 9375,
+      "setup_s": 0.0882,
+      "fwd_s": 11.6085,
+      "bwd_s": 2.6963,
+      "peak_ram_mb": 1341.1,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 35,
+      "dofs": 18375,
+      "setup_s": 0.1177,
+      "fwd_s": 20.445,
+      "bwd_s": 4.8632,
+      "peak_ram_mb": 1943.6,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 45,
+      "dofs": 30375,
+      "setup_s": 0.2005,
+      "fwd_s": 35.3952,
+      "bwd_s": 8.407,
+      "peak_ram_mb": 2823.0,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 55,
+      "dofs": 45375,
+      "setup_s": 0.2929,
+      "fwd_s": 46.637,
+      "bwd_s": 11.6509,
+      "peak_ram_mb": 3471.2,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 65,
+      "dofs": 63375,
+      "setup_s": 0.4234,
+      "fwd_s": 66.0401,
+      "bwd_s": 16.8443,
+      "peak_ram_mb": 4489.6,
+      "peak_vram_mb": null
+    }
+  ]
+}

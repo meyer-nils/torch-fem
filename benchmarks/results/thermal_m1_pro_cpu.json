@@ -1,0 +1,46 @@
+{
+  "hardware": "Apple M1 Pro",
+  "device": "cpu",
+  "python": "3.10.13",
+  "libraries": "SciPy 1.15.3, PyTorch 2.13.0",
+  "dtype": "float64",
+  "problem": "thermal_slab_simp",
+  "rows": [
+    {
+      "N": 128,
+      "dofs": 16770,
+      "setup_s": 0.0958,
+      "fwd_s": 0.1819,
+      "bwd_s": 0.344,
+      "peak_ram_mb": 517.9,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 256,
+      "dofs": 66306,
+      "setup_s": 0.1035,
+      "fwd_s": 0.4098,
+      "bwd_s": 0.3033,
+      "peak_ram_mb": 900.2,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 512,
+      "dofs": 263682,
+      "setup_s": 0.4091,
+      "fwd_s": 1.5481,
+      "bwd_s": 0.6687,
+      "peak_ram_mb": 1748.7,
+      "peak_vram_mb": null
+    },
+    {
+      "N": 1024,
+      "dofs": 1051650,
+      "setup_s": 1.7585,
+      "fwd_s": 7.2383,
+      "bwd_s": 2.1669,
+      "peak_ram_mb": 3911.1,
+      "peak_vram_mb": null
+    }
+  ]
+}
