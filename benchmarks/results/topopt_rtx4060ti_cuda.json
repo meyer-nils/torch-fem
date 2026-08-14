@@ -9,41 +9,51 @@
     {
       "N": 20,
       "dofs": 54243,
-      "setup_s": 0.1763,
-      "fwd_s": 1.029,
-      "bwd_s": 0.9641,
+      "setup_s": 0.1801,
+      "fwd_s": 1.068,
+      "bwd_s": 1.0517,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1208.0,
+      "peak_vram_mb": 824.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 30,
       "dofs": 175863,
-      "setup_s": 0.2067,
-      "fwd_s": 2.1333,
-      "bwd_s": 1.7222,
+      "setup_s": 0.2219,
+      "fwd_s": 2.1931,
+      "bwd_s": 1.7238,
       "peak_ram_mb": null,
-      "peak_vram_mb": 2948.0,
+      "peak_vram_mb": 2122.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 40,
       "dofs": 408483,
-      "setup_s": 0.2942,
-      "fwd_s": 3.8156,
-      "bwd_s": 2.784,
+      "setup_s": 0.2957,
+      "fwd_s": 3.9417,
+      "bwd_s": 2.7155,
       "peak_ram_mb": null,
-      "peak_vram_mb": 6676.0,
+      "peak_vram_mb": 4530.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 50,
       "dofs": 788103,
-      "setup_s": 0.4244,
-      "fwd_s": 8.0763,
-      "bwd_s": 6.2581,
+      "setup_s": 0.4312,
+      "fwd_s": 8.0329,
+      "bwd_s": 5.707,
       "peak_ram_mb": null,
-      "peak_vram_mb": 14751.4,
+      "peak_vram_mb": 8582.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 60,
+      "dofs": 1350723,
+      "setup_s": 0.6318,
+      "fwd_s": 12.8141,
+      "bwd_s": 8.8169,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 14940.9,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     }
   ]
