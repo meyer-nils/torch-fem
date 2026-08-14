@@ -161,7 +161,7 @@ def profile_and_capture_cpu(
             peak_ram = max(peak_ram, ram)
         except psutil.NoSuchProcess:
             break
-        time.sleep(0.05)
+        time.sleep(0.005)
 
     stdout_data, _ = proc.communicate()
     tags = _parse_tags(stdout_data)
