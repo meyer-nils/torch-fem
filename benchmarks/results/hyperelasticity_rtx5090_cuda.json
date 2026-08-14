@@ -1,0 +1,100 @@
+{
+  "hardware": "RTX 5090",
+  "device": "cuda",
+  "python": "3.13.12",
+  "libraries": "CuPy 14.1.1, CUDA 12.9",
+  "dtype": "float64",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 25,
+      "dofs": 9375,
+      "setup_s": 0.1584,
+      "fwd_s": 7.5903,
+      "bwd_s": 2.4968,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 816.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 35,
+      "dofs": 18375,
+      "setup_s": 0.1568,
+      "fwd_s": 8.585,
+      "bwd_s": 3.1811,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1514.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 45,
+      "dofs": 30375,
+      "setup_s": 0.1495,
+      "fwd_s": 10.5362,
+      "bwd_s": 4.0339,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 2480.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 55,
+      "dofs": 45375,
+      "setup_s": 0.1576,
+      "fwd_s": 13.055,
+      "bwd_s": 4.8338,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 3588.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 65,
+      "dofs": 63375,
+      "setup_s": 0.1601,
+      "fwd_s": 15.6564,
+      "bwd_s": 5.6559,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 4946.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 75,
+      "dofs": 84375,
+      "setup_s": 0.1672,
+      "fwd_s": 19.1932,
+      "bwd_s": 6.7619,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 6528.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 85,
+      "dofs": 108375,
+      "setup_s": 0.1569,
+      "fwd_s": 22.3383,
+      "bwd_s": 7.8715,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 8370.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 95,
+      "dofs": 135375,
+      "setup_s": 0.1596,
+      "fwd_s": 26.0153,
+      "bwd_s": 8.7808,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 10342.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    },
+    {
+      "N": 105,
+      "dofs": 165375,
+      "setup_s": 0.1782,
+      "fwd_s": 30.2276,
+      "bwd_s": 10.4224,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 12720.0,
+      "solver": "cg | iterative | jacobi | cupy | cuda"
+    }
+  ]
+}
