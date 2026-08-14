@@ -107,14 +107,19 @@ class FEM(ABC):
             torch.int32
         )
         del diag
+        # int64, the index dtype of a sparse tensor, so that `assemble_matrix`
+        # shares this storage instead of widening a copy on every assembly
         self.glob_idx = torch.stack(
             [
                 torch.div(glob_idx_packed, 2**32, rounding_mode="floor"),
                 glob_idx_packed % 2**32,
             ]
-        ).to(torch.int32)
+        )
         del glob_idx_packed
         self.idx = self.idx.to(torch.int32)
+        if self.nodes.is_cuda:
+            # The packed keys leave GBs in Torch's pool that assembly cannot reuse
+            torch.cuda.empty_cache()
 
         # Vectorize material
         self.material: Material | None

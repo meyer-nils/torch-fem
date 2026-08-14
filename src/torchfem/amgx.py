@@ -181,14 +181,18 @@ def _initialize() -> None:
 
 
 def _free_pool() -> None:
-    """Hand CuPy's cached blocks back to the driver, for AmgX to allocate from.
+    """Hand both cached pools back to the driver, for AmgX to allocate from.
 
-    Converting to nodal blocks is transient but leaves the pool holding a few
-    GB on a large system, which AmgX then cannot use for its hierarchy.
+    Torch and CuPy each keep freed blocks in a private pool that AmgX cannot
+    use for its hierarchy. Assembly leaves Torch holding the element tangents
+    and converting to nodal blocks leaves CuPy holding its index arrays, a few
+    GB each on a large system, so both are released either side of the upload.
     """
     import cupy
+    import torch
 
     cupy.get_default_memory_pool().free_all_blocks()
+    torch.cuda.empty_cache()
 
 
 def _check(rc: int) -> None:
@@ -246,6 +250,7 @@ class AmgXSolver:
 
     def setup(self, A_cp: Any) -> None:
         """Upload `A_cp` and build the AMG hierarchy from scratch."""
+        _free_pool()
         indptr, indices, data, n_blocks = self._blocks(A_cp)
         _check(
             _lib.AMGX_matrix_upload_all(
@@ -291,6 +296,7 @@ class AmgXSolver:
             self.setup(A_cp)
             return
 
+        _free_pool()
         _, _, data, n_blocks = self._blocks(A_cp)
         _check(
             _lib.AMGX_matrix_replace_coefficients(
@@ -319,15 +325,21 @@ class AmgXSolver:
         # about 46k block rows, so it is int64. Both it and the scatter index are
         # built in place and dropped as soon as they are spent: at tens of
         # millions of entries every spare copy costs hundreds of megabytes.
-        key = (coo.row // bs).astype(cupy.int64)
+        key = coo.row.astype(cupy.int64)
+        key //= bs
         key *= self.n_rows
         key += coo.col // bs
         uniq: Any = cupy.unique(key)
         idx = cupy.searchsorted(uniq, key)
         del key
+        # The offset inside the block is built in int32 beside the spent key,
+        # rather than widened and scaled into int64 temporaries of its own.
+        sub = coo.row % bs
+        sub *= bs
+        sub += coo.col % bs
         idx *= bs * bs
-        idx += (coo.row % bs).astype(idx.dtype) * bs
-        idx += coo.col % bs
+        idx += sub
+        del sub
         values = cupy.zeros(len(uniq) * bs * bs)
         values[idx] = coo.data
         del idx

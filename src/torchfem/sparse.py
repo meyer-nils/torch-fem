@@ -353,16 +353,30 @@ def _solve_gpu(
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
 
-    # Copy tensors to CuPy
-    A = A.coalesce()
+    # Torch's pool holds GBs of freed blocks that CuPy cannot allocate from
+    cupy.get_default_memory_pool().free_all_blocks()
+    torch.cuda.empty_cache()
+
+    # Copy tensors to CuPy. An adjoint solve passes `K.T`, whose entries are
+    # sorted by column: reading them as `K` and letting cuSPARSE flip that back
+    # costs about half of what coalescing the transpose does. Anything else
+    # uncoalesced, such as a sum of two matrices, is coalesced as before.
+    flip = False
+    if not A.is_coalesced():
+        row, col = A._indices()
+        ascending = (col[1:] == col[:-1]) & (row[1:] > row[:-1])
+        flip = bool(((col[1:] > col[:-1]) | ascending).all())
+        if not flip:
+            A = A.coalesce()
     idx = A._indices()
-    data = cupy.asarray(A._values())
-    indices = cupy.asarray(idx[1]).astype(cupy.int32)
-    counts = cupy.bincount(cupy.asarray(idx[0]), minlength=shape[0])
+    row, col = (idx[1], idx[0]) if flip else (idx[0], idx[1])
+    indices = cupy.asarray(col).astype(cupy.int32)
     indptr = cupy.zeros(shape[0] + 1, dtype=cupy.int32)
-    indptr[1:] = cupy.cumsum(counts)
-    A_cp = cupy_csr_matrix((data, indices, indptr), shape=shape)
+    indptr[1:] = cupy.cumsum(cupy.bincount(cupy.asarray(row), minlength=shape[0]))
+    A_cp = cupy_csr_matrix((cupy.asarray(A._values()), indices, indptr), shape=shape)
     A_cp.has_sorted_indices = True
+    if flip:
+        A_cp = A_cp.T.tocsr()
     b_cp = cupy.asarray(b.data)
 
     if x0 is not None:
