@@ -69,7 +69,7 @@ PROBLEM = Problem(
     id="structural_cantilever_simp",
     title="SIMP cantilever benchmark",
     plot_prefix="topopt",
-    default_N=[20, 30, 40, 50, 60],
+    default_N=[12, 16, 20, 30, 40, 50, 60],
     setup=setup,
 )
 
