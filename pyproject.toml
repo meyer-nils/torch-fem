@@ -105,6 +105,7 @@ markers = [
 
 [tool.coverage.run]
 source = ["torchfem"]
+omit = ["*/amgx.py"]
 
 [tool.coverage.report]
 # Abstract stubs and the optional GPU/Pardiso backends cannot run in CI.
