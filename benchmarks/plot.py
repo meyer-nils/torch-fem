@@ -20,6 +20,15 @@ PROBLEM_META = {
 # Phase breakdown of a run, in the order they are stacked.
 PHASES = (("setup_s", "Setup"), ("fwd_s", "Forward"), ("bwd_s", "Backward"))
 
+# Common device memory sizes (GB), marked in the memory plots for orientation.
+MEMORY_GUIDES = (8, 16, 24, 32)
+
+# Shared y range (GB) of the memory plots, so that suites compare directly.
+MEMORY_YLIM = (0.1, 36)
+
+# Shared degrees-of-freedom range of every plot.
+DOFS_XLIM = (9_000, 2_000_000)
+
 
 def load_results() -> dict[str, list[dict]]:
     """Load all result JSONs, grouped by problem id."""
@@ -97,6 +106,7 @@ def _setup_ax(ax, title: str, ylabel: str) -> None:
     ax.set_title(title)
     ax.set_xlabel("Degrees of freedom")
     ax.set_ylabel(ylabel)
+    ax.set_xlim(*DOFS_XLIM)
     for axis, (lo, hi) in ((ax.xaxis, ax.get_xlim()), (ax.yaxis, ax.get_ylim())):
         # An axis holding fewer than two decades labels its minor ticks as well,
         # so that a narrow range never comes out with a single label.
@@ -109,6 +119,22 @@ def _setup_ax(ax, title: str, ylabel: str) -> None:
     handles, labels = ax.get_legend_handles_labels()
     if handles:
         ax.legend(fontsize=7)
+
+
+def _memory_guides(ax) -> None:
+    """Mark common device memory sizes and fix the y range to MEMORY_YLIM."""
+    ax.set_ylim(*MEMORY_YLIM)
+    for gb in MEMORY_GUIDES:
+        ax.axhline(gb, color="gray", linewidth=1.8, alpha=0.7, zorder=1)
+        ax.annotate(
+            f"{gb} GB",
+            xy=(0.99, gb),
+            xycoords=("axes fraction", "data"),
+            ha="right",
+            va="top",
+            fontsize=6,
+            color="gray",
+        )
 
 
 def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
@@ -131,6 +157,7 @@ def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
                 label=lbl,
                 color=colors[lbl],
             )
+        _memory_guides(ax)
         _setup_ax(ax, "Peak RAM (CPU)", "Peak RAM (GB)")
 
     if gpu_ds:
@@ -144,6 +171,7 @@ def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
             x, y = zip(*pairs)
             lbl = _label(ds)
             ax.loglog(x, y, marker="o", label=lbl, color=colors[lbl])
+        _memory_guides(ax)
         _setup_ax(ax, "Peak VRAM (GPU)", "Peak VRAM (GB)")
 
     fig.suptitle(f"{suite} — memory", fontweight="bold")
