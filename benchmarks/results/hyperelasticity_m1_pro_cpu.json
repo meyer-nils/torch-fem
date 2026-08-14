@@ -9,52 +9,52 @@
     {
       "N": 25,
       "dofs": 9375,
-      "setup_s": 0.0625,
-      "fwd_s": 11.7412,
-      "bwd_s": 2.6957,
-      "peak_ram_mb": 1398.3,
+      "setup_s": 0.0616,
+      "fwd_s": 12.2352,
+      "bwd_s": 2.8079,
+      "peak_ram_mb": 1307.8,
       "peak_vram_mb": null,
-      "solver": "spsolve | direct | scipy | cpu"
+      "solver": "cg | iterative | AMG | scipy | cpu"
     },
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.1221,
-      "fwd_s": 20.5309,
-      "bwd_s": 4.8503,
-      "peak_ram_mb": 2452.5,
+      "setup_s": 0.1196,
+      "fwd_s": 22.0429,
+      "bwd_s": 5.2214,
+      "peak_ram_mb": 2295.4,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | AMG | scipy | cpu"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.2038,
-      "fwd_s": 34.6549,
-      "bwd_s": 8.2509,
-      "peak_ram_mb": 3623.7,
+      "setup_s": 0.1932,
+      "fwd_s": 34.3813,
+      "bwd_s": 8.1311,
+      "peak_ram_mb": 3332.1,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | AMG | scipy | cpu"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.2981,
-      "fwd_s": 49.3342,
-      "bwd_s": 12.1028,
-      "peak_ram_mb": 5309.2,
+      "setup_s": 0.2963,
+      "fwd_s": 46.0839,
+      "bwd_s": 10.7648,
+      "peak_ram_mb": 4839.0,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | AMG | scipy | cpu"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.4408,
-      "fwd_s": 71.5037,
-      "bwd_s": 17.2343,
-      "peak_ram_mb": 6337.8,
+      "setup_s": 0.4244,
+      "fwd_s": 70.1993,
+      "bwd_s": 17.4855,
+      "peak_ram_mb": 5084.3,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | AMG | scipy | cpu"
     }
   ]
 }
