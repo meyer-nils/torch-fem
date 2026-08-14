@@ -1,66 +1,80 @@
 {
   "hardware": "Apple M1 Pro",
   "device": "cpu",
-  "python": "3.10",
-  "libraries": "SciPy 1.15.3, Apple Accelerate",
+  "python": "3.10.13",
+  "libraries": "SciPy 1.15.3, PyTorch 2.13.0",
   "dtype": "float64",
   "problem": "cube_hexa_extension",
   "rows": [
     {
       "N": 20,
       "dofs": 24000,
-      "setup_s": 0.14,
-      "fwd_s": 0.74,
-      "bwd_s": 0.35,
-      "peak_ram_mb": 895.6
+      "setup_s": 0.1788,
+      "fwd_s": 0.75,
+      "bwd_s": 0.4043,
+      "peak_ram_mb": 805.9,
+      "peak_vram_mb": null,
+      "solver": "minres · iterative · AMG · scipy · cpu"
     },
     {
       "N": 30,
       "dofs": 81000,
-      "setup_s": 0.52,
-      "fwd_s": 2.73,
-      "bwd_s": 0.84,
-      "peak_ram_mb": 1947.5
+      "setup_s": 0.6531,
+      "fwd_s": 2.8332,
+      "bwd_s": 0.7816,
+      "peak_ram_mb": 1647.7,
+      "peak_vram_mb": null,
+      "solver": "minres · iterative · AMG · scipy · cpu"
     },
     {
       "N": 40,
       "dofs": 192000,
-      "setup_s": 1.23,
-      "fwd_s": 6.53,
-      "bwd_s": 1.57,
-      "peak_ram_mb": 3060.2
+      "setup_s": 1.5254,
+      "fwd_s": 6.044,
+      "bwd_s": 1.3166,
+      "peak_ram_mb": 2718.5,
+      "peak_vram_mb": null,
+      "solver": "minres · iterative · AMG · scipy · cpu"
     },
     {
       "N": 50,
       "dofs": 375000,
-      "setup_s": 2.63,
-      "fwd_s": 13.02,
-      "bwd_s": 3.22,
-      "peak_ram_mb": 4398.7
+      "setup_s": 3.073,
+      "fwd_s": 12.7192,
+      "bwd_s": 2.7425,
+      "peak_ram_mb": 3916.5,
+      "peak_vram_mb": null,
+      "solver": "minres · iterative · AMG · scipy · cpu"
     },
     {
       "N": 60,
       "dofs": 648000,
-      "setup_s": 4.71,
-      "fwd_s": 26.17,
-      "bwd_s": 5.48,
-      "peak_ram_mb": 5789.2
+      "setup_s": 5.4593,
+      "fwd_s": 23.5466,
+      "bwd_s": 4.6713,
+      "peak_ram_mb": 5306.5,
+      "peak_vram_mb": null,
+      "solver": "minres · iterative · AMG · scipy · cpu"
     },
     {
       "N": 70,
       "dofs": 1029000,
-      "setup_s": 9.18,
-      "fwd_s": 46.37,
-      "bwd_s": 9.43,
-      "peak_ram_mb": 7893.5
+      "setup_s": 9.0944,
+      "fwd_s": 40.8715,
+      "bwd_s": 8.0396,
+      "peak_ram_mb": 7094.7,
+      "peak_vram_mb": null,
+      "solver": "minres · iterative · AMG · scipy · cpu"
     },
     {
       "N": 80,
       "dofs": 1536000,
-      "setup_s": 13.9,
-      "fwd_s": 73.41,
-      "bwd_s": 17.95,
-      "peak_ram_mb": 9739.0
+      "setup_s": 13.9117,
+      "fwd_s": 62.9218,
+      "bwd_s": 11.2442,
+      "peak_ram_mb": 10105.9,
+      "peak_vram_mb": null,
+      "solver": "minres · iterative · AMG · scipy · cpu"
     }
   ]
 }

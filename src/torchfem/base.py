@@ -107,14 +107,19 @@ class FEM(ABC):
             torch.int32
         )
         del diag
+        # int64, the index dtype of a sparse tensor, so that `assemble_matrix`
+        # shares this storage instead of widening a copy on every assembly
         self.glob_idx = torch.stack(
             [
                 torch.div(glob_idx_packed, 2**32, rounding_mode="floor"),
                 glob_idx_packed % 2**32,
             ]
-        ).to(torch.int32)
+        )
         del glob_idx_packed
         self.idx = self.idx.to(torch.int32)
+        if self.nodes.is_cuda:
+            # The packed keys leave GBs in Torch's pool that assembly cannot reuse
+            torch.cuda.empty_cache()
 
         # Vectorize material
         self.material: Material | None
@@ -581,7 +586,7 @@ class FEM(ABC):
         growth_factor: float = 1.1,
         max_cutbacks: int = 10,
         verbose: bool = False,
-        method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
+        method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
@@ -1308,7 +1313,7 @@ class Heat(FEM, ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         device: str | None = None,
-        method: Literal["spsolve", "minres", "cg", "pardiso"] | None = None,
+        method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
         aggregate_integration_points: bool = True,
         use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,

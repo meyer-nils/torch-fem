@@ -8,15 +8,24 @@
 - `FEM.integrate_shape_functions(...)` returns the integral of each shape function over its element, and `FEM.volume_scale` the volume per unit element measure.
 - `axes` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` shows labeled coordinate axes, matching the matplotlib plotters.
 - `camera` on `Solid.plot(...)`, `Shell.plot(...)` and `Truss.plot3d(...)` sets the camera to a coordinate plane, "iso", or an explicit position, focal point and view up.
+- `method="amgx"` solves on the GPU with AmgX algebraic multigrid, an optional backend that needs AmgX built from source and pointed at by `AMGX_DLL`. Iterative solves on CUDA use it automatically once it is installed, needing far fewer iterations than the Jacobi preconditioner. It does not converge on an indefinite tangent, where `method="cg"` or `method="minres"` still do.
+- `-method` on `benchmarks/run.py` overrides the linear solver a benchmark problem uses, and every result row now records the backend it actually ran on.
+- A fourth benchmark problem `topopt`, mirroring the *structural-mesh* problem of the mosaic benchmark suite: a SIMP cantilever on a random density field, whose 762-fold stiffness spread conditions the system far worse than the uniform fields of the other problems.
 
 ### Changed
 - GPU support requires CUDA 12 or 13, dropping CUDA 11, whose last CuPy wheel predates the solver signatures used here.
+- `sparse_solve(...)` reuses a preconditioner passed as `M` on the GPU instead of rebuilding Jacobi every call, matching the CPU path, so a Newton loop and its adjoint solve share one Jacobi preconditioner.
 - `solve(...)` accepts increments that fall as well as rise, so a load cycle like `[0, 1, 0]` unloads instead of silently repeating the state at its peak.
 - `integrate_field(...)` is now a contraction of `integrate_shape_functions(...)` and returns the same values as before.
 - `solve(...)` no longer builds an element tangent it discards when evaluating the converged state at the end of each increment, which makes `nlgeom=True` and materials with internal state about 10% faster.
 - The PyVista plots always show the orientation axes in the corner, which a plain `pyvista.Plotter` skips.
 - `Element.plot(...)` writes a transparent light and dark figure to `docs/images/shape_functions/`, `<Element>_light.png` and `<Element>_dark.png`, instead of a single opaque one.
 - In notebooks, the PyVista plots redraw shortly after loading via `plot_utils.show_html(...)`, so vtk.js does not keep the first frame it draws from its own defaults.
+- The `thermal` and `hyperelasticity` benchmarks keep their elements cubic as `N` grows, where a fixed depth used to stretch them into slivers, so both measure problem size rather than element aspect ratio. All published results were re-measured on the new meshes.
+- The `hyperelasticity` benchmark picks its solver automatically instead of pinning `cg`, which selects AmgX on CUDA, and starts at `N=35`: the `N=25` case fell below the size at which `resolve_method` turns iterative, so it ran a direct solve slower than every larger case.
+
+### Fixed
+- `method="amgx"` frees each AMG hierarchy when the solve that built it ends, where every increment, cutback and time step used to leave one on the GPU for the life of the process.
 
 ## Version 0.8.0 - August 3 2026
 

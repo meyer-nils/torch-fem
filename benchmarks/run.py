@@ -1,8 +1,10 @@
 """Run benchmark problems and save results to benchmarks/results/<problem>_<label>.json.
 
 Usage:
-    python benchmarks/run.py [-problem cube|thermal|hyperelasticity|all] [-N 10 20 ...]
-                             [-device cpu|cuda] [--label NAME] [--hardware DESC]
+    python benchmarks/run.py [-problem cube|thermal|topopt|hyperelasticity|all]
+                             [-N 10 20 ...]
+                             [-device cpu|cuda] [-method NAME]
+                             [--label NAME] [--hardware DESC]
 """
 
 import argparse
@@ -15,16 +17,28 @@ import cubes
 import hyperelasticity
 import scipy
 import thermal
+import topopt
 import torch
 from utils import profile_and_capture_cpu, profile_and_capture_gpu
 
+from torchfem.sparse import describe_method
+
 # name -> problem module; each module defines a `PROBLEM` descriptor and is
 # runnable as the child process that solves one (N, device) case.
-PROBLEMS = {"cube": cubes, "thermal": thermal, "hyperelasticity": hyperelasticity}
+PROBLEMS = {
+    "cube": cubes,
+    "thermal": thermal,
+    "topopt": topopt,
+    "hyperelasticity": hyperelasticity,
+}
 
 
-def run_problem(name: str, N_values: list[int], device: str) -> list[dict]:
+def run_problem(
+    name: str, N_values: list[int], device: str, method: str | None = None
+) -> list[dict]:
     use_cuda = device == "cuda"
+    problem = PROBLEMS[name].PROBLEM
+    method = method or problem.method
     script = PROBLEMS[name].__file__
     header_mem = " Peak VRAM" if use_cuda else "  Peak RAM"
     rows = []
@@ -34,6 +48,8 @@ def run_problem(name: str, N_values: list[int], device: str) -> list[dict]:
 
     for N in N_values:
         cmd = [sys.executable, script, "-N", str(N), "-device", device]
+        if method is not None:
+            cmd += ["-method", method]
         profiler = profile_and_capture_gpu if use_cuda else profile_and_capture_cpu
         mem, tags = profiler(cmd)
         dofs = int(tags["DOFS"])
@@ -55,6 +71,7 @@ def run_problem(name: str, N_values: list[int], device: str) -> list[dict]:
                 "bwd_s": round(bwd_t, 4),
                 "peak_ram_mb": round(peak_mem, 1) if not use_cuda else None,
                 "peak_vram_mb": round(peak_mem, 1) if use_cuda else None,
+                "solver": describe_method(dofs, device, method),
             }
         )
     return rows
@@ -67,6 +84,12 @@ def main():
     parser.add_argument("-problem", type=str, default="all", choices=[*PROBLEMS, "all"])
     parser.add_argument("-N", type=int, nargs="+", default=None)
     parser.add_argument("-device", type=str, default="cpu")
+    parser.add_argument(
+        "-method",
+        type=str,
+        default=None,
+        help="Linear solver backend, overriding the problem default.",
+    )
     parser.add_argument("--label", type=str, default=None)
     parser.add_argument("--hardware", type=str, default=None)
     args = parser.parse_args()
@@ -95,7 +118,7 @@ def main():
         problem = PROBLEMS[name].PROBLEM
         N_values = args.N or problem.default_N
         out_path = results_dir / f"{name}_{label}.json"
-        rows = run_problem(name, N_values, args.device)
+        rows = run_problem(name, N_values, args.device, args.method)
         payload = {
             "hardware": hardware,
             "device": args.device,

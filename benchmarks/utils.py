@@ -22,8 +22,6 @@ from dataclasses import dataclass
 import psutil
 import torch
 
-_TAG_RE = re.compile(r"(\w+):(\d+(?:\.\d+)?)")
-
 
 @dataclass
 class Case:
@@ -42,7 +40,8 @@ class Problem:
     title: str  # plot suite title
     plot_prefix: str  # image filename prefix in docs/images/benchmark
     default_N: list[int]
-    setup: Callable[[int], Case]
+    setup: Callable[[int, str | None], Case]
+    method: str | None = None  # linear solver, None to let the size decide
 
 
 def run_case(problem: Problem) -> None:
@@ -52,6 +51,9 @@ def run_case(problem: Problem) -> None:
         "-N", type=int, help="Problem size", default=problem.default_N[0]
     )
     parser.add_argument("-device", type=str, help="Torch default device", default="cpu")
+    parser.add_argument(
+        "-method", type=str, help="Linear solver backend", default=problem.method
+    )
     args = parser.parse_args()
 
     torch.set_default_dtype(torch.float64)
@@ -62,22 +64,22 @@ def run_case(problem: Problem) -> None:
     if monitor is not None:
         monitor.start()
 
-    print(f"START:{time.time()}")
+    print(f"\nSTART:{time.time()}", flush=True)
 
-    case = problem.setup(args.N)
-    print(f"DOFS:{case.dofs}")
-    print(f"SETUP_DONE:{time.time()}")
+    case = problem.setup(args.N, args.method)
+    print(f"\nDOFS:{case.dofs}", flush=True)
+    print(f"\nSETUP_DONE:{time.time()}", flush=True)
 
     case.forward()
-    print(f"FWD_DONE:{time.time()}")
+    print(f"\nFWD_DONE:{time.time()}", flush=True)
 
     case.backward()
-    print(f"BWD_DONE:{time.time()}")
+    print(f"\nBWD_DONE:{time.time()}", flush=True)
 
     if monitor is not None:
         monitor.stop()
         for tag, val in monitor.report().items():
-            print(f"{tag}:{val}")
+            print(f"\n{tag}:{val}", flush=True)
 
 
 class VramMonitor:
@@ -138,7 +140,9 @@ class VramMonitor:
 
 
 def _parse_tags(stdout_data: str) -> dict[str, float]:
-    return {tag: float(val) for tag, val in _TAG_RE.findall(stdout_data)}
+    # Anchored, so text a library leaves on the line cannot be read as a tag.
+    pairs = re.findall(r"^(\w+):(\d+(?:\.\d+)?)", stdout_data, re.M)
+    return {tag: float(val) for tag, val in pairs}
 
 
 def profile_and_capture_cpu(
@@ -157,7 +161,7 @@ def profile_and_capture_cpu(
             peak_ram = max(peak_ram, ram)
         except psutil.NoSuchProcess:
             break
-        time.sleep(0.05)
+        time.sleep(0.005)
 
     stdout_data, _ = proc.communicate()
     tags = _parse_tags(stdout_data)

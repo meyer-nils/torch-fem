@@ -20,6 +20,18 @@ PROBLEM_META = {
 # Phase breakdown of a run, in the order they are stacked.
 PHASES = (("setup_s", "Setup"), ("fwd_s", "Forward"), ("bwd_s", "Backward"))
 
+# Common device memory sizes (GB), marked in the memory plots for orientation.
+MEMORY_GUIDES = (8, 16, 24, 32)
+
+# Shared y range (GB) of the memory plots, so that suites compare directly.
+MEMORY_YLIM = (0.1, 36)
+
+# Shared degrees-of-freedom range of every plot.
+DOFS_XLIM = (9_000, 2_000_000)
+
+# Shared time range (s) of the timing plots, spanning every suite.
+TIMING_YLIM = (0.3, 200)
+
 
 def load_results() -> dict[str, list[dict]]:
     """Load all result JSONs, grouped by problem id."""
@@ -61,6 +73,7 @@ def plot_timing(
                 label=lbl,
                 color=colors[lbl],
             )
+        ax.set_ylim(*TIMING_YLIM)
         _setup_ax(ax, f"{title} (CPU)", "Time (s)")
 
     if gpu_ds:
@@ -74,6 +87,7 @@ def plot_timing(
                 label=lbl,
                 color=colors[lbl],
             )
+        ax.set_ylim(*TIMING_YLIM)
         _setup_ax(ax, f"{title} (GPU)", "Time (s)")
 
     fig.suptitle(f"{suite} — {title.lower()}", fontweight="bold")
@@ -97,18 +111,32 @@ def _setup_ax(ax, title: str, ylabel: str) -> None:
     ax.set_title(title)
     ax.set_xlabel("Degrees of freedom")
     ax.set_ylabel(ylabel)
-    for axis, (lo, hi) in ((ax.xaxis, ax.get_xlim()), (ax.yaxis, ax.get_ylim())):
-        # An axis holding fewer than two decades labels its minor ticks as well,
-        # so that a narrow range never comes out with a single label.
-        decades = sum(lo <= t <= hi for t in axis.get_majorticklocs())
-        axis.set_major_formatter(PlainLogFormatter())
-        axis.set_minor_formatter(
-            PlainLogFormatter(minor_thresholds=(1, 0.4) if decades > 1 else (2, 0.4))
-        )
-    ax.grid(True, which="both", linestyle="--", alpha=0.4)
+    ax.set_xlim(*DOFS_XLIM)
+    ax.xaxis.set_major_formatter(PlainLogFormatter())
+    ax.yaxis.set_major_formatter(PlainLogFormatter())
+    ax.grid(True, which="major", linestyle="-", alpha=0.25)
+    ax.grid(True, which="minor", linestyle="--", alpha=0.25)
     handles, labels = ax.get_legend_handles_labels()
     if handles:
         ax.legend(fontsize=7)
+
+
+def _memory_guides(ax) -> None:
+    """Mark common device memory sizes and fix the y range to MEMORY_YLIM."""
+    ax.set_ylim(*MEMORY_YLIM)
+    for gb in MEMORY_GUIDES:
+        ax.axhline(gb, color="gray", linewidth=1.8, alpha=0.7, zorder=1)
+        ax.annotate(
+            f"{gb} GB",
+            xy=(0.99, gb),
+            xycoords=("axes fraction", "data"),
+            xytext=(0, -1.5),
+            textcoords="offset points",
+            ha="right",
+            va="top",
+            fontsize=6,
+            color="gray",
+        )
 
 
 def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
@@ -131,6 +159,7 @@ def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
                 label=lbl,
                 color=colors[lbl],
             )
+        _memory_guides(ax)
         _setup_ax(ax, "Peak RAM (CPU)", "Peak RAM (GB)")
 
     if gpu_ds:
@@ -144,6 +173,7 @@ def plot_ram(datasets: list[dict], out_path: Path, suite: str) -> None:
             x, y = zip(*pairs)
             lbl = _label(ds)
             ax.loglog(x, y, marker="o", label=lbl, color=colors[lbl])
+        _memory_guides(ax)
         _setup_ax(ax, "Peak VRAM (GPU)", "Peak VRAM (GB)")
 
     fig.suptitle(f"{suite} — memory", fontweight="bold")
