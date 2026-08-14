@@ -89,15 +89,15 @@ def describe_method(n_dofs: int, device: str, method: str | None) -> str:
     resolved = resolve_method(n_dofs, device, method)
     kind = "direct"
     if resolved in ("minres", "cg"):
-        kind = "iterative | " + ("jacobi" if device == "cuda" else "AMG")
+        kind = "iterative · " + ("jacobi" if device == "cuda" else "AMG")
     elif resolved == "amgx":
-        kind = "iterative | AMG"
+        kind = "iterative · AMG"
     library = "cupy" if device == "cuda" else "scipy"
     if resolved == "pardiso":
         library = "pypardiso"
     elif resolved == "amgx":
         library = "amgx"
-    return f"{resolved} | {kind} | {library} | {device}"
+    return f"{resolved} · {kind} · {library} · {device}"
 
 
 class CachedSolve:

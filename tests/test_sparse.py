@@ -323,6 +323,6 @@ class TestResolveMethod:
         assert resolve_method(10, "cuda", None) == "spsolve"
 
     def test_the_description_names_preconditioner_library_and_device(self):
-        assert describe_method(10, "cpu", "cg") == "cg | iterative | AMG | scipy | cpu"
+        assert describe_method(10, "cpu", "cg") == "cg · iterative · AMG · scipy · cpu"
         assert "jacobi" in describe_method(10, "cuda", "cg")
         assert "cupy" in describe_method(10, "cuda", "spsolve")

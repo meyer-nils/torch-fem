@@ -16,8 +16,8 @@ REFRESH = 0.05
 def _rule(title: str = "") -> str:
     """Horizontal rule of `WIDTH` characters, optionally carrying a title."""
     if not title:
-        return "-" * WIDTH
-    return f"--- {title} " + "-" * (WIDTH - len(title) - 5)
+        return "─" * WIDTH
+    return f"─── {title} " + "─" * (WIDTH - len(title) - 5)
 
 
 def _plural(n: int, unit: str) -> str:
@@ -64,7 +64,7 @@ def machine(device: str = "cpu") -> str:
         parts.append(memory)
     if device == "cuda" and torch.cuda.is_available():
         parts.append(torch.cuda.get_device_name())
-    return " | ".join(parts)
+    return " · ".join(parts)
 
 
 def _display_handle():
@@ -166,23 +166,23 @@ class SolveReport:
         """Write the summary below the table."""
         self.foot = [
             _rule(),
-            f" converged | {_plural(len(self.rows), self.unit)}"
-            f" | {_plural(self.total, 'iterations')}"
-            f" | {time.perf_counter() - self.t0:.2f} s",
+            f" converged · {_plural(len(self.rows), self.unit)}"
+            f" · {_plural(self.total, 'iterations')}"
+            f" · {time.perf_counter() - self.t0:.2f} s",
         ]
         self._emit(self.foot)
 
     def _row(self) -> str:
         """One table row, with the substep flags in the right margin."""
-        flags = ["..."] if self.running else []
-        flags += [f"v{self.cutbacks}"] if self.cutbacks else []
-        flags += [f"^{self.growths}"] if self.growths else []
+        flags = ["…"] if self.running else []
+        flags += [f"↓{self.cutbacks}"] if self.cutbacks else []
+        flags += [f"↑{self.growths}"] if self.growths else []
         row = COLUMNS.format(
             self.index,
             f"{self.value:.4g}",
             self.steps,
             self.iters,
-            f"{self.res:.2e}" if self.res is not None else "-",
+            f"{self.res:.2e}" if self.res is not None else "—",
             f"{time.perf_counter() - self.t:.2f} s",
         )
         return f"{row}  {' '.join(flags)}".rstrip()

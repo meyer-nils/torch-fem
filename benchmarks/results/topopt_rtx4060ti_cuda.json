@@ -14,7 +14,7 @@
       "bwd_s": 0.7711,
       "peak_ram_mb": null,
       "peak_vram_mb": 454.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "amgx · iterative · AMG · amgx · cuda"
     },
     {
       "N": 16,
@@ -24,7 +24,7 @@
       "bwd_s": 0.9755,
       "peak_ram_mb": null,
       "peak_vram_mb": 640.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "amgx · iterative · AMG · amgx · cuda"
     },
     {
       "N": 20,
@@ -34,7 +34,7 @@
       "bwd_s": 0.9963,
       "peak_ram_mb": null,
       "peak_vram_mb": 916.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "amgx · iterative · AMG · amgx · cuda"
     },
     {
       "N": 30,
@@ -44,7 +44,7 @@
       "bwd_s": 1.7346,
       "peak_ram_mb": null,
       "peak_vram_mb": 1980.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "amgx · iterative · AMG · amgx · cuda"
     },
     {
       "N": 40,
@@ -54,7 +54,7 @@
       "bwd_s": 2.744,
       "peak_ram_mb": null,
       "peak_vram_mb": 4454.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "amgx · iterative · AMG · amgx · cuda"
     },
     {
       "N": 50,
@@ -64,7 +64,7 @@
       "bwd_s": 6.1085,
       "peak_ram_mb": null,
       "peak_vram_mb": 8582.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "amgx · iterative · AMG · amgx · cuda"
     },
     {
       "N": 60,
@@ -74,7 +74,7 @@
       "bwd_s": 9.5233,
       "peak_ram_mb": null,
       "peak_vram_mb": 14883.9,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "amgx · iterative · AMG · amgx · cuda"
     }
   ]
 }
