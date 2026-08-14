@@ -14,7 +14,7 @@
       "bwd_s": 7.3564,
       "peak_ram_mb": 2286.7,
       "peak_vram_mb": null,
-      "solver": "minres · iterative · AMG · scipy · cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 45,
@@ -24,7 +24,7 @@
       "bwd_s": 10.6088,
       "peak_ram_mb": 3568.6,
       "peak_vram_mb": null,
-      "solver": "minres · iterative · AMG · scipy · cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 55,
@@ -34,7 +34,7 @@
       "bwd_s": 14.0787,
       "peak_ram_mb": 4755.3,
       "peak_vram_mb": null,
-      "solver": "minres · iterative · AMG · scipy · cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 65,
@@ -44,7 +44,7 @@
       "bwd_s": 19.9048,
       "peak_ram_mb": 6220.5,
       "peak_vram_mb": null,
-      "solver": "minres · iterative · AMG · scipy · cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     }
   ]
 }
