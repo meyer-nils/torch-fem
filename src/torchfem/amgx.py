@@ -47,14 +47,6 @@ import os
 from copy import deepcopy
 from typing import Any
 
-ERR_AMGX_MISSING = (
-    "AmgX is not available.\n\n"
-    "AmgX ships no wheels: build it from source (github.com/NVIDIA/AMGX) "
-    "against a matching CUDA toolkit, then point AMGX_DLL at the resulting "
-    "shared library, e.g.\n"
-    "> export AMGX_DLL=/path/to/libamgxsh.so   # amgxsh.dll on Windows"
-)
-
 # AMGX_mode_dDDI: device-resident, double matrix, double vector, int32 index.
 # Hardcoded from the enum value documented in amgx_c.h/amgx_config.h ("mode ==
 # 8193"); "dDDI" is the only mode this binding ever asks AmgX to build.
@@ -157,7 +149,8 @@ def _bind_library() -> C.CDLL:
     try:
         lib = C.CDLL(name)
     except OSError as err:
-        raise ImportError(ERR_AMGX_MISSING) from err
+        # sparse.py turns this into ERR_AMGX_MISSING.
+        raise ImportError(f"Could not load the AmgX shared library {name!r}.") from err
 
     for fname, (argtypes, restype) in _SIGNATURES.items():
         func = getattr(lib, fname)

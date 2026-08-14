@@ -278,8 +278,8 @@ def sparse_solve(
             Defaults to None, which uses the current device.
         method (str, optional): Method to use for solving ('spsolve', 'minres',
             'cg', 'pardiso', 'amgx'). Defaults to None for automatic selection based
-            on the input size and available backends. 'amgx' is never chosen
-            automatically and requires an AmgX build (see `torchfem.amgx`).
+            on the input size and available backends, which picks 'amgx' for
+            iterative solves on CUDA once it is installed (see `torchfem.amgx`).
         M (Tensor, optional): Preconditioner matrix for iterative methods, or an
             `AmgXSolver` to reuse for method='amgx'. Defaults to None.
         x0 (Tensor, optional): Initial guess for iterative solvers. Defaults to None.
@@ -411,7 +411,7 @@ def _solve_gpu(
         # AMG hierarchy, built from scratch unless one was already passed in,
         # in which case only its coefficients are refreshed.
         if M is None:
-            # AmgX uses coordinates insteas of null space B
+            # AmgX uses coordinates instead of null space B
             coords = None
             block_size = {6: 3, 3: 2}.get(B.shape[1], 1) if B is not None else 1
             if B is not None and B.shape[1] == 6:
