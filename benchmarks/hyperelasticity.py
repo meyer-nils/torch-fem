@@ -79,9 +79,8 @@ PROBLEM = Problem(
     id="hyperelasticity_stretch",
     title="Neo-Hookean stretch benchmark",
     plot_prefix="hyperelasticity",
-    default_N=[25, 35, 45, 55, 65],
+    default_N=[35, 45, 55, 65],
     setup=setup,
-    method="cg",
 )
 
 if __name__ == "__main__":
