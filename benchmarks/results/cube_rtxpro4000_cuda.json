@@ -1,0 +1,80 @@
+{
+  "hardware": "RTX PRO 4000",
+  "device": "cuda",
+  "python": "3.13.12",
+  "libraries": "CuPy 14.0.1, CUDA 12.9",
+  "dtype": "float64",
+  "problem": "cube_hexa_extension",
+  "rows": [
+    {
+      "N": 20,
+      "dofs": 24000,
+      "setup_s": 0.1196,
+      "fwd_s": 0.5493,
+      "bwd_s": 0.6003,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 598.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 30,
+      "dofs": 81000,
+      "setup_s": 0.1346,
+      "fwd_s": 0.7465,
+      "bwd_s": 0.7152,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1176.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 40,
+      "dofs": 192000,
+      "setup_s": 0.1562,
+      "fwd_s": 1.2312,
+      "bwd_s": 1.0398,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 2162.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 50,
+      "dofs": 375000,
+      "setup_s": 0.1894,
+      "fwd_s": 1.8027,
+      "bwd_s": 1.4008,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 4050.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 60,
+      "dofs": 648000,
+      "setup_s": 0.2274,
+      "fwd_s": 2.6682,
+      "bwd_s": 1.84,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 6964.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 70,
+      "dofs": 1029000,
+      "setup_s": 0.2902,
+      "fwd_s": 4.2216,
+      "bwd_s": 3.1273,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 11106.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 80,
+      "dofs": 1536000,
+      "setup_s": 0.3919,
+      "fwd_s": 5.9233,
+      "bwd_s": 3.9255,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 16596.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    }
+  ]
+}

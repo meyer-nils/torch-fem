@@ -1,0 +1,50 @@
+{
+  "hardware": "RTX PRO 4000",
+  "device": "cuda",
+  "python": "3.13.12",
+  "libraries": "CuPy 14.0.1, CUDA 12.9",
+  "dtype": "float64",
+  "problem": "thermal_slab_simp",
+  "rows": [
+    {
+      "N": 128,
+      "dofs": 16770,
+      "setup_s": 0.1646,
+      "fwd_s": 0.4564,
+      "bwd_s": 0.4797,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 472.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 256,
+      "dofs": 66306,
+      "setup_s": 0.1638,
+      "fwd_s": 0.6842,
+      "bwd_s": 0.5691,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 654.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 512,
+      "dofs": 263682,
+      "setup_s": 0.1699,
+      "fwd_s": 0.9198,
+      "bwd_s": 0.7257,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1560.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 1024,
+      "dofs": 1051650,
+      "setup_s": 0.1912,
+      "fwd_s": 2.0207,
+      "bwd_s": 1.4545,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 5322.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    }
+  ]
+}
