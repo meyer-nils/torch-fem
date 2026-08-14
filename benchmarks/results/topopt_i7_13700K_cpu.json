@@ -7,6 +7,26 @@
   "problem": "structural_cantilever_simp",
   "rows": [
     {
+      "N": 12,
+      "dofs": 12675,
+      "setup_s": 0.3178,
+      "fwd_s": 0.4879,
+      "bwd_s": 0.7504,
+      "peak_ram_mb": 804.3,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 16,
+      "dofs": 28611,
+      "setup_s": 0.7867,
+      "fwd_s": 0.992,
+      "bwd_s": 0.9444,
+      "peak_ram_mb": 1011.0,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
       "N": 20,
       "dofs": 54243,
       "setup_s": 1.7771,

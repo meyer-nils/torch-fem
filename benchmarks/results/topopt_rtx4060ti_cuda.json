@@ -7,6 +7,26 @@
   "problem": "structural_cantilever_simp",
   "rows": [
     {
+      "N": 12,
+      "dofs": 12675,
+      "setup_s": 0.1689,
+      "fwd_s": 0.7099,
+      "bwd_s": 0.7359,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 472.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
+      "N": 16,
+      "dofs": 28611,
+      "setup_s": 0.1705,
+      "fwd_s": 0.9252,
+      "bwd_s": 0.9058,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 640.0,
+      "solver": "amgx | iterative | AMG | amgx | cuda"
+    },
+    {
       "N": 20,
       "dofs": 54243,
       "setup_s": 0.1801,
