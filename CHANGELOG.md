@@ -23,7 +23,6 @@
 - In notebooks, the PyVista plots redraw shortly after loading via `plot_utils.show_html(...)`, so vtk.js does not keep the first frame it draws from its own defaults.
 - The `thermal` and `hyperelasticity` benchmarks keep their elements cubic as `N` grows, where a fixed depth used to stretch them into slivers, so both measure problem size rather than element aspect ratio. All published results were re-measured on the new meshes.
 - The `hyperelasticity` benchmark picks its solver automatically instead of pinning `cg`, which selects AmgX on CUDA, and starts at `N=35`: the `N=25` case fell below the size at which `resolve_method` turns iterative, so it ran a direct solve slower than every larger case.
-- `verbose=True` no longer raises on a console whose codepage lacks the characters the report is drawn with, as a Windows console does by default.
 
 ### Fixed
 - `method="amgx"` frees each AMG hierarchy when the solve that built it ends, where every increment, cutback and time step used to leave one on the GPU for the life of the process.
