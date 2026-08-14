@@ -14,7 +14,7 @@
 
 ### Changed
 - GPU support requires CUDA 12 or 13, dropping CUDA 11, whose last CuPy wheel predates the solver signatures used here.
-- `sparse_solve(...)` reuses a preconditioner passed as `M` on the GPU instead of rebuilding Jacobi every call, matching the CPU path, so a Newton loop and its adjoint solve share one preconditioner.
+- `sparse_solve(...)` reuses a preconditioner passed as `M` on the GPU instead of rebuilding Jacobi every call, matching the CPU path, so a Newton loop and its adjoint solve share one Jacobi preconditioner.
 - `solve(...)` accepts increments that fall as well as rise, so a load cycle like `[0, 1, 0]` unloads instead of silently repeating the state at its peak.
 - `integrate_field(...)` is now a contraction of `integrate_shape_functions(...)` and returns the same values as before.
 - `solve(...)` no longer builds an element tangent it discards when evaluating the converged state at the end of each increment, which makes `nlgeom=True` and materials with internal state about 10% faster.
