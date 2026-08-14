@@ -11,9 +11,13 @@ CuPy device pointers, which AmgX resolves with `cudaMemcpyDefault`, so nothing
 round-trips through the host.
 
 Handles are freed explicitly by `close()`, never from `__del__`: destruction is
-order-dependent and a stale handle segfaults rather than raises. Nothing calls
-`AMGX_finalize()`, so a dropped solver leaks until the process exits, which
-beats risking a bad teardown order.
+order-dependent and a stale handle segfaults rather than raises. A dropped
+solver would therefore hold its hierarchy until the process exits, so `sparse.py`
+closes each one at the end of the solve that built it, and no solver is handed
+from a forward pass to its adjoint. A solve that fails closes itself, since it
+is never reused and a cutback would otherwise leave one behind on every retry.
+`AMGX_finalize()` is still never called, which beats risking a bad teardown
+order.
 
 The C API takes no near-null-space basis, pyamg's `B`, which costs dearly on
 elasticity. Two things recover most of it. Aggregating over
@@ -358,8 +362,13 @@ class AmgXSolver:
         _check(_lib.AMGX_solver_get_status(self._slv, C.byref(status)))
         if status.value != _AMGX_SOLVE_SUCCESS:
             name = _AMGX_SOLVE_STATUS_NAMES.get(status.value, str(status.value))
+            # Read the count before closing: it queries the solver handle. A
+            # failed solver is never reused, and only `close()` frees it, so it
+            # goes here rather than leaving one behind at every cutback.
+            iterations = self.iterations
+            self.close()
             raise RuntimeError(
-                f"AmgX solve did not converge ({name}) in {self.iterations} "
+                f"AmgX solve did not converge ({name}) in {iterations} "
                 "iterations. Try 'cg' or 'minres' instead, or tune "
                 "_DEFAULT_CONFIG for this problem."
             )

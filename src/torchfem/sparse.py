@@ -156,18 +156,25 @@ class Solve(Function):
         Returns:
             x (Tensor): Solution vector.
                 *Shape:* `(n_dofs,)`.
-            M (LinearOperator | AmgXSolver | None): Preconditioner or AmgX
-                solver built or reused by the solve, passed on to `backward`
-                for the adjoint system.
+            M (LinearOperator | AmgXSolver | None): Preconditioner built or
+                reused by the solve, passed on to `backward` for the adjoint
+                system, or `None` where an AmgX solver was built and closed.
         """
         x0 = None
         if cached_solve is not None and cached_solve.previous_x is not None:
             x0 = cached_solve.previous_x
 
+        owned = M is None
         x, M = sparse_solve(A, b, B, stol, device, method, M, x0)
 
         if update_cache and cached_solve is not None:
             cached_solve.update_x(x)
+
+        # An AmgX solver built here is freed here, and `backward` builds its
+        # own: nothing else frees one. See `torchfem.amgx`.
+        if owned and "amgx" in available_backends and isinstance(M, AmgXSolver):
+            M.close()
+            M = None
 
         return x, M
 
@@ -192,9 +199,14 @@ class Solve(Function):
             x0 = ctx.cached_solve.previous_grad
 
         # Adjoint solve: A^T lambda = grad_x
-        gradb, _ = sparse_solve(
+        owned = ctx.M is None
+        gradb, M = sparse_solve(
             A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
         )
+
+        # An AmgX solver built for this adjoint does not outlive it either
+        if owned and "amgx" in available_backends and isinstance(M, AmgXSolver):
+            M.close()
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version
         indices = A._indices()
@@ -215,6 +227,7 @@ class Solve(Function):
 
         Stores the preconditioner *returned* by the forward pass, not the one
         passed in, so the adjoint solve reuses the AMG hierarchy built there.
+        An AmgX solver is the exception: forward closed it, and returned `None`.
         """
         A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
         x, M_computed = output
@@ -577,8 +590,9 @@ class NewtonRaphsonAdjoint(Function):
                 converged_iter = i
                 break
 
-            if torch.isnan(res_norm) or torch.isinf(res_norm):
-                raise RuntimeError("Newton-Raphson iteration did not converge")
+            # A residual that is not finite never converges
+            if not torch.isfinite(res_norm):
+                break
 
             x0 = None
             if (
@@ -596,8 +610,15 @@ class NewtonRaphsonAdjoint(Function):
 
             du = du - du_i
 
-        # Final convergence check
-        if res_norm > rtol * res_norm0 and res_norm > atol:
+        # An AmgX solver is freed only by `close()` and does not outlive the
+        # call that built it: `backward` builds its own, and a solve that fails
+        # closes itself. See `torchfem.amgx`.
+        if "amgx" in available_backends and isinstance(M, AmgXSolver):
+            M.close()
+            M = None
+
+        # Final convergence check, which a residual that is not finite fails
+        if not (res_norm < rtol * res_norm0 or res_norm < atol):
             raise RuntimeError("Newton-Raphson iteration did not converge.")
 
         ctx.save_for_backward(
@@ -646,7 +667,7 @@ class NewtonRaphsonAdjoint(Function):
             x0 = cached_solve.previous_grad
 
         # Solve adjoint system.
-        lambda_, _ = sparse_solve(
+        lambda_, M = sparse_solve(
             K.T,
             grad_du,
             B,
@@ -656,6 +677,10 @@ class NewtonRaphsonAdjoint(Function):
             M,
             x0=x0,
         )
+
+        # `ctx.M` holds no AmgX solver, so this one is the adjoint's own
+        if "amgx" in available_backends and isinstance(M, AmgXSolver):
+            M.close()
 
         if update_cache and cached_solve is not None:
             cached_solve.update_grad(lambda_)
