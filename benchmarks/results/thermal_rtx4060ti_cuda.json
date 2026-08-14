@@ -9,41 +9,41 @@
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.1682,
-      "fwd_s": 0.3941,
-      "bwd_s": 0.4702,
+      "setup_s": 0.1721,
+      "fwd_s": 0.4223,
+      "bwd_s": 0.5223,
       "peak_ram_mb": null,
-      "peak_vram_mb": 448.0,
+      "peak_vram_mb": 422.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.1749,
-      "fwd_s": 0.5408,
-      "bwd_s": 0.5693,
+      "setup_s": 0.1699,
+      "fwd_s": 0.5494,
+      "bwd_s": 0.6189,
       "peak_ram_mb": null,
-      "peak_vram_mb": 664.0,
+      "peak_vram_mb": 594.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.1817,
-      "fwd_s": 1.0241,
-      "bwd_s": 0.8553,
+      "setup_s": 0.18,
+      "fwd_s": 0.9857,
+      "bwd_s": 0.8499,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1590.0,
+      "peak_vram_mb": 1458.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.2369,
-      "fwd_s": 2.8215,
-      "bwd_s": 1.9217,
+      "setup_s": 0.2396,
+      "fwd_s": 2.8806,
+      "bwd_s": 1.9923,
       "peak_ram_mb": null,
-      "peak_vram_mb": 5064.0,
+      "peak_vram_mb": 4648.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     }
   ]
