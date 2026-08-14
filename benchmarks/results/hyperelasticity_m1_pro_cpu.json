@@ -9,42 +9,42 @@
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.128,
-      "fwd_s": 20.8224,
-      "bwd_s": 4.831,
-      "peak_ram_mb": 2235.3,
+      "setup_s": 0.124,
+      "fwd_s": 22.4367,
+      "bwd_s": 5.4147,
+      "peak_ram_mb": 2232.7,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | AMG | scipy | cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.1973,
-      "fwd_s": 32.5933,
-      "bwd_s": 7.5263,
-      "peak_ram_mb": 3430.5,
+      "setup_s": 0.2005,
+      "fwd_s": 35.7518,
+      "bwd_s": 8.4777,
+      "peak_ram_mb": 3380.7,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | AMG | scipy | cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.3051,
-      "fwd_s": 46.3206,
-      "bwd_s": 10.78,
-      "peak_ram_mb": 4767.3,
+      "setup_s": 0.3075,
+      "fwd_s": 46.7652,
+      "bwd_s": 11.3604,
+      "peak_ram_mb": 3845.6,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | AMG | scipy | cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.428,
-      "fwd_s": 67.2488,
-      "bwd_s": 16.1808,
-      "peak_ram_mb": 5631.4,
+      "setup_s": 0.4194,
+      "fwd_s": 72.026,
+      "bwd_s": 18.2685,
+      "peak_ram_mb": 4687.2,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | AMG | scipy | cpu"
+      "solver": "minres | iterative | AMG | scipy | cpu"
     }
   ]
 }
