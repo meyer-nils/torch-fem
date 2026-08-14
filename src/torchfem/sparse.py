@@ -301,7 +301,8 @@ def sparse_solve(
         x (Tensor): Solution vector.
             *Shape:* `(n_dofs,)`.
         M (LinearOperator | AmgXSolver | None): Preconditioner or AmgX solver
-            built or reused by the solve, `None` for direct methods.
+            built or reused by the solve, `None` for direct methods. An
+            `AmgXSolver` holds its hierarchy until the caller calls `close()`.
     """
     # Check the input shape
     if A.ndim != 2 or (A.shape[0] != A.shape[1]):

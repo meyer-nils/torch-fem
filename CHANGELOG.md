@@ -21,7 +21,7 @@
 - The PyVista plots always show the orientation axes in the corner, which a plain `pyvista.Plotter` skips.
 - `Element.plot(...)` writes a transparent light and dark figure to `docs/images/shape_functions/`, `<Element>_light.png` and `<Element>_dark.png`, instead of a single opaque one.
 - In notebooks, the PyVista plots redraw shortly after loading via `plot_utils.show_html(...)`, so vtk.js does not keep the first frame it draws from its own defaults.
-- The `thermal` and `hyperelasticity` benchmarks keep their elements cubic as `N` grows, where a fixed depth used to stretch them into slivers, so both measure problem size rather than element aspect ratio. The results published for hardware other than the RTX 4060 Ti predate this and are not comparable.
+- The `thermal` and `hyperelasticity` benchmarks keep their elements cubic as `N` grows, where a fixed depth used to stretch them into slivers, so both measure problem size rather than element aspect ratio. All published results were re-measured on the new meshes.
 - The `hyperelasticity` benchmark picks its solver automatically instead of pinning `cg`, which selects AmgX on CUDA, and starts at `N=35`: the `N=25` case fell below the size at which `resolve_method` turns iterative, so it ran a direct solve slower than every larger case.
 - `verbose=True` no longer raises on a console whose codepage lacks the characters the report is drawn with, as a Windows console does by default.
 
