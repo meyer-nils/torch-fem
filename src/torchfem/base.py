@@ -563,8 +563,8 @@ class FEM(ABC):
             return None
         device = device or self.nodes.device.type
         header = {
-            "model": f"{type(self).__name__} · {self.n_elem:,} elem · "
-            f"{self.n_dofs:,} dof · {str(dtype).removeprefix('torch.')}",
+            "model": f"{type(self).__name__} | {self.n_elem:,} elem | "
+            f"{self.n_dofs:,} dof | {str(dtype).removeprefix('torch.')}",
             "machine": machine(device),
             "solver": describe_method(self.n_dofs, device, method),
             "newton": newton,
@@ -573,7 +573,7 @@ class FEM(ABC):
             header["warning"] = (
                 "⚠ single precision, prefer torch.set_default_dtype(torch.float64)"
             )
-        return SolveReport(f"torch-fem · {title}", header, **kwargs)
+        return SolveReport(f"torch-fem | {title}", header, **kwargs)
 
     def solve(
         self,
@@ -670,9 +670,9 @@ class FEM(ABC):
         state = torch.zeros(N, self.n_int, self.n_elem, self.n_state)
 
         newton = (
-            f"rtol {rtol:.0e} · atol {atol:.0e} · ≤{max_iter} it"
-            + (" · nlgeom" if nlgeom else "")
-            + (f" · stabilized α={alpha:g}" if alpha > 0.0 else "")
+            f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
+            + (" | nlgeom" if nlgeom else "")
+            + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
         )
         report = self._report(verbose, "solve", u.dtype, method, device, newton)
 
@@ -1451,7 +1451,7 @@ class Heat(FEM, ABC):
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
         newton = (
-            f"rtol {rtol:.0e} · atol {atol:.0e} · ≤{max_iter} it · Δt ≤ {delta_t:g}"
+            f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it | dt <= {delta_t:g}"
         )
         report = self._report(
             verbose,
