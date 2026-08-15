@@ -27,7 +27,7 @@ MEMORY_GUIDES = (8, 16, 24, 32)
 MEMORY_YLIM = (0.1, 36)
 
 # Shared degrees-of-freedom range of every plot.
-DOFS_XLIM = (9_000, 2_000_000)
+DOFS_XLIM = (9_000, 11_000_000)
 
 # Shared time range (s) of the timing plots, spanning every suite.
 TIMING_YLIM = (0.3, 200)

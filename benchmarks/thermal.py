@@ -67,7 +67,7 @@ PROBLEM = Problem(
     id="thermal_slab_simp",
     title="Thermal SIMP slab benchmark",
     plot_prefix="thermal",
-    default_N=[128, 256, 512, 1024],
+    default_N=[128, 256, 512, 1024, 2048],
     setup=setup,
 )
 
