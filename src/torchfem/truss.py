@@ -217,7 +217,7 @@ class Truss(Mechanics):
             n2 = element[1]
             x = [pos[n1][0], pos[n2][0]]
             y = [pos[n1][1], pos[n2][1]]
-            ax.plot(x, y, linewidth=linewidth[j], c=color[j])
+            ax.plot(x, y, linewidth=linewidth[j], c=color[j], solid_capstyle="round")
 
         # Boundary conditions
         tips = [pos]
