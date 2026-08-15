@@ -45,6 +45,16 @@
       "peak_ram_mb": 5762.5,
       "peak_vram_mb": null,
       "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 2048,
+      "dofs": 4200450,
+      "setup_s": 28.7404,
+      "fwd_s": 41.8446,
+      "bwd_s": 10.899,
+      "peak_ram_mb": 19680.7,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
     }
   ]
 }
