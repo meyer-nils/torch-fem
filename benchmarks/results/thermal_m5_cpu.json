@@ -1,5 +1,5 @@
 {
-  "hardware": "arm",
+  "hardware": "Apple M5",
   "device": "cpu",
   "python": "3.13.12",
   "libraries": "SciPy 1.18.0, PyTorch 2.11.0",
