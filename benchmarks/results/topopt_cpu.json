@@ -1,0 +1,60 @@
+{
+  "hardware": "arm",
+  "device": "cpu",
+  "python": "3.13.12",
+  "libraries": "SciPy 1.18.0, PyTorch 2.11.0",
+  "dtype": "float64",
+  "problem": "structural_cantilever_simp",
+  "rows": [
+    {
+      "N": 20,
+      "dofs": 54243,
+      "setup_s": 0.3213,
+      "fwd_s": 1.3822,
+      "bwd_s": 0.6066,
+      "peak_ram_mb": 1191.6,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 30,
+      "dofs": 175863,
+      "setup_s": 1.1214,
+      "fwd_s": 4.5748,
+      "bwd_s": 1.6437,
+      "peak_ram_mb": 2498.0,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 40,
+      "dofs": 408483,
+      "setup_s": 2.692,
+      "fwd_s": 10.7422,
+      "bwd_s": 3.8583,
+      "peak_ram_mb": 5331.2,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 50,
+      "dofs": 788103,
+      "setup_s": 5.3742,
+      "fwd_s": 21.5977,
+      "bwd_s": 7.4839,
+      "peak_ram_mb": 6779.0,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    },
+    {
+      "N": 60,
+      "dofs": 1350723,
+      "setup_s": 9.8769,
+      "fwd_s": 45.3725,
+      "bwd_s": 14.25,
+      "peak_ram_mb": 8228.4,
+      "peak_vram_mb": null,
+      "solver": "minres | iterative | AMG | scipy | cpu"
+    }
+  ]
+}
