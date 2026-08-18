@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.9.0 - August 18 2026
 
 ### Added
 - `integrate_body_load(...)`, `integrate_surface_load(...)` and `integrate_line_load(...)` turn a distributed load into consistent nodal loads, replacing the lumping that the examples wrote out by hand. Surfaces and lines are picked with a nodal mask, and a float load acts as a pressure along the outward normal.
@@ -19,6 +19,7 @@
 - `integrate_field(...)` is now a contraction of `integrate_shape_functions(...)` and returns the same values as before.
 - `solve(...)` no longer builds an element tangent it discards when evaluating the converged state at the end of each increment, which makes `nlgeom=True` and materials with internal state about 10% faster.
 - The PyVista plots always show the orientation axes in the corner, which a plain `pyvista.Plotter` skips.
+- `cmap` on `Planar.plot(...)`, `Truss.plot2d(...)` and `Truss.plot3d(...)` accepts a matplotlib `Colormap` next to a colormap name, so a truncated or resampled colormap can be passed directly.
 - `Element.plot(...)` writes a transparent light and dark figure to `docs/images/shape_functions/`, `<Element>_light.png` and `<Element>_dark.png`, instead of a single opaque one.
 - In notebooks, the PyVista plots redraw shortly after loading via `plot_utils.show_html(...)`, so vtk.js does not keep the first frame it draws from its own defaults.
 - The `thermal` and `hyperelasticity` benchmarks keep their elements cubic as `N` grows, where a fixed depth used to stretch them into slivers, so both measure problem size rather than element aspect ratio. All published results were re-measured on the new meshes.
