@@ -579,19 +579,30 @@ class Assembly:
     ) -> tuple[list[dict], list[Tensor], list[Tensor]]:
         """Everything a plot draws, moved by the displacement it is given.
 
-        Returns the arguments each part is plotted with, the positions of the
-        points, and one [2n, n_dim] tensor per coupling holding the secondary
-        nodes followed by the primary ones they pair with.
+        A list is the parts' shares of an argument, inside a dict too, so `u`
+        and `node_property={"u": u}` split alike. Returns the arguments each
+        part is plotted with, the positions of the points, and one [2n, n_dim]
+        tensor per coupling holding the secondary nodes followed by the primary
+        ones they pair with.
         """
         per_part, moved = [], {}
-        values = u if isinstance(u, list) else [u] * len(self.parts)
-        for part, displacement in zip(self.parts, values):
+        for j, part in enumerate(self.parts):
+            arguments = {}
+            for name, value in kwargs.items():
+                if isinstance(value, dict):
+                    value = {
+                        k: v[j] if isinstance(v, list) else v for k, v in value.items()
+                    }
+                arguments[name] = value[j] if isinstance(value, list) else value
+
+            displacement = u[j] if isinstance(u, list) else u
             if isinstance(displacement, Tensor):
                 # Translations only: a shell also carries rotations, and a
                 # temperature is no displacement at all
                 moves = part.n_dof_per_node >= self.dim
                 displacement = displacement[:, : self.dim] if moves else 0.0
-            per_part.append({**kwargs, "u": displacement})
+            arguments["u"] = displacement
+            per_part.append(arguments)
             moved[id(part)] = part.nodes + displacement
 
         points = [moved[id(p)][0] for p in self.parts if not isinstance(p, FEM)]
@@ -610,7 +621,8 @@ class Assembly:
             u: Nodal displacements per part, e.g. the `u` of `solve(...)`.
                 Defaults to 0.0 (undeformed).
             **kwargs: Forwarded to `plot2d` or `plot3d`, and from there to
-                every part's own `plot(...)`.
+                every part's own `plot(...)`. A list is spread over the parts,
+                inside a dict too, so `node_property={"u": u}` splits like `u`.
         """
         if self.dim == 2:
             self.plot2d(u=u, **kwargs)
