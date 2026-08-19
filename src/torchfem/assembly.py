@@ -1,9 +1,15 @@
 import math
+import typing
 import warnings
 from collections.abc import Iterable, Sequence
 from typing import Literal
 
+import matplotlib.pyplot as plt
+import pyvista
 import torch
+from matplotlib.axes import Axes
+from matplotlib.collections import LineCollection
+from pyvista import DataSet
 from torch import Tensor
 
 from .base import FEM, Heat
@@ -164,6 +170,8 @@ class Assembly:
         self._rows: list[tuple[Tensor, Tensor, Tensor]] = [
             (EMPTY, EMPTY, torch.empty(0))
         ]
+        # The two ends of each coupling as (part, nodes), kept for `plot(...)`
+        self._links: list[tuple[tuple[Part, Tensor], tuple[Part, Tensor]]] = []
 
     def __repr__(self) -> str:
         return f"<torch-fem assembly ({len(self.parts)} parts, {self.n_dofs} dofs)>"
@@ -218,6 +226,8 @@ class Assembly:
         x_secondary = secondary.nodes[secondary_nodes]
         distance = torch.cdist(x_secondary, primary.nodes[primary_nodes])
         primary_nodes = primary_nodes[distance.argmin(dim=1)]
+
+        self._links.append(((secondary, secondary_nodes), (primary, primary_nodes)))
 
         secondary_base = self._at[id(secondary)] + secondary_nodes * n_sec
         primary_base = self._at[id(primary)] + primary_nodes * n_pri
@@ -563,3 +573,119 @@ class Assembly:
         if not return_intermediate:
             out = [[x[-1] for x in q] for q in out]
         return out[0], out[1], out[2], out[3], out[4]
+
+    def _resolve(
+        self, u: list[Tensor] | float, kwargs: dict
+    ) -> tuple[list[dict], list[Tensor], list[Tensor]]:
+        """Everything a plot draws, moved by the displacement it is given.
+
+        Returns the arguments each part is plotted with, the positions of the
+        points, and one [2n, n_dim] tensor per coupling holding the secondary
+        nodes followed by the primary ones they pair with.
+        """
+        per_part, moved = [], {}
+        values = u if isinstance(u, list) else [u] * len(self.parts)
+        for part, displacement in zip(self.parts, values):
+            if isinstance(displacement, Tensor):
+                # Translations only: a shell also carries rotations, and a
+                # temperature is no displacement at all
+                moves = part.n_dof_per_node >= self.dim
+                displacement = displacement[:, : self.dim] if moves else 0.0
+            per_part.append({**kwargs, "u": displacement})
+            moved[id(part)] = part.nodes + displacement
+
+        points = [moved[id(p)][0] for p in self.parts if not isinstance(p, FEM)]
+        links = [
+            torch.cat([moved[id(part)][nodes] for part, nodes in ends])
+            for ends in self._links
+        ]
+        return per_part, points, links
+
+    def plot(self, u: list[Tensor] | float = 0.0, **kwargs):
+        """Plot the assembly in 2D (matplotlib) or 3D (PyVista).
+
+        Dispatches to `plot2d` or `plot3d` based on the spatial dimension.
+
+        Args:
+            u: Nodal displacements per part, e.g. the `u` of `solve(...)`.
+                Defaults to 0.0 (undeformed).
+            **kwargs: Forwarded to `plot2d` or `plot3d`, and from there to
+                every part's own `plot(...)`.
+        """
+        if self.dim == 2:
+            self.plot2d(u=u, **kwargs)
+        else:
+            self.plot3d(u=u, **kwargs)
+
+    def plot2d(self, u: list[Tensor] | float = 0.0, ax: Axes | None = None, **kwargs):
+        """Plot the parts with matplotlib, marking the points and couplings.
+
+        Args:
+            u: Nodal displacements per part. Defaults to 0.0 (undeformed).
+            ax: Matplotlib axes to draw into. Defaults to a new figure.
+            **kwargs: Forwarded to each part's `plot(...)`.
+        """
+        if ax is None:
+            _, ax = plt.subplots()
+        per_part, points, links = self._resolve(u, kwargs)
+
+        for part, arguments in zip(self.parts, per_part):
+            if isinstance(part, FEM):
+                part.plot(ax=ax, **arguments)
+
+        for center in points:
+            ax.plot(*center.tolist(), "o", color="gray", zorder=3)
+
+        for ends in links:
+            n = len(ends) // 2
+            segments = [[a.tolist(), b.tolist()] for a, b in zip(ends[:n], ends[n:])]
+            ax.add_collection(LineCollection(segments, colors="gray", zorder=2))
+
+        # A part fixes the limits to its own mesh, which a point may sit outside
+        if points or links:
+            ax.update_datalim(torch.cat([x.reshape(-1, 2) for x in points + links]))
+            ax.set_autoscale_on(True)
+            ax.autoscale_view()
+
+    def plot3d(
+        self,
+        u: list[Tensor] | float = 0.0,
+        plotter: pyvista.Plotter | None = None,
+        **kwargs,
+    ):
+        """Plot the parts with PyVista, marking the points and couplings.
+
+        Points are drawn as spheres and each coupling as a tube joining the
+        paired nodes, both sized like the boundary condition markers of a part.
+
+        Args:
+            u: Nodal displacements per part. Defaults to 0.0 (undeformed).
+            plotter: PyVista plotter to draw into. If None, one is created and
+                shown once the whole assembly is drawn.
+            **kwargs: Forwarded to each part's `plot(...)`.
+        """
+        pl = pyvista.Plotter() if plotter is None else plotter
+        per_part, points, links = self._resolve(u, kwargs)
+        elements = [part.char_lengths for part in self.parts if isinstance(part, FEM)]
+        scale = 0.5 * float(torch.cat(elements).mean())
+
+        for part, arguments in zip(self.parts, per_part):
+            if isinstance(part, FEM):
+                part.plot(plotter=pl, **arguments)
+
+        for center in points:
+            sphere = pyvista.Sphere(radius=0.3 * scale, center=center.tolist())
+            pl.add_mesh(sphere, color="gray")
+
+        for ends in links:
+            # A VTK line cell is its point count followed by its point indices
+            n = len(ends) // 2
+            cells = [i for k in range(n) for i in (2, k, k + n)]
+            link = pyvista.PolyData(ends.cpu().numpy(), lines=cells)
+            tube = typing.cast(DataSet, link.tube(radius=0.1 * scale))
+            pl.add_mesh(tube, color="gray")
+
+        if plotter is None:
+            from .plot_utils import show_html
+
+            show_html(pl)
