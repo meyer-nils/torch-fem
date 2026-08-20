@@ -176,6 +176,16 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 </div>
 
+### Assembly
+
+<div class="grid cards" markdown>
+
+-   **Coupling a lattice, a solid and a shell**
+
+    [![Coupling a lattice, a solid and a shell](images/examples/basic/assembly/couplings.png)](examples/basic/assembly/couplings.html)
+
+</div>
+
 ## Optimization examples
 
 ### Truss
