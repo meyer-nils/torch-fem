@@ -1,5 +1,11 @@
 # Changelog 
 
+## Unreleased
+
+### Added
+- `Assembly` couples several models through kinematic constraints, mechanical or thermal, in two or three dimensions: `coupling(...)` makes selected nodes follow the rigid-body motion of the nearest node of another part, optionally on selected degrees of freedom.
+- `ReferencePoint` and `ReferencePointHeat` enter an assembly as free nodes carrying rigid-body degrees of freedom or one temperature, so a load or a prescribed value applied there drives everything coupled to it.
+
 ## Version 0.9.0 - August 18 2026
 
 ### Added
