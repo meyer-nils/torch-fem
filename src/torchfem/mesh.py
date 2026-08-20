@@ -2,6 +2,8 @@ from typing import Literal
 
 import torch
 
+from .elements import Hexa1, Quad1, linear_etype
+
 
 def cube_hexa(
     Nx: int, Ny: int, Nz: int, Lx: float = 1.0, Ly: float = 1.0, Lz: float = 1.0
@@ -211,3 +213,63 @@ def rect_tri(
         return nodes, cells
     else:
         raise ValueError(f"Unknown variant: {variant}")
+
+
+def mesh_to_lattice(
+    nodes: torch.Tensor,
+    elements: torch.Tensor,
+    variant: Literal["simple", "up", "down", "cross"] = "simple",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Converts a planar or solid mesh into a lattice of two-node bar elements.
+
+    The element type is inferred from the mesh. Bars are placed along all element
+    edges, duplicates from shared edges removed. The braced variants add diagonals
+    to every quadrilateral, which is the element itself for a quadrilateral mesh
+    and each element face for a hexahedral mesh. Triangles and tetrahedra have no
+    quadrilaterals and do not support them. No variant changes the node set.
+
+    Args:
+        nodes: Node coordinates as a tensor of shape (num_nodes, dim).
+        elements: Connectivity of a linear mesh.
+        variant: Bracing of the quadrilaterals. Options are 'simple' (no
+            diagonals), 'up' and 'down' (one diagonal each) and 'cross' (both).
+
+    Returns:
+        A tuple of (nodes, cells):
+        - nodes: Node coordinates, passed through unchanged.
+        - cells: Bar element connectivity as a tensor of shape (num_bars, 2).
+    """
+
+    etype = linear_etype(nodes, elements)
+    bars = [elements[:, etype.edges].reshape(-1, 2)]
+
+    if variant != "simple":
+        if variant == "up":
+            offsets = [0]
+        elif variant == "down":
+            offsets = [1]
+        elif variant == "cross":
+            offsets = [0, 1]
+        else:
+            raise ValueError(f"Unknown variant: {variant}")
+
+        # Collect the quadrilaterals to brace
+        if etype is Quad1:
+            quads = elements
+        elif etype is Hexa1:
+            quads = elements[:, etype.facets].reshape(-1, 4)
+        else:
+            raise ValueError(f"{etype.__name__} elements have no quadrilaterals.")
+
+        # A diagonal is defined by its offset from the lowest node of the
+        # quadrilateral. That node is the same seen from either adjacent element,
+        # so neighboring hexahedra pick matching diagonals on a shared face.
+        n0 = quads.argmin(dim=1)
+        for offset in offsets:
+            idx = torch.stack([(n0 + offset) % 4, (n0 + offset + 2) % 4], dim=1)
+            bars.append(quads.gather(1, idx))
+
+    # Remove duplicates from edges and faces shared between elements
+    bars = torch.cat(bars).sort(dim=1).values
+    return nodes, torch.unique(bars, dim=0)

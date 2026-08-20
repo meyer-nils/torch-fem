@@ -91,6 +91,23 @@ LINEAR_MESHES = [
 ]
 
 
+class TestEdges:
+    @pytest.mark.parametrize("etype", ELEMENT_REGISTRY, ids=lambda e: e.__name__)
+    def test_midside_nodes_sit_between_their_corners(self, etype):
+        """A quadratic edge carries the node at the midpoint of its two corners."""
+        xi = etype.iso_coords
+        assert etype.edges.max() < etype.nodes
+        for edge in etype.edges.tolist():
+            if len(edge) == 3:
+                a, b, mid = edge
+                assert torch.allclose(xi[mid], 0.5 * (xi[a] + xi[b]))
+
+    @pytest.mark.parametrize("etype", ELEMENT_REGISTRY, ids=lambda e: e.__name__)
+    def test_every_corner_is_covered(self, etype):
+        n_corner = etype.nodes - sum(len(e) == 3 for e in etype.edges.tolist())
+        assert set(etype.edges[:, :2].flatten().tolist()) == set(range(n_corner))
+
+
 class TestLinearToQuadratic:
     @pytest.mark.parametrize("mesh, n_quad_nodes", LINEAR_MESHES)
     def test_extends_connectivity_and_keeps_corner_nodes(self, mesh, n_quad_nodes):

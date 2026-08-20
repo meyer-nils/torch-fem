@@ -77,6 +77,8 @@ class Element(ABC):
             edges of a surface element or the faces of a volume element. Faces are
             wound so that their normal points out of the element. Line elements
             have no facets.
+        edges (Tensor): Local node indices of the element edges, ordered as the
+            mid-side nodes of the corresponding quadratic element.
     """
 
     iso_volume: float
@@ -93,6 +95,11 @@ class Element(ABC):
             NotImplementedError: For line elements, which have no facets.
         """
         raise NotImplementedError(f"{cls.__name__} has no facets.")
+
+    @classproperty
+    def edges(cls) -> Tensor:
+        """Local node indices of the element edges."""
+        raise NotImplementedError(f"{cls.__name__} has no edges.")
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -182,6 +189,10 @@ class Bar1(Element):
     def iso_coords(cls) -> Tensor:
         return torch.tensor([[-1.0], [1.0]])
 
+    @classproperty
+    def edges(cls) -> Tensor:
+        return torch.tensor([[0, 1]])
+
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
         N_1 = 1 - xi[..., 0]
@@ -239,6 +250,10 @@ class Bar2(Bar1):
     @classproperty
     def iso_coords(cls) -> Tensor:
         return torch.tensor([[-1.0], [1.0], [0.0]])
+
+    @classproperty
+    def edges(cls) -> Tensor:
+        return torch.tensor([[0, 1, 2]])
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
@@ -316,6 +331,10 @@ class Tria1(Element):
     @classproperty
     def facets(cls) -> Tensor:
         return torch.tensor([[0, 1], [1, 2], [2, 0]])
+
+    @classproperty
+    def edges(cls) -> Tensor:
+        return cls.facets
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
@@ -494,6 +513,10 @@ class Quad1(Element):
     @classproperty
     def facets(cls) -> Tensor:
         return torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0]])
+
+    @classproperty
+    def edges(cls) -> Tensor:
+        return cls.facets
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
@@ -734,6 +757,10 @@ class Tetra1(Element):
     def facets(cls) -> Tensor:
         return torch.tensor([[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]])
 
+    @classproperty
+    def edges(cls) -> Tensor:
+        return torch.tensor([[0, 1], [1, 2], [0, 2], [3, 0], [1, 3], [2, 3]])
+
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
         N_1 = 1.0 - xi[..., 0] - xi[..., 1] - xi[..., 2]
@@ -793,6 +820,12 @@ class Tetra2(Tetra1):
                 [1, 2, 3, 5, 9, 8],
                 [0, 3, 2, 7, 9, 6],
             ]
+        )
+
+    @classproperty
+    def edges(cls) -> Tensor:
+        return torch.tensor(
+            [[0, 1, 4], [1, 2, 5], [0, 2, 6], [3, 0, 7], [1, 3, 8], [2, 3, 9]]
         )
 
     @classproperty
@@ -934,6 +967,25 @@ class Hexa1(Element):
         )
 
     @classproperty
+    def edges(cls) -> Tensor:
+        return torch.tensor(
+            [
+                [0, 1],
+                [1, 2],
+                [2, 3],
+                [3, 0],
+                [4, 5],
+                [5, 6],
+                [6, 7],
+                [7, 4],
+                [0, 4],
+                [1, 5],
+                [2, 6],
+                [3, 7],
+            ]
+        )
+
+    @classproperty
     def iso_coords(cls) -> Tensor:
         return torch.tensor(
             [
@@ -1056,6 +1108,25 @@ class Hexa2(Hexa1):
                 [1, 2, 6, 5, 9, 18, 13, 17],
                 [2, 3, 7, 6, 10, 19, 14, 18],
                 [3, 0, 4, 7, 11, 16, 15, 19],
+            ]
+        )
+
+    @classproperty
+    def edges(cls) -> Tensor:
+        return torch.tensor(
+            [
+                [0, 1, 8],
+                [1, 2, 9],
+                [2, 3, 10],
+                [3, 0, 11],
+                [4, 5, 12],
+                [5, 6, 13],
+                [6, 7, 14],
+                [7, 4, 15],
+                [0, 4, 16],
+                [1, 5, 17],
+                [2, 6, 18],
+                [3, 7, 19],
             ]
         )
 
@@ -1335,6 +1406,35 @@ class Hexa2(Hexa1):
         )
 
 
+def linear_etype(nodes: Tensor, elements: Tensor) -> type[Element]:
+    """Infer the linear element type from a mesh.
+
+    Args:
+        nodes (Tensor): Nodal coordinates.
+            *Shape:* `(n_nodes, dim)`.
+        elements (Tensor): Connectivity of linear elements.
+            *Shape:* `(n_elem, n_nodes_per_elem)`.
+
+    Returns:
+        etype (type[Element]): The matching linear element type.
+    """
+    n_nod, dim = elements.shape[1], nodes.shape[1]
+    if n_nod == 2:
+        return Bar1
+    elif n_nod == 3 and dim == 2:
+        return Tria1
+    elif n_nod == 4 and dim == 2:
+        return Quad1
+    elif n_nod == 4 and dim == 3:
+        return Tetra1
+    elif n_nod == 8 and dim == 3:
+        return Hexa1
+    else:
+        raise Exception(
+            "The element type is not supported. Maybe the element is already quadratic?"
+        )
+
+
 def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor]:
     """Convert supported linear meshes to quadratic meshes.
 
@@ -1360,42 +1460,7 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
         new_elements (Tensor): Quadratic element connectivity.
             *Shape:* `(n_elem, n_quadratic_nodes_per_elem)`.
     """
-
-    if elements.shape[1] == 2:
-        # Bar1 element
-        edges = torch.tensor([[0, 1]])
-    elif elements.shape[1] == 3 and nodes.shape[1] == 2:
-        # Tri1 element
-        edges = torch.tensor([[0, 1], [1, 2], [2, 0]])
-    elif elements.shape[1] == 4 and nodes.shape[1] == 2:
-        # Quad1 element
-        edges = torch.tensor([[0, 1], [1, 2], [2, 3], [3, 0]])
-    elif elements.shape[1] == 4 and nodes.shape[1] == 3:
-        # Tetra1 element
-        edges = torch.tensor([[0, 1], [1, 2], [0, 2], [3, 0], [1, 3], [2, 3]])
-    elif elements.shape[1] == 8 and nodes.shape[1] == 3:
-        # Hexa1 element
-        edges = torch.tensor(
-            [
-                [0, 1],
-                [1, 2],
-                [2, 3],
-                [3, 0],
-                [4, 5],
-                [5, 6],
-                [6, 7],
-                [7, 4],
-                [0, 4],
-                [1, 5],
-                [2, 6],
-                [3, 7],
-            ]
-        )
-    else:
-        raise Exception(
-            "The element type is not supported for conversion to quadratic."
-            "Maybe the element is already quadratic?"
-        )
+    edges = linear_etype(nodes, elements).edges
 
     # Vectorize edges for all elements and sort each pair with increasing node IDs
     edge_vector = elements[:, edges].reshape(-1, 2)
