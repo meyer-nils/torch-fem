@@ -5,6 +5,7 @@
 ### Added
 - `Assembly` couples several models through kinematic constraints, mechanical or thermal, in two or three dimensions: `coupling(...)` makes selected nodes follow the rigid-body motion of the nearest node of another part, optionally on selected degrees of freedom.
 - `ReferencePoint` and `ReferencePointHeat` enter an assembly as free nodes carrying rigid-body degrees of freedom or one temperature, so a load or a prescribed value applied there drives everything coupled to it.
+- `Assembly.plot(...)` draws every part into one figure, with the points as markers and each coupling between the nodes it pairs, dispatching to matplotlib in 2D and PyVista in 3D. An argument given as a list is spread over the parts, so the `u` of `solve(...)` passes straight through.
 
 ## Version 0.9.0 - August 18 2026
 
