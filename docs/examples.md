@@ -184,6 +184,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Coupling a lattice, a solid and a shell](images/examples/basic/assembly/couplings.png)](examples/basic/assembly/couplings.html)
 
+-   **Bending a plate with a reference point**
+
+    [![Bending a plate with a reference point](images/examples/basic/assembly/planar_rp.png)](examples/basic/assembly/planar_rp.html)
+
 </div>
 
 ## Optimization examples
