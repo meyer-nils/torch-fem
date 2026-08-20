@@ -5,7 +5,6 @@ from typing import cast
 
 import pyvista
 import torch
-from IPython.display import HTML, display
 from matplotlib.axes import Axes
 from torch import Tensor
 
@@ -25,6 +24,10 @@ def show_html(plotter):
     if viewer is None:
         # Outside a notebook, show() already opened a window.
         return
+
+    # IPython ships with the notebook extra, so it is imported where it is used
+    from IPython.display import display
+
     viewer.value = viewer.value.replace("</body>", RERENDER + "</body>")
     display(viewer)
 
@@ -57,6 +60,8 @@ def embed_animation_gif(ani, fps=20):
     finally:
         os.remove(tmp.name)
 
+    from IPython.display import HTML
+
     return HTML(f'<img src="data:image/gif;base64,{gif_base64}">')
 
 
@@ -78,6 +83,8 @@ def embed_pyvista_animation(
             gif_base64 = base64.b64encode(f.read()).decode("utf-8")
     finally:
         os.remove(tmp.name)
+
+    from IPython.display import HTML
 
     return HTML(f'<img src="data:image/gif;base64,{gif_base64}">')
 
