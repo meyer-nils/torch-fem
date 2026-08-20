@@ -107,6 +107,7 @@ class ReferencePointHeat:
 
 
 Part = FEM | ReferencePoint | ReferencePointHeat
+Point = ReferencePoint | ReferencePointHeat
 
 
 class Assembly:
@@ -605,14 +606,14 @@ class Assembly:
 
     def _resolve(
         self, u: list[Tensor] | float, kwargs: dict
-    ) -> tuple[list[dict], list[Tensor], list[Tensor]]:
+    ) -> tuple[list[tuple[FEM, dict]], list[tuple[Point, Tensor]], list[Tensor], float]:
         """Everything a plot draws, moved by the displacement it is given.
 
         A list is the parts' shares of an argument, inside a dict too, so `u`
         and `node_property={"u": u}` split alike. Returns the arguments each
-        part is plotted with, the positions of the points, and one [2n, n_dim]
+        mesh part is plotted with, the points with their positions, one [2n, n_dim]
         tensor per coupling holding the secondary nodes followed by the primary
-        ones they pair with.
+        ones they pair with, and the extent of the whole assembly.
         """
         per_part, moved = [], {}
         for j, part in enumerate(self.parts):
@@ -631,15 +632,18 @@ class Assembly:
                 moves = part.n_dof_per_node >= self.dim
                 displacement = displacement[:, : self.dim] if moves else 0.0
             arguments["u"] = displacement
-            per_part.append(arguments)
+            if isinstance(part, FEM):
+                per_part.append((part, arguments))
             moved[id(part)] = part.nodes + displacement
 
-        points = [moved[id(p)][0] for p in self.parts if not isinstance(p, FEM)]
+        points = [(p, moved[id(p)][0]) for p in self.parts if not isinstance(p, FEM)]
         links = [
             torch.cat([moved[id(part)][nodes] for part, nodes in ends])
             for ends in self._links
         ]
-        return per_part, points, links
+        span = torch.cat(list(moved.values()))
+        size = torch.linalg.norm(span.max(dim=0).values - span.min(dim=0).values)
+        return per_part, points, links, float(size)
 
     def plot(self, u: list[Tensor] | float = 0.0, **kwargs):
         """Plot the assembly in 2D (matplotlib) or 3D (PyVista).
@@ -652,30 +656,66 @@ class Assembly:
             **kwargs: Forwarded to `plot2d` or `plot3d`, and from there to
                 every part's own `plot(...)`. A list is spread over the parts,
                 inside a dict too, so `node_property={"u": u}` splits like `u`.
+                `bcs=True` renders the boundary conditions of the parts and of
+                the reference points alike.
         """
         if self.dim == 2:
             self.plot2d(u=u, **kwargs)
         else:
             self.plot3d(u=u, **kwargs)
 
-    def plot2d(self, u: list[Tensor] | float = 0.0, ax: Axes | None = None, **kwargs):
+    def plot2d(
+        self,
+        u: list[Tensor] | float = 0.0,
+        ax: Axes | None = None,
+        bcs: bool = False,
+        **kwargs,
+    ):
         """Plot the parts with matplotlib, marking the points and couplings.
 
         Args:
             u: Nodal displacements per part. Defaults to 0.0 (undeformed).
             ax: Matplotlib axes to draw into. Defaults to a new figure.
+            bcs: If True, renders the boundary conditions of every part and of
+                the reference points, whose rotations are drawn as circular
+                arrows.
             **kwargs: Forwarded to each part's `plot(...)`.
         """
+        from .plot_utils import arrows2d, markers2d
+
         if ax is None:
             _, ax = plt.subplots()
-        per_part, points, links = self._resolve(u, kwargs)
+        per_part, points, links, size = self._resolve(u, kwargs)
 
-        for part, arguments in zip(self.parts, per_part):
-            if isinstance(part, FEM):
-                part.plot(ax=ax, **arguments)
+        for part, arguments in per_part:
+            part.plot(ax=ax, bcs=bcs, **arguments)
 
-        for center in points:
+        deformed = isinstance(u, list)
+        width = 0.01 * size
+        for point, center in points:
             ax.plot(*center.tolist(), "o", color="gray", zorder=3)
+            # A temperature draws no glyph
+            if not bcs or isinstance(point, ReferencePointHeat):
+                continue
+            node = center[None]
+            prescribed = torch.where(point.constraints, point.displacements, 0.0)
+            # A prescribed rotation cannot be drawn to scale, so it keeps its mark
+            fixed = point.constraints.clone()
+            fixed[:, :2] &= deformed | (prescribed[:, :2] == 0.0)
+            arrows2d(ax, node, point.forces[:, :2], width, span=0.1 * size)
+            if not deformed:
+                arrows2d(ax, node, prescribed[:, :2], width)
+            tip = node if deformed else node + prescribed[:, :2]
+            if prescribed[:, :2].any():
+                ax.scatter(tip[:, 0], tip[:, 1], color="gray", marker="o", zorder=10)
+            markers2d(ax, node, fixed[:, :2], width)
+            if fixed[:, 2:].any() or point.forces[:, 2:].any():
+                ax.plot(
+                    *center.tolist(),
+                    marker="$\\circlearrowleft$",
+                    markersize=18,
+                    color="gray",
+                )
 
         for ends in links:
             n = len(ends) // 2
@@ -683,8 +723,9 @@ class Assembly:
             ax.add_collection(LineCollection(segments, colors="gray", zorder=2))
 
         # A part fixes the limits to its own mesh, which a point may sit outside
-        if points or links:
-            ax.update_datalim(torch.cat([x.reshape(-1, 2) for x in points + links]))
+        at = [center for _, center in points] + links
+        if at:
+            ax.update_datalim(torch.cat([x.reshape(-1, 2) for x in at]))
             ax.set_autoscale_on(True)
             ax.autoscale_view()
 
@@ -692,6 +733,7 @@ class Assembly:
         self,
         u: list[Tensor] | float = 0.0,
         plotter: pyvista.Plotter | None = None,
+        bcs: bool = False,
         **kwargs,
     ):
         """Plot the parts with PyVista, marking the points and couplings.
@@ -703,20 +745,45 @@ class Assembly:
             u: Nodal displacements per part. Defaults to 0.0 (undeformed).
             plotter: PyVista plotter to draw into. If None, one is created and
                 shown once the whole assembly is drawn.
+            bcs: If True, renders the boundary conditions of every part and of
+                the reference points, whose moments and rotations are drawn
+                with a doubled head.
             **kwargs: Forwarded to each part's `plot(...)`.
         """
+        from .plot_utils import arrows, cones, dots
+
         pl = pyvista.Plotter() if plotter is None else plotter
-        per_part, points, links = self._resolve(u, kwargs)
+        per_part, points, links, size = self._resolve(u, kwargs)
+        # Glyphs follow the element size, with a floor so that they stay visible
+        # on a fine mesh, whose elements are far smaller than the model
         elements = [part.char_lengths for part in self.parts if isinstance(part, FEM)]
-        scale = 0.5 * float(torch.cat(elements).mean())
+        scale = max(0.5 * float(torch.cat(elements).mean()), 0.02 * size)
 
-        for part, arguments in zip(self.parts, per_part):
-            if isinstance(part, FEM):
-                part.plot(plotter=pl, **arguments)
+        for part, arguments in per_part:
+            part.plot(plotter=pl, bcs=bcs, **arguments)
 
-        for center in points:
+        deformed = isinstance(u, list)
+        span = 0.1 * size
+        for point, center in points:
             sphere = pyvista.Sphere(radius=0.3 * scale, center=center.tolist())
             pl.add_mesh(sphere, color="gray")
+            # A temperature draws no glyph
+            if not bcs or isinstance(point, ReferencePointHeat):
+                continue
+            node = center[None]
+            prescribed = torch.where(point.constraints, point.displacements, 0.0)
+            # A prescribed rotation cannot be drawn to scale, so it keeps its cone
+            fixed = point.constraints.clone()
+            fixed[:, : self.dim] &= deformed | (prescribed[:, : self.dim] == 0.0)
+            arrows(pl, node, point.forces[:, : self.dim], span=span)
+            arrows(pl, node, point.forces[:, self.dim :], span=span, doubled=True)
+            if not deformed:
+                arrows(pl, node, prescribed[:, : self.dim])
+            tip = node if deformed else node + prescribed[:, : self.dim]
+            if prescribed[:, : self.dim].any():
+                dots(pl, tip, 0.3 * scale)
+            cones(pl, node, fixed[:, : self.dim], scale)
+            cones(pl, node, fixed[:, self.dim :], scale, doubled=True)
 
         for ends in links:
             # A VTK line cell is its point count followed by its point indices
