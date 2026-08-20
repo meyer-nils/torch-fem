@@ -39,6 +39,22 @@ jobs:
     - name: basedpyright
       run: basedpyright
 
+  install:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install the package without any extras
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install .
+    # Away from the sources, so this imports what was installed and fails if a
+    # runtime dependency is missing from the base requirements.
+    - name: Import the installed package
+      run: cd "${RUNNER_TEMP}" && python -c "import torchfem"
+
   test:
     needs: [lint, typecheck]
     runs-on: ubuntu-latest

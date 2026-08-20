@@ -32,6 +32,7 @@
   - Custom user material interface
 
 - Utilities
+  - Assembly of several models coupled by kinematic constraints
   - Homogenization of orthotropic elasticity for composites
   - Composite laminates for shells
   - Simple structured meshing

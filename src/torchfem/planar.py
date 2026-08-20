@@ -11,6 +11,7 @@ from torch import Tensor
 from .base import Heat, Mechanics
 from .elements import Element, Quad1, Quad2, Tria1, Tria2
 from .materials import Material
+from .plot_utils import arrows2d, markers2d
 
 
 class Planar(Mechanics):
@@ -264,62 +265,17 @@ class Planar(Mechanics):
         # Boundary conditions
         tips = [pos]
         if bcs:
-            arrow_style = {
-                "width": 0.01 * size,
-                "facecolor": "gray",
-                "linewidth": 0.0,
-                "zorder": 10,
-            }
-
+            fixed = constraints & (deformed | (prescribed == 0.0))
+            # A temperature has no direction, so only its constraint is drawn
             if forces.shape[1] == 2:
-                # Forces scaled linearly, the largest arrow spanning 10% of the plot
-                magnitude = torch.linalg.norm(forces, dim=1)
-                if magnitude.max() > 0.0:
-                    ends = pos + (0.1 * size / magnitude.max()) * forces
-                    for i in torch.nonzero(magnitude).ravel():
-                        ax.arrow(
-                            float(pos[i, 0]),
-                            float(pos[i, 1]),
-                            float(ends[i, 0] - pos[i, 0]),
-                            float(ends[i, 1] - pos[i, 1]),
-                            **arrow_style,
-                        )
-                    tips.append(ends[magnitude > 0.0])
-
-                # Prescribed displacements to scale, with a dot marking the tip
-                magnitude = torch.linalg.norm(prescribed, dim=1)
-                if magnitude.max() > 0.0:
-                    if deformed:
-                        # The nodes already sit at the prescribed positions
-                        ends = pos[magnitude > 0.0]
-                    else:
-                        ends = (pos + prescribed)[magnitude > 0.0]
-                        for i in torch.nonzero(magnitude).ravel():
-                            ax.arrow(
-                                float(pos[i, 0]),
-                                float(pos[i, 1]),
-                                float(prescribed[i, 0]),
-                                float(prescribed[i, 1]),
-                                length_includes_head=True,
-                                **arrow_style,
-                            )
-                    ax.scatter(
-                        ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10
-                    )
-                    tips.append(ends)
-
-            # Constrained DOFs as markers, unless an arrow already shows them
-            for i, constraint in enumerate(constraints):
-                x = float(pos[i][0])
-                y = float(pos[i][1])
-                if len(constraint) == 2:
-                    if constraint[0] and (deformed or prescribed[i, 0] == 0.0):
-                        ax.plot(x - 0.01 * size, y, ">", color="gray")
-                    if constraint[1] and (deformed or prescribed[i, 1] == 0.0):
-                        ax.plot(x, y - 0.01 * size, "^", color="gray")
-                elif len(constraint) == 1:
-                    if constraint[0]:
-                        ax.plot(x, y, "s", color="gray")
+                width = 0.01 * float(size)
+                tips.append(arrows2d(ax, pos, forces, width, span=0.1 * float(size)))
+                if not deformed:
+                    tips.append(arrows2d(ax, pos, prescribed, width))
+                pulled = torch.linalg.norm(prescribed, dim=1) > 0.0
+                ends = (pos if deformed else pos + prescribed)[pulled]
+                ax.scatter(ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10)
+            markers2d(ax, pos, fixed, 0.01 * float(size))
 
         # Material orientations
         if orientation is not None:

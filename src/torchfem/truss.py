@@ -1,4 +1,3 @@
-import typing
 from functools import cached_property
 
 import matplotlib.pyplot as plt
@@ -6,13 +5,13 @@ import pyvista
 import torch
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap, Normalize
-from pyvista import DataSet
 from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import Mechanics
 from .elements import Bar1, Bar2, Element
 from .materials import Material
+from .plot_utils import arrows, arrows2d, cones, dots, glyphs, markers2d
 
 
 class Truss(Mechanics):
@@ -222,54 +221,16 @@ class Truss(Mechanics):
         # Boundary conditions
         tips = [pos]
         if bcs:
-            prescribed = torch.where(self.constraints, self.displacements, 0.0)
-
-            # In a deformed configuration the prescribed displacements are already
-            # visible in the plotted positions, so only their tips are drawn there.
             deformed = isinstance(u, Tensor)
-
-            arrow_style = {"width": 0.01 * size, "facecolor": "gray"}
-
-            # Forces scaled linearly, the largest arrow spanning 10% of the plot
-            magnitude = torch.linalg.norm(self.forces, dim=1)
-            if magnitude.max() > 0.0:
-                ends = pos + (0.1 * size / magnitude.max()) * self.forces
-                for i in torch.nonzero(magnitude).ravel():
-                    ax.arrow(
-                        float(pos[i, 0]),
-                        float(pos[i, 1]),
-                        float(ends[i, 0] - pos[i, 0]),
-                        float(ends[i, 1] - pos[i, 1]),
-                        **arrow_style,
-                    )
-                tips.append(ends[magnitude > 0.0])
-
-            # Prescribed displacements to scale, with a dot marking the tip
-            magnitude = torch.linalg.norm(prescribed, dim=1)
-            if magnitude.max() > 0.0:
-                if deformed:
-                    # The nodes already sit at the prescribed positions
-                    ends = pos[magnitude > 0.0]
-                else:
-                    ends = (pos + prescribed)[magnitude > 0.0]
-                    for i in torch.nonzero(magnitude).ravel():
-                        ax.arrow(
-                            float(pos[i, 0]),
-                            float(pos[i, 1]),
-                            float(prescribed[i, 0]),
-                            float(prescribed[i, 1]),
-                            length_includes_head=True,
-                            **arrow_style,
-                        )
-                ax.scatter(ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10)
-                tips.append(ends)
-
-            # Constrained DOFs as markers, unless an arrow already shows them
-            for i, constraint in enumerate(self.constraints):
-                if constraint[0] and (deformed or prescribed[i, 0] == 0.0):
-                    ax.plot(pos[i][0] - 0.1, pos[i][1], ">", color="gray")
-                if constraint[1] and (deformed or prescribed[i, 1] == 0.0):
-                    ax.plot(pos[i][0], pos[i][1] - 0.1, "^", color="gray")
+            prescribed = torch.where(self.constraints, self.displacements, 0.0)
+            fixed = self.constraints & (deformed | (prescribed == 0.0))
+            tips.append(arrows2d(ax, pos, self.forces, 0.01 * size, span=0.1 * size))
+            if not deformed:
+                tips.append(arrows2d(ax, pos, prescribed, 0.01 * size))
+            pulled = torch.linalg.norm(prescribed, dim=1) > 0.0
+            ends = (pos if deformed else pos + prescribed)[pulled]
+            ax.scatter(ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10)
+            markers2d(ax, pos, fixed, 0.1)
 
         # Adjustments (limits include the arrow tips)
         extent = torch.cat(tips)
@@ -343,19 +304,9 @@ class Truss(Mechanics):
             else:
                 pl.add_mesh(tube)
 
-        def glyph(points: Tensor, geom, directions: Tensor | None = None, color=None):
-            """Place a copy of geom on every point, oriented along directions."""
-            if points.numel() == 0:
-                return
-            data = pyvista.PolyData(points.numpy())
-            if directions is not None:
-                data["dir"] = directions.numpy()
-            orient = "dir" if directions is not None else False
-            glyphs = data.glyph(geom=geom, orient=orient, scale=False)
-            pl.add_mesh(typing.cast(DataSet, glyphs), color=color)
-
         # Spheres smoothing the joints where the tubes meet
-        glyph(
+        glyphs(
+            pl,
             pos,
             pyvista.Sphere(radius=float(radii.mean())),
             color="gray" if element_property is not None else None,
@@ -363,55 +314,18 @@ class Truss(Mechanics):
 
         # Boundary conditions
         if bcs:
-            prescribed = torch.where(self.constraints, self.displacements, 0.0)
-
-            # In a deformed configuration the prescribed displacements are already
-            # visible in the plotted positions, so only their tips are drawn there.
             deformed = isinstance(u, Tensor)
-
-            # Forces scaled linearly, the largest arrow spanning 20% of the model
-            magnitude = torch.linalg.norm(self.forces, dim=1)
-            if magnitude.max() > 0.0:
-                nonzero = magnitude > 0.0
-                pl.add_arrows(
-                    pos[nonzero].numpy(),
-                    (self.forces[nonzero] / magnitude.max()).numpy(),
-                    mag=0.2 * size,
-                    color="gray",
-                )
-
-            # Cone size
+            prescribed = torch.where(self.constraints, self.displacements, 0.0)
             radius = 0.1 * float(self.char_lengths.mean())
-
-            # Prescribed displacements to scale, with a dot marking the tip
-            magnitude = torch.linalg.norm(prescribed, dim=1)
-            if magnitude.max() > 0.0:
-                nonzero = magnitude > 0.0
-                if deformed:
-                    ends = pos[nonzero]
-                else:
-                    ends = (pos + prescribed)[nonzero]
-                    pl.add_arrows(
-                        pos[nonzero].numpy(), prescribed[nonzero].numpy(), color="gray"
-                    )
-                # Large enough to stay visible where the dot sits on a node
-                dot_radius = max(0.5 * radius, 1.25 * float(radii.max()))
-                glyph(ends, pyvista.Sphere(radius=dot_radius), color="gray")
-
-            # Constrained DOFs as cones pointing at the node, unless an arrow
-            # already shows them
-            fixed = (
-                self.constraints if deformed else self.constraints & (prescribed == 0.0)
-            )
-            node, dof = torch.nonzero(fixed).T
-            cone = pyvista.Cone(
-                center=(-radius, 0.0, 0.0),
-                direction=(1.0, 0.0, 0.0),
-                height=2.0 * radius,
-                radius=radius,
-                resolution=16,
-            )
-            glyph(pos[node], cone, torch.eye(3)[dof], color="gray")
+            fixed = self.constraints & (deformed | (prescribed == 0.0))
+            arrows(pl, pos, self.forces, span=0.2 * size)
+            if not deformed:
+                arrows(pl, pos, prescribed)
+            # Large enough to stay visible where the dot sits on a node
+            pulled = torch.linalg.norm(prescribed, dim=1) > 0.0
+            ends = (pos if deformed else pos + prescribed)[pulled]
+            dots(pl, ends, max(0.5 * radius, 1.25 * float(radii.max())))
+            cones(pl, pos, fixed, 2.0 * radius)
 
         if axes:
             pl.renderer.show_grid()

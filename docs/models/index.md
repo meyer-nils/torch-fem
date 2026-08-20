@@ -6,8 +6,8 @@ icon: lucide/shapes
 
 A FEM model combines a mesh (`nodes` and `elements`) with a material to form a solvable finite-element problem. All models share the same workflow:
 
-1. **Create** the model from nodes, elements, and a material.
-2. **Apply loads and boundary conditions** by setting entries of the model attributes: `forces` and `displacements` for mechanics models ([Truss](truss.md), [Planar](planar.md), [Shell](shell.md), [Solid](solid.md)), or `heat_flux` and `temperatures` for thermal models (`PlanarHeat`, `SolidHeat`). Prescribed values are activated by setting the corresponding entries of the boolean mask `constraints` to `True`.
+1. **Create** the model from nodes, elements, and a material. Several models can be combined as one system in an [Assembly](assembly.md) and coupled by kinematic constraints.
+2. **Apply loads and boundary conditions** by setting entries of the model attributes: `forces` and `displacements` for mechanics models ([Truss](truss.md), [Planar](planar.md), [Shell](shell.md), [Solid](solid.md)), or `heat_flux` and `temperatures` for thermal models (`PlanarHeat`, `SolidHeat`). Prescribed values are activated by setting the corresponding entries of the boolean mask `constraints` to `True`. 
 3. **Solve** with `solve()`, which returns the nodal solution, the internal nodal forces, and the flux, gradient, and material state at the elements.
 4. **Postprocess** the resulting tensors, e.g. with `plot()`.
 
