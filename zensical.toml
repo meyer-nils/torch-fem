@@ -23,6 +23,7 @@ nav = [
     { "Planar" = "models/planar.md" },
     { "Shell" = "models/shell.md" },
     { "Solid" = "models/solid.md" },
+    { "Assembly" = "models/assembly.md" },
   ] },
   { "Materials" = [
     { "Base" = "materials/index.md" },
