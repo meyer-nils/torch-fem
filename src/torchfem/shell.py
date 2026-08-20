@@ -20,6 +20,7 @@ from .base import Mechanics
 from .elements import Element, Tria1
 from .laminate import Laminate
 from .materials import Material
+from .plot_utils import arrows, cones, dots
 from .utils import stiffness2voigt, stress2voigt
 
 
@@ -740,79 +741,31 @@ class Shell(Mechanics):
             pl.add_mesh(edges, style="wireframe", color="grey")
 
         if bcs:
-            deformed = isinstance(u, Tensor)
             points = self.nodes + u
+            deformed = isinstance(u, Tensor)
             prescribed = torch.where(self.constraints, self.displacements, 0.0)
             size = torch.linalg.norm(
                 points.max(dim=0).values - points.min(dim=0).values
             )
             height = 0.5 * float(self.char_lengths.mean())
 
-            def glyph(pts: Tensor, geom, directions: Tensor | None = None):
-                """Put a gray geom on every point, along and scaled by directions."""
-                if pts.numel() == 0:
-                    return
-                data = pyvista.PolyData(pts.cpu().numpy())
-                if directions is not None:
-                    length = torch.linalg.norm(directions, dim=1, keepdim=True)
-                    data["dir"] = (directions / length).cpu().numpy()
-                    data["len"] = length.ravel().cpu().numpy()
-                orient = "dir" if directions is not None else False
-                glyphs = data.glyph(geom=geom, orient=orient, scale=orient and "len")
-                pl.add_mesh(cast(pyvista.DataSet, glyphs), color="gray")
-
-            # Translations get a single head, rotations a doubled one
-            arrow = pyvista.Arrow()
-            moment = arrow + pyvista.Cone(
-                center=(0.625, 0.0, 0.0),
-                direction=(1.0, 0.0, 0.0),
-                height=0.25,
-                radius=0.1,
-            )
-            cone = pyvista.Cone(
-                center=(-0.5 * height, 0.0, 0.0),
-                direction=(1.0, 0.0, 0.0),
-                height=height,
-                radius=0.5 * height,
-                resolution=12,
-            )
-            double_cone = cone + cone.translate((-height, 0.0, 0.0), inplace=False)
-
             # Forces and moments scaled linearly, each normalized on its own
             # because they carry different units
-            for dofs, geom in [(slice(0, 3), arrow), (slice(3, 6), moment)]:
-                load = self.forces[:, dofs]
-                magnitude = torch.linalg.norm(load, dim=1)
-                if magnitude.max() > 0.0:
-                    loaded = magnitude > 0.0
-                    scale = 0.1 * size / magnitude.max()
-                    glyph(points[loaded], geom, scale * load[loaded])
+            span = 0.1 * float(size)
+            arrows(pl, points, self.forces[:, :3], span=span)
+            arrows(pl, points, self.forces[:, 3:], span=span, doubled=True)
 
-            # Prescribed translations to scale, with a sphere marking the tip
-            magnitude = torch.linalg.norm(prescribed[:, :3], dim=1)
-            if magnitude.max() > 0.0:
-                pulled = magnitude > 0.0
-                if deformed:
-                    ends = points[pulled]
-                else:
-                    ends = (points + prescribed[:, :3])[pulled]
-                    glyph(points[pulled], arrow, prescribed[pulled, :3])
-                glyph(
-                    ends,
-                    pyvista.Sphere(
-                        radius=0.3 * height, theta_resolution=10, phi_resolution=10
-                    ),
-                )
-
-            # One cone per constrained DOF, unless an arrow already shows it.
-            # A prescribed rotation cannot be drawn to scale, so it keeps its cone.
+            # Prescribed translations to scale, with a sphere marking the tip. A
+            # prescribed rotation cannot be drawn to scale, so it keeps its cone.
             fixed = self.constraints & ~symmetry
             if not deformed:
-                fixed[:, :3] &= prescribed[:, :3] == 0.0
-            unit = torch.eye(3, device=points.device, dtype=points.dtype)
-            for dofs, geom in [(slice(0, 3), cone), (slice(3, 6), double_cone)]:
-                node, dof = torch.nonzero(fixed[:, dofs]).T
-                glyph(points[node], geom, unit[dof])
+                fixed[:, :3] = fixed[:, :3] & (prescribed[:, :3] == 0.0)
+                arrows(pl, points, prescribed[:, :3])
+            pulled = torch.linalg.norm(prescribed[:, :3], dim=1) > 0.0
+            ends = points if deformed else points + prescribed[:, :3]
+            dots(pl, ends[pulled], 0.3 * height)
+            cones(pl, points, fixed[:, :3], height)
+            cones(pl, points, fixed[:, 3:], height, doubled=True)
 
         if axes:
             pl.renderer.show_grid()

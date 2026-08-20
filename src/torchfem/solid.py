@@ -10,6 +10,7 @@ from torch import Tensor
 from .base import Heat, Mechanics
 from .elements import Element, Hexa1, Hexa2, Tetra1, Tetra2
 from .materials import Material
+from .plot_utils import arrows, cones, dots
 
 
 class Solid(Mechanics):
@@ -213,61 +214,24 @@ class Solid(Mechanics):
             pl.add_mesh(edges, style="wireframe", color="grey")
 
         if bcs and self.n_dof_per_node != 1:
+            # Nodes of culled elements carry no visible boundary conditions
+            visible = torch.zeros(self.n_nod, dtype=torch.bool)
+            visible[self.elements[kept].reshape(-1)] = True
             deformed = isinstance(u, Tensor)
             prescribed = torch.where(self.constraints, self.displacements, 0.0)
             size = torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values)
             height = 0.5 * float(self.char_lengths.mean())
 
-            # Nodes of culled elements carry no visible boundary conditions
-            visible = torch.zeros(self.n_nod, dtype=torch.bool)
-            visible[self.elements[kept].reshape(-1)] = True
-
-            def glyph(points: Tensor, geom, directions: Tensor | None = None):
-                """Put a gray geom on every point, along and scaled by directions."""
-                if points.numel() == 0:
-                    return
-                data = pyvista.PolyData(points.cpu().numpy())
-                if directions is not None:
-                    length = torch.linalg.norm(directions, dim=1, keepdim=True)
-                    data["dir"] = (directions / length).cpu().numpy()
-                    data["len"] = length.ravel().cpu().numpy()
-                orient = "dir" if directions is not None else False
-                glyphs = data.glyph(geom=geom, orient=orient, scale=orient and "len")
-                pl.add_mesh(typing.cast(DataSet, glyphs), color="gray")
-
-            # Forces scaled linearly with the largest arrow spanning 10% of the
-            # part, prescribed displacements to scale and only when undeformed
-            mag = torch.linalg.norm(self.forces, dim=1)
-            loaded = (mag > 0.0) & visible
-            pulled = (torch.linalg.norm(prescribed, dim=1) > 0.0) & visible
-            shown = pulled & (not deformed)
-            glyph(
-                torch.cat([pos[loaded], pos[shown]]),
-                pyvista.Arrow(),
-                torch.cat(
-                    [0.1 * size / mag.max() * self.forces[loaded], prescribed[shown]]
-                ),
-            )
-
-            # Spheres marking where the pulled nodes end up
-            sphere = pyvista.Sphere(
-                radius=0.3 * height, theta_resolution=10, phi_resolution=10
-            )
-            glyph((pos if deformed else pos + prescribed)[pulled], sphere)
-
-            # Cones per constrained DOF, unless an arrow already shows it
+            # Forces scaled linearly, prescribed displacements to scale and only
+            # where the nodes do not sit at them already
             fixed = self.constraints & visible[:, None]
+            arrows(pl, pos[visible], self.forces[visible], span=0.1 * float(size))
             if not deformed:
                 fixed = fixed & (prescribed == 0.0)
-            node, dof = torch.nonzero(fixed).T
-            cone = pyvista.Cone(
-                center=(-0.5 * height, 0.0, 0.0),
-                direction=(1.0, 0.0, 0.0),
-                height=height,
-                radius=0.5 * height,
-                resolution=12,
-            )
-            glyph(pos[node], cone, torch.eye(3, dtype=pos.dtype)[dof])
+                arrows(pl, pos[visible], prescribed[visible])
+            pulled = (torch.linalg.norm(prescribed, dim=1) > 0.0) & visible
+            dots(pl, (pos if deformed else pos + prescribed)[pulled], 0.3 * height)
+            cones(pl, pos, fixed, height)
 
         if axes:
             pl.renderer.show_grid()
