@@ -681,7 +681,7 @@ class Assembly:
                 arrows.
             **kwargs: Forwarded to each part's `plot(...)`.
         """
-        from .plot_utils import arrows2d, markers2d
+        from .plot_utils import arrows2d, dots2d, markers2d
 
         if ax is None:
             _, ax = plt.subplots()
@@ -707,20 +707,22 @@ class Assembly:
                 arrows2d(ax, node, prescribed[:, :2], width)
             tip = node if deformed else node + prescribed[:, :2]
             if prescribed[:, :2].any():
-                ax.scatter(tip[:, 0], tip[:, 1], color="gray", marker="o", zorder=10)
-            markers2d(ax, node, fixed[:, :2], width)
+                dots2d(ax, tip)
+            markers2d(ax, node, fixed[:, :2])
             if fixed[:, 2:].any() or point.forces[:, 2:].any():
                 ax.plot(
                     *center.tolist(),
                     marker="$\\circlearrowleft$",
                     markersize=18,
                     color="gray",
+                    clip_on=False,
                 )
 
         for ends in links:
             n = len(ends) // 2
             segments = [[a.tolist(), b.tolist()] for a, b in zip(ends[:n], ends[n:])]
             ax.add_collection(LineCollection(segments, colors="gray", zorder=2))
+            dots2d(ax, ends)
 
         # A part fixes the limits to its own mesh, which a point may sit outside
         at = [center for _, center in points] + links

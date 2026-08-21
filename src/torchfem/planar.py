@@ -3,7 +3,7 @@ from functools import cached_property
 import matplotlib.pyplot as plt
 import torch
 from matplotlib.axes import Axes
-from matplotlib.collections import LineCollection, PolyCollection
+from matplotlib.collections import PolyCollection
 from matplotlib.colors import Colormap
 from matplotlib.tri import Triangulation
 from torch import Tensor
@@ -11,7 +11,7 @@ from torch import Tensor
 from .base import Heat, Mechanics
 from .elements import Element, Quad1, Quad2, Tria1, Tria2
 from .materials import Material
-from .plot_utils import arrows2d, markers2d
+from .plot_utils import LABEL_OFFSET, arrows2d, dots2d, markers2d, signs2d
 
 
 class Planar(Mechanics):
@@ -113,7 +113,7 @@ class Planar(Mechanics):
         node_markers: bool = False,
         axes: bool = False,
         bcs: bool = True,
-        color: str = "black",
+        color: str = "lightblue",
         alpha: float = 1.0,
         cmap: str | Colormap = "viridis",
         linewidth: float = 1.0,
@@ -144,8 +144,10 @@ class Planar(Mechanics):
                 configuration, prescribed non-zero displacements are drawn to
                 scale as arrows with a dot at the tip instead of a marker. In
                 the deformed configuration, only the dot is drawn, marking the
-                position the node was pulled to.
-            color: Line and marker color.
+                position the node was pulled to. A heat flux is drawn as a plus
+                or a minus, and a prescribed temperature keeps its marker.
+            color: Element fill color. Edges, markers and labels follow the foreground
+                of the style.
             alpha: Opacity of nodal contour plots.
             cmap: Matplotlib colormap or its name.
             linewidth: Element edge line width. Set to 0.0 to hide edges.
@@ -155,6 +157,9 @@ class Planar(Mechanics):
             vmax: Upper color limit.
             title: Plot title.
             ax: Existing matplotlib axes to plot into.
+            **kwargs: Forwarded to the `PolyCollection` of the elements, e.g.
+                `edgecolor` to override the foreground or `hatch` to fill them
+                with a pattern.
         """
         # Compute deformed positions
         pos = self.nodes + u
@@ -171,23 +176,27 @@ class Planar(Mechanics):
         deformed = isinstance(u, Tensor)
 
         # Bounding box
-        size = torch.linalg.norm(pos.max() - pos.min())
+        size = float(torch.linalg.norm(pos.max() - pos.min()))
 
         # Set figure size
         if ax is None:
             _, ax = plt.subplots(figsize=figsize)
 
+        # Edges, markers and labels follow the style, so a dark theme flips them
+        foreground = plt.rcParams["text.color"]
+
+        # Quadratic elements are drawn through their corner nodes
+        corners = elements[:, :3] if self.etype in (Tria1, Tria2) else elements[:, :4]
+        verts = list(pos[corners].numpy())
+
+        # A property colored onto the surface replaces the plain fill
+        colored = node_property is not None
+
         # Color surface with interpolated nodal properties (if provided)
         if node_property is not None:
             node_property = node_property.squeeze().cpu()
-            if self.etype is Quad1 or self.etype is Quad2:
-                triangles = []
-                for e in elements:
-                    triangles.append([e[0], e[1], e[2]])
-                    triangles.append([e[2], e[3], e[0]])
-            else:
-                triangles = elements[:, :3].tolist()
-            triangulation = Triangulation(pos[:, 0], pos[:, 1], triangles)
+            fan = [corners[:, [0, i, i + 1]] for i in range(1, corners.shape[1] - 1)]
+            triangulation = Triangulation(pos[:, 0], pos[:, 1], torch.cat(fan))
             # Adjust levels for some edge cases
             levels = torch.linspace(
                 node_property.min(), 1.001 * node_property.max() + 1e-8, 100
@@ -209,18 +218,13 @@ class Planar(Mechanics):
             element_property = element_property.squeeze().cpu()
             if element_property.numel() == self.n_elem:
                 # Plot scalar field
-                if self.etype is Tria2:
-                    verts = pos[elements[:, :3]]
-                elif self.etype is Quad2:
-                    verts = pos[elements[:, :4]]
-                else:
-                    verts = pos[elements]
-                pc = PolyCollection(list(verts.numpy()), cmap=cmap)
+                colored = True
+                pc = PolyCollection(verts, cmap=cmap)
                 pc.set_array(element_property)
+                pc.set_clim(vmin=vmin, vmax=vmax)
                 ax.add_collection(pc)
                 if colorbar:
                     plt.colorbar(pc, ax=ax)
-                    pc.set_clim(vmin=vmin, vmax=vmax)
             elif element_property.numel() == 2 * self.n_elem:
                 # Plot vector field
                 centers = pos[elements, :].mean(dim=1)
@@ -235,59 +239,51 @@ class Planar(Mechanics):
                     torch.linalg.norm(element_property, dim=1),
                     pivot="middle",
                     cmap=cmap,
+                    zorder=2,
                 )
+
+        # Elements, styled further by any extra keyword
+        ax.add_collection(
+            PolyCollection(
+                verts,
+                facecolors="none" if colored else color,
+                edgecolors=foreground,
+                linewidths=linewidth,
+                **kwargs,
+            )
+        )
 
         # Nodes
         if node_markers:
-            ax.scatter(pos[:, 0], pos[:, 1], color=color, marker="o")
+            ax.scatter(pos[:, 0], pos[:, 1], color=foreground, marker="o", zorder=3)
             if node_labels:
-                for i, node in enumerate(pos):
-                    ax.annotate(
-                        str(i),
-                        (node[0].item() + 0.02 * size, node[1].item() + 0.02 * size),
-                        color=color,
-                    )
-
-        # Elements
-        if linewidth > 0.0:
-            coords = pos[elements]
-            if self.etype is Tria2:
-                coords = coords[:, :3]
-            if self.etype is Quad2:
-                coords = coords[:, :4]
-            closed_segments = torch.cat([coords, coords[:, :1, :]], dim=1)
-            segments = closed_segments[:, :, None, :]
-            segments = torch.cat([segments[:, :-1], segments[:, 1:]], dim=2)
-            segments = segments.reshape(-1, 2, 2)
-            lc = LineCollection(segments.tolist(), colors=color, linewidths=linewidth)
-            ax.add_collection(lc)
+                for i, (x, y) in enumerate(pos.tolist()):
+                    ax.annotate(str(i), (x, y), color=foreground, **LABEL_OFFSET)
 
         # Boundary conditions
         tips = [pos]
         if bcs:
-            fixed = constraints & (deformed | (prescribed == 0.0))
-            # A temperature has no direction, so only its constraint is drawn
+            # A temperature carries no load arrow, and a prescribed one keeps
+            # its marker rather than being drawn to scale
             if forces.shape[1] == 2:
-                width = 0.01 * float(size)
-                tips.append(arrows2d(ax, pos, forces, width, span=0.1 * float(size)))
+                fixed = constraints & (deformed | (prescribed == 0.0))
+                width = 0.01 * size
+                tips.append(arrows2d(ax, pos, forces, width, span=0.1 * size))
                 if not deformed:
                     tips.append(arrows2d(ax, pos, prescribed, width))
                 pulled = torch.linalg.norm(prescribed, dim=1) > 0.0
                 ends = (pos if deformed else pos + prescribed)[pulled]
-                ax.scatter(ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10)
-            markers2d(ax, pos, fixed, 0.01 * float(size))
+                dots2d(ax, ends)
+            else:
+                fixed = constraints
+                signs2d(ax, pos, forces[:, 0])
+            markers2d(ax, pos, fixed)
 
         # Material orientations
         if orientation is not None:
             orientation = orientation.cpu()
             centers = pos[elements, :].mean(dim=1)
-            dir = torch.stack(
-                [
-                    torch.cos(orientation),
-                    -torch.sin(orientation),
-                    torch.zeros_like(orientation),
-                ]
-            ).T
+            dir = torch.stack([torch.cos(orientation), -torch.sin(orientation)]).T
             ax.quiver(
                 centers[:, 0],
                 centers[:, 1],
@@ -301,10 +297,10 @@ class Planar(Mechanics):
             )
 
         # Plot limits (collections do not autoscale), including arrow tips
-        extent = torch.cat(tips)
+        lo, hi = torch.cat(tips).aminmax(dim=0)
         margin = 0.1 * size
-        ax.set_xlim(extent[:, 0].min() - margin, extent[:, 0].max() + margin)
-        ax.set_ylim(extent[:, 1].min() - margin, extent[:, 1].max() + margin)
+        ax.set_xlim(float(lo[0]) - margin, float(hi[0]) + margin)
+        ax.set_ylim(float(lo[1]) - margin, float(hi[1]) + margin)
         ax.set_aspect("equal", adjustable="box")
 
         if title:

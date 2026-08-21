@@ -13,7 +13,7 @@ from torch import Tensor
 from .base import Mechanics
 from .elements import Bar1, Bar2, Element
 from .materials import Material
-from .plot_utils import arrows, arrows2d, cones, dots, markers2d
+from .plot_utils import LABEL_OFFSET, arrows, arrows2d, cones, dots, dots2d, markers2d
 
 
 class Truss(Mechanics):
@@ -202,12 +202,8 @@ class Truss(Mechanics):
         pos = self.nodes + u
         ax.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o", zorder=10)
         if node_labels:
-            for i, node in enumerate(pos):
-                ax.annotate(
-                    str(i),
-                    (node[0].item() + 0.01, node[1].item() + 0.1),
-                    color=default_color,
-                )
+            for i, (x, y) in enumerate(pos.tolist()):
+                ax.annotate(str(i), (x, y), color=default_color, **LABEL_OFFSET)
 
         # Bounding box
         size = torch.linalg.norm(pos.max() - pos.min())
@@ -231,8 +227,8 @@ class Truss(Mechanics):
                 tips.append(arrows2d(ax, pos, prescribed, 0.01 * size))
             pulled = torch.linalg.norm(prescribed, dim=1) > 0.0
             ends = (pos if deformed else pos + prescribed)[pulled]
-            ax.scatter(ends[:, 0], ends[:, 1], color="gray", marker="o", zorder=10)
-            markers2d(ax, pos, fixed, 0.1)
+            dots2d(ax, ends)
+            markers2d(ax, pos, fixed)
 
         # Adjustments (limits include the arrow tips)
         extent = torch.cat(tips)

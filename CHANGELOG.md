@@ -11,8 +11,12 @@
 
 ### Changed
 - `Truss.plot3d(...)` draws all bars in one pass instead of one mesh each, so a lattice of a few thousand bars renders in under a second instead of minutes. The spheres at the joints follow the largest bar meeting there instead of the mean of all bars.
+- `Planar.plot(...)` fills its elements, so a mesh reads as a solid rather than a lattice. `color` sets that fill and defaults to light blue as in the PyVista plotters, edges and labels follow the foreground of the matplotlib style, and `**kwargs` now reach the element `PolyCollection` instead of being ignored, so `edgecolor` or `hatch` work and a misspelled argument raises.
+- Boundary conditions in the matplotlib plotters are outlined, dotted where they attach to a node, and sized in points rather than in a fraction of the model. They sit above the node markers, with the arrows above the constraint markers they may cross.
 
 ### Fixed
+- Boundary condition glyphs are no longer clipped at the edge of the axes, which their size in points reaches past when the limits are fitted to the mesh.
+- `PlanarHeat.plot(...)` draws its thermal boundary conditions: a heat flux as a plus or a minus, and a prescribed temperature as a marker, which was drawn as nothing at all when it was non-zero.
 - Fixed a mistake in the triangular shell element from incorrectly implementing an equation from the Krysl paper. `h` is now the element edge length rather than its area, and the element area enters the shear stiffness once instead of twice. Thin-shell results are essentially unchanged, because the two errors cancelled in that limit.
 
 ## Version 0.9.0 - August 18 2026

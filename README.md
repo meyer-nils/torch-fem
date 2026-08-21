@@ -74,7 +74,7 @@ cantilever.forces[5, 1] = -1.0
 cantilever.constraints[[0, 3], :] = True
 
 # Show model
-cantilever.plot(node_markers="o", node_labels=True)
+cantilever.plot(node_markers=True, node_labels=True)
 ```
 This creates a minimal planar FEM model:
 

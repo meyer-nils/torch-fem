@@ -5,7 +5,9 @@ from typing import cast
 
 import pyvista
 import torch
+from matplotlib import rcParams
 from matplotlib.axes import Axes
+from matplotlib.transforms import ScaledTranslation
 from torch import Tensor
 
 # vtk.js builds each actor with its own class defaults and applies the serialized
@@ -171,6 +173,39 @@ def dots(pl: pyvista.Plotter, points: Tensor, radius: float):
     glyphs(pl, points, geom)
 
 
+# Boundary conditions in a matplotlib plot. Every glyph is gray and outlined in
+# the foreground of the style, sized in points so it looks the same on any mesh.
+
+MARKERSIZE = 6.0
+
+# A node label sits diagonally off its node, clear of the marker drawn there
+LABEL_OFFSET = {"textcoords": "offset points", "xytext": (MARKERSIZE, MARKERSIZE)}
+
+
+def _glyph(size: float = MARKERSIZE, zorder: float = 10, **kwargs) -> dict:
+    """Keywords drawing a marker, taking its outline from the current style."""
+    return {
+        "markerfacecolor": "gray",
+        "markeredgecolor": rcParams["text.color"],
+        "markeredgewidth": 1.0,
+        "markersize": size,
+        "zorder": zorder,
+        "clip_on": False,
+        **kwargs,
+    }
+
+
+def dots2d(ax: Axes, points: Tensor, zorder: float = 12):
+    """Draw a dot where a glyph attaches to a node, above the arrow it caps.
+
+    A constraint passes the zorder of its own markers instead, so that an arrow
+    crossing a constrained edge stays visible.
+    """
+    if points.numel() == 0:
+        return
+    ax.plot(*points.T, "o", **_glyph(zorder=zorder))
+
+
 def arrows2d(
     ax: Axes, points: Tensor, vectors: Tensor, width: float, span: float | None = None
 ) -> Tensor:
@@ -184,29 +219,46 @@ def arrows2d(
     if span is not None:
         vectors = span / magnitude.max() * vectors
     drawn = magnitude > 0.0
-    # Drawn on top of the mesh, with no edge around the head
     style = {
         "width": width,
         "length_includes_head": span is None,
         "facecolor": "gray",
-        "linewidth": 0.0,
-        "zorder": 10,
+        "edgecolor": rcParams["text.color"],
+        "linewidth": 1.0,
+        # Above the constraint markers a load may share a node with
+        "zorder": 11,
     }
     for start, vector in zip(points[drawn], vectors[drawn]):
         ax.arrow(*start.tolist(), *vector.tolist(), **style)
+    dots2d(ax, points[drawn])
     return (points + vectors)[drawn]
 
 
-def markers2d(ax: Axes, points: Tensor, fixed: Tensor, offset: float):
-    """Mark every constrained DOF with a marker clearing its node by `offset`."""
-    # A temperature has no direction, so its constraint is a square
+def markers2d(ax: Axes, points: Tensor, fixed: Tensor):
+    """Mark every constrained DOF with a marker sitting just outside its node."""
+    # A temperature has no direction, so its constraint is a square on the node
     if fixed.shape[1] == 1:
-        for x, y in points[fixed[:, 0]].tolist():
-            ax.plot(x, y, "s", color="gray")
-        return
+        markers = [("s", 0.0, 0.0)]
+    else:
+        markers = [(">", -MARKERSIZE, 0.0), ("^", 0.0, -MARKERSIZE)]
+        # A dot at the node, so that the offset markers point at something
+        dots2d(ax, points[fixed.any(dim=1)], zorder=10)
 
-    for (x, y), dof in zip(points.tolist(), fixed):
-        if dof[0]:
-            ax.plot(x - offset, y, ">", color="gray")
-        if dof[1]:
-            ax.plot(x, y - offset, "^", color="gray")
+    for dof, (marker, dx, dy) in enumerate(markers):
+        drawn = points[fixed[:, dof]]
+        if drawn.numel() == 0:
+            continue
+        # Shifted in points, so the marker clears the node at any mesh size
+        shift = ScaledTranslation(dx / 72, dy / 72, ax.figure.dpi_scale_trans)
+        ax.plot(*drawn.T, marker, **_glyph(transform=ax.transData + shift))
+
+
+def signs2d(ax: Axes, points: Tensor, values: Tensor):
+    """Mark every nonzero value with its sign, as a heat source or a sink."""
+    for marker, drawn in [("+", values > 0.0), ("_", values < 0.0)]:
+        shown = points[drawn]
+        if shown.numel() == 0:
+            continue
+        # A line marker carries no fill, so it is drawn larger and heavier
+        style = _glyph(1.5 * MARKERSIZE, markeredgecolor="gray", markeredgewidth=2.0)
+        ax.plot(*shown.T, marker, **style)
