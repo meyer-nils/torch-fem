@@ -67,6 +67,13 @@ jobs:
           jupyter nbconvert --to HTML --execute --output-dir site/examples/basic/shell/ examples/basic/shell/*.ipynb
           jupyter nbconvert --to HTML --output-dir site/examples/optimization/shell/ examples/optimization/shell/*.ipynb
 
+      - name: Convert assembly notebooks to HTML
+        env:
+          DISPLAY: ":99"
+        run: |
+          echo "DISPLAY variable: $DISPLAY"
+          jupyter nbconvert --to HTML --execute --output-dir site/examples/basic/assembly/ examples/basic/assembly/*.ipynb
+
       - name: Convert solid notebooks to HTML
         env:
           DISPLAY: ":99"
