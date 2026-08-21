@@ -127,6 +127,30 @@ class TestShellValidation:
         assert torch.allclose(shell.As[0], expected)
 
 
+class TestShellTransverseShear:
+    """A narrow strip with `nu=0` is exactly a Timoshenko beam, so its tip
+    deflection checks the transverse shear stiffness away from the thin limit.
+    The shear stiffness used to carry a spurious factor of the element area,
+    which cancels only for thin shells and grows under mesh refinement."""
+
+    E, L, b, P, kappa = 1000.0, 10.0, 1.0, 1.0, 5.0 / 6.0
+
+    @pytest.mark.parametrize("t", [2.0, 0.5])
+    def test_tip_deflection_matches_timoshenko(self, t):
+        nodes, elements = rect_tri(41, 3, self.L, self.b, variant="center")
+        nodes = torch.hstack([nodes, torch.zeros((len(nodes), 1))])
+        material = IsotropicElasticityPlaneStress(E=self.E, nu=0.0)
+        beam = Shell(nodes, elements, material, thickness=t)
+        tip = nodes[:, 0] > self.L - 1e-9
+        beam.forces[tip, 2] = self.P / int(tip.sum())
+        beam.constraints[nodes[:, 0] < 1e-9, :] = True
+        u, _, _, _, _ = beam.solve(method="spsolve")
+
+        bending = self.P * self.L**3 / (3 * self.E * self.b * t**3 / 12)
+        shear = self.P * self.L / (self.kappa * (self.E / 2) * self.b * t)
+        assert u[:, 2].abs().max() == pytest.approx(bending + shear, rel=0.01)
+
+
 class TestRepr:
     """`__repr__` names the element type, not the metaclass of its class."""
 
