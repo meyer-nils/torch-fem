@@ -6,6 +6,11 @@
 - `Assembly` couples several models through kinematic constraints, mechanical or thermal, in two or three dimensions: `coupling(...)` makes selected nodes follow the rigid-body motion of the nearest node of another part, optionally on selected degrees of freedom.
 - `ReferencePoint` and `ReferencePointHeat` enter an assembly as free nodes carrying rigid-body degrees of freedom or one temperature, so a load or a prescribed value applied there drives everything coupled to it.
 - `Assembly.plot(...)` draws every part into one figure, with the points as markers and each coupling between the nodes it pairs, dispatching to matplotlib in 2D and PyVista in 3D. An argument given as a list is spread over the parts, so the `u` of `solve(...)` passes straight through.
+- `mesh_to_lattice(...)` turns a planar or solid mesh into a lattice of bar elements along its edges, optionally bracing each quadrilateral with one diagonal (`"up"`, `"down"`) or both (`"cross"`).
+- `Element.edges` lists the local node indices of the element edges, carrying the mid-side node on quadratic elements, and `linear_etype(...)` infers the linear element type of a mesh.
+
+### Changed
+- `Truss.plot3d(...)` draws all bars in one pass instead of one mesh each, so a lattice of a few thousand bars renders in under a second instead of minutes. The spheres at the joints follow the largest bar meeting there instead of the mean of all bars.
 
 ### Fixed
 - Fixed a mistake in the triangular shell element from incorrectly implementing an equation from the Krysl paper. `h` is now the element edge length rather than its area, and the element area enters the shear stiffness once instead of twice. Thin-shell results are essentially unchanged, because the two errors cancelled in that limit.

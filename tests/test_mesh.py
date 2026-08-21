@@ -3,7 +3,14 @@ from typing import Any
 import pytest
 import torch
 
-from torchfem.mesh import cube_hexa, cube_tetra, rect_quad, rect_tri
+from torchfem.elements import Hexa1
+from torchfem.mesh import (
+    cube_hexa,
+    cube_tetra,
+    mesh_to_lattice,
+    rect_quad,
+    rect_tri,
+)
 
 
 class TestRectQuad:
@@ -135,3 +142,55 @@ class TestCubeTetra:
         nodes, elements = cube_tetra(4, 4, 4)
         assert elements.min() >= 0
         assert elements.max() < len(nodes)
+
+
+class TestMeshToLattice:
+    @pytest.mark.parametrize(
+        "mesh",
+        [rect_tri(3, 3), rect_quad(3, 3), cube_tetra(3, 3, 3), cube_hexa(3, 3, 3)],
+    )
+    def test_bars_are_unique_and_valid(self, mesh):
+        nodes, bars = mesh_to_lattice(*mesh)
+        assert bars.shape[1] == 2
+        assert torch.equal(nodes, mesh[0])
+        assert (bars[:, 0] < bars[:, 1]).all()
+        assert len(bars.unique(dim=0)) == len(bars)
+        assert bars.max() < len(nodes)
+
+    def test_simple_hexa_has_only_axis_aligned_bars(self):
+        nodes, bars = mesh_to_lattice(*cube_hexa(3, 3, 3))
+        # A 3x3x3 grid has 3 * 2 * 3 * 3 = 54 axis-aligned edges
+        assert bars.shape == (54, 2)
+        assert torch.allclose(
+            torch.linalg.norm(nodes[bars[:, 1]] - nodes[bars[:, 0]], dim=1),
+            torch.tensor(0.5),
+        )
+
+    @pytest.mark.parametrize("variant", ["up", "down"])
+    def test_neighbors_agree_on_shared_faces(self, variant):
+        """Each face gets exactly one diagonal, else neighbors braced it twice."""
+        nodes, elements = cube_hexa(3, 3, 3)
+        faces = elements[:, Hexa1.facets].reshape(-1, 4)
+        n_faces = len(faces.sort(dim=1).values.unique(dim=0))
+        _, bars = mesh_to_lattice(nodes, elements, variant)
+        assert len(bars) == 54 + n_faces
+
+    def test_cross_is_the_union_of_up_and_down(self):
+        mesh = cube_hexa(3, 3, 3)
+        sets = {
+            v: {tuple(bar) for bar in mesh_to_lattice(*mesh, v)[1].tolist()}
+            for v in ["simple", "up", "down", "cross"]
+        }
+        assert sets["up"] | sets["down"] == sets["cross"]
+        assert sets["up"] & sets["down"] == sets["simple"]
+
+    def test_up_matches_the_rect_tri_diagonal(self):
+        nodes, bars = mesh_to_lattice(*rect_quad(3, 3), "up")
+        _, tris = rect_tri(3, 3, variant="up")
+        diagonals = {tuple(sorted([t[0], t[2]])) for t in tris.tolist()}
+        assert diagonals <= {tuple(bar) for bar in bars.tolist()}
+
+    @pytest.mark.parametrize("mesh", [rect_tri(3, 3), cube_tetra(3, 3, 3)])
+    def test_simplices_reject_bracing(self, mesh):
+        with pytest.raises(ValueError, match="no quadrilaterals"):
+            mesh_to_lattice(*mesh, "cross")

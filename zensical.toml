@@ -71,6 +71,11 @@ nav = [
       { "Hexa2" = "elements/3d/hexa2.md" },
     ] },
   ] },
+  { "Mesh" = [
+    { "Base" = "mesh/index.md" },
+    { "Generators" = "mesh/generators.md" },
+    { "Conversion" = "mesh/conversion.md" },
+  ] },
 ]
 
 extra_javascript = [

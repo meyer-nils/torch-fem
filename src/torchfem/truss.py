@@ -1,17 +1,19 @@
 from functools import cached_property
+from typing import cast
 
 import matplotlib.pyplot as plt
 import pyvista
 import torch
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap, Normalize
+from pyvista import PolyData
 from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import Mechanics
 from .elements import Bar1, Bar2, Element
 from .materials import Material
-from .plot_utils import arrows, arrows2d, cones, dots, glyphs, markers2d
+from .plot_utils import arrows, arrows2d, cones, dots, markers2d
 
 
 class Truss(Mechanics):
@@ -287,30 +289,37 @@ class Truss(Mechanics):
         size = torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values).item()
 
         # Radii
-        radii = torch.sqrt(self.areas / torch.pi).numpy()
+        radii = torch.sqrt(self.areas / torch.pi)
 
-        # Elements
-        for j, element in enumerate(self.elements):
-            n1 = element[0]
-            n2 = element[1]
-            tube = pyvista.Tube(
-                pointa=pos[n1].numpy(), pointb=pos[n2].numpy(), radius=radii[j]
-            )
-            if element_property is not None:
-                for key, value in element_property.items():
-                    value = element_property[key].squeeze()
-                    tube.cell_data[key] = value[j].numpy()
-                pl.add_mesh(tube, scalars=key, cmap=cmap)
-            else:
-                pl.add_mesh(tube)
+        joint = self.elements.ravel()
 
-        # Spheres smoothing the joints where the tubes meet
-        glyphs(
-            pl,
-            pos,
-            pyvista.Sphere(radius=float(radii.mean())),
-            color="gray" if element_property is not None else None,
+        def at_joints(values: Tensor) -> Tensor:
+            """Largest of a per-bar quantity over the bars meeting at each node."""
+            largest = torch.zeros(len(pos))
+            source = values.repeat_interleave(2)
+            return largest.scatter_reduce_(0, joint, source, "amax", include_self=False)
+
+        # Elements as line segments and joints as points, carrying their radius
+        ends = pos[self.elements].reshape(-1, 3).numpy()
+        bars = pyvista.line_segments_from_points(ends)
+        bars.point_data["radius"] = radii.repeat_interleave(2).numpy()
+        joints = pyvista.PolyData(pos.numpy())
+        joints.point_data["radius"] = at_joints(radii).numpy()
+
+        scalars = None
+        if element_property is not None:
+            for scalars, value in element_property.items():
+                value = value.squeeze()
+                bars.point_data[scalars] = value.repeat_interleave(2).numpy()
+                joints.point_data[scalars] = at_joints(value).numpy()
+
+        # Tubes along the bars, with spheres smoothing the joints where they meet
+        sphere = pyvista.Sphere(radius=1.0)
+        tubes = cast(PolyData, bars.tube(scalars="radius", absolute=True))
+        spheres = cast(
+            PolyData, joints.glyph(geom=sphere, scale="radius", orient=False)
         )
+        pl.add_mesh(tubes + spheres, scalars=scalars, cmap=cmap)
 
         # Boundary conditions
         if bcs:
