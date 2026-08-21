@@ -9,6 +9,9 @@
 - `mesh_to_lattice(...)` turns a planar or solid mesh into a lattice of bar elements along its edges, optionally bracing each quadrilateral with one diagonal (`"up"`, `"down"`) or both (`"cross"`).
 - `Element.edges` lists the local node indices of the element edges, carrying the mid-side node on quadratic elements, and `linear_etype(...)` infers the linear element type of a mesh.
 
+### Changed
+- `Truss.plot3d(...)` draws all bars in one pass instead of one mesh each, so a lattice of a few thousand bars renders in under a second instead of minutes. The spheres at the joints follow the largest bar meeting there instead of the mean of all bars.
+
 ## Version 0.9.0 - August 18 2026
 
 ### Added
