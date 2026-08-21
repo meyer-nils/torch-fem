@@ -7,6 +7,9 @@
 - `ReferencePoint` and `ReferencePointHeat` enter an assembly as free nodes carrying rigid-body degrees of freedom or one temperature, so a load or a prescribed value applied there drives everything coupled to it.
 - `Assembly.plot(...)` draws every part into one figure, with the points as markers and each coupling between the nodes it pairs, dispatching to matplotlib in 2D and PyVista in 3D. An argument given as a list is spread over the parts, so the `u` of `solve(...)` passes straight through.
 
+### Fixed
+- Fixed a mistake in the triangular shell element from incorrectly implementing an equation from the Krysl paper. `h` is now the element edge length rather than its area, and the element area enters the shear stiffness once instead of twice. Thin-shell results are essentially unchanged, because the two errors cancelled in that limit.
+
 ## Version 0.9.0 - August 18 2026
 
 ### Added

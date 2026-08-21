@@ -544,7 +544,7 @@ class Shell(Mechanics):
 
             # Element transverse stiffness
             A = detJ[i] / 2.0
-            h = sqrt(2) * A
+            h = sqrt(2) * torch.sqrt(A)
             alpha = self.transverse_kappa / (2 * (1 + self.transverse_nu))
             psi = (
                 self.transverse_kappa
@@ -552,7 +552,7 @@ class Shell(Mechanics):
                 / (self.thickness**2 + alpha * h**2)
             )
             Ds = self._Ds(A)
-            int_Cs = (A * psi)[:, None, None] * self.As
+            int_Cs = psi[:, None, None] * self.As
             DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, int_Cs, Ds)
             ks = wi * self.compute_k(detJ[i], DsCsDs)
 
