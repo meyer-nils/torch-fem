@@ -200,6 +200,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Shape optimization of a truss bridge](images/examples/optimization/truss/shape.png)](examples/optimization/truss/shape.html)
 
+-   **Size optimization of a lattice**
+
+    [![Size optimization of a lattice](images/examples/optimization/truss/size.png)](examples/optimization/truss/size.html)
+
 </div>
 
 ### Planar
