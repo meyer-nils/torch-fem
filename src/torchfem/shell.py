@@ -379,7 +379,7 @@ class Shell(Mechanics):
         J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
-            raise Exception("Negative Jacobian. Check element numbering.")
+            raise ValueError("Negative Jacobian. Check element numbering.")
 
         # Compute B
         B = torch.linalg.inv(J) @ b

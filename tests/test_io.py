@@ -161,7 +161,7 @@ class TestImportNonPlanarMesh:
                     ("quad", np.array([[0, 1, 2, 3]])),
                 ],
             )
-            with pytest.raises(Exception, match="single element types"):
+            with pytest.raises(ValueError, match="single element types"):
                 import_mesh(path, mat)
 
     def test_rejects_element_type_without_a_model(self):
@@ -170,5 +170,5 @@ class TestImportNonPlanarMesh:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "quad3d.vtu"
             self._write(path, [("quad", np.array([[0, 1, 2, 3]]))])
-            with pytest.raises(Exception, match="Cannot interpret element type"):
+            with pytest.raises(ValueError, match="Cannot interpret element type"):
                 import_mesh(path, mat)

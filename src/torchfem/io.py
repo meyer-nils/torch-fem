@@ -101,7 +101,7 @@ def import_mesh(
             etypes.append(cell_block.type)
             elems += cell_block.data.tolist()
     if len(etypes) > 1:
-        raise Exception("Currently, only single element types are supported.")
+        raise ValueError("Currently, only single element types are supported.")
     etype = etypes[0]
 
     elements = torch.tensor(elems)
@@ -118,7 +118,7 @@ def import_mesh(
         elif etype in ["tetra", "tetra10", "hexahedron", "hexahedron20"]:
             return Solid(nodes, elements, material)
         else:
-            raise Exception(f"Cannot interpret element type {etype}.")
+            raise ValueError(f"Cannot interpret element type {etype}.")
     else:
         nodes = torch.tensor(points[:, 0:2], dtype=dtype, device=device)
         return Planar(nodes, elements, material, thickness=thickness)

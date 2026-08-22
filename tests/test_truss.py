@@ -73,7 +73,7 @@ class TestTruss:
     def test_zero_length_element_raises(self):
         nodes = torch.tensor([[0.0, 0.0], [0.0, 0.0]])
         bar = Truss(nodes, torch.tensor([[0, 1]]), IsotropicElasticity1D(E))
-        with pytest.raises(Exception, match="Negative Jacobian"):
+        with pytest.raises(ValueError, match="Negative Jacobian"):
             bar.eval_shape_functions(bar.etype.ipoints)
 
     def test_modal_frequencies_match_analytical_bar(self):

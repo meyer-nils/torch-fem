@@ -1430,7 +1430,7 @@ def linear_etype(nodes: Tensor, elements: Tensor) -> type[Element]:
     elif n_nod == 8 and dim == 3:
         return Hexa1
     else:
-        raise Exception(
+        raise ValueError(
             "The element type is not supported. Maybe the element is already quadratic?"
         )
 

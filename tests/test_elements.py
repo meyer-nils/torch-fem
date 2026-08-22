@@ -146,5 +146,5 @@ class TestLinearToQuadratic:
     def test_rejects_unsupported_topology(self):
         nodes, elements = rect_quad(3, 3)
         new_nodes, new_elements = linear_to_quadratic(nodes, elements)
-        with pytest.raises(Exception, match="not supported"):
+        with pytest.raises(ValueError, match="not supported"):
             linear_to_quadratic(new_nodes, new_elements)

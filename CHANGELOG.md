@@ -22,6 +22,7 @@
 - `Material.vectorize(...)` is implemented once on the base class, batching the properties a material holds instead of rebuilding it through its constructor, rather than being written out by every material itself. It no longer prints when it is called on a material that is already vectorized, and it keeps the type of a `TransverseIsotropicElasticity3D` instead of returning an `OrthotropicElasticity3D`.
 
 ### Fixed
+- The two `Negative Jacobian` checks of `Truss` and `Shell`, the unsupported element type of `linear_etype(...)`, and the two mesh checks of `import_mesh(...)` raise a `ValueError` rather than a bare `Exception`, as the same conditions do elsewhere, so one `except ValueError` catches them all.
 - `solve(...)` and `Assembly.solve(...)` squeezed every axis of the returned flux and gradient holding a single value, rather than those of the flux alone, so a model of one element lost its element axis and an element with one integration point lost that one.
 - `voigt2stiffness(...)` left `C_1122` and `C_2211` at zero in 3D, so converting a stiffness matrix from Voigt notation silently dropped the coupling between the two transverse normal components. It also added a spurious leading dimension to an unbatched input and raised on more than one batch dimension, where the other converters accept any.
 - `stiffness2voigt(...)` returned the transpose of the Voigt matrix it builds, which cancelled for the symmetric stiffness tensors it is given but made it no inverse of `voigt2stiffness(...)`.

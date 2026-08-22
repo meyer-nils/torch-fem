@@ -91,7 +91,7 @@ class Truss(Mechanics):
         J = 0.5 * l0[:, None, None]
         detJ = 0.5 * l0[None, :]
         if torch.any(detJ <= 0.0):
-            raise Exception("Negative Jacobian. Check element numbering.")
+            raise ValueError("Negative Jacobian. Check element numbering.")
 
         b = self.etype.B(xi)
         B = torch.einsum("...jkl,...lm->...jkm", torch.linalg.inv(J), b)
