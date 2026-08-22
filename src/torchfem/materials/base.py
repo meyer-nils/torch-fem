@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 
 import torch
@@ -8,6 +9,10 @@ from torch import Tensor
 
 class Material(ABC):
     """Base class for all material models.
+
+    `vectorize(...)` and `rotate(...)` never modify the material they are called on
+    and return it unchanged where there is nothing to do. Their results share its
+    tensors, so no material may be written into in place.
 
     Attributes:
         n_state (int): Number of internal state variables.
@@ -21,18 +26,24 @@ class Material(ABC):
         self.is_vectorized: bool = False
         self.rho: Tensor = torch.tensor(1.0)
 
-    @abstractmethod
     def vectorize(self, n_elem: int) -> Material:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
+        """Returns the material batched over `n_elem` elements.
 
         Args:
             n_elem (int): Number of elements to vectorize the material for.
+
+        Returns:
+            Material: A material carrying one entry per element, or itself if it
+                is vectorized already.
         """
-        pass
+        if self.is_vectorized:
+            return self
+        new = copy.copy(self)
+        for key, value in list(vars(new).items()):
+            if isinstance(value, Tensor):
+                setattr(new, key, value.repeat(n_elem, *(value.dim() * [1])))
+        new.is_vectorized = True
+        return new
 
     @abstractmethod
     def step(
@@ -80,13 +91,13 @@ class Material(ABC):
         pass
 
     def rotate(self, R: Tensor) -> Material:
-        """Rotation of the material properties.
+        """Returns the material with its properties rotated by `R`.
 
         Args:
             R (Tensor): Rotation tensor.
                 *Shape:* `(..., d, d)`.
 
         Returns:
-            Material: The material itself, but with rotated properties, if applicable.
+            Material: A material with rotated properties, or itself if isotropic.
         """
         return self

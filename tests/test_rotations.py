@@ -64,7 +64,7 @@ def test_euler_rotation_composes_axis_rotations(index, axis):
 
 def test_rotated_ply_is_stiff_along_its_own_angle():
     ply = OrthotropicElasticityPlaneStress(100.0, 1.0, 0.3, 1.0)
-    ply.rotate(planar_rotation(torch.tensor(torch.pi / 4)))
+    ply = ply.rotate(planar_rotation(torch.tensor(torch.pi / 4)))
 
     def modulus(direction):
         strain = torch.outer(direction, direction)

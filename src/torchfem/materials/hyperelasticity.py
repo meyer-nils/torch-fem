@@ -79,27 +79,6 @@ class Hyperelastic3D(Material):
         # Check if the material is vectorized
         self.is_vectorized = self.params.dim() > 1
 
-    def vectorize(self, n_elem: int) -> Hyperelastic3D:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            Hyperelastic3D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            rho = self.rho.repeat(n_elem)
-            params = self.params.repeat(n_elem, 1)
-            return Hyperelastic3D(self.psi, params, rho)
-
     def step(
         self,
         H_inc: Tensor,
@@ -208,29 +187,6 @@ class HyperelasticPlaneStress(Hyperelastic3D):
 
         # State variable for out-of-plane stretch
         self.n_state = 1
-
-    def vectorize(self, n_elem: int) -> HyperelasticPlaneStress:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            HyperelasticPlaneStress: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            rho = self.rho.repeat(n_elem)
-            params = self.params.repeat(n_elem, 1)
-            return HyperelasticPlaneStress(
-                self.psi, params, rho, self.tolerance, self.max_iter
-            )
 
     def step(
         self,
@@ -349,27 +305,6 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
         and the in-plane stress and tangent are extracted from the 3D
         response.
     """
-
-    def vectorize(self, n_elem: int) -> HyperelasticPlaneStrain:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            HyperelasticPlaneStrain: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            rho = self.rho.repeat(n_elem)
-            params = self.params.repeat(n_elem, 1)
-            return HyperelasticPlaneStrain(self.psi, params, rho)
 
     def step(
         self,

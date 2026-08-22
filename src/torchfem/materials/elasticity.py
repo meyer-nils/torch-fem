@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import torch
 from torch import Tensor
 
@@ -66,28 +68,6 @@ class IsotropicElasticity3D(Material):
         lbd = self.lbd[..., None, None, None, None]
         G = self.G[..., None, None, None, None]
         self.C = lbd * I4 + G * I4S
-
-    def vectorize(self, n_elem: int) -> IsotropicElasticity3D:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicElasticity3D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            nu = self.nu.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicElasticity3D(E, nu, rho)
 
     def step(
         self,
@@ -201,29 +181,6 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = fac * 0.5 * (1.0 - self.nu)
         self.C[..., 1, 0, 1, 0] = fac * 0.5 * (1.0 - self.nu)
 
-    def vectorize(self, n_elem: int) -> IsotropicElasticityPlaneStress:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicElasticityPlaneStress: A new material instance with vectorized
-                properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            nu = self.nu.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicElasticityPlaneStress(E, nu, rho)
-
 
 class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
     """Isotropic elastic material for planar strain problems.
@@ -283,29 +240,6 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = G
         self.C[..., 1, 0, 1, 0] = G
 
-    def vectorize(self, n_elem: int) -> IsotropicElasticityPlaneStrain:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicElasticityPlaneStrain: A new material instance with vectorized
-                properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            nu = self.nu.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicElasticityPlaneStrain(E, nu, rho)
-
 
 class IsotropicElasticity1D(Material):
     """Isotropic elastic material in 1D.
@@ -337,23 +271,6 @@ class IsotropicElasticity1D(Material):
 
         # Stiffness tensor (in 1D, this is a 1x1x1x1 "tensor")
         self.C = self.E[..., None, None, None, None]
-
-    def vectorize(self, n_elem: int) -> IsotropicElasticity1D:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicElasticity1D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicElasticity1D(E, rho)
 
     def step(
         self,
@@ -514,33 +431,6 @@ class OrthotropicElasticity3D(Material):
         self.C[..., 1, 2, 2, 1] = self.G_23
         self.C[..., 2, 1, 1, 2] = self.G_23
 
-    def vectorize(self, n_elem: int) -> OrthotropicElasticity3D:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            OrthotropicElasticity3D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E_1 = self.E_1.repeat(n_elem)
-            E_2 = self.E_2.repeat(n_elem)
-            E_3 = self.E_3.repeat(n_elem)
-            nu_12 = self.nu_12.repeat(n_elem)
-            nu_13 = self.nu_13.repeat(n_elem)
-            nu_23 = self.nu_23.repeat(n_elem)
-            G_12 = self.G_12.repeat(n_elem)
-            G_13 = self.G_13.repeat(n_elem)
-            G_23 = self.G_23.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return OrthotropicElasticity3D(
-                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho
-            )
-
     def step(
         self,
         H_inc: Tensor,
@@ -593,39 +483,43 @@ class OrthotropicElasticity3D(Material):
         return stress_new, state_new, ddsdde
 
     def rotate(self, R: Tensor) -> OrthotropicElasticity3D:
-        """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
+        """Returns a copy with its coordinate system rotated by $\\mathbf{R}$.
 
         The rotated stiffness tensor is computed as
         $C'_{mnop} = R_{mi} R_{nj} R_{ok} R_{pl} \\, C_{ijkl}$
         and the engineering constants are re-extracted from the compliance matrix.
+        They are the apparent moduli along the global axes: a rotated material is
+        generally anisotropic, so they no longer reconstruct $\\mathbb{C}$.
 
         Args:
             R (Tensor): Rotation matrix.
                 *Shape:* `(..., 3, 3)`.
 
         Returns:
-            OrthotropicElasticity3D: The material itself with rotated properties.
+            OrthotropicElasticity3D: A material with rotated properties.
         """
         if R.shape[-2] != 3 or R.shape[-1] != 3:
             raise ValueError("Rotation matrix must be a 3x3 tensor.")
 
+        new = copy.copy(self)
+
         # Compute rotated stiffness tensor
-        self.C = torch.einsum(
+        new.C = torch.einsum(
             "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
         )
 
         # Compute rotated internal variables
-        S = torch.linalg.inv(stiffness2voigt(self.C))
-        self.E_1 = 1 / S[..., 0, 0]
-        self.E_2 = 1 / S[..., 1, 1]
-        self.E_3 = 1 / S[..., 2, 2]
-        self.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
-        self.nu_13 = -S[..., 0, 2] / S[..., 0, 0]
-        self.nu_23 = -S[..., 1, 2] / S[..., 1, 1]
-        self.G_23 = 1 / S[..., 3, 3]
-        self.G_13 = 1 / S[..., 4, 4]
-        self.G_12 = 1 / S[..., 5, 5]
-        return self
+        S = torch.linalg.inv(stiffness2voigt(new.C))
+        new.E_1 = 1 / S[..., 0, 0]
+        new.E_2 = 1 / S[..., 1, 1]
+        new.E_3 = 1 / S[..., 2, 2]
+        new.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
+        new.nu_13 = -S[..., 0, 2] / S[..., 0, 0]
+        new.nu_23 = -S[..., 1, 2] / S[..., 1, 1]
+        new.G_23 = 1 / S[..., 3, 3]
+        new.G_13 = 1 / S[..., 4, 4]
+        new.G_12 = 1 / S[..., 5, 5]
+        return new
 
 
 class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
@@ -753,61 +647,33 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = G_12
         self.C[..., 1, 0, 1, 0] = G_12
 
-    def vectorize(self, n_elem: int) -> OrthotropicElasticityPlaneStress:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            OrthotropicElasticityPlaneStress: A new material instance with vectorized
-                properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E_1 = self.E_1.repeat(n_elem)
-            E_2 = self.E_2.repeat(n_elem)
-            nu_12 = self.nu_12.repeat(n_elem)
-            G_12 = self.G_12.repeat(n_elem)
-            if hasattr(self, "G_13") and hasattr(self, "G_23"):
-                G_13 = self.G_13.repeat(n_elem)
-                G_23 = self.G_23.repeat(n_elem)
-            else:
-                G_13 = None
-                G_23 = None
-            rho = self.rho.repeat(n_elem)
-            return OrthotropicElasticityPlaneStress(
-                E_1, E_2, nu_12, G_12, G_13, G_23, rho
-            )
-
     def rotate(self, R: Tensor) -> OrthotropicElasticityPlaneStress:
-        """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
+        """Returns a copy with its coordinate system rotated by $\\mathbf{R}$.
 
         Args:
             R (Tensor): Rotation matrix.
                 *Shape:* `(..., 2, 2)`.
 
         Returns:
-            OrthotropicElasticityPlaneStress: The material itself with rotated
-                properties.
+            OrthotropicElasticityPlaneStress: A material with rotated properties.
         """
         if R.shape[-2] != 2 or R.shape[-1] != 2:
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
 
+        new = copy.copy(self)
+
         # Compute rotated stiffness tensor
-        self.C = torch.einsum(
+        new.C = torch.einsum(
             "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
         )
 
         # Compute rotated internal variables
-        S = torch.linalg.inv(stiffness2voigt(self.C))
-        self.E_1 = 1 / S[..., 0, 0]
-        self.E_2 = 1 / S[..., 1, 1]
-        self.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
-        self.G_12 = 1 / S[..., 2, 2]
-        return self
+        S = torch.linalg.inv(stiffness2voigt(new.C))
+        new.E_1 = 1 / S[..., 0, 0]
+        new.E_2 = 1 / S[..., 1, 1]
+        new.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
+        new.G_12 = 1 / S[..., 2, 2]
+        return new
 
 
 class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
@@ -898,61 +764,30 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.C[..., 0, 1, 1, 0] = self.G_12
         self.C[..., 1, 0, 0, 1] = self.G_12
 
-    def vectorize(self, n_elem: int) -> OrthotropicElasticityPlaneStrain:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            OrthotropicElasticityPlaneStrain: A new material instance with vectorized
-                properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E_1 = self.E_1.repeat(n_elem)
-            E_2 = self.E_2.repeat(n_elem)
-            E_3 = self.E_3.repeat(n_elem)
-            nu_12 = self.nu_12.repeat(n_elem)
-            nu_13 = self.nu_13.repeat(n_elem)
-            nu_23 = self.nu_23.repeat(n_elem)
-            G_12 = self.G_12.repeat(n_elem)
-            if hasattr(self, "G_13") and hasattr(self, "G_23"):
-                G_13 = self.G_13.repeat(n_elem)
-                G_23 = self.G_23.repeat(n_elem)
-            else:
-                G_13 = None
-                G_23 = None
-            rho = self.rho.repeat(n_elem)
-            return OrthotropicElasticityPlaneStrain(
-                E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho
-            )
-
     def rotate(self, R: Tensor) -> OrthotropicElasticityPlaneStrain:
-        """Rotates the material coordinate system with a rotation matrix $\\mathbf{R}$.
+        """Returns a copy with its coordinate system rotated by $\\mathbf{R}$.
 
         Args:
             R (Tensor): Rotation matrix.
                 *Shape:* `(..., 2, 2)`.
 
         Returns:
-            OrthotropicElasticityPlaneStrain: The material itself with rotated
-                properties.
+            OrthotropicElasticityPlaneStrain: A material with rotated properties.
         """
         if R.shape[-2] != 2 or R.shape[-1] != 2:
             raise ValueError("Rotation matrix must be a 2x2 tensor.")
 
+        new = copy.copy(self)
+
         # Compute rotated stiffness tensor
-        self.C = torch.einsum(
+        new.C = torch.einsum(
             "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
         )
 
         # Compute rotated internal variables
-        S = torch.linalg.inv(stiffness2voigt(self.C))
-        self.E_1 = 1 / S[..., 0, 0]
-        self.E_2 = 1 / S[..., 1, 1]
-        self.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
-        self.G_12 = 1 / S[..., 2, 2]
-        return self
+        S = torch.linalg.inv(stiffness2voigt(new.C))
+        new.E_1 = 1 / S[..., 0, 0]
+        new.E_2 = 1 / S[..., 1, 1]
+        new.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
+        new.G_12 = 1 / S[..., 2, 2]
+        return new

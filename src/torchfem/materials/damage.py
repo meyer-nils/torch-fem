@@ -71,28 +71,6 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         self.n_state = 2
         self.eq_strain: Literal["rankine", "mises"] = eq_strain
 
-    def vectorize(self, n_elem: int) -> IsotropicDamage3D:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicDamage3D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            nu = self.nu.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicDamage3D(E, nu, self.d, self.d_prime, self.eq_strain, rho)
-
     def step(
         self,
         H_inc: Tensor,

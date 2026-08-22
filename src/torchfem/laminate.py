@@ -13,7 +13,6 @@ first local axis, counter-clockwise as in `planar_rotation`.
 
 from __future__ import annotations
 
-import copy
 from typing import ClassVar
 
 import torch
@@ -135,13 +134,10 @@ class Laminate:
         new._offset = self._offset
         new.is_vectorized = True
 
-        # Deep-copy each layer so reusing one material across layers (e.g. the
-        # same ply at different angles) does not alias after rotation.
         new.materials = []
         new.thicknesses = []
         for mat, ang, t in zip(self.materials, self.angles, self.thicknesses):
-            m = copy.deepcopy(mat).vectorize(n_elem)
-            m = m.rotate(planar_rotation(ang))
+            m = mat.vectorize(n_elem).rotate(planar_rotation(ang))
             new.materials.append(m)
             new.thicknesses.append(t.expand(n_elem) if t.dim() == 0 else t)
 

@@ -64,36 +64,6 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_elem: int) -> IsotropicPlasticity3D:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicPlasticity3D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            nu = self.nu.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicPlasticity3D(
-                E,
-                nu,
-                self.sigma_f,
-                self.sigma_f_prime,
-                self.tolerance,
-                self.max_iter,
-                rho,
-            )
-
     def step(
         self,
         H_inc: Tensor,
@@ -293,37 +263,6 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         self.n_state = 1
         self.tolerance = tolerance
         self.max_iter = max_iter
-
-    def vectorize(self, n_elem: int) -> IsotropicPlasticityPlaneStress:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        This function creates a batched version of the material properties. If the
-        material is already vectorized (`self.is_vectorized == True`), the function
-        simply returns `self` without modification.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicPlasticityPlaneStress: A new material instance with vectorized
-                properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            nu = self.nu.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicPlasticityPlaneStress(
-                E,
-                nu,
-                self.sigma_f,
-                self.sigma_f_prime,
-                self.tolerance,
-                self.max_iter,
-                rho,
-            )
 
     def step(
         self,
@@ -530,33 +469,6 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         self.tolerance = tolerance
         self.max_iter = max_iter
 
-    def vectorize(self, n_elem: int) -> IsotropicPlasticityPlaneStrain:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicPlasticityPlaneStrain: A new material instance with vectorized
-                properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            nu = self.nu.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicPlasticityPlaneStrain(
-                E,
-                nu,
-                self.sigma_f,
-                self.sigma_f_prime,
-                self.tolerance,
-                self.max_iter,
-                rho,
-            )
-
     def step(
         self,
         H_inc: Tensor,
@@ -713,25 +625,6 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         self.n_state = 1
         self.tolerance = tolerance
         self.max_iter = max_iter
-
-    def vectorize(self, n_elem: int) -> IsotropicPlasticity1D:
-        """Returns a vectorized copy of the material for `n_elem` elements.
-
-        Args:
-            n_elem (int): Number of elements to vectorize the material for.
-
-        Returns:
-            IsotropicPlasticity1D: A new material instance with vectorized properties.
-        """
-        if self.is_vectorized:
-            print("Material is already vectorized.")
-            return self
-        else:
-            E = self.E.repeat(n_elem)
-            rho = self.rho.repeat(n_elem)
-            return IsotropicPlasticity1D(
-                E, self.sigma_f, self.sigma_f_prime, self.tolerance, self.max_iter, rho
-            )
 
     def step(
         self,

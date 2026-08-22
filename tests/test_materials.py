@@ -659,9 +659,9 @@ class TestOrthotropicConductivity3D:
 
     def test_rotation_about_z_swaps_in_plane_axes(self):
         mat = OrthotropicConductivity3D(1.0, 2.0, 3.0)
-        mat.rotate(axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.pi / 2))
+        rot = mat.rotate(axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.pi / 2))
         expected = torch.diag(torch.tensor([2.0, 1.0, 3.0]))
-        assert torch.allclose(mat.KAPPA, expected, atol=1e-6)
+        assert torch.allclose(rot.KAPPA, expected, atol=1e-6)
 
     def test_rotate_rejects_non_3x3_matrix(self):
         with pytest.raises(ValueError, match="3x3"):
@@ -690,9 +690,9 @@ class TestOrthotropicConductivity2D:
 
     def test_rotation_by_90_deg_swaps_axes(self):
         mat = OrthotropicConductivity2D(1.0, 2.0)
-        mat.rotate(planar_rotation(torch.pi / 2))
+        rot = mat.rotate(planar_rotation(torch.pi / 2))
         assert torch.allclose(
-            mat.KAPPA, torch.diag(torch.tensor([2.0, 1.0])), atol=1e-6
+            rot.KAPPA, torch.diag(torch.tensor([2.0, 1.0])), atol=1e-6
         )
 
     def test_rotate_rejects_non_2x2_matrix(self):
@@ -706,3 +706,65 @@ class TestOrthotropicConductivity2D:
     def test_vectorize_idempotent(self):
         mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(N_ELEM)
         assert mat.vectorize(N_ELEM) is mat
+
+
+ANISOTROPIC = [
+    lambda: OrthotropicElasticity3D(100e3, 10e3, 5e3, 0.3, 0.2, 0.1, 4e3, 3e3, 2e3),
+    lambda: OrthotropicElasticityPlaneStress(100e3, 10e3, 0.3, 5e3),
+    lambda: OrthotropicElasticityPlaneStrain(100e3, 10e3, 5e3, 0.3, 0.2, 0.1, 4e3),
+    lambda: OrthotropicConductivity3D(1.0, 2.0, 3.0),
+    lambda: OrthotropicConductivity2D(1.0, 2.0),
+]
+
+
+def _anisotropy(mat):
+    """The tensor a rotation acts on."""
+    return mat.C if hasattr(mat, "C") else mat.KAPPA
+
+
+def _rotation_for(mat):
+    if _anisotropy(mat).shape[-1] == 3:
+        return axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.tensor(0.3))
+    return planar_rotation(torch.tensor(0.3))
+
+
+@pytest.mark.parametrize("build", ANISOTROPIC)
+def test_rotate_leaves_the_material_unchanged(build):
+    mat = build()
+    R = _rotation_for(mat)
+    before = {k: v.clone() for k, v in vars(mat).items() if isinstance(v, torch.Tensor)}
+
+    assert mat.rotate(R) is not mat
+    for key, value in before.items():
+        assert torch.equal(getattr(mat, key), value), f"rotate() modified {key}"
+
+
+@pytest.mark.parametrize("build", ANISOTROPIC)
+def test_rotation_does_not_accumulate(build):
+    mat = build().vectorize(N_ELEM)
+    R = _rotation_for(mat)
+    once = _anisotropy(mat.rotate(R))
+    for _ in range(3):
+        assert torch.allclose(_anisotropy(mat.rotate(R)), once)
+
+
+@pytest.mark.parametrize("build", ANISOTROPIC)
+def test_vectorize_keeps_a_rotation(build):
+    # vectorize() batches the tensors a material holds, so it carries a rotated
+    # one over rather than rebuilding it from the engineering constants.
+    mat = build()
+    R = _rotation_for(mat)
+    rotated = mat.rotate(R)
+    assert torch.allclose(
+        _anisotropy(rotated.vectorize(N_ELEM))[0], _anisotropy(rotated)
+    )
+
+
+@pytest.mark.parametrize("build", ANISOTROPIC)
+def test_rotation_commutes_with_vectorization(build):
+    mat = build()
+    R = _rotation_for(mat)
+    assert torch.allclose(
+        _anisotropy(mat.rotate(R).vectorize(N_ELEM)),
+        _anisotropy(mat.vectorize(N_ELEM).rotate(R)),
+    )
