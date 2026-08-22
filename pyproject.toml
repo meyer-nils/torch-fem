@@ -94,7 +94,7 @@ ignore = ["E203", "B905"]
 
 [tool.pyright]
 pythonVersion = "3.10"
-include = ["src/torchfem"]
+include = ["src/torchfem", "tests", "benchmarks", "docs"]
 typeCheckingMode = "basic"
 reportMissingImports = false
 

@@ -206,6 +206,7 @@ def test_unsymmetric_tangent_is_consistent():
     t = torch.tensor(0.5, requires_grad=True)
     obj = tip_objective(t)
     obj.backward()
+    assert t.grad is not None
     g_autograd = t.grad.item()
 
     # Central finite difference reference

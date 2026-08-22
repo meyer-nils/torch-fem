@@ -4,11 +4,15 @@ Usage: python docs/images/mesh/plot_meshes.py
 """
 
 from pathlib import Path
+from typing import Literal
 
 import matplotlib.pyplot as plt
+from torch import Tensor
 
 from torchfem.elements import THEMES, linear_to_quadratic
 from torchfem.mesh import cube_hexa, cube_tetra, mesh_to_lattice, rect_quad, rect_tri
+
+Variant = Literal["simple", "up", "down", "cross"]
 
 # Write next to this script, which does not move with an installed torchfem.
 IMAGES_DIR = Path(__file__).parent
@@ -32,7 +36,7 @@ def generated(func, *args, **kwargs):
     return title, mesh_to_lattice(*func(*args, **kwargs))
 
 
-def braced(mesh, variant):
+def braced(mesh: tuple[Tensor, Tensor], variant: Variant):
     """A panel of a braced lattice, titled by the `mesh_to_lattice` call."""
     return f"mesh_to_lattice(..., {variant!r})", mesh_to_lattice(*mesh, variant)
 

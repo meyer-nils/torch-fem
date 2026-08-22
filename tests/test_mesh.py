@@ -177,9 +177,10 @@ class TestMeshToLattice:
 
     def test_cross_is_the_union_of_up_and_down(self):
         mesh = cube_hexa(3, 3, 3)
+        nodes, elements = mesh
         sets = {
-            v: {tuple(bar) for bar in mesh_to_lattice(*mesh, v)[1].tolist()}
-            for v in ["simple", "up", "down", "cross"]
+            v: {tuple(bar) for bar in mesh_to_lattice(nodes, elements, v)[1].tolist()}
+            for v in ("simple", "up", "down", "cross")
         }
         assert sets["up"] | sets["down"] == sets["cross"]
         assert sets["up"] & sets["down"] == sets["simple"]
@@ -193,4 +194,4 @@ class TestMeshToLattice:
     @pytest.mark.parametrize("mesh", [rect_tri(3, 3), cube_tetra(3, 3, 3)])
     def test_simplices_reject_bracing(self, mesh):
         with pytest.raises(ValueError, match="no quadrilaterals"):
-            mesh_to_lattice(*mesh, "cross")
+            mesh_to_lattice(mesh[0], mesh[1], "cross")
