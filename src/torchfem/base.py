@@ -1352,7 +1352,7 @@ class Heat(FEM, ABC):
         self.constraints[:] = True
 
         # solve for initial conditions
-        temp_eq, _, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
+        temp_eq, f_int_eq, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
             aggregate_integration_points=False,
             use_cached_solve=use_cached_solve,
             differentiable_parameters=differentiable_parameters,
@@ -1413,7 +1413,7 @@ class Heat(FEM, ABC):
 
         # fill initial conditions
         u[0] = temp_eq
-        # f[0] = reaction_flux
+        f[0] = f_int_eq
         flux[0] = heat_flux_eq.view(
             self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
         )
@@ -1483,7 +1483,7 @@ class Heat(FEM, ABC):
                 f_inertia = self.M @ du
 
                 residual = f_inertia.squeeze(-1) + 0.5 * dt_n * (
-                    f_int_old.squeeze(-1) + f_int.squeeze(-1) + f_ext
+                    f_int_old.squeeze(-1) + f_int.squeeze(-1) - 2.0 * f_ext
                 )
 
                 residual[con] = 0.0

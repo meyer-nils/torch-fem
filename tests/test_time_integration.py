@@ -95,3 +95,18 @@ def test_time_integration_rejects_invalid_output_times(t_output):
 
     with pytest.raises(ValueError):
         model.time_integration(t_output, delta_t=0.5)
+
+
+def test_time_integration_converges_to_the_static_solution():
+    """An applied heat flux must drive the same steady state as `solve(...)`."""
+    material = IsotropicConductivity2D(kappa=1.0, rho=1.0)
+    model = PlanarHeat(*rect_quad(6, 6, 1.0, 1.0), material)
+    west = torch.isclose(model.nodes[:, 0], model.nodes[:, 0].min())
+    east = torch.isclose(model.nodes[:, 0], model.nodes[:, 0].max())
+    model.constraints[west] = True
+    model.heat_flux[east, 0] = 1.0
+
+    static, *_ = model.solve()
+    transient, *_ = model.time_integration(torch.tensor([0.0, 2000.0]), delta_t=1.0)
+
+    assert torch.allclose(transient[-1], static, atol=1e-6)
