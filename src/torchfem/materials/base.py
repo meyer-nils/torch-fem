@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import copy
 from abc import ABC, abstractmethod
+from typing import TypeVar
 
 import torch
 from torch import Tensor
+
+T = TypeVar("T", bound="Material")
 
 
 class Material(ABC):
@@ -26,15 +29,15 @@ class Material(ABC):
         self.is_vectorized: bool = False
         self.rho: Tensor = torch.tensor(1.0)
 
-    def vectorize(self, n_elem: int) -> Material:
+    def vectorize(self: T, n_elem: int) -> T:
         """Returns the material batched over `n_elem` elements.
 
         Args:
             n_elem (int): Number of elements to vectorize the material for.
 
         Returns:
-            Material: A material carrying one entry per element, or itself if it
-                is vectorized already.
+            Material: A material of the same type carrying one entry per element,
+                or itself if it is vectorized already.
         """
         if self.is_vectorized:
             return self
