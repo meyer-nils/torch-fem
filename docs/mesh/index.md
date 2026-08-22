@@ -19,4 +19,4 @@ The `torchfem.mesh` module provides this pair in two ways:
 - [Generators](generators.md) create a structured mesh on a rectangle or a cube.
 - [Conversion](conversion.md) turns an existing mesh into one of a different element type.
 
-Meshes of arbitrary geometry are read from file with `meshio` instead, as shown in the [Examples](../examples.md).
+A mesh of arbitrary geometry comes from a [file](files.md) instead, which `torchfem.io` reads into a finished model.

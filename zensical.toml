@@ -75,6 +75,7 @@ nav = [
     { "Base" = "mesh/index.md" },
     { "Generators" = "mesh/generators.md" },
     { "Conversion" = "mesh/conversion.md" },
+    { "Files" = "mesh/files.md" },
   ] },
 ]
 
