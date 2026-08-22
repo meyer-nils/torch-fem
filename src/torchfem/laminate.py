@@ -232,11 +232,14 @@ class Laminate:
             As = As + Gs_rot * t[k][:, None, None]
         return As
 
-    def plot(self):
+    def plot(self, ax=None):
         """Illustrate the stacking sequence.
 
         Each ply is drawn as a band through the thickness (height proportional
         to the ply thickness) with the ply angle annotated.
+
+        Args:
+            ax: Existing matplotlib axes to plot into.
         """
         import matplotlib.pyplot as plt
         from matplotlib.patches import Rectangle
@@ -259,7 +262,8 @@ class Laminate:
         cmap = plt.get_cmap("Pastel1")
         color = {name: cmap(i % 9) for i, name in enumerate(unique_combos)}
 
-        _, ax = plt.subplots(figsize=(4, 5))
+        if ax is None:
+            _, ax = plt.subplots(figsize=(4, 5))
 
         for k in range(self.n_layers):
             z0 = z[k].item()
@@ -289,4 +293,3 @@ class Laminate:
         ax.set_xticks([])
         ax.set_ylabel("Stacking direction")
         ax.spines[["top", "right", "bottom"]].set_visible(False)
-        plt.show()

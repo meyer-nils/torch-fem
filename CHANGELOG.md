@@ -10,6 +10,7 @@
 - `Element.edges` lists the local node indices of the element edges, carrying the mid-side node on quadratic elements, and `linear_etype(...)` infers the linear element type of a mesh.
 
 ### Changed
+- `Laminate.plot(...)` takes an `ax` to draw into, as the other matplotlib plotters do, and leaves showing the figure to the caller.
 - `Truss.plot3d(...)` draws all bars in one pass instead of one mesh each, so a lattice of a few thousand bars renders in under a second instead of minutes. The spheres at the joints follow the largest bar meeting there instead of the mean of all bars.
 - `Planar.plot(...)` fills its elements, so a mesh reads as a solid rather than a lattice. `color` sets that fill and defaults to light blue as in the PyVista plotters, edges and labels follow the foreground of the matplotlib style, and `**kwargs` now reach the element `PolyCollection` instead of being ignored, so `edgecolor` or `hatch` work and a misspelled argument raises.
 - Boundary conditions in the matplotlib plotters are outlined, dotted where they attach to a node, and sized in points rather than in a fraction of the model. They sit above the node markers, with the arrows above the constraint markers they may cross.
