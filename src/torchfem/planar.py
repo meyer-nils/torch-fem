@@ -8,26 +8,24 @@ from matplotlib.colors import Colormap
 from matplotlib.tri import Triangulation
 from torch import Tensor
 
-from .base import Heat, Mechanics
+from .base import FEM, Heat, Mechanics
 from .elements import Element, Quad1, Quad2, Tria1, Tria2
 from .materials import Material
 from .plot_utils import LABEL_OFFSET, arrows2d, dots2d, markers2d, signs2d
 
 
-class Planar(Mechanics):
-    """Planar mechanics model for plane-stress or plane-strain problems.
+class PlanarGeometry(FEM):
+    """The elements, integration and plotting shared by the planar models.
 
-    The element type (Tria1, Tria2, Quad1, Quad2) is inferred from the number
-    of nodes per element in the connectivity.
+    It carries the discretization of a surface in the z=0 plane, which `Planar`
+    and `PlanarHeat` combine with the physics they solve.
 
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 2].
         elements: Element connectivity with shape [n_elem, nodes_per_element].
         material: Vectorized material model.
         thickness: Element thicknesses with shape [n_elem].
-        forces: Applied nodal forces with shape [n_nod, 2].
-        displacements: Prescribed nodal displacements with shape [n_nod, 2].
-        constraints: Boolean mask of constrained DOFs with shape [n_nod, 2].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
 
     def __init__(
@@ -60,11 +58,6 @@ class Planar(Mechanics):
         return (
             f"<torch-fem planar ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
         )
-
-    @property
-    def n_flux(self) -> list[int]:
-        """Shape of the stress tensor."""
-        return [2, 2]
 
     @property
     def etype(self) -> type[Element]:
@@ -167,9 +160,9 @@ class Planar(Mechanics):
         # Copy all tensors to CPU
         pos = pos.cpu()
         elements = self.elements.cpu()
-        forces = self.forces.cpu()
+        neumann = self._neumann.cpu()
         constraints = self.constraints.cpu()
-        prescribed = torch.where(constraints, self.displacements.cpu(), 0.0)
+        prescribed = torch.where(constraints, self._dirichlet.cpu(), 0.0)
 
         # In a deformed configuration the prescribed displacements are already
         # visible in the plotted positions, so only their tips are drawn there.
@@ -265,10 +258,10 @@ class Planar(Mechanics):
         if bcs:
             # A temperature carries no load arrow, and a prescribed one keeps
             # its marker rather than being drawn to scale
-            if forces.shape[1] == 2:
+            if neumann.shape[1] == 2:
                 fixed = constraints & (deformed | (prescribed == 0.0))
                 width = 0.01 * size
-                tips.append(arrows2d(ax, pos, forces, width, span=0.1 * size))
+                tips.append(arrows2d(ax, pos, neumann, width, span=0.1 * size))
                 if not deformed:
                     tips.append(arrows2d(ax, pos, prescribed, width))
                 pulled = torch.linalg.norm(prescribed, dim=1) > 0.0
@@ -276,7 +269,7 @@ class Planar(Mechanics):
                 dots2d(ax, ends)
             else:
                 fixed = constraints
-                signs2d(ax, pos, forces[:, 0])
+                signs2d(ax, pos, neumann[:, 0])
             markers2d(ax, pos, fixed)
 
         # Material orientations
@@ -310,7 +303,26 @@ class Planar(Mechanics):
             ax.set_axis_off()
 
 
-class PlanarHeat(Heat, Planar):
+class Planar(PlanarGeometry, Mechanics):
+    """Planar mechanics model for plane-stress or plane-strain problems.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 2].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized material model.
+        thickness: Element thicknesses with shape [n_elem].
+        forces: Applied nodal forces with shape [n_nod, 2].
+        displacements: Prescribed nodal displacements with shape [n_nod, 2].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 2].
+    """
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the stress tensor."""
+        return [2, 2]
+
+
+class PlanarHeat(PlanarGeometry, Heat):
     """Planar heat conduction model.
 
     Uses the same elements and plotting as `Planar`, but with a single
@@ -325,14 +337,3 @@ class PlanarHeat(Heat, Planar):
         temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
     """
-
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
-        """Initialize the planar heat conduction problem.
-
-        Args:
-            nodes: Nodal coordinates with shape [n_nod, 2].
-            elements: Connectivity with shape [n_elem, nodes_per_element].
-            material: Thermal material model, e.g. `IsotropicConductivity2D`.
-        """
-        super().__init__(nodes, elements, material)
-        self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)

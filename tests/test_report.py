@@ -85,7 +85,7 @@ class TestVerboseSolve:
     def test_time_integration_reports_its_time_steps(self, capsys):
         material = IsotropicConductivity2D(kappa=400.0, rho=1.0e5)
         model = PlanarHeat(*rect_quad(3, 3, 1.0, 1.0), material)
-        model.displacements[:, 0] = 5.0
+        model.temperatures[:, 0] = 5.0
         model.constraints[:] = True
 
         model.time_integration(torch.tensor([2.0]), delta_t=1.0, verbose=True)

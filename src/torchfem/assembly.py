@@ -701,18 +701,18 @@ class Assembly:
             if not bcs or isinstance(point, ReferencePointHeat):
                 continue
             node = center[None]
-            prescribed = torch.where(point.constraints, point.displacements, 0.0)
+            prescribed = torch.where(point.constraints, point._dirichlet, 0.0)
             # A prescribed rotation cannot be drawn to scale, so it keeps its mark
             fixed = point.constraints.clone()
             fixed[:, :2] &= deformed | (prescribed[:, :2] == 0.0)
-            arrows2d(ax, node, point.forces[:, :2], width, span=0.1 * size)
+            arrows2d(ax, node, point._neumann[:, :2], width, span=0.1 * size)
             if not deformed:
                 arrows2d(ax, node, prescribed[:, :2], width)
             tip = node if deformed else node + prescribed[:, :2]
             if prescribed[:, :2].any():
                 dots2d(ax, tip)
             markers2d(ax, node, fixed[:, :2])
-            if fixed[:, 2:].any() or point.forces[:, 2:].any():
+            if fixed[:, 2:].any() or point._neumann[:, 2:].any():
                 ax.plot(
                     *center.tolist(),
                     marker="$\\circlearrowleft$",
@@ -776,12 +776,12 @@ class Assembly:
             if not bcs or isinstance(point, ReferencePointHeat):
                 continue
             node = center[None]
-            prescribed = torch.where(point.constraints, point.displacements, 0.0)
+            prescribed = torch.where(point.constraints, point._dirichlet, 0.0)
             # A prescribed rotation cannot be drawn to scale, so it keeps its cone
             fixed = point.constraints.clone()
             fixed[:, : self.dim] &= deformed | (prescribed[:, : self.dim] == 0.0)
-            arrows(pl, node, point.forces[:, : self.dim], span=span)
-            arrows(pl, node, point.forces[:, self.dim :], span=span, doubled=True)
+            arrows(pl, node, point._neumann[:, : self.dim], span=span)
+            arrows(pl, node, point._neumann[:, self.dim :], span=span, doubled=True)
             if not deformed:
                 arrows(pl, node, prescribed[:, : self.dim])
             tip = node if deformed else node + prescribed[:, : self.dim]

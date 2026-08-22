@@ -220,9 +220,9 @@ class Truss(Mechanics):
         tips = [pos]
         if bcs:
             deformed = isinstance(u, Tensor)
-            prescribed = torch.where(self.constraints, self.displacements, 0.0)
+            prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
             fixed = self.constraints & (deformed | (prescribed == 0.0))
-            tips.append(arrows2d(ax, pos, self.forces, 0.01 * size, span=0.1 * size))
+            tips.append(arrows2d(ax, pos, self._neumann, 0.01 * size, span=0.1 * size))
             if not deformed:
                 tips.append(arrows2d(ax, pos, prescribed, 0.01 * size))
             pulled = torch.linalg.norm(prescribed, dim=1) > 0.0
@@ -320,10 +320,10 @@ class Truss(Mechanics):
         # Boundary conditions
         if bcs:
             deformed = isinstance(u, Tensor)
-            prescribed = torch.where(self.constraints, self.displacements, 0.0)
+            prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
             radius = 0.1 * float(self.char_lengths.mean())
             fixed = self.constraints & (deformed | (prescribed == 0.0))
-            arrows(pl, pos, self.forces, span=0.2 * size)
+            arrows(pl, pos, self._neumann, span=0.2 * size)
             if not deformed:
                 arrows(pl, pos, prescribed)
             # Large enough to stay visible where the dot sits on a node

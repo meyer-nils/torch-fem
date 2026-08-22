@@ -12,8 +12,8 @@ def _build_heated_plate() -> PlanarHeat:
     west = torch.isclose(model.nodes[:, 0], model.nodes[:, 0].min())
     east = torch.isclose(model.nodes[:, 0], model.nodes[:, 0].max())
     model.constraints[west | east] = True
-    model.displacements[west, 0] = 5.0
-    model.displacements[east, 0] = 20.0
+    model.temperatures[west, 0] = 5.0
+    model.temperatures[east, 0] = 20.0
     return model
 
 

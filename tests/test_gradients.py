@@ -133,10 +133,10 @@ def test_gradients_planar_heat_topology_parameter_autograd():
     west = torch.isclose(model.nodes[:, 0], model.nodes[:, 0].min())
     north = torch.isclose(model.nodes[:, 1], model.nodes[:, 1].max())
     model.constraints[west | north] = True
-    model.displacements[west | north] = 0.0
+    model.temperatures[west | north] = 0.0
 
     element_volume = model.integrate_field()
-    model.forces[:, 0] = (
+    model.heat_flux[:, 0] = (
         model.assemble_rhs(
             (1000.0 * element_volume / element_volume.sum())
             .unsqueeze(1)

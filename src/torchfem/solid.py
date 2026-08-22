@@ -7,35 +7,27 @@ from pyvista import DataSet
 from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
-from .base import Heat, Mechanics
+from .base import FEM, Heat, Mechanics
 from .elements import Element, Hexa1, Hexa2, Tetra1, Tetra2
-from .materials import Material
 from .plot_utils import arrows, cones, dots
 
 
-class Solid(Mechanics):
-    """Solid mechanics model for three-dimensional continua.
+class SolidGeometry(FEM):
+    """The elements, integration and plotting shared by the solid models.
 
-    The element type (Tetra1, Tetra2, Hexa1, Hexa2) is inferred from the
-    number of nodes per element in the connectivity.
+    It carries the discretization of a three-dimensional continuum, which
+    `Solid` and `SolidHeat` combine with the physics they solve.
 
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 3].
         elements: Element connectivity with shape [n_elem, nodes_per_element].
         material: Vectorized material model.
-        forces: Applied nodal forces with shape [n_nod, 3].
-        displacements: Prescribed nodal displacements with shape [n_nod, 3].
-        constraints: Boolean mask of constrained DOFs with shape [n_nod, 3].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
 
     def __repr__(self) -> str:
         etype = self.etype.__name__
         return f"<torch-fem solid ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-
-    @property
-    def n_flux(self) -> list[int]:
-        """Shape of the stress tensor."""
-        return [3, 3]
 
     @property
     def etype(self) -> type[Element]:
@@ -218,14 +210,14 @@ class Solid(Mechanics):
             visible = torch.zeros(self.n_nod, dtype=torch.bool)
             visible[self.elements[kept].reshape(-1)] = True
             deformed = isinstance(u, Tensor)
-            prescribed = torch.where(self.constraints, self.displacements, 0.0)
+            prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
             size = torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values)
             height = 0.5 * float(self.char_lengths.mean())
 
             # Forces scaled linearly, prescribed displacements to scale and only
             # where the nodes do not sit at them already
             fixed = self.constraints & visible[:, None]
-            arrows(pl, pos[visible], self.forces[visible], span=0.1 * float(size))
+            arrows(pl, pos[visible], self._neumann[visible], span=0.1 * float(size))
             if not deformed:
                 fixed = fixed & (prescribed == 0.0)
                 arrows(pl, pos[visible], prescribed[visible])
@@ -245,7 +237,25 @@ class Solid(Mechanics):
             show_html(pl)
 
 
-class SolidHeat(Heat, Solid):
+class Solid(SolidGeometry, Mechanics):
+    """Solid mechanics model for three-dimensional continua.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 3].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized material model.
+        forces: Applied nodal forces with shape [n_nod, 3].
+        displacements: Prescribed nodal displacements with shape [n_nod, 3].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 3].
+    """
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the stress tensor."""
+        return [3, 3]
+
+
+class SolidHeat(SolidGeometry, Heat):
     """Solid heat conduction model.
 
     Uses the same elements and plotting as `Solid`, but with a single
@@ -259,14 +269,3 @@ class SolidHeat(Heat, Solid):
         temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
     """
-
-    def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
-        """Initialize the solid heat conduction problem.
-
-        Args:
-            nodes: Nodal coordinates with shape [n_nod, 3].
-            elements: Connectivity with shape [n_elem, nodes_per_element].
-            material: Thermal material model, e.g. `IsotropicConductivity3D`.
-        """
-        super().__init__(nodes, elements, material)
-        self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)

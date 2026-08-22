@@ -758,7 +758,7 @@ class Shell(Mechanics):
         if bcs:
             points = self.nodes + u
             deformed = isinstance(u, Tensor)
-            prescribed = torch.where(self.constraints, self.displacements, 0.0)
+            prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
             size = torch.linalg.norm(
                 points.max(dim=0).values - points.min(dim=0).values
             )
@@ -767,8 +767,8 @@ class Shell(Mechanics):
             # Forces and moments scaled linearly, each normalized on its own
             # because they carry different units
             span = 0.1 * float(size)
-            arrows(pl, points, self.forces[:, :3], span=span)
-            arrows(pl, points, self.forces[:, 3:], span=span, doubled=True)
+            arrows(pl, points, self._neumann[:, :3], span=span)
+            arrows(pl, points, self._neumann[:, 3:], span=span, doubled=True)
 
             # Prescribed translations to scale, with a sphere marking the tip. A
             # prescribed rotation cannot be drawn to scale, so it keeps its cone.
