@@ -14,7 +14,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
@@ -28,7 +28,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
@@ -42,7 +42,7 @@ jobs:
   install:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
@@ -63,7 +63,7 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
@@ -72,8 +72,6 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install ".[dev]"
     - name: Run unit tests
-      env:
-        DISPLAY: ":99"
       run: pytest -m "not notebook" --cov --cov-report=term-missing --cov-fail-under=78
 
     # Report from one matrix entry only, and also when the gate above failed.
@@ -87,7 +85,7 @@ jobs:
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
