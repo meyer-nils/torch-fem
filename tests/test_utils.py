@@ -52,19 +52,21 @@ def test_stress_and_strain_roundtrip(dim, nv, batch):
     assert torch.allclose(voigt2strain(strain2voigt(eps)), eps)
 
 
-@pytest.mark.parametrize(
-    "voigt_shape, C_shape",
-    [((4, 3, 3), (4, 2, 2, 2, 2)), ((4, 6, 6), (4, 3, 3, 3, 3))],
-)
-def test_stiffness_shapes_and_projection(voigt_shape, C_shape):
-    voigt = torch.randn(*voigt_shape)
+@pytest.mark.parametrize("dim,nv", [(2, 3), (3, 6)])
+@pytest.mark.parametrize("batch", [(), (5,), (2, 3)])
+def test_stiffness_roundtrip(dim, nv, batch):
+    voigt = torch.randn(*batch, nv, nv)
     C = voigt2stiffness(voigt)
-    v = stiffness2voigt(C)
-    assert C.shape == C_shape
-    assert v.shape == voigt_shape
-    # Current implementation uses a transposed Voigt convention on the way back.
-    assert torch.allclose(voigt2stiffness(v.transpose(-1, -2)), C)
-    assert torch.allclose(stiffness2voigt(voigt2stiffness(v)), v.transpose(-1, -2))
+    assert C.shape == (*batch, dim, dim, dim, dim)
+    # Every Voigt component comes back where it went in, so no coupling is lost
+    assert torch.allclose(stiffness2voigt(C), voigt)
+
+
+@pytest.mark.parametrize("dim,nv", [(2, 3), (3, 6)])
+def test_stiffness_keeps_its_symmetries(dim, nv):
+    C = voigt2stiffness(torch.randn(nv, nv))
+    assert torch.allclose(C, C.transpose(0, 1))
+    assert torch.allclose(C, C.transpose(2, 3))
 
 
 def test_invalid_shapes_raise_value_error():

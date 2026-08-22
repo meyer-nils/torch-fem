@@ -3,329 +3,83 @@ import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
 
+# Row and column of each Voigt component, per spatial dimension
+_VOIGT = {
+    2: ((0, 0), (1, 1), (0, 1)),
+    3: ((0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1)),
+}
+
+
+def _indices(dim: int) -> tuple[Tensor, Tensor]:
+    """Row and column index of every Voigt component in `dim` dimensions."""
+    rows, cols = zip(*_VOIGT[dim])
+    return torch.tensor(rows), torch.tensor(cols)
+
+
+def _tensor_dim(tensor: Tensor, rank: int) -> int:
+    """Spatial dimension of a square tensor of the given rank."""
+    dim = tensor.shape[-1]
+    if dim not in _VOIGT or tuple(tensor.shape[-rank:]) != rank * (dim,):
+        raise ValueError(f"Invalid shape {tuple(tensor.shape)} for a tensor.")
+    return dim
+
+
+def _voigt_dim(voigt: Tensor, rank: int) -> int:
+    """Spatial dimension that a Voigt array of the given rank belongs to."""
+    for dim, pairs in _VOIGT.items():
+        if tuple(voigt.shape[-rank:]) == rank * (len(pairs),):
+            return dim
+    raise ValueError(f"Invalid shape {tuple(voigt.shape)} for Voigt notation.")
+
 
 def stress2voigt(sigma: Tensor) -> Tensor:
     """Convert a stress tensor to Voigt notation."""
-    if sigma.shape[-1] == 2 and sigma.shape[-2] == 2:
-        return torch.stack(
-            [
-                sigma[..., 0, 0],
-                sigma[..., 1, 1],
-                sigma[..., 0, 1],
-            ],
-            dim=-1,
-        )
-    elif sigma.shape[-1] == 3 and sigma.shape[-2] == 3:
-        return torch.stack(
-            [
-                sigma[..., 0, 0],
-                sigma[..., 1, 1],
-                sigma[..., 2, 2],
-                sigma[..., 1, 2],
-                sigma[..., 0, 2],
-                sigma[..., 0, 1],
-            ],
-            dim=-1,
-        )
-    else:
-        raise ValueError("Invalid shape for stress tensor.")
+    i, j = _indices(_tensor_dim(sigma, 2))
+    return sigma[..., i, j]
 
 
 def strain2voigt(epsilon: Tensor) -> Tensor:
-    """Convert a strain tensor to Voigt notation."""
-    if epsilon.shape[-1] == 2 and epsilon.shape[-2] == 2:
-        return torch.stack(
-            [
-                epsilon[..., 0, 0],
-                epsilon[..., 1, 1],
-                2 * epsilon[..., 0, 1],
-            ],
-            dim=-1,
-        )
-    elif epsilon.shape[-1] == 3 and epsilon.shape[-2] == 3:
-        return torch.stack(
-            [
-                epsilon[..., 0, 0],
-                epsilon[..., 1, 1],
-                epsilon[..., 2, 2],
-                2 * epsilon[..., 1, 2],
-                2 * epsilon[..., 0, 2],
-                2 * epsilon[..., 0, 1],
-            ],
-            dim=-1,
-        )
-    else:
-        raise ValueError("Invalid shape for strain tensor.")
+    """Convert a strain tensor to Voigt notation, doubling the shear components."""
+    i, j = _indices(_tensor_dim(epsilon, 2))
+    return torch.where(i == j, 1.0, 2.0).to(epsilon) * epsilon[..., i, j]
 
 
 def stiffness2voigt(C: Tensor) -> Tensor:
     """Convert a stiffness tensor to Voigt notation."""
-    if C.shape[-1] == 2 and C.shape[-2] == 2:
-        return torch.stack(
-            [
-                torch.stack(
-                    [C[..., 0, 0, 0, 0], C[..., 0, 0, 1, 1], C[..., 0, 0, 0, 1]], dim=-1
-                ),
-                torch.stack(
-                    [C[..., 1, 1, 0, 0], C[..., 1, 1, 1, 1], C[..., 1, 1, 0, 1]], dim=-1
-                ),
-                torch.stack(
-                    [C[..., 0, 1, 0, 0], C[..., 0, 1, 1, 1], C[..., 0, 1, 0, 1]], dim=-1
-                ),
-            ],
-            dim=-1,
-        )
-    elif C.shape[-1] == 3 and C.shape[-2] == 3:
-        return torch.stack(
-            [
-                torch.stack(
-                    [
-                        C[..., 0, 0, 0, 0],
-                        C[..., 0, 0, 1, 1],
-                        C[..., 0, 0, 2, 2],
-                        C[..., 0, 0, 1, 2],
-                        C[..., 0, 0, 0, 2],
-                        C[..., 0, 0, 0, 1],
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        C[..., 1, 1, 0, 0],
-                        C[..., 1, 1, 1, 1],
-                        C[..., 1, 1, 2, 2],
-                        C[..., 1, 1, 1, 2],
-                        C[..., 1, 1, 0, 2],
-                        C[..., 1, 1, 0, 1],
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        C[..., 2, 2, 0, 0],
-                        C[..., 2, 2, 1, 1],
-                        C[..., 2, 2, 2, 2],
-                        C[..., 2, 2, 1, 2],
-                        C[..., 2, 2, 0, 2],
-                        C[..., 2, 2, 0, 1],
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        C[..., 1, 2, 0, 0],
-                        C[..., 1, 2, 1, 1],
-                        C[..., 1, 2, 2, 2],
-                        C[..., 1, 2, 1, 2],
-                        C[..., 1, 2, 0, 2],
-                        C[..., 1, 2, 0, 1],
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        C[..., 0, 2, 0, 0],
-                        C[..., 0, 2, 1, 1],
-                        C[..., 0, 2, 2, 2],
-                        C[..., 0, 2, 1, 2],
-                        C[..., 0, 2, 0, 2],
-                        C[..., 0, 2, 0, 1],
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        C[..., 0, 1, 0, 0],
-                        C[..., 0, 1, 1, 1],
-                        C[..., 0, 1, 2, 2],
-                        C[..., 0, 1, 1, 2],
-                        C[..., 0, 1, 0, 2],
-                        C[..., 0, 1, 0, 1],
-                    ],
-                    dim=-1,
-                ),
-            ],
-            dim=-1,
-        )
-    else:
-        raise ValueError("Invalid shape for stiffness tensor.")
+    i, j = _indices(_tensor_dim(C, 4))
+    return C[..., i[:, None], j[:, None], i, j]
 
 
 def voigt2stress(voigt: Tensor) -> Tensor:
     """Convert a stress tensor from Voigt notation."""
-    if voigt.shape[-1] == 3:
-        return torch.stack(
-            [
-                torch.stack([voigt[..., 0], voigt[..., 2]], dim=-1),
-                torch.stack([voigt[..., 2], voigt[..., 1]], dim=-1),
-            ],
-            dim=-1,
-        )
-    elif voigt.shape[-1] == 6:
-        return torch.stack(
-            [
-                torch.stack([voigt[..., 0], voigt[..., 5], voigt[..., 4]], dim=-1),
-                torch.stack([voigt[..., 5], voigt[..., 1], voigt[..., 3]], dim=-1),
-                torch.stack([voigt[..., 4], voigt[..., 3], voigt[..., 2]], dim=-1),
-            ],
-            dim=-1,
-        )
-    else:
-        raise ValueError("Invalid shape for Voigt notation.")
+    dim = _voigt_dim(voigt, 1)
+    i, j = _indices(dim)
+    sigma = torch.zeros(*voigt.shape[:-1], dim, dim).to(voigt)
+    sigma[..., i, j] = voigt
+    sigma[..., j, i] = voigt
+    return sigma
 
 
 def voigt2strain(voigt: Tensor) -> Tensor:
-    """Convert a strain tensor from Voigt notation."""
-    if voigt.shape[-1] == 3:
-        return torch.stack(
-            [
-                torch.stack([voigt[..., 0], 0.5 * voigt[..., 2]], dim=-1),
-                torch.stack([0.5 * voigt[..., 2], voigt[..., 1]], dim=-1),
-            ],
-            dim=-1,
-        )
-    elif voigt.shape[-1] == 6:
-        return torch.stack(
-            [
-                torch.stack(
-                    [voigt[..., 0], 0.5 * voigt[..., 5], 0.5 * voigt[..., 4]], dim=-1
-                ),
-                torch.stack(
-                    [0.5 * voigt[..., 5], voigt[..., 1], 0.5 * voigt[..., 3]], dim=-1
-                ),
-                torch.stack(
-                    [0.5 * voigt[..., 4], 0.5 * voigt[..., 3], voigt[..., 2]], dim=-1
-                ),
-            ],
-            dim=-1,
-        )
-    else:
-        raise ValueError("Invalid shape for Voigt notation.")
+    """Convert a strain tensor from Voigt notation, halving the shear components."""
+    dim = _voigt_dim(voigt, 1)
+    i, j = _indices(dim)
+    shear = torch.where(i == j, 1.0, 0.5).to(voigt) * voigt
+    epsilon = torch.zeros(*voigt.shape[:-1], dim, dim).to(voigt)
+    epsilon[..., i, j] = shear
+    epsilon[..., j, i] = shear
+    return epsilon
 
 
 def voigt2stiffness(voigt: Tensor) -> Tensor:
-    """Convert a stiffness tensor from Voigt notation."""
-    if voigt.shape[-1] == 3:
-        C = torch.zeros(voigt.shape[0], 2, 2, 2, 2)
-        C[..., 0, 0, 0, 0] = voigt[..., 0, 0]
-        C[..., 1, 1, 1, 1] = voigt[..., 1, 1]
-        C[..., 0, 0, 1, 1] = voigt[..., 0, 1]
-        C[..., 1, 1, 0, 0] = voigt[..., 1, 0]
-        C[..., 0, 0, 0, 1] = voigt[..., 0, 2]
-        C[..., 0, 0, 1, 0] = voigt[..., 0, 2]
-        C[..., 1, 0, 0, 0] = voigt[..., 2, 0]
-        C[..., 0, 1, 0, 0] = voigt[..., 2, 0]
-        C[..., 1, 0, 1, 1] = voigt[..., 2, 1]
-        C[..., 0, 1, 1, 1] = voigt[..., 2, 1]
-        C[..., 1, 1, 1, 0] = voigt[..., 1, 2]
-        C[..., 1, 1, 0, 1] = voigt[..., 1, 2]
-        C[..., 1, 0, 0, 1] = voigt[..., 2, 2]
-        C[..., 0, 1, 0, 1] = voigt[..., 2, 2]
-        C[..., 1, 0, 1, 0] = voigt[..., 2, 2]
-        C[..., 0, 1, 1, 0] = voigt[..., 2, 2]
-        return C
-    elif voigt.shape[-1] == 6:
-        C = torch.zeros(voigt.shape[0], 3, 3, 3, 3)
-        C[..., 0, 0, 0, 0] = voigt[..., 0, 0]
-        C[..., 1, 1, 1, 1] = voigt[..., 1, 1]
-        C[..., 2, 2, 2, 2] = voigt[..., 2, 2]
-
-        C[..., 0, 0, 1, 1] = voigt[..., 0, 1]
-        C[..., 1, 1, 0, 0] = voigt[..., 1, 0]
-
-        C[..., 0, 0, 2, 2] = voigt[..., 0, 2]
-        C[..., 2, 2, 0, 0] = voigt[..., 2, 0]
-
-        C[..., 1, 2, 1, 2] = voigt[..., 3, 3]
-        C[..., 2, 1, 1, 2] = voigt[..., 3, 3]
-        C[..., 1, 2, 2, 1] = voigt[..., 3, 3]
-        C[..., 2, 1, 2, 1] = voigt[..., 3, 3]
-
-        C[..., 0, 2, 0, 2] = voigt[..., 4, 4]
-        C[..., 2, 0, 0, 2] = voigt[..., 4, 4]
-        C[..., 0, 2, 2, 0] = voigt[..., 4, 4]
-        C[..., 2, 0, 2, 0] = voigt[..., 4, 4]
-
-        C[..., 0, 1, 0, 1] = voigt[..., 5, 5]
-        C[..., 1, 0, 0, 1] = voigt[..., 5, 5]
-        C[..., 0, 1, 1, 0] = voigt[..., 5, 5]
-        C[..., 1, 0, 1, 0] = voigt[..., 5, 5]
-
-        C[..., 0, 0, 1, 2] = voigt[..., 0, 3]
-        C[..., 0, 0, 2, 1] = voigt[..., 0, 3]
-        C[..., 1, 2, 0, 0] = voigt[..., 3, 0]
-        C[..., 2, 1, 0, 0] = voigt[..., 3, 0]
-
-        C[..., 0, 0, 0, 2] = voigt[..., 0, 4]
-        C[..., 0, 0, 2, 0] = voigt[..., 0, 4]
-        C[..., 2, 0, 0, 0] = voigt[..., 4, 0]
-        C[..., 0, 2, 0, 0] = voigt[..., 4, 0]
-
-        C[..., 0, 0, 0, 1] = voigt[..., 0, 5]
-        C[..., 0, 0, 1, 0] = voigt[..., 0, 5]
-        C[..., 1, 0, 0, 0] = voigt[..., 5, 0]
-        C[..., 0, 1, 0, 0] = voigt[..., 5, 0]
-
-        C[..., 1, 1, 1, 2] = voigt[..., 1, 3]
-        C[..., 1, 1, 2, 1] = voigt[..., 1, 3]
-        C[..., 1, 2, 1, 1] = voigt[..., 3, 1]
-        C[..., 2, 1, 1, 1] = voigt[..., 3, 1]
-
-        C[..., 1, 1, 0, 2] = voigt[..., 1, 4]
-        C[..., 1, 1, 2, 0] = voigt[..., 1, 4]
-        C[..., 0, 2, 1, 1] = voigt[..., 4, 1]
-        C[..., 2, 0, 1, 1] = voigt[..., 4, 1]
-
-        C[..., 1, 1, 0, 1] = voigt[..., 1, 5]
-        C[..., 1, 1, 1, 0] = voigt[..., 1, 5]
-        C[..., 0, 1, 1, 1] = voigt[..., 5, 1]
-        C[..., 1, 0, 1, 1] = voigt[..., 5, 1]
-
-        C[..., 2, 2, 1, 2] = voigt[..., 2, 3]
-        C[..., 2, 2, 2, 1] = voigt[..., 2, 3]
-        C[..., 1, 2, 2, 2] = voigt[..., 3, 2]
-        C[..., 2, 1, 2, 2] = voigt[..., 3, 2]
-
-        C[..., 2, 2, 0, 2] = voigt[..., 2, 4]
-        C[..., 2, 2, 2, 0] = voigt[..., 2, 4]
-        C[..., 0, 2, 2, 2] = voigt[..., 4, 2]
-        C[..., 2, 0, 2, 2] = voigt[..., 4, 2]
-
-        C[..., 2, 2, 0, 1] = voigt[..., 2, 5]
-        C[..., 2, 2, 1, 0] = voigt[..., 2, 5]
-        C[..., 0, 1, 2, 2] = voigt[..., 5, 2]
-        C[..., 1, 0, 2, 2] = voigt[..., 5, 2]
-
-        C[..., 1, 2, 0, 2] = voigt[..., 3, 4]
-        C[..., 1, 2, 2, 0] = voigt[..., 3, 4]
-        C[..., 2, 1, 0, 2] = voigt[..., 3, 4]
-        C[..., 2, 1, 2, 0] = voigt[..., 3, 4]
-        C[..., 0, 2, 1, 2] = voigt[..., 4, 3]
-        C[..., 0, 2, 2, 1] = voigt[..., 4, 3]
-        C[..., 2, 0, 1, 2] = voigt[..., 4, 3]
-        C[..., 2, 0, 2, 1] = voigt[..., 4, 3]
-
-        C[..., 1, 2, 0, 1] = voigt[..., 3, 5]
-        C[..., 1, 2, 1, 0] = voigt[..., 3, 5]
-        C[..., 2, 1, 0, 1] = voigt[..., 3, 5]
-        C[..., 2, 1, 1, 0] = voigt[..., 3, 5]
-        C[..., 0, 1, 1, 2] = voigt[..., 5, 3]
-        C[..., 0, 1, 2, 1] = voigt[..., 5, 3]
-        C[..., 1, 0, 1, 2] = voigt[..., 5, 3]
-        C[..., 1, 0, 2, 1] = voigt[..., 5, 3]
-
-        C[..., 0, 2, 0, 1] = voigt[..., 4, 5]
-        C[..., 0, 2, 1, 0] = voigt[..., 4, 5]
-        C[..., 2, 0, 0, 1] = voigt[..., 4, 5]
-        C[..., 2, 0, 1, 0] = voigt[..., 4, 5]
-        C[..., 0, 1, 0, 2] = voigt[..., 5, 4]
-        C[..., 0, 1, 2, 0] = voigt[..., 5, 4]
-        C[..., 1, 0, 0, 2] = voigt[..., 5, 4]
-        C[..., 1, 0, 2, 0] = voigt[..., 5, 4]
-
-        return C
-    else:
-        raise ValueError("Invalid shape for Voigt notation.")
+    """Convert a stiffness tensor from Voigt notation, restoring its symmetries."""
+    dim = _voigt_dim(voigt, 2)
+    i, j = _indices(dim)
+    C = torch.zeros(*voigt.shape[:-2], *(4 * (dim,))).to(voigt)
+    for rows, cols in ((i, j), (j, i)):
+        for k, m in ((i, j), (j, i)):
+            C[..., rows[:, None], cols[:, None], k, m] = voigt
+    return C
 
 
 def plot_contours(
