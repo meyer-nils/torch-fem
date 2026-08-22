@@ -10,6 +10,7 @@
 - `Element.edges` lists the local node indices of the element edges, carrying the mid-side node on quadratic elements, and `linear_etype(...)` infers the linear element type of a mesh.
 
 ### Changed
+- `k0(...)` is implemented once on `FEM` instead of separately for mechanics and heat, which built the same tensors under different names, and returns the same values as before.
 - `Laminate.plot(...)` takes an `ax` to draw into, as the other matplotlib plotters do, and leaves showing the figure to the caller.
 - `Laminate(...)` takes its layers as sequences rather than lists, so a tuple, or a list of one concrete material class held in a variable, is accepted where the invariance of `list` rejected it before.
 - `Truss.plot3d(...)` draws all bars in one pass instead of one mesh each, so a lattice of a few thousand bars renders in under a second instead of minutes. The spheres at the joints follow the largest bar meeting there instead of the mean of all bars.

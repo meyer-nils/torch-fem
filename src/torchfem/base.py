@@ -225,10 +225,24 @@ class FEM(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
     def k0(self) -> Tensor:
-        """Compute element stiffness for the reference configuration."""
-        raise NotImplementedError
+        """Compute the element matrix of the reference state.
+
+        Returns:
+            Element stiffness for a mechanics model and element conductivity for
+            a thermal one, with shape [n_elem, n_dof_elem, n_dof_elem].
+        """
+        u = torch.zeros(self.n_nod, self.n_dof_per_node)
+        grad = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
+        grad[:] = self.initial_grad
+        flux = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
+        state = torch.zeros(self.n_int, self.n_elem, self.n_state)
+        du = torch.zeros(self.n_nod, self.n_dof_per_node)
+        de0 = torch.zeros(self.n_elem, *self.n_flux)
+        self.K = torch.empty(0)
+        k, _, _, _, _ = self.integrate_material(u, grad, flux, state, du, de0, 0, False)
+        assert k is not None
+        return k
 
     @abstractmethod
     def integrate_material(
@@ -965,21 +979,6 @@ class Mechanics(FEM, ABC):
             raise TypeError("External strain must be a floating-point tensor.")
         self._external_gradient = value.to(self.nodes.device)
 
-    def k0(self) -> Tensor:
-        """Compute element stiffness matrix in the reference state."""
-        u = torch.zeros(self.n_nod, self.n_dof_per_node)
-        grad = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
-        grad[:] = self.initial_grad
-        flux = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
-        state = torch.zeros(self.n_int, self.n_elem, self.n_state)
-        du = torch.zeros(self.n_nod, self.n_dof_per_node)
-        de0 = torch.zeros(self.n_elem, *self.n_flux)
-        self.K = torch.empty(0)
-        k, _, _, _, _ = self.integrate_material(u, grad, flux, state, du, de0, 0, False)
-        if k is None:
-            raise RuntimeError("Expected stiffness tensor in k0().")
-        return k
-
     def integrate_material(
         self,
         u_prev: Tensor,
@@ -1174,28 +1173,6 @@ class Heat(FEM, ABC):
         if not torch.is_floating_point(value):
             raise TypeError("Temperatures must be a floating-point tensor.")
         self._dirichlet = value.to(self.nodes.device)
-
-    def k0(self) -> Tensor:
-        """Compute element conductivity matrix in the reference state."""
-        temp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature
-        temp_grad = torch.zeros(
-            self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
-        )
-        heat_flux = torch.zeros(
-            self.n_int, self.n_elem, self.n_dof_per_node, self.n_dim
-        )  # heat flux
-        state = torch.zeros(self.n_int, self.n_elem, self.n_state)
-        dtemp = torch.zeros(self.n_nod, self.n_dof_per_node)  # temperature increment
-        dtemp_grad0 = torch.zeros(
-            self.n_elem, self.n_dof_per_node, self.n_dim
-        )  # temperature gradient increment
-        self.K = torch.empty(0)
-        k, _, _, _, _ = self.integrate_material(
-            temp, temp_grad, heat_flux, state, dtemp, dtemp_grad0, 0, False
-        )
-        if k is None:
-            raise RuntimeError("Expected conductivity tensor in k0().")
-        return k
 
     def integrate_material(
         self,
