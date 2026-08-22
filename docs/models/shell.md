@@ -9,5 +9,6 @@
         members:
             - __init__
             - solve
+            - integrate_surface_load
             - plot
             - solve_modes

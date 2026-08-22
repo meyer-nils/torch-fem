@@ -342,9 +342,14 @@ class FEM(ABC):
     def integrate_field(self, field: Tensor | None = None) -> Tensor:
         """Integrate a nodal scalar field over each element.
 
+        The measure is that of the mesh and excludes `volume_scale`, so a planar
+        model integrates over areas and a truss over lengths. Scaling to a volume
+        is left to the caller, which keeps this constant where a thickness or a
+        cross section is a design variable.
+
         Args:
             field: Nodal scalar values with shape [n_nod]. If None, integrates
-                a unit field and therefore returns element volumes or areas.
+                a unit field and therefore returns the measure of each element.
 
         Returns:
             Per-element integral values with shape [n_elem].
