@@ -13,6 +13,7 @@ first local axis, counter-clockwise as in `planar_rotation`.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import ClassVar
 
 import torch
@@ -26,7 +27,7 @@ class Laminate:
     """A stacking sequence of plane-stress layers for shell elements.
 
     Args:
-        materials: List of plane-stress materials, one per layer.
+        materials: Plane-stress materials, one per layer.
         thicknesses: Per-layer thicknesses. Each entry may be a scalar (constant
             over the mesh) or a tensor of shape `(n_elem,)`.
         angles: Per-layer orientation angles in radians, measured from the
@@ -59,9 +60,9 @@ class Laminate:
 
     def __init__(
         self,
-        materials: list[Material],
-        thicknesses: list[float] | list[Tensor] | Tensor,
-        angles: list[float] | list[Tensor] | Tensor,
+        materials: Sequence[Material],
+        thicknesses: Sequence[float] | Sequence[Tensor] | Tensor,
+        angles: Sequence[float] | Sequence[Tensor] | Tensor,
         n_simpson: int = 3,
         offset: float | str = 0.0,
         symmetric: bool = False,
