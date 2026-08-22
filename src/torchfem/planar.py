@@ -134,8 +134,8 @@ class Planar(Mechanics):
                 interpolated contours.
             element_property: Element field rendered as flat colors (shape
                 [n_elem]) or as vector arrows (shape [n_elem, 2]).
-            orientation: Element-wise material angles in radians rendered as
-                line markers.
+            orientation: Element-wise material angles in radians, measured
+                counter-clockwise, rendered as line markers.
             node_labels: If True, annotates nodes with their indices.
             node_markers: If True, draws markers at nodal positions.
             axes: If True, shows the coordinate axes.
@@ -283,7 +283,7 @@ class Planar(Mechanics):
         if orientation is not None:
             orientation = orientation.cpu()
             centers = pos[elements, :].mean(dim=1)
-            dir = torch.stack([torch.cos(orientation), -torch.sin(orientation)]).T
+            dir = torch.stack([torch.cos(orientation), torch.sin(orientation)]).T
             ax.quiver(
                 centers[:, 0],
                 centers[:, 1],

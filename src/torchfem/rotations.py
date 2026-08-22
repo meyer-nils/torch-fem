@@ -3,7 +3,7 @@ from torch import Tensor
 
 
 def planar_rotation(phi: float | Tensor) -> Tensor:
-    """Create a planar rotation matrix with an angle phi."""
+    """Create a planar rotation matrix rotating by phi counter-clockwise."""
     phi = torch.as_tensor(phi)
     c = torch.cos(phi)
     s = torch.sin(phi)
@@ -12,12 +12,12 @@ def planar_rotation(phi: float | Tensor) -> Tensor:
             torch.stack([c, -s], dim=-1),
             torch.stack([s, c], dim=-1),
         ],
-        dim=-1,
+        dim=-2,
     )
 
 
 def axis_rotation(axis: Tensor, phi: float | Tensor) -> Tensor:
-    """Create a rotation matrix with an angle phi around an axis."""
+    """Create a rotation matrix rotating by phi around an axis, right-handed."""
     phi = torch.as_tensor(phi)
     axis = axis / torch.norm(axis)
     x, y, z = axis
@@ -30,12 +30,12 @@ def axis_rotation(axis: Tensor, phi: float | Tensor) -> Tensor:
             torch.stack([t * x * y + s * z, t * y * y + c, t * y * z - s * x], dim=-1),
             torch.stack([t * x * z - s * y, t * y * z + s * x, t * z * z + c], dim=-1),
         ],
-        dim=-1,
+        dim=-2,
     )
 
 
 def euler_rotation(rotation_angles: Tensor) -> Tensor:
-    """Create a rotation matrix with Euler angles."""
+    """Create a rotation matrix from intrinsic z-y-x Euler angles."""
     alpha = rotation_angles[..., 0]
     beta = rotation_angles[..., 1]
     gamma = rotation_angles[..., 2]
@@ -70,5 +70,5 @@ def euler_rotation(rotation_angles: Tensor) -> Tensor:
                 dim=-1,
             ),
         ],
-        dim=-1,
+        dim=-2,
     )

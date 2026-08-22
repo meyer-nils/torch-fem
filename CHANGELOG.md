@@ -15,6 +15,7 @@
 - Boundary conditions in the matplotlib plotters are outlined, dotted where they attach to a node, and sized in points rather than in a fraction of the model. They sit above the node markers, with the arrows above the constraint markers they may cross.
 
 ### Fixed
+- `planar_rotation(...)`, `axis_rotation(...)` and `euler_rotation(...)` returned the transpose of the matrix they build, so they rotated by `-phi`. They now turn counter-clockwise, i.e. `axis_rotation(...)` follows the right-hand rule and a ply at `+45°` carries its stiff axis at `+45°`. Results that depend on the sign of an angle change: an unbalanced `Laminate` stacking sequence and any material rotated by an angle other than a multiple of 90° are mirrored compared to earlier versions. The orientation markers of `Planar.plot(...)` follow the same convention now.
 - Boundary condition glyphs are no longer clipped at the edge of the axes, which their size in points reaches past when the limits are fitted to the mesh.
 - `PlanarHeat.plot(...)` draws its thermal boundary conditions: a heat flux as a plus or a minus, and a prescribed temperature as a marker, which was drawn as nothing at all when it was non-zero.
 - Fixed a mistake in the triangular shell element from incorrectly implementing an equation from the Krysl paper. `h` is now the element edge length rather than its area, and the element area enters the shear stiffness once instead of twice. Thin-shell results are essentially unchanged, because the two errors cancelled in that limit.
