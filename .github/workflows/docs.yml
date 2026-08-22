@@ -43,6 +43,7 @@ jobs:
           python benchmarks/plot.py
           python docs/images/shape_functions/plot_elements.py
           python docs/images/mesh/plot_meshes.py
+          python docs/images/laminate/plot_laminates.py
 
       - run: zensical build --clean
 

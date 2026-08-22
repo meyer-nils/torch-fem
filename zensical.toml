@@ -51,6 +51,7 @@ nav = [
     { "Damage" = [
       { "Isotropic 3D" = "materials/damage/isotropic_damage_3D.md" },
     ] },
+    { "Laminate" = "materials/laminate.md" },
   ] },
     { "Elements" = [
     { "Base" = "elements/index.md" },
