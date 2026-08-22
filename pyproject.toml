@@ -58,9 +58,16 @@ dev = [
     "ruff",
     "testbook",
 ]
+docs = [
+    "mkdocs",
+    "mkdocstrings-python",
+    "psutil",
+    "zensical",
+]
 all = [
     "torch-fem[notebook]",
     "torch-fem[dev]",
+    "torch-fem[docs]",
 ]
 
 [project.urls]
