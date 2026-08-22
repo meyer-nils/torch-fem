@@ -6,6 +6,7 @@ from torchfem.materials import (
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicDamage3D,
+    IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
 )
 from torchfem.mesh import cube_hexa, rect_quad
@@ -185,3 +186,35 @@ class TestLoadCycle:
         assert f_top[3] == pytest.approx(0.5 * f_top[2])
         assert f_top[4] == pytest.approx(0.0, abs=1e-8)
         assert u[4, top, 2].mean() == pytest.approx(0.0, abs=1e-12)
+
+
+def _single_element(cls, mat, dim):
+    nodes, elements = rect_quad(2, 2) if dim == 2 else cube_hexa(2, 2, 2)
+    model = cls(nodes, elements, mat)
+    model.constraints[nodes[:, 0] < 1e-9] = True
+    model._dirichlet[nodes[:, 0] > 1 - 1e-9] = 0.01
+    model.constraints[nodes[:, 0] > 1 - 1e-9] = True
+    return model
+
+
+@pytest.mark.parametrize(
+    "cls, mat, dim, n_flux",
+    [
+        (Planar, IsotropicElasticityPlaneStress(1000.0, 0.3), 2, (2, 2)),
+        (Solid, IsotropicElasticity3D(1000.0, 0.3), 3, (3, 3)),
+        (PlanarHeat, IsotropicConductivity2D(400.0), 2, (2,)),
+        (SolidHeat, IsotropicConductivity3D(400.0), 3, (3,)),
+    ],
+)
+def test_solve_keeps_the_element_axis_for_one_element(cls, mat, dim, n_flux):
+    model = _single_element(cls, mat, dim)
+    assert model.n_elem == 1
+    _, _, flux, grad, _ = model.solve()
+    assert flux.shape == (1, *n_flux)
+    assert grad.shape == (1, *n_flux)
+
+
+def test_solve_keeps_the_integration_point_axis():
+    model = _single_element(Planar, IsotropicElasticityPlaneStress(1000.0, 0.3), 2)
+    _, _, flux, _, _ = model.solve(aggregate_integration_points=False)
+    assert flux.shape == (model.n_int, 1, 2, 2)

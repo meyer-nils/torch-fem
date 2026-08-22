@@ -597,7 +597,10 @@ class Assembly:
             flux = [x.mean(dim=1) if x.dim() > 2 else x for x in flux]
             state = [x.mean(dim=1) if x.dim() > 2 else x for x in state]
 
-        out = [u, f, [x.squeeze() for x in flux], [x.squeeze() for x in grad], state]
+        flux = [x.squeeze((-2, -1)) if x.dim() > 2 else x for x in flux]
+        grad = [x.squeeze((-2, -1)) if x.dim() > 2 else x for x in grad]
+
+        out = [u, f, flux, grad, state]
         if not track:
             out = [[x.detach() for x in q] for q in out]
         if not return_intermediate:

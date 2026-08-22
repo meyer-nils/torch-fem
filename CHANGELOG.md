@@ -17,6 +17,7 @@
 - `Material.vectorize(...)` is implemented once on the base class, batching the properties a material holds instead of rebuilding it through its constructor, rather than being written out by every material itself. It no longer prints when it is called on a material that is already vectorized, and it keeps the type of a `TransverseIsotropicElasticity3D` instead of returning an `OrthotropicElasticity3D`.
 
 ### Fixed
+- `solve(...)` and `Assembly.solve(...)` squeezed every axis of the returned flux and gradient holding a single value, rather than those of the flux alone, so a model of one element lost its element axis and an element with one integration point lost that one.
 - `voigt2stiffness(...)` left `C_1122` and `C_2211` at zero in 3D, so converting a stiffness matrix from Voigt notation silently dropped the coupling between the two transverse normal components. It also added a spurious leading dimension to an unbatched input and raised on more than one batch dimension, where the other converters accept any.
 - `stiffness2voigt(...)` returned the transpose of the Voigt matrix it builds, which cancelled for the symmetric stiffness tensors it is given but made it no inverse of `voigt2stiffness(...)`.
 - `Material.vectorize(...)` dropped a rotation applied before it, because it rebuilt the material from engineering constants that cannot describe a rotated one. `material.rotate(R).vectorize(n)` now gives the same material as `material.vectorize(n).rotate(R)`.

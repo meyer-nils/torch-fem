@@ -886,8 +886,8 @@ class FEM(ABC):
             out_flux = out_flux.mean(dim=1)
             out_state = out_state.mean(dim=1)
 
-        out_flux = out_flux.squeeze()
-        out_grad = out_grad.squeeze()
+        out_flux = out_flux.squeeze((-2, -1))
+        out_grad = out_grad.squeeze((-2, -1))
 
         if not track_parameter_gradients:
             out_u = out_u.detach()
@@ -1565,7 +1565,7 @@ class Heat(FEM, ABC):
             out_flux = out_flux.mean(dim=1)
             out_state = out_state.mean(dim=1)
 
-        out_flux = out_flux.squeeze(-2)
-        out_grad = out_grad.squeeze(-2)
+        out_flux = out_flux.squeeze((-2, -1))
+        out_grad = out_grad.squeeze((-2, -1))
 
         return out_u, out_f, out_flux, out_grad, out_state
