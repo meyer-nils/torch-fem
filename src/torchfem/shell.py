@@ -61,11 +61,26 @@ class Shell(Mechanics):
         """Initialize the shell FEM problem.
 
         Args:
+            nodes: Nodal coordinates with shape [n_nod, 3].
+            elements: Triangle connectivity with shape [n_elem, 3].
             material: Either a single plane-stress `Material` (homogeneous
                 shell) or a `Laminate` describing a layered stacking sequence.
                 When a `Laminate` is passed, `thickness` and `n_simpson` are
                 taken from the laminate and the corresponding arguments here are
                 ignored.
+            thickness: Shell thickness. A float is expanded to all elements, a
+                tensor assigns one thickness per element.
+            transverse_nu: Poisson's ratio used for the transverse shear of a
+                homogeneous shell.
+            transverse_kappa: Shear correction factor, 5/6 for a homogeneous
+                section.
+            transverse_G: Pair `[G_xz, G_yz]` of effective transverse shear
+                moduli, integrated over the thickness. Taken from the material
+                or the laminate when omitted.
+            drill_penalty: Stiffness of the drilling degree of freedom, which
+                the flat-facet element does not carry itself.
+            n_simpson: Number of Simpson integration points through the
+                thickness. Must be an odd integer.
             orientation: Global reference direction from which material/ply
                 angles are measured. It is projected onto each element's surface
                 to define the element's local material 0°-axis. Accepts
