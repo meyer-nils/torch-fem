@@ -51,6 +51,13 @@ nav = [
     { "Damage" = [
       { "Isotropic 3D" = "materials/damage/isotropic_damage_3D.md" },
     ] },
+    { "Conductivity" = [
+      { "Isotropic 3D" = "materials/conductivity/isotropic_conductivity_3D.md" },
+      { "Isotropic 2D" = "materials/conductivity/isotropic_conductivity_2D.md" },
+      { "Isotropic 1D" = "materials/conductivity/isotropic_conductivity_1D.md" },
+      { "Orthotropic 3D" = "materials/conductivity/orthotropic_conductivity_3D.md" },
+      { "Orthotropic 2D" = "materials/conductivity/orthotropic_conductivity_2D.md" },
+    ] },
     { "Laminate" = "materials/laminate.md" },
   ] },
     { "Elements" = [
