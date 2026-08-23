@@ -12,7 +12,7 @@ from matplotlib.collections import LineCollection
 from pyvista import DataSet
 from torch import Tensor
 
-from .base import FEM, Heat
+from .base import FEM, Heat, near_null_space, skew
 from .report import SolveReport, machine
 from .sparse import describe_method, newton_solve
 
@@ -234,7 +234,7 @@ class Assembly:
         primary_base = self._at[id(primary)] + primary_nodes * n_pri
         ones = torch.ones(len(secondary_nodes))
 
-        skew = self._skew(x_secondary - primary.nodes[primary_nodes])
+        r = skew(x_secondary - primary.nodes[primary_nodes], self.dim)
         axes = (0, 1, 2) if self.dim == 3 else (2,)
 
         for dof in dofs:
@@ -243,17 +243,7 @@ class Assembly:
             if dof < self.dim and n_pri > self.dim:
                 for b, axis in enumerate(axes):
                     rot = primary_base + self.dim + b
-                    self._rows.append((secondary_base + dof, rot, skew[:, dof, axis]))
-
-    def _skew(self, r: Tensor) -> Tensor:
-        """Columns of the `theta x r` operator: the basis vector `e_b` crossed into r.
-
-        Padded to three components, so 2D rotates about z alone.
-        """
-        r = torch.cat([r, torch.zeros(len(r), 3 - self.dim)], dim=1)
-        eye = torch.eye(3).expand(len(r), 3, 3)
-        cross = torch.linalg.cross(eye, r[:, None, :].expand(-1, 3, -1), dim=-1)
-        return cross.transpose(1, 2)
+                    self._rows.append((secondary_base + dof, rot, r[:, dof, axis]))
 
     def _build_T(self) -> tuple[Tensor, Tensor]:
         """Build the map from retained to all degrees of freedom.
@@ -333,29 +323,15 @@ class Assembly:
             val[position[con]] = 1.0
             return torch.sparse_coo_tensor(idx, val, (n, n), is_coalesced=True)
 
-    def _rigid_modes(self) -> Tensor:
+    def _near_null_space(self) -> Tensor:
         """The near-null space an algebraic multigrid setup needs, over all DOFs.
 
-        Rigid body motions for a mechanical assembly and a constant field for a
-        thermal one. `FEM.compute_B(...)` builds this for a single part, but
-        returns a different number of modes per part, which cannot be stacked.
+        The parts share one physics and one dimension, so their blocks carry the
+        same number of modes and stack.
         """
-        if self.parts[0].n_dof_per_node < self.dim:
-            return torch.ones(self.n_dofs, 1)
-
-        axes = (0, 1, 2) if self.dim == 3 else (2,)
-        modes = torch.zeros(self.n_dofs, self.dim + len(axes))
-        for part, offset in zip(self.parts, self.offsets):
-            base = offset + torch.arange(part.n_nod) * part.n_dof_per_node
-            skew = self._skew(part.nodes)
-            for a in range(self.dim):
-                modes[base + a, a] = 1.0
-                for b, axis in enumerate(axes):
-                    modes[base + a, self.dim + b] = skew[:, a, axis]
-            if part.n_dof_per_node > self.dim:
-                for b in range(len(axes)):
-                    modes[base + self.dim + b, self.dim + b] = 1.0
-        return modes
+        return torch.cat(
+            [near_null_space(part.nodes, part.n_dof_per_node) for part in self.parts]
+        )
 
     def _report(
         self, verbose: bool, method: str | None, device: str | None, newton: str
@@ -527,7 +503,7 @@ class Assembly:
         # Iterative solvers build their preconditioner from the near-null space.
         # `T` is the identity on the retained rows, so restricting the modes to
         # them is the `q` of `u = T q` that reproduces each one.
-        B = self._rigid_modes()[retained]
+        B = self._near_null_space()[retained]
 
         dq = torch.zeros(len(retained))
         carry = (

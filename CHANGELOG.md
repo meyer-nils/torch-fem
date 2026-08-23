@@ -10,6 +10,7 @@
 - `Element.edges` lists the local node indices of the element edges, carrying the mid-side node on quadratic elements, and `linear_etype(...)` infers the linear element type of a mesh.
 
 ### Changed
+- **Breaking:** `FEM.compute_B(...)` is now `FEM.near_null_space(...)`, since it returns the near-null space a linear solver is preconditioned with and never the gradient operator that `B` denotes everywhere else. It shares one implementation with `Assembly` now, which carried its own copy.
 - `Material.vectorize(...)` returns the type it was called on rather than a `Material`, so the properties of a concrete material stay visible to a type checker after vectorizing.
 - `PlanarHeat` and `SolidHeat` no longer inherit from `Planar` and `Solid`, but share their elements, integration and plotting through a `PlanarGeometry` and a `SolidGeometry` base that carries no physics. A thermal model therefore no longer exposes `forces`, `displacements`, `ext_strain` and `solve_modes`, which belonged to mechanics and aliased the thermal `heat_flux` and `temperatures`. An external gradient stays zero for a thermal model.
 - `k0(...)` is implemented once on `FEM` instead of separately for mechanics and heat, which built the same tensors under different names, and returns the same values as before.

@@ -20,6 +20,41 @@ from .sparse import (
 )
 
 
+def skew(r: Tensor, dim: int) -> Tensor:
+    """Columns of the `theta x r` operator: the basis vector `e_b` crossed into r.
+
+    Padded to three components, so 2D rotates about z alone.
+    """
+    r = torch.cat([r, torch.zeros(len(r), 3 - dim)], dim=1)
+    eye = torch.eye(3).expand(len(r), 3, 3)
+    cross = torch.linalg.cross(eye, r[:, None, :].expand(-1, 3, -1), dim=-1)
+    return cross.transpose(1, 2)
+
+
+def near_null_space(nodes: Tensor, n_dof_per_node: int) -> Tensor:
+    """The near-null space an algebraic multigrid setup needs for a mesh.
+
+    Rigid body motions where the nodes carry them, and a constant field otherwise,
+    as a heat model has. Rotational degrees of freedom enter the rotation modes, so
+    a shell gets the same six modes as a solid.
+    """
+    dim = nodes.shape[1]
+    if n_dof_per_node < dim:
+        return torch.ones(n_dof_per_node * len(nodes), 1)
+    axes = (0, 1, 2) if dim == 3 else (2,)
+    modes = torch.zeros(n_dof_per_node * len(nodes), dim + len(axes))
+    base = torch.arange(len(nodes)) * n_dof_per_node
+    r = skew(nodes, dim)
+    for a in range(dim):
+        modes[base + a, a] = 1.0
+        for b, axis in enumerate(axes):
+            modes[base + a, dim + b] = r[:, a, axis]
+    if n_dof_per_node > dim:
+        for b in range(len(axes)):
+            modes[base + dim + b, dim + b] = 1.0
+    return modes
+
+
 class FEM(ABC):
     """Abstract base class for all finite-element models.
 
@@ -315,35 +350,9 @@ class FEM(ABC):
         B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
         return self.etype.N(xi), B, detJ
 
-    def compute_B(self) -> Tensor:
-        """Build rigid-body null-space modes for linear solvers.
-
-        Returns:
-            Dense basis matrix with one column per rigid-body mode.
-        """
-        if self.n_dof_per_node == 3:
-            B = torch.zeros((self.n_dof_per_node * self.n_nod, 6))
-            B[0::3, 0] = 1
-            B[1::3, 1] = 1
-            B[2::3, 2] = 1
-            B[1::3, 3] = -self.nodes[:, 2]
-            B[2::3, 3] = self.nodes[:, 1]
-            B[0::3, 4] = self.nodes[:, 2]
-            B[2::3, 4] = -self.nodes[:, 0]
-            B[0::3, 5] = -self.nodes[:, 1]
-            B[1::3, 5] = self.nodes[:, 0]
-        elif self.n_dof_per_node == 2:
-            B = torch.zeros((self.n_dof_per_node * self.n_nod, 3))
-            B[0::2, 0] = 1
-            B[1::2, 1] = 1
-            B[1::2, 2] = -self.nodes[:, 0]
-            B[0::2, 2] = self.nodes[:, 1]
-        elif self.n_dof_per_node == 1:
-            B = torch.zeros((self.n_dof_per_node * self.n_nod, 1))
-            B[0::1, 0] = 1
-        else:
-            B = torch.ones((self.n_dof_per_node * self.n_nod, 1))
-        return B
+    def near_null_space(self) -> Tensor:
+        """The near-null space an algebraic multigrid setup needs for this model."""
+        return near_null_space(self.nodes, self.n_dof_per_node)
 
     def integrate_shape_functions(self) -> Tensor:
         """Integrate each shape function over its element.
@@ -682,7 +691,7 @@ class FEM(ABC):
         )
 
         # Null space rigid body modes for AMG preconditioner
-        B = self.compute_B()
+        B = self.near_null_space()
 
         # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
@@ -1400,7 +1409,7 @@ class Heat(FEM, ABC):
         self.constraints[:] = bc_constraints
 
         # null space rigid body modes for AMG preconditioner
-        B = self.compute_B()
+        B = self.near_null_space()
 
         # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
