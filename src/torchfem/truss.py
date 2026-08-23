@@ -34,6 +34,8 @@ class Truss(Mechanics):
             [n_nod, n_dim].
     """
 
+    supports_nlgeom = False
+
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem.
 

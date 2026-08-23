@@ -45,6 +45,8 @@ class Shell(Mechanics):
         constraints: Boolean mask of constrained DOFs with shape [n_nod, 6].
     """
 
+    supports_nlgeom = False
+
     def __init__(
         self,
         nodes: Tensor,
@@ -467,11 +469,6 @@ class Shell(Mechanics):
             if need_k
             else None
         )
-
-        if nlgeom:
-            raise NotImplementedError(
-                "Geometric nonlinearity is not yet implemented for shells."
-            )
 
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)

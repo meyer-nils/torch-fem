@@ -118,6 +118,14 @@ class TestShellValidation:
         with pytest.raises(ValueError, match="shear modulus"):
             Shell(self.nodes, self.elements, material)
 
+    def test_solve_rejects_geometric_nonlinearity(self):
+        material = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        shell = Shell(self.nodes, self.elements, material)
+        shell.constraints[0] = True
+        shell.forces[2, 2] = 1.0
+        with pytest.raises(NotImplementedError, match="not implemented for Shell"):
+            shell.solve(nlgeom=True)
+
     def test_integrates_the_transverse_moduli_of_an_orthotropic_material(self):
         material = OrthotropicElasticityPlaneStress(
             E_1=100e3, E_2=10e3, nu_12=0.3, G_12=5e3, G_13=4.8e3, G_23=3e3

@@ -92,3 +92,7 @@ class TestTruss:
         assert torch.all(omega[1:] > omega[:-1])
         expected = math.pi / 2.0 * math.sqrt(E / rho)
         assert torch.allclose(omega[0], torch.tensor(expected), rtol=1e-2)
+
+    def test_solve_rejects_geometric_nonlinearity(self):
+        with pytest.raises(NotImplementedError, match="not implemented for Truss"):
+            _axial_bar().solve(nlgeom=True)

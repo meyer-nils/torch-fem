@@ -39,6 +39,8 @@ class FEM(ABC):
         n_dofs: Total number of degrees of freedom.
     """
 
+    supports_nlgeom = True
+
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material | None):
         """Initialize a finite-element model.
 
@@ -653,6 +655,11 @@ class FEM(ABC):
                 state. If return_intermediate is True, each tensor includes an
                 increment dimension as the leading axis.
         """
+        if nlgeom and not self.supports_nlgeom:
+            raise NotImplementedError(
+                f"Geometric nonlinearity is not implemented for {type(self).__name__}."
+            )
+
         increments = torch.tensor([0.0, 1.0]) if increments is None else increments
 
         # Number of increments
