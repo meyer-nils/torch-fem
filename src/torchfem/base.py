@@ -1139,6 +1139,8 @@ class Mechanics(FEM, ABC):
 class Heat(FEM, ABC):
     """Base class for steady and transient heat conduction formulations."""
 
+    supports_nlgeom = False
+
     @property
     def n_dof_per_node(self) -> int:
         return 1

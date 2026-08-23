@@ -218,3 +218,9 @@ def test_solve_keeps_the_integration_point_axis():
     model = _single_element(Planar, IsotropicElasticityPlaneStress(1000.0, 0.3), 2)
     _, _, flux, _, _ = model.solve(aggregate_integration_points=False)
     assert flux.shape == (model.n_int, 1, 2, 2)
+
+
+def test_heat_solve_rejects_geometric_nonlinearity():
+    """Heat conduction has no kinematics, so `nlgeom` is not silently ignored."""
+    with pytest.raises(NotImplementedError, match="not implemented for PlanarHeat"):
+        _planar_heat().solve(nlgeom=True)
