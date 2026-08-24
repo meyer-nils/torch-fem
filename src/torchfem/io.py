@@ -113,7 +113,7 @@ def import_mesh(
 
     if not np.allclose(points[:, 2], np.zeros_like(points[:, 2])):
         nodes = torch.tensor(points, dtype=dtype, device=device)
-        if etype in ["triangle"]:
+        if etype in ["triangle", "quad"]:
             return Shell(nodes, elements, material, thickness=thickness)
         elif etype in ["tetra", "tetra10", "hexahedron", "hexahedron20"]:
             return Solid(nodes, elements, material)

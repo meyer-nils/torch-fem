@@ -7,6 +7,7 @@ import torch
 from meshio import Mesh
 
 from torchfem import Planar, Shell, Solid
+from torchfem.elements import Quad1
 from torchfem.io import (
     export_mesh,
     import_mesh,
@@ -137,8 +138,8 @@ class TestTypedImport:
 class TestImportNonPlanarMesh:
     """Meshes torch-fem cannot export itself, written directly with meshio."""
 
-    def _write(self, path, cells):
-        Mesh(NON_PLANAR_POINTS, cells).write(path)
+    def _write(self, path, cells, points=NON_PLANAR_POINTS):
+        Mesh(points, cells).write(path)
 
     def test_non_planar_triangle_mesh_returns_shell(self):
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
@@ -164,11 +165,22 @@ class TestImportNonPlanarMesh:
             with pytest.raises(ValueError, match="single element types"):
                 import_mesh(path, mat)
 
-    def test_rejects_element_type_without_a_model(self):
-        """A quadrilateral is a supported element, but only in the z=0 plane."""
+    def test_non_planar_quad_mesh_returns_shell(self):
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "quad3d.vtu"
+            path = Path(tmpdir) / "shell.vtu"
             self._write(path, [("quad", np.array([[0, 1, 2, 3]]))])
+            model = import_mesh(path, mat, thickness=0.1)
+            assert isinstance(model, Shell)
+            assert model.etype is Quad1
+            assert isinstance(import_shell(path, mat), Shell)
+
+    def test_rejects_element_type_without_a_model(self):
+        """A quadratic triangle is a supported element, but only in the z=0 plane."""
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        points = np.vstack([NON_PLANAR_POINTS, [[0.5, 0.0, 0.5], [0.0, 0.5, 0.5]]])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "tria6_3d.vtu"
+            self._write(path, [("triangle6", np.array([[0, 1, 3, 4, 5, 2]]))], points)
             with pytest.raises(ValueError, match="Cannot interpret element type"):
                 import_mesh(path, mat)

@@ -144,8 +144,12 @@ class TestShellTransverseShear:
     E, L, b, P, kappa = 1000.0, 10.0, 1.0, 1.0, 5.0 / 6.0
 
     @pytest.mark.parametrize("t", [2.0, 0.5])
-    def test_tip_deflection_matches_timoshenko(self, t):
-        nodes, elements = rect_tri(41, 3, self.L, self.b, variant="center")
+    @pytest.mark.parametrize("etype", ["Tria1", "Quad1"])
+    def test_tip_deflection_matches_timoshenko(self, t, etype):
+        if etype == "Tria1":
+            nodes, elements = rect_tri(41, 3, self.L, self.b, variant="center")
+        else:
+            nodes, elements = rect_quad(41, 3, self.L, self.b)
         nodes = torch.hstack([nodes, torch.zeros((len(nodes), 1))])
         material = IsotropicElasticityPlaneStress(E=self.E, nu=0.0)
         beam = Shell(nodes, elements, material, thickness=t)
@@ -157,6 +161,103 @@ class TestShellTransverseShear:
         bending = self.P * self.L**3 / (3 * self.E * self.b * t**3 / 12)
         shear = self.P * self.L / (self.kappa * (self.E / 2) * self.b * t)
         assert u[:, 2].abs().max() == pytest.approx(bending + shear, rel=0.01)
+
+
+def _clamped_plate(n: int, t: float, E: float = 1.0e6, nu: float = 0.3, q: float = 1.0):
+    """Uniformly loaded square plate, clamped all round, on an `n` by `n` quad mesh."""
+    nodes, elements = rect_quad(n + 1, n + 1)
+    nodes = torch.hstack([nodes, torch.zeros((len(nodes), 1))])
+    material = IsotropicElasticityPlaneStress(E=E, nu=nu)
+    plate = Shell(nodes, elements, material, thickness=t)
+    surface = torch.ones(plate.n_nod, dtype=torch.bool)
+    load = torch.tensor([0.0, 0.0, q])
+    plate.forces[:, 0:3] = plate.integrate_surface_load(surface, load)
+    edge = ((nodes[:, :2] < 1e-9) | (nodes[:, :2] > 1.0 - 1e-9)).any(dim=1)
+    plate.constraints[edge, :] = True
+    plate.constraints[:, [0, 1, 5]] = True
+    u, _, _, _, _ = plate.solve(method="spsolve")
+    # Normalized on the thin-plate deflection 0.00126 q L^4 / D of Timoshenko
+    D = E * t**3 / (12 * (1 - nu**2))
+    return float(u[:, 2].max()) / (0.00126 * q / D)
+
+
+class TestShellQuadrilateral:
+    """The MITC4 quadrilateral ties its transverse shear strains to the element
+    edges, which keeps a thin plate from locking. A plain bilinear quadrilateral
+    returns a deflection near zero in the same test."""
+
+    # Distorted patch, so the tests below do not sit on a regular mesh
+    nodes = torch.tensor(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.31, 0.24, 0.0],
+            [0.72, 0.33, 0.0],
+            [0.66, 0.71, 0.0],
+            [0.28, 0.63, 0.0],
+        ]
+    )
+    elements = torch.tensor([[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]])
+    material = IsotropicElasticityPlaneStress(1000.0, 0.3)
+
+    @pytest.mark.parametrize("t", [1.0e-2, 1.0e-3, 1.0e-4])
+    def test_thin_plate_does_not_lock(self, t):
+        """The deflection stays at the thin-plate limit however thin the plate is."""
+        assert _clamped_plate(16, t) == pytest.approx(1.0, rel=0.01)
+
+    def test_plate_converges_under_refinement(self):
+        coarse, fine = _clamped_plate(4, 1.0e-3), _clamped_plate(16, 1.0e-3)
+        assert abs(fine - 1.0) < abs(coarse - 1.0)
+
+    def test_reproduces_a_linear_displacement_field(self):
+        """Membrane patch test: a uniform strain is integrated exactly."""
+        eps = 1.0e-3
+        patch = Shell(self.nodes, self.elements, self.material, thickness=0.1)
+        patch.constraints[:] = True
+        patch.displacements[:, 0] = eps * self.nodes[:, 0]
+        patch.displacements[:, 1] = -0.3 * eps * self.nodes[:, 1]
+        _, _, sigma, _, _ = patch.solve(method="spsolve")
+        assert sigma[..., 0, 0] == pytest.approx(1000.0 * eps, abs=1e-12)
+        assert sigma[..., 1, 1] == pytest.approx(0.0, abs=1e-12)
+        assert sigma[..., 0, 1] == pytest.approx(0.0, abs=1e-12)
+
+    def test_reproduces_a_constant_curvature(self):
+        """Bending patch test: a uniform curvature is integrated exactly."""
+        t, c, nu = 0.1, 1.0e-4, 0.3
+        patch = Shell(self.nodes, self.elements, self.material, thickness=t)
+        patch.constraints[:] = True
+        patch.displacements[:, 2] = (
+            c / 2 * (self.nodes[:, 0] ** 2 + self.nodes[:, 1] ** 2)
+        )
+        patch.displacements[:, 3] = -c * self.nodes[:, 1]
+        patch.displacements[:, 4] = c * self.nodes[:, 0]
+        _, _, sigma, _, _ = patch.solve(
+            method="spsolve", aggregate_integration_points=False
+        )
+        # Integration points run over the in-plane points and the Simpson stations
+        outer = sigma.reshape(-1, patch.n_z, patch.n_elem, 2, 2)[:, -1]
+        expected = 1000.0 / (1 - nu**2) * (1 + nu) * c * t / 2
+        assert outer[..., 0, 0] == pytest.approx(expected, abs=1e-12)
+        assert outer[..., 0, 1] == pytest.approx(0.0, abs=1e-12)
+
+    def test_has_no_spurious_zero_energy_modes(self):
+        """Six rigid body modes and one drilling mode per node, and nothing else."""
+        corners = torch.tensor(
+            [[0.0, 0.0, 0.0], [1.2, 0.1, 0.0], [0.9, 1.3, 0.0], [-0.1, 0.8, 0.0]]
+        )
+        element = Shell(
+            corners, torch.tensor([[0, 1, 2, 3]]), self.material, drill_penalty=0.0
+        )
+        eigenvalues = torch.linalg.eigvalsh(element.k0()[0])
+        zero = eigenvalues < 1e-9 * eigenvalues.max()
+        assert int(zero.sum()) == 6 + 4
+
+    def test_rejects_an_unsupported_element(self):
+        nodes = torch.zeros(5, 3)
+        with pytest.raises(ValueError, match="Element type not supported"):
+            Shell(nodes, torch.tensor([[0, 1, 2, 3, 4]]), self.material)
 
 
 class TestRepr:
@@ -171,8 +272,13 @@ class TestRepr:
         truss = Truss(nodes, torch.tensor([[0, 1]]), IsotropicElasticity1D(1000.0))
         assert "Bar1" in repr(truss)
 
-    def test_shell_names_the_element_type(self):
-        nodes = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    @pytest.mark.parametrize(
+        "etype, elements", [("Tria1", [[0, 1, 2]]), ("Quad1", [[0, 1, 2, 3]])]
+    )
+    def test_shell_names_the_element_type(self, etype, elements):
+        nodes = torch.tensor(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
+        )
         material = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        shell = Shell(nodes, torch.tensor([[0, 1, 2]]), material, thickness=0.1)
-        assert "Tria1" in repr(shell)
+        shell = Shell(nodes, torch.tensor(elements), material, thickness=0.1)
+        assert etype in repr(shell)

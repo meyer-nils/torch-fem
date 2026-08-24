@@ -1,9 +1,15 @@
 """Shell formulation
 
-The Shell element formulation is based on:
+The triangular element is based on:
 Krysl, Petr, Robust flat-facet triangular shell finite element, International Journal
 for Numerical Methods in Engineering, vol. 123, issue 10, pp. 2399-2423, 2022
 https://doi.org/10.1002/nme.6944
+
+The quadrilateral element uses the transverse shear interpolation of:
+Dvorkin, Eduardo N. and Bathe, Klaus-Juergen, A continuum mechanics based four-node
+shell element for general non-linear analysis, Engineering Computations, vol. 1,
+issue 1, pp. 77-88, 1984
+https://doi.org/10.1108/eb023562
 """
 
 from functools import cached_property
@@ -17,7 +23,7 @@ from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import Mechanics
-from .elements import Element, Tria1
+from .elements import Element, Quad1, Tria1
 from .laminate import Laminate
 from .materials import Material
 from .plot_utils import arrows, cones, dots
@@ -25,15 +31,18 @@ from .utils import stiffness2voigt, stress2voigt
 
 
 class Shell(Mechanics):
-    """Flat-facet triangular shell model for thin-walled structures.
+    """Flat-facet shell model for thin-walled structures.
 
-    Each node carries six degrees of freedom (three translations, three
-    rotations). The section is either a homogeneous plane-stress material
-    with a thickness or a layered `Laminate`.
+    Triangles follow Krysl, quadrilaterals the MITC4 shear interpolation of Dvorkin
+    and Bathe on the mean plane of their four nodes, so warp is neglected. Each node
+    carries six degrees of freedom (three translations, three rotations). The section
+    is either a homogeneous plane-stress material with a thickness or a layered
+    `Laminate`.
 
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 3].
-        elements: Triangle connectivity with shape [n_elem, 3].
+        elements: Triangle or quadrilateral connectivity with shape [n_elem, 3]
+            or [n_elem, 4].
         material: Vectorized plane-stress material (None for laminate shells).
         section: Laminate section (None for homogeneous shells).
         thickness: Element thicknesses with shape [n_elem].
@@ -56,7 +65,7 @@ class Shell(Mechanics):
         transverse_nu: float = 0.5,
         transverse_kappa: float = 5.0 / 6.0,
         transverse_G: list[float] | list[Tensor] | None = None,
-        drill_penalty: float = 1.0,
+        drill_penalty: float = 1e-3,
         n_simpson: int = 3,
         orientation: Tensor | None = None,
     ):
@@ -64,7 +73,8 @@ class Shell(Mechanics):
 
         Args:
             nodes: Nodal coordinates with shape [n_nod, 3].
-            elements: Triangle connectivity with shape [n_elem, 3].
+            elements: Triangle or quadrilateral connectivity with shape
+                [n_elem, 3] or [n_elem, 4].
             material: Either a single plane-stress `Material` (homogeneous
                 shell) or a `Laminate` describing a layered stacking sequence.
                 When a `Laminate` is passed, `thickness` and `n_simpson` are
@@ -72,15 +82,16 @@ class Shell(Mechanics):
                 ignored.
             thickness: Shell thickness. A float is expanded to all elements, a
                 tensor assigns one thickness per element.
-            transverse_nu: Poisson's ratio used for the transverse shear of a
-                homogeneous shell.
+            transverse_nu: Poisson's ratio used for the shear relaxation of a
+                homogeneous triangle. A quadrilateral needs none.
             transverse_kappa: Shear correction factor, 5/6 for a homogeneous
                 section.
             transverse_G: Pair `[G_xz, G_yz]` of effective transverse shear
                 moduli, integrated over the thickness. Taken from the material
                 or the laminate when omitted.
-            drill_penalty: Stiffness of the drilling degree of freedom, which
-                the flat-facet element does not carry itself.
+            drill_penalty: Stiffness of the drilling degree of freedom, which the
+                flat-facet element does not carry itself, as a fraction of the
+                shear stiffness of the section.
             n_simpson: Number of Simpson integration points through the
                 thickness. Must be an odd integer.
             orientation: Global reference direction from which material/ply
@@ -242,8 +253,13 @@ class Shell(Mechanics):
 
     @property
     def etype(self) -> type[Element]:
-        """Set element type."""
-        return Tria1
+        """Set element type depending on number of nodes per element."""
+        if len(self.elements[0]) == 3:
+            return Tria1
+        elif len(self.elements[0]) == 4:
+            return Quad1
+        else:
+            raise ValueError("Element type not supported.")
 
     @property
     def volume_scale(self) -> Tensor:
@@ -307,53 +323,104 @@ class Shell(Mechanics):
         D2 = torch.stack([z, z, z, -B[:, 0, :], B[:, 1, :], z], dim=-1).reshape(N, -1)
         return torch.stack([D0, D1, D2], dim=1)
 
-    def _Ds(self, A):
+    def _Ds(self, detJ: Tensor) -> Tensor:
         """Aggregate shear-displacement matrices.
 
+        A triangle averages the operator of Krysl over the three node orderings,
+        while a quadrilateral ties its covariant shear strains to the midpoints of
+        the edges (MITC4).
+
         Args:
-            A (torch tensor): Element surface areas (shape: [N])
+            detJ (torch tensor): Jacobian determinants (shape: [n_ip x N])
 
         Returns:
-            torch tensor: Shear-displacement matrices shaped [N x 2 x 18]
+            torch tensor: Shear-displacement matrices shaped
+                [n_ip x N x 2 x 6*nodes]
         """
-        N = self.n_elem
-        z = torch.zeros(N)
+        if self.etype is Quad1:
+            xi = self.etype.ipoints.to(self.loc_nodes)
+            # Tying points at the midpoints of the edges 0-1, 1-2, 2-3 and 3-0
+            mid = [[0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]]
+            tie = torch.tensor(mid).to(xi)
+            b = self.etype.B(tie)
+            J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
 
-        def compute(nodes):
-            a = nodes[:, 1, 0] - nodes[:, 0, 0]
-            b = nodes[:, 1, 1] - nodes[:, 0, 1]
-            c = nodes[:, 2, 0] - nodes[:, 0, 0]
-            d = nodes[:, 2, 1] - nodes[:, 0, 1]
-            D0 = torch.stack(
-                [
-                    torch.stack([z, z, b - d, z, A, z], dim=-1),
-                    torch.stack([z, z, c - a, -A, z, z], dim=-1),
-                ],
-                dim=1,
-            ) / (2.0 * A[:, None, None])
-            D1 = torch.stack(
-                [
-                    torch.stack([z, z, d, -b * d / 2.0, a * d / 2.0, z], dim=-1),
-                    torch.stack([z, z, -c, b * c / 2.0, -a * c / 2.0, z], dim=-1),
-                ],
-                dim=1,
-            ) / (2.0 * A[:, None, None])
-            D2 = torch.stack(
-                [
-                    torch.stack([z, z, -b, b * d / 2.0, -b * c / 2.0, z], dim=-1),
-                    torch.stack([z, z, a, -a * d / 2.0, a * c / 2.0, z], dim=-1),
-                ],
-                dim=1,
-            ) / (2.0 * A[:, None, None])
-            return D0, D1, D2
+            # Covariant shear g_a = w_,a + N (x_,a th_y - y_,a th_x), where J B = b
+            w = b[:, None].expand(-1, self.n_elem, -1, -1)
+            Nt = self.etype.N(tie)[:, None, None, :]
+            zq = torch.zeros_like(w)
+            cols = [zq, zq, w, -Nt * J[..., 1:2], Nt * J[..., 0:1], zq]
+            g = torch.stack(cols, dim=-1).reshape(len(tie), self.n_elem, 2, -1)
 
-        D0_012, D1_012, D2_012 = compute(self.loc_nodes[:, [0, 1, 2], :])
-        D1_120, D2_120, D0_120 = compute(self.loc_nodes[:, [1, 2, 0], :])
-        D2_201, D0_201, D1_201 = compute(self.loc_nodes[:, [2, 0, 1], :])
-        D0 = (D0_012 + D0_120 + D0_201) / 3.0
-        D1 = (D1_012 + D1_120 + D1_201) / 3.0
-        D2 = (D2_012 + D2_120 + D2_201) / 3.0
-        return torch.cat([D0, D1, D2], dim=-1)
+            # Interpolate between the tying points and pull back to the element frame
+            r, s = xi[:, 0, None, None], xi[:, 1, None, None]
+            g_xi = 0.5 * ((1.0 - s) * g[0, :, 0] + (1.0 + s) * g[2, :, 0])
+            g_eta = 0.5 * ((1.0 - r) * g[3, :, 1] + (1.0 + r) * g[1, :, 1])
+            b_ip = self.etype.B(xi)
+            J_ip = torch.einsum("...iN, ANj -> ...Aij", b_ip, self.loc_nodes)
+            return torch.linalg.inv(J_ip) @ torch.stack([g_xi, g_eta], dim=2)
+        else:
+            # A triangle has a constant Jacobian, so one operator serves every point
+            N = self.n_elem
+            A = detJ[0] / 2.0
+            z = torch.zeros(N)
+
+            def compute(nodes):
+                a = nodes[:, 1, 0] - nodes[:, 0, 0]
+                b = nodes[:, 1, 1] - nodes[:, 0, 1]
+                c = nodes[:, 2, 0] - nodes[:, 0, 0]
+                d = nodes[:, 2, 1] - nodes[:, 0, 1]
+                D0 = torch.stack(
+                    [
+                        torch.stack([z, z, b - d, z, A, z], dim=-1),
+                        torch.stack([z, z, c - a, -A, z, z], dim=-1),
+                    ],
+                    dim=1,
+                ) / (2.0 * A[:, None, None])
+                D1 = torch.stack(
+                    [
+                        torch.stack([z, z, d, -b * d / 2.0, a * d / 2.0, z], dim=-1),
+                        torch.stack([z, z, -c, b * c / 2.0, -a * c / 2.0, z], dim=-1),
+                    ],
+                    dim=1,
+                ) / (2.0 * A[:, None, None])
+                D2 = torch.stack(
+                    [
+                        torch.stack([z, z, -b, b * d / 2.0, -b * c / 2.0, z], dim=-1),
+                        torch.stack([z, z, a, -a * d / 2.0, a * c / 2.0, z], dim=-1),
+                    ],
+                    dim=1,
+                ) / (2.0 * A[:, None, None])
+                return D0, D1, D2
+
+            D0_012, D1_012, D2_012 = compute(self.loc_nodes[:, [0, 1, 2], :])
+            D1_120, D2_120, D0_120 = compute(self.loc_nodes[:, [1, 2, 0], :])
+            D2_201, D0_201, D1_201 = compute(self.loc_nodes[:, [2, 0, 1], :])
+            D0 = (D0_012 + D0_120 + D0_201) / 3.0
+            D1 = (D1_012 + D1_120 + D1_201) / 3.0
+            D2 = (D2_012 + D2_120 + D2_201) / 3.0
+            return torch.cat([D0, D1, D2], dim=-1).expand(len(detJ), -1, -1, -1)
+
+    def _shear_correction(self, detJ: Tensor) -> Tensor:
+        """Shear correction factor scaling the shear stiffness of the section.
+
+        A triangle reduces it by the relaxation of Krysl to avoid locking, with `h`
+        the element edge length, which the MITC4 tying of a quadrilateral does not
+        need.
+
+        Args:
+            detJ (torch tensor): Jacobian determinants (shape: [n_ip x N])
+
+        Returns:
+            torch tensor: Shear correction factors shaped [n_ip x N]
+        """
+        if self.etype is Quad1:
+            return torch.full_like(detJ, self.transverse_kappa)
+        else:
+            h = sqrt(2) * torch.sqrt(detJ / 2.0)
+            alpha = self.transverse_kappa / (2 * (1 + self.transverse_nu))
+            t2 = self.thickness**2
+            return self.transverse_kappa * t2 / (t2 + alpha * h**2)
 
     def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""
@@ -361,8 +428,10 @@ class Shell(Mechanics):
         # global coords X
         nodes = self.nodes[self.elements, :]
         edge1 = nodes[:, 1] - nodes[:, 0]
-        edge2 = nodes[:, 2] - nodes[:, 1]
-        normal = torch.nn.functional.normalize(torch.linalg.cross(edge1, edge2), dim=-1)
+        # Mean plane normal (Newell's formula), which averages the warp of a quad
+        rel = nodes - nodes.mean(dim=1, keepdim=True)
+        area = torch.linalg.cross(rel, rel.roll(-1, dims=1), dim=-1).sum(dim=1)
+        normal = torch.nn.functional.normalize(area, dim=-1)
         # Material x-axis: the global reference orientation projected onto the
         # element surface. Fall back to the first edge where the orientation is
         # (nearly) normal to the element and the projection vanishes.
@@ -372,7 +441,7 @@ class Shell(Mechanics):
         dir1 = torch.nn.functional.normalize(torch.where(degen, edge1, proj), dim=-1)
         dir2 = torch.nn.functional.normalize(torch.linalg.cross(normal, dir1), dim=-1)
         self.t = torch.stack([dir1, dir2, normal], dim=1)
-        self.T = torch.func.vmap(torch.block_diag)(*(self.n_dof_per_node * [self.t]))
+        self.T = torch.func.vmap(torch.block_diag)(*(2 * self.etype.nodes * [self.t]))
 
         # Compute Jacobian and its determinant
         b = self.etype.B(xi)
@@ -384,7 +453,7 @@ class Shell(Mechanics):
             raise ValueError("Negative Jacobian. Check element numbering.")
 
         # Compute B
-        B = torch.linalg.inv(J) @ b
+        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
 
         return self.etype.N(xi), B, detJ
 
@@ -454,27 +523,22 @@ class Shell(Mechanics):
 
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
-        f = torch.zeros(self.n_elem, self.n_dof_per_node * N_nod)
+        n_dof = self.n_dof_per_node * N_nod
+        f = torch.zeros(self.n_elem, n_dof)
         need_k = compute_stiffness and (
             self.K.numel() == 0 or self.n_state != 0 or nlgeom
         )
-        k = (
-            torch.zeros(
-                (
-                    self.n_elem,
-                    self.n_dof_per_node * N_nod,
-                    self.n_dof_per_node * N_nod,
-                )
-            )
-            if need_k
-            else None
-        )
+        k = torch.zeros(self.n_elem, n_dof, n_dof) if need_k else None
 
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
         # Through-thickness integration stations (layer-aware for laminates)
         materials, z_stations, w_stations = self._thickness_stations()
+
+        # Transverse shear operators and stiffnesses at the integration points
+        Ds = self._Ds(detJ)
+        int_Cs = self._shear_correction(detJ)[..., None, None] * self.As
 
         for i, wi in enumerate(self.etype.iweights):
             # Transform displacement increment to local element coordinates
@@ -555,25 +619,14 @@ class Shell(Mechanics):
             kc = wi * self.compute_k(detJ[i], DmCDb + DbCDm)
 
             # Element transverse stiffness
-            A = detJ[i] / 2.0
-            h = sqrt(2) * torch.sqrt(A)
-            alpha = self.transverse_kappa / (2 * (1 + self.transverse_nu))
-            psi = (
-                self.transverse_kappa
-                * self.thickness**2
-                / (self.thickness**2 + alpha * h**2)
-            )
-            Ds = self._Ds(A)
-            int_Cs = psi[:, None, None] * self.As
-            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds, int_Cs, Ds)
+            DsCsDs = torch.einsum("...ji,...jk,...kl->...il", Ds[i], int_Cs[i], Ds[i])
             ks = wi * self.compute_k(detJ[i], DsCsDs)
 
-            # Element drilling stiffness
+            # Element drilling stiffness, a fraction of the section shear stiffness
             kd = torch.zeros_like(km)
-            for a in range(self.etype.nodes):
-                kd[:, a * self.n_dof_per_node - 1, a * self.n_dof_per_node - 1] = (
-                    self.drill_penalty
-                )
+            drill = torch.arange(N_nod) * self.n_dof_per_node + 5
+            shear = self.As.diagonal(dim1=-2, dim2=-1).mean(-1)
+            kd[:, drill, drill] = (self.drill_penalty * wi * detJ[i] * shear)[:, None]
 
             if k is not None:
                 # Total element stiffness in local coordinates
@@ -677,7 +730,7 @@ class Shell(Mechanics):
         if thickness:
             nodal_thickness = np.zeros(len(self.nodes))
             count = np.zeros(len(self.nodes))
-            for i, face in enumerate(mesh.faces.reshape(-1, 4)):
+            for i, face in enumerate(mesh.faces.reshape(-1, self.etype.nodes + 1)):
                 idx = face[1::]
                 nodal_thickness[idx] += self.thickness[i].cpu().item()
                 count[idx] += 1
