@@ -39,6 +39,11 @@ class Shell(Mechanics):
     is either a homogeneous plane-stress material with a thickness or a layered
     `Laminate`.
 
+    The drilling rotation is penalized towards the rotation of the membrane field
+    rather than transformed out as in section 3 of Krysl, so `drill_penalty` remains
+    a tuning parameter on a coarse doubly-curved mesh, and a folded or branched
+    shell, whose nodes carry no unique normal, is not supported.
+
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 3].
         elements: Triangle or quadrilateral connectivity with shape [n_elem, 3]
@@ -89,9 +94,9 @@ class Shell(Mechanics):
             transverse_G: Pair `[G_xz, G_yz]` of effective transverse shear
                 moduli, integrated over the thickness. Taken from the material
                 or the laminate when omitted.
-            drill_penalty: Stiffness of the drilling degree of freedom, which the
-                flat-facet element does not carry itself, as a fraction of the
-                shear stiffness of the section.
+            drill_penalty: Stiffness tying the drilling degree of freedom to the
+                in-plane rotation of the membrane field, as a fraction of the shear
+                stiffness of the section.
             n_simpson: Number of Simpson integration points through the
                 thickness. Must be an odd integer.
             orientation: Global reference direction from which material/ply
@@ -323,6 +328,22 @@ class Shell(Mechanics):
         D2 = torch.stack([z, z, z, -B[:, 0, :], B[:, 1, :], z], dim=-1).reshape(N, -1)
         return torch.stack([D0, D1, D2], dim=1)
 
+    def _Dd(self) -> Tensor:
+        """Aggregate drill-displacement matrices, one row per element node.
+
+        Returns:
+            torch tensor: Drill-displacement matrices shaped
+                [nodes x n_elem x 6*nodes]
+        """
+        n_nod = self.etype.nodes
+        b = self.etype.B(self.etype.iso_coords.to(self.loc_nodes))
+        J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
+        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
+        z = torch.zeros(n_nod, self.n_elem, n_nod)
+        eye = torch.eye(n_nod).to(z)[:, None, :].expand_as(z)
+        cols = [B[..., 1, :] / 2.0, -B[..., 0, :] / 2.0, z, z, z, eye]
+        return torch.stack(cols, dim=-1).reshape(n_nod, self.n_elem, -1)
+
     def _Ds(self, detJ: Tensor) -> Tensor:
         """Aggregate shear-displacement matrices.
 
@@ -540,6 +561,11 @@ class Shell(Mechanics):
         Ds = self._Ds(detJ)
         int_Cs = self._shear_correction(detJ)[..., None, None] * self.As
 
+        # Drilling operator and the section shear stiffness the penalty scales
+        Dd = self._Dd()
+        DdDd = torch.einsum("aEi,aEj->Eij", Dd, Dd) / N_nod
+        shear = self.As.diagonal(dim1=-2, dim2=-1).mean(-1)
+
         for i, wi in enumerate(self.etype.iweights):
             # Transform displacement increment to local element coordinates
             du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
@@ -623,10 +649,7 @@ class Shell(Mechanics):
             ks = wi * self.compute_k(detJ[i], DsCsDs)
 
             # Element drilling stiffness, a fraction of the section shear stiffness
-            kd = torch.zeros_like(km)
-            drill = torch.arange(N_nod) * self.n_dof_per_node + 5
-            shear = self.As.diagonal(dim1=-2, dim2=-1).mean(-1)
-            kd[:, drill, drill] = (self.drill_penalty * wi * detJ[i] * shear)[:, None]
+            kd = (self.drill_penalty * wi * detJ[i] * shear)[:, None, None] * DdDd
 
             if k is not None:
                 # Total element stiffness in local coordinates
