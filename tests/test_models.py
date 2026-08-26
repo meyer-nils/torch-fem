@@ -1,5 +1,7 @@
 """Model-level tests exercising every supported element type."""
 
+import math
+
 import pytest
 import torch
 
@@ -258,6 +260,63 @@ class TestShellQuadrilateral:
         nodes = torch.zeros(5, 3)
         with pytest.raises(ValueError, match="Element type not supported"):
             Shell(nodes, torch.tensor([[0, 1, 2, 3, 4]]), self.material)
+
+
+class TestShellDrilling:
+    """The drilling rotation only enters the response where element normals differ,
+    so a curved shell is the only place it shows. Every other shell test here is
+    flat, where it decouples and the penalty has no effect at all."""
+
+    @pytest.mark.parametrize("tri", [False, True])
+    def test_pinched_hemisphere(self, tri):
+        """Hemisphere with an 18° hole pulled apart by two pairs of opposed radial
+        loads (MacNeal and Harder), meshed by wrapping a unit square onto the sphere.
+        The deformation is nearly inextensional, so a penalty resisting a rigid
+        rotation locks it well below the reference deflection of 0.0940."""
+        n, R, t, E, nu = 8, 10.0, 0.04, 6.825e7, 0.3
+        grid, elements = rect_tri(n + 1, n + 1) if tri else rect_quad(n + 1, n + 1)
+        phi, theta = math.radians(72.0) * grid[:, 0], math.pi / 2 * grid[:, 1]
+        nodes = R * torch.stack(
+            [phi.cos() * theta.cos(), phi.cos() * theta.sin(), phi.sin()], dim=1
+        )
+        material = IsotropicElasticityPlaneStress(E=E, nu=nu)
+        model = Shell(nodes, elements, material, thickness=t)
+        x, y, z = nodes.T
+
+        # Symmetry on the two cut planes, one node pinned against rigid translation
+        sym_x, sym_y = x.abs() < 1e-9, y.abs() < 1e-9
+        model.constraints[sym_y, 1] = model.constraints[sym_y, 3] = True
+        model.constraints[sym_x, 0] = model.constraints[sym_x, 4] = True
+        model.constraints[sym_x | sym_y, 5] = True
+
+        # Opposed radial loads at the equator, outward on x and inward on y
+        equator = z.abs() < 1e-9
+        outward = int(torch.argmax((equator & sym_y).double()))
+        inward = int(torch.argmax((equator & sym_x).double()))
+        model.constraints[outward, 2] = True
+        model.forces[outward, 0] = 1.0
+        model.forces[inward, 1] = -1.0
+
+        u, *_ = model.solve(method="spsolve")
+        assert u[outward, 0].item() / 0.0940 == pytest.approx(1.0, rel=0.03)
+
+    @pytest.mark.parametrize("n", [4, 3])
+    def test_a_rigid_rotation_carries_no_energy(self, n):
+        """The penalty ties the drilling rotation to the in-plane rotation of the
+        membrane field rather than to zero, so a tilted element does not resist the
+        drilling a rigid rotation leaves on it."""
+        # Planar but tilted, so a rotation about z drills the element
+        nodes = torch.tensor(
+            [[0.0, 0.0, 0.0], [1.2, 0.0, 0.36], [1.1, 1.3, 0.33], [0.0, 0.8, 0.0]]
+        )[:n]
+        material = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        element = Shell(nodes, torch.arange(n)[None], material, thickness=0.1)
+        axis = torch.tensor([0.2, -0.4, 1.0])
+        v = torch.zeros(n, 6)
+        v[:, 0:3] = torch.linalg.cross(axis.expand(n, 3), nodes)
+        v[:, 3:6] = axis
+        k, v = element.k0()[0], v.reshape(-1)
+        assert v @ k @ v / (v @ v) < 1e-9 * torch.linalg.eigvalsh(k).max()
 
 
 class TestRepr:
