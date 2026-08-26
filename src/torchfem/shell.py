@@ -338,10 +338,10 @@ class Shell(Mechanics):
         n_nod = self.etype.nodes
         b = self.etype.B(self.etype.iso_coords.to(self.loc_nodes))
         J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
-        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
-        z = torch.zeros(n_nod, self.n_elem, n_nod)
-        eye = torch.eye(n_nod).to(z)[:, None, :].expand_as(z)
-        cols = [B[..., 1, :] / 2.0, -B[..., 0, :] / 2.0, z, z, z, eye]
+        B = torch.linalg.inv(J) @ b[:, None]
+        zero = torch.zeros(n_nod, self.n_elem, n_nod)
+        drill = torch.eye(n_nod)[:, None, :].expand_as(zero)
+        cols = [B[..., 1, :] / 2.0, -B[..., 0, :] / 2.0, zero, zero, zero, drill]
         return torch.stack(cols, dim=-1).reshape(n_nod, self.n_elem, -1)
 
     def _Ds(self, detJ: Tensor) -> Tensor:
@@ -366,11 +366,12 @@ class Shell(Mechanics):
             b = self.etype.B(tie)
             J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
 
-            # Covariant shear g_a = w_,a + N (x_,a th_y - y_,a th_x), where J B = b
-            w = b[:, None].expand(-1, self.n_elem, -1, -1)
-            Nt = self.etype.N(tie)[:, None, None, :]
-            zq = torch.zeros_like(w)
-            cols = [zq, zq, w, -Nt * J[..., 1:2], Nt * J[..., 0:1], zq]
+            # Covariant shear g_a = w_,a + N (x_,a th_y - y_,a th_x)
+            dw = b[:, None].expand(-1, self.n_elem, -1, -1)
+            shape = self.etype.N(tie)[:, None, None, :]
+            dx, dy = J[..., 0:1], J[..., 1:2]
+            zero = torch.zeros_like(dw)
+            cols = [zero, zero, dw, -shape * dy, shape * dx, zero]
             g = torch.stack(cols, dim=-1).reshape(len(tie), self.n_elem, 2, -1)
 
             # Interpolate between the tying points and pull back to the element frame
@@ -420,7 +421,7 @@ class Shell(Mechanics):
             D0 = (D0_012 + D0_120 + D0_201) / 3.0
             D1 = (D1_012 + D1_120 + D1_201) / 3.0
             D2 = (D2_012 + D2_120 + D2_201) / 3.0
-            return torch.cat([D0, D1, D2], dim=-1).expand(len(detJ), -1, -1, -1)
+            return torch.cat([D0, D1, D2], dim=-1).unsqueeze(0)
 
     def _shear_correction(self, detJ: Tensor) -> Tensor:
         """Shear correction factor scaling the shear stiffness of the section.
@@ -462,7 +463,8 @@ class Shell(Mechanics):
         dir1 = torch.nn.functional.normalize(torch.where(degen, edge1, proj), dim=-1)
         dir2 = torch.nn.functional.normalize(torch.linalg.cross(normal, dir1), dim=-1)
         self.t = torch.stack([dir1, dir2, normal], dim=1)
-        self.T = torch.func.vmap(torch.block_diag)(*(2 * self.etype.nodes * [self.t]))
+        triples = self.etype.nodes * self.n_dof_per_node // 3
+        self.T = torch.func.vmap(torch.block_diag)(*(triples * [self.t]))
 
         # Compute Jacobian and its determinant
         b = self.etype.B(xi)
@@ -474,7 +476,7 @@ class Shell(Mechanics):
             raise ValueError("Negative Jacobian. Check element numbering.")
 
         # Compute B
-        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
+        B = torch.linalg.inv(J) @ b[:, None]
 
         return self.etype.N(xi), B, detJ
 
