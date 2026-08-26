@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.10.0 - August 26 2026
 
 ### Added
 - `Assembly` couples several models through kinematic constraints, mechanical or thermal, in two or three dimensions: `coupling(...)` makes selected nodes follow the rigid-body motion of the nearest node of another part, optionally on selected degrees of freedom.
@@ -23,6 +23,9 @@
 - Boundary conditions in the matplotlib plotters are outlined, dotted where they attach to a node, and sized in points rather than in a fraction of the model. They sit above the node markers, with the arrows above the constraint markers they may cross.
 - `Material.rotate(...)` returns a rotated material instead of rotating the material in place, so a material may be rotated repeatedly, or shared between several rotated copies, without the rotations accumulating. Code that called it for its effect, as in `material.rotate(R)`, has to take the result now: `material = material.rotate(R)`.
 - `Material.vectorize(...)` is implemented once on the base class, batching the properties a material holds instead of rebuilding it through its constructor, rather than being written out by every material itself. It no longer prints when it is called on a material that is already vectorized, and it keeps the type of a `TransverseIsotropicElasticity3D` instead of returning an `OrthotropicElasticity3D`.
+
+### Removed
+- **Breaking:** `plot_contours(...)`, which drew the contours of a scalar function over a two-dimensional design space together with the paths an optimizer took through it. It was a teaching aid, marked as such in its docstring, and nothing in the library used it.
 
 ### Fixed
 - The two `Negative Jacobian` checks of `Truss` and `Shell`, the unsupported element type of `linear_etype(...)`, and the two mesh checks of `import_mesh(...)` raise a `ValueError` rather than a bare `Exception`, as the same conditions do elsewhere, so one `except ValueError` catches them all.
