@@ -20,7 +20,7 @@
   - 1D: Bar1, Bar2
   - 2D: Quad1, Quad2, Tria1, Tria2
   - 3D: Hexa1, Hexa2, Tetra1, Tetra2
-  - Shell: Flat-facet triangle (linear only)
+  - Shell: Flat-facet Quad1, Tria1
 - Material models
   - Isotropic linear elasticity 
   - Orthotropic linear elasticity

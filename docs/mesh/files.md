@@ -21,7 +21,7 @@ The model type follows from the geometry and the element type:
 | Mesh | Model |
 | --- | --- |
 | Any element type, all nodes at `z = 0` | `Planar` |
-| Triangles that leave the `z = 0` plane | `Shell` |
+| Triangles or quadrilaterals that leave the `z = 0` plane | `Shell` |
 | Tetrahedra or hexahedra | `Solid` |
 
 ::: torchfem.io.import_planar
