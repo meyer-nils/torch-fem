@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.10.0 - August 26 2026
 
 ### Added
 - `Assembly` couples several models through kinematic constraints, mechanical or thermal, in two or three dimensions: `coupling(...)` makes selected nodes follow the rigid-body motion of the nearest node of another part, optionally on selected degrees of freedom.
