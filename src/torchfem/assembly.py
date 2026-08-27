@@ -721,6 +721,7 @@ class Assembly:
 
         Points are drawn as spheres and each coupling as a tube joining the
         paired nodes, both sized like the boundary condition markers of a part.
+        A coupling of coincident nodes spans no tube and is marked with a bead.
 
         Args:
             u: Nodal displacements per part. Defaults to 0.0 (undeformed).
@@ -769,6 +770,11 @@ class Assembly:
         for ends in links:
             # A VTK line cell is its point count followed by its point indices
             n = len(ends) // 2
+            spans = torch.linalg.norm(ends[:n] - ends[n:], dim=1) > 1e-9 * size
+            dots(pl, ends[:n][~spans], 0.1 * scale)
+            ends, n = ends[spans.repeat(2)], int(spans.sum())
+            if n == 0:
+                continue
             cells = [i for k in range(n) for i in (2, k, k + n)]
             link = pyvista.PolyData(ends.cpu().numpy(), lines=cells)
             tube = typing.cast(DataSet, link.tube(radius=0.1 * scale))
