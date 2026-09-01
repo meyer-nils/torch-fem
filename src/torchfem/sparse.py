@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pyamg
 import torch
-from scipy.sparse import coo_matrix as scipy_coo_matrix
+from scipy.sparse import csc_matrix as scipy_csc_matrix
 from scipy.sparse import csgraph
+from scipy.sparse import csr_matrix as scipy_csr_matrix
 from scipy.sparse.linalg import LinearOperator
 from scipy.sparse.linalg import cg as scipy_cg
 from scipy.sparse.linalg import eigsh as scipy_eigsh
@@ -44,7 +45,7 @@ available_backends = ["scipy"]
 
 try:
     import cupy
-    from cupyx.scipy.sparse import coo_matrix as cupy_coo_matrix
+    from cupyx.scipy.sparse import csc_matrix as cupy_csc_matrix
     from cupyx.scipy.sparse import csr_matrix as cupy_csr_matrix
     from cupyx.scipy.sparse import diags as cupy_diags
     from cupyx.scipy.sparse.linalg import cg as cupy_cg
@@ -98,6 +99,14 @@ def describe_method(n_dofs: int, device: str, method: str | None) -> str:
     elif resolved == "amgx":
         library = "amgx"
     return f"{resolved} | {kind} | {library} | {device}"
+
+
+def _rows(A: Tensor) -> Tensor:
+    """Row index of every stored entry of a matrix compressed by row."""
+    return torch.repeat_interleave(
+        torch.arange(A.shape[0], dtype=torch.int32, device=A.device),
+        A.crow_indices().diff(),
+    )
 
 
 class CachedSolve:
@@ -198,22 +207,23 @@ class Solve(Function):
         if ctx.cached_solve is not None and ctx.cached_solve.previous_grad is not None:
             x0 = ctx.cached_solve.previous_grad
 
-        # Adjoint solve: A^T lambda = grad_x
+        # Adjoint solve: A^T lambda = grad_x, where `A.t()` is a CSC view of the
+        # same arrays rather than a transposed copy.
         owned = ctx.M is None
         gradb, M = sparse_solve(
-            A.T, grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
+            A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
         )
 
         # An AmgX solver built for this adjoint does not outlive it either
         if owned and "amgx" in available_backends and isinstance(M, AmgXSolver):
             M.close()
 
-        # Backprop rule: gradA = -gradb @ x^T, sparse version
-        indices = A._indices()
-        row = indices[0, :]
-        col = indices[1, :]
-        val = -gradb[row] * x[col]
-        gradA = torch.sparse_coo_tensor(indices, val, A.shape, is_coalesced=True)
+        # Backprop rule: gradA = -gradb @ x^T, sparse version. The gradient
+        # reuses the index arrays of `A`.
+        crow, col = A.crow_indices(), A.col_indices()
+        val = -gradb[_rows(A)] * x[col]
+        with torch.sparse.check_sparse_tensor_invariants(False):
+            gradA = torch.sparse_csr_tensor(crow, col, val, size=A.shape)
 
         # Update storage for next iteration
         if ctx.update_cache and ctx.cached_solve is not None:
@@ -260,6 +270,10 @@ def differentiable_sparse_solve(
     Pardiso). The backward pass solves the adjoint system and returns gradients
     with respect to both `A` and `b`.
     """
+    # Compressed here, not inside `Solve`, so the adjoint fills one layout and a
+    # COO caller still gets its gradient back through this conversion.
+    if A.layout == torch.sparse_coo:
+        A = A.to_sparse_csr()
     result, _ = Solve.apply(
         A, b, B, stol, device, method, M, cached_solve, update_cache
     )  # type: ignore
@@ -282,7 +296,8 @@ def sparse_solve(
     Solve the linear system Ax = b.
 
     Args:
-        A (sparse_coo_tensor): Sparse matrix A.
+        A (sparse_csr_tensor): Sparse matrix A, compressed by row. A `t()` of
+            one, which is compressed by column, is accepted as its transpose.
         b (Tensor): Right-hand side vector b.
         B (Tensor, optional): Null space rigid body modes for AMG preconditioner.
         stol (float, optional): Relative solver tolerance for the iterative solver.
@@ -371,26 +386,20 @@ def _solve_gpu(
     cupy.get_default_memory_pool().free_all_blocks()
     torch.cuda.empty_cache()
 
-    # Copy tensors to CuPy. An adjoint solve passes `K.T`, whose entries are
-    # sorted by column: reading them as `K` and letting cuSPARSE flip that back
-    # costs about half of what coalescing the transpose does. Anything else
-    # uncoalesced, such as a sum of two matrices, is coalesced as before.
-    flip = False
-    if not A.is_coalesced():
-        row, col = A._indices()
-        ascending = (col[1:] == col[:-1]) & (row[1:] > row[:-1])
-        flip = bool(((col[1:] > col[:-1]) | ascending).all())
-        if not flip:
-            A = A.coalesce()
-    idx = A._indices()
-    row, col = (idx[1], idx[0]) if flip else (idx[0], idx[1])
-    indices = cupy.asarray(col).astype(cupy.int32)
-    indptr = cupy.zeros(shape[0] + 1, dtype=cupy.int32)
-    indptr[1:] = cupy.cumsum(cupy.bincount(cupy.asarray(row), minlength=shape[0]))
-    A_cp = cupy_csr_matrix((cupy.asarray(A._values()), indices, indptr), shape=shape)
+    # Copy the arrays as they are. An adjoint passes `K.t()`, the same arrays
+    # read as CSC, which the CuPy solvers want back as rows.
+    values = cupy.asarray(A.values())
+    if A.layout == torch.sparse_csc:
+        A_cp = cupy_csc_matrix(
+            (values, cupy.asarray(A.row_indices()), cupy.asarray(A.ccol_indices())),
+            shape=shape,
+        ).tocsr()
+    else:
+        A_cp = cupy_csr_matrix(
+            (values, cupy.asarray(A.col_indices()), cupy.asarray(A.crow_indices())),
+            shape=shape,
+        )
     A_cp.has_sorted_indices = True
-    if flip:
-        A_cp = A_cp.T.tocsr()
     b_cp = cupy.asarray(b.data)
 
     if x0 is not None:
@@ -459,9 +468,16 @@ def _solve_cpu(
     Iterative methods build an AMG preconditioner from `A` and `B` unless `M` is
     supplied. `pardiso` reorders with reverse Cuthill-McKee before factorising.
     """
-    A_np = scipy_coo_matrix(
-        (A._values(), (A._indices()[0], A._indices()[1])), shape=shape
-    ).tocsr()
+    # SciPy takes the arrays as they are. An adjoint passes `K.t()`, the same
+    # arrays read as CSC.
+    if A.layout == torch.sparse_csc:
+        A_np = scipy_csc_matrix(
+            (A.values(), A.row_indices(), A.ccol_indices()), shape=shape
+        )
+    else:
+        A_np = scipy_csr_matrix(
+            (A.values(), A.col_indices(), A.crow_indices()), shape=shape
+        )
     b_np = b.data.numpy()
 
     if x0 is not None:
@@ -667,9 +683,9 @@ class NewtonRaphsonAdjoint(Function):
         if cached_solve is not None and cached_solve.previous_grad is not None:
             x0 = cached_solve.previous_grad
 
-        # Solve adjoint system.
+        # Solve adjoint system, where `K.t()` is a CSC view of the same arrays.
         lambda_, M = sparse_solve(
-            K.T,
+            K.t(),
             grad_du,
             B,
             stol,
@@ -809,12 +825,12 @@ def _eigsolve_cpu(
     scattered back from the free-DOF subspace, leaving constrained rows at zero.
     See `modal_eigsolve` for arguments.
     """
-    K_csr = scipy_coo_matrix(
-        (K._values(), (K._indices()[0], K._indices()[1])), shape=shape
-    ).tocsr()
-    M_csr = scipy_coo_matrix(
-        (M._values(), (M._indices()[0], M._indices()[1])), shape=shape
-    ).tocsr()
+    K_csr = scipy_csr_matrix(
+        (K.values(), K.col_indices(), K.crow_indices()), shape=shape
+    )
+    M_csr = scipy_csr_matrix(
+        (M.values(), M.col_indices(), M.crow_indices()), shape=shape
+    )
 
     fi = free_indices.cpu().numpy()
     eigenvalues, evecs_free = scipy_eigsh(
@@ -840,20 +856,22 @@ def _eigsolve_gpu(
     """
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
-    K_csr = cupy_coo_matrix(
+    K_csr = cupy_csr_matrix(
         (
-            cupy.asarray(K._values()),
-            (cupy.asarray(K._indices()[0]), cupy.asarray(K._indices()[1])),
+            cupy.asarray(K.values()),
+            cupy.asarray(K.col_indices()),
+            cupy.asarray(K.crow_indices()),
         ),
         shape=shape,
-    ).tocsr()
-    M_csr = cupy_coo_matrix(
+    )
+    M_csr = cupy_csr_matrix(
         (
-            cupy.asarray(M._values()),
-            (cupy.asarray(M._indices()[0]), cupy.asarray(M._indices()[1])),
+            cupy.asarray(M.values()),
+            cupy.asarray(M.col_indices()),
+            cupy.asarray(M.crow_indices()),
         ),
         shape=shape,
-    ).tocsr()
+    )
 
     fi = free_indices.cpu().numpy()
     eigenvalues, evecs_free = cupy_eigsh(
@@ -874,8 +892,8 @@ def modal_eigsolve(
     """Solve the generalized eigenvalue problem `K φ = ω² M φ`.
 
     Args:
-        K (sparse_coo_tensor): Stiffness matrix K.
-        M (sparse_coo_tensor): Mass matrix M.
+        K (sparse_csr_tensor): Stiffness matrix K.
+        M (sparse_csr_tensor): Mass matrix M.
         n_modes (int): Number of eigenpairs to compute.
         free_indices (Tensor): Free DOF indices for subspace extraction.
             The eigenproblem is solved in the free-DOF subspace to avoid
@@ -946,7 +964,7 @@ class Eigensolve(Function):
 
         # Re-normalise eigenvectors to unit norm in the M-metric.
         # (eigsh returns M-normalised vectors, but we re-normalise for safety)
-        M_phis = torch.sparse.mm(M.coalesce(), phis)  # [n_dofs, n_modes]
+        M_phis = torch.sparse.mm(M, phis)  # [n_dofs, n_modes]
         denom = (phis * M_phis).sum(0).abs()  # [n_modes]
         phi_hat = phis / denom.sqrt().unsqueeze(0)  # [n_dofs, n_modes]
 
@@ -956,26 +974,26 @@ class Eigensolve(Function):
         if grad_lambdas is not None:
             # dL/dK_ij = sum_k dL/dlambda_k * phi_hat_i_k * phi_hat_j_k
             if K.requires_grad:
-                idx = K._indices()
-                row, col = idx[0], idx[1]
+                crow, col = K.crow_indices(), K.col_indices()
+                row = _rows(K)
                 weighted = phi_hat[row] * phi_hat[col]
                 grad_K_vals = (weighted * grad_lambdas.unsqueeze(0)).sum(-1)
                 with torch.sparse.check_sparse_tensor_invariants(False):
-                    grad_K = torch.sparse_coo_tensor(
-                        idx, grad_K_vals, K.shape, is_coalesced=True
+                    grad_K = torch.sparse_csr_tensor(
+                        crow, col, grad_K_vals, size=K.shape
                     )
 
             # dL/dM_ij = -sum_k dL/dlambda_k * lambda_k * phi_hat_i_k * phi_hat_j_k
             if M.requires_grad:
-                idx = M._indices()
-                row, col = idx[0], idx[1]
+                crow, col = M.crow_indices(), M.col_indices()
+                row = _rows(M)
                 weighted_lam = phi_hat[row] * phi_hat[col]
                 grad_M_vals = -(
                     weighted_lam * (lambdas * grad_lambdas).unsqueeze(0)
                 ).sum(-1)
                 with torch.sparse.check_sparse_tensor_invariants(False):
-                    grad_M = torch.sparse_coo_tensor(
-                        idx, grad_M_vals, M.shape, is_coalesced=True
+                    grad_M = torch.sparse_csr_tensor(
+                        crow, col, grad_M_vals, size=M.shape
                     )
 
         # Return None for n_modes and free_indices (non-tensor inputs)
@@ -991,8 +1009,8 @@ def differentiable_modal_eigsolve(
     """Solve the modal eigenvalue problem `K φ = ω² M φ`.
 
     Args:
-        K (sparse_coo_tensor): Stiffness matrix K.
-        M (sparse_coo_tensor): Mass matrix M.
+        K (sparse_csr_tensor): Stiffness matrix K.
+        M (sparse_csr_tensor): Mass matrix M.
         n_modes (int): Number of eigenpairs to compute.
         free_indices (Tensor): Free (unconstrained) DOF indices.
             The eigenproblem is solved in the free-DOF subspace to avoid

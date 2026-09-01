@@ -144,15 +144,13 @@ class FEM(ABC):
             torch.int32
         )
         del diag
-        # int64, the index dtype of a sparse tensor, so that `assemble_matrix`
-        # shares this storage instead of widening a copy on every assembly
-        self.glob_idx = torch.stack(
-            [
-                torch.div(glob_idx_packed, 2**32, rounding_mode="floor"),
-                glob_idx_packed % 2**32,
-            ]
-        )
-        del glob_idx_packed
+        # The packed keys sort by (row, col), so they are already row-major and
+        # only need splitting into column indices and row offsets.
+        count = torch.bincount(glob_idx_packed >> 32, minlength=self.n_dofs)
+        self.col = (glob_idx_packed % 2**32).to(torch.int32)
+        self.crow = torch.zeros(self.n_dofs + 1, dtype=torch.int32)
+        self.crow[1:] = count.cumsum(0)
+        del glob_idx_packed, count
         self.idx = self.idx.to(torch.int32)
         if self.nodes.is_cuda:
             # The packed keys leave GBs in Torch's pool that assembly cannot reuse
@@ -414,27 +412,26 @@ class FEM(ABC):
             con: Flattened indices of constrained global degrees of freedom.
 
         Returns:
-            Global sparse matrix with Dirichlet constraints enforced.
+            Global CSR matrix with Dirichlet constraints enforced.
         """
 
         # Fill in stiffness matrix values at appropriate indices
-        val = torch.zeros(self.glob_idx.shape[1])
+        val = torch.zeros(self.col.numel())
         val.index_add_(0, self.k_map, k.ravel())
 
-        # Apply Dirichlet boundary conditions
+        # Apply Dirichlet boundary conditions. CSR stores no row per entry.
         self.is_constrained = torch.zeros(self.n_dofs, dtype=torch.bool)
         self.is_constrained[con] = True
-        row_con = self.is_constrained[self.glob_idx[0]]
-        col_con = self.is_constrained[self.glob_idx[1]]
+        row_con = torch.repeat_interleave(self.is_constrained, self.crow.diff())
+        col_con = self.is_constrained[self.col]
         val[row_con | col_con] = 0.0
         val[self.diag_map[con]] = 1.0
 
         # Create sparse global stiffness matrix
         with torch.sparse.check_sparse_tensor_invariants(False):
-            K = torch.sparse_coo_tensor(
-                self.glob_idx, val, size=(self.n_dofs, self.n_dofs), is_coalesced=True
+            return torch.sparse_csr_tensor(
+                self.crow, self.col, val, size=(self.n_dofs, self.n_dofs)
             )
-        return K
 
     def assemble_rhs(self, f: Tensor) -> Tensor:
         """Assemble a global right-hand-side vector from element values.
@@ -1492,11 +1489,12 @@ class Heat(FEM, ABC):
                 f_int = self.assemble_rhs(f_int)
                 f_ext = self._neumann.ravel()
 
-                # assemble stiffness and mass matrices
+                # assemble stiffness and mass matrices, as COO: the sum below
+                # and its accumulated gradient need MKL for CSR.
                 if k is not None:
-                    self.K = self.assemble_matrix(k, con)
+                    self.K = self.assemble_matrix(k, con).to_sparse_coo()
                 if self.M.numel() == 0:
-                    self.M = self.assemble_matrix(m, con)
+                    self.M = self.assemble_matrix(m, con).to_sparse_coo()
 
                 f_inertia = self.M @ du
 

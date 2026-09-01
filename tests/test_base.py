@@ -74,6 +74,24 @@ class TestMechanicsBoundaryConditions:
             model.constraints = torch.zeros(model.n_nod, model.n_dof_per_node)
 
 
+class TestAssembleMatrix:
+    def test_the_matrix_is_compressed_with_int32_indices(self):
+        """The index arrays outweigh the values, so their width is the memory."""
+        model = _planar()
+        K = model.assemble_matrix(model.k0(), torch.tensor([0, 1]))
+        assert K.layout == torch.sparse_csr
+        assert K.crow_indices().dtype == torch.int32
+        assert K.col_indices().dtype == torch.int32
+
+    def test_constrained_rows_and_columns_hold_a_unit_diagonal(self):
+        model = _planar()
+        con = torch.tensor([0, 1])
+        K = model.assemble_matrix(model.k0(), con).to_dense()
+        assert torch.allclose(K[con].sum(dim=1), torch.ones(len(con)))
+        assert torch.allclose(K[con, con], torch.ones(len(con)))
+        assert torch.allclose(K[:, con].sum(dim=0), torch.ones(len(con)))
+
+
 class TestShapeFunctions:
     def test_inverted_element_raises(self):
         """Reversing a quad's node order flips the Jacobian sign."""

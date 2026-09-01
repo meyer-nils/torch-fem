@@ -109,6 +109,9 @@ reportMissingImports = false
 markers = [
     "notebook: executes an example notebook (slow)",
 ]
+filterwarnings = [
+    "ignore:Sparse CSR tensor support is in beta",
+]
 
 [tool.coverage.run]
 source = ["torchfem"]
