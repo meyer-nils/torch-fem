@@ -85,7 +85,7 @@ class PlanarGeometry(FEM):
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix contribution."""
-        return torch.einsum("...,...,...kl->...kl", self.thickness, detJ, BCB)
+        return BCB.mul_((self.thickness * detJ)[..., None, None])
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         """Element internal force vector."""

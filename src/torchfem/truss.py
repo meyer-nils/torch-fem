@@ -104,7 +104,7 @@ class Truss(Mechanics):
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
         """Element stiffness matrix."""
-        return torch.einsum("...,...,...kl->...kl", self.areas, detJ, BCB)
+        return BCB.mul_((self.areas * detJ)[..., None, None])
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         """Element internal force vector."""
