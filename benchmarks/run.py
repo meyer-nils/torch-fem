@@ -10,6 +10,7 @@ Usage:
 import argparse
 import json
 import platform
+import subprocess
 import sys
 from pathlib import Path
 
@@ -100,6 +101,12 @@ def main():
 
     label = args.label or args.device
     hardware = args.hardware or platform.processor() or platform.machine()
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=Path(__file__).parent,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
     use_cuda = args.device == "cuda"
     if use_cuda:
@@ -125,6 +132,7 @@ def main():
             "python": platform.python_version(),
             "libraries": libraries,
             "dtype": "float64",
+            "commit": commit,
             "problem": problem.id,
             "rows": rows,
         }
