@@ -345,7 +345,7 @@ class FEM(ABC):
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
             raise ValueError("Negative Jacobian. Check element numbering.")
-        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
+        B = torch.linalg.solve(J, b.unsqueeze(-3))
         return self.etype.N(xi), B, detJ
 
     def near_null_space(self) -> Tensor:
