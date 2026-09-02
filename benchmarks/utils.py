@@ -7,13 +7,14 @@ START/SETUP_DONE/FWD_DONE/BWD_DONE, and VRAM figures on cuda.
 
 ``profile_and_capture_*`` run such a case as a child process and return
 ``(mem, tags)``: peak memory in MB and the parsed stdout tags. CPU RAM is
-sampled from the parent via psutil; GPU VRAM is sampled inside the child by
-``VramMonitor``.
+sampled from the parent via psutil, after ``_prime_memory`` puts the system in
+a repeatable state; GPU VRAM is sampled inside the child by ``VramMonitor``.
 """
 
 import argparse
 import re
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -21,6 +22,9 @@ from dataclasses import dataclass
 
 import psutil
 import torch
+
+# Fraction of RAM `_prime_memory` claims before a CPU case.
+PRIMER_FRACTION = 0.4
 
 
 @dataclass
@@ -145,9 +149,16 @@ def _parse_tags(stdout_data: str) -> dict[str, float]:
     return {tag: float(val) for tag, val in pairs}
 
 
+def _prime_memory(fraction: float = PRIMER_FRACTION) -> None:
+    """Touch and release `fraction` of RAM, so every case starts from one state."""
+    size = int(psutil.virtual_memory().total * fraction)
+    subprocess.run([sys.executable, "-c", f"bytearray({size})"], check=True)
+
+
 def profile_and_capture_cpu(
     cmd: list[str],
 ) -> tuple[dict[str, float], dict[str, float]]:
+    _prime_memory()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
     ps_proc = psutil.Process(proc.pid)
 
