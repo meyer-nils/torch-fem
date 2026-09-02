@@ -101,11 +101,11 @@ def describe_method(n_dofs: int, device: str, method: str | None) -> str:
     return f"{resolved} | {kind} | {library} | {device}"
 
 
-def _rows(A: Tensor) -> Tensor:
-    """Row index of every stored entry of a matrix compressed by row."""
+def _rows(crow: Tensor) -> Tensor:
+    """Row index of every stored entry, from the row offsets that omit it."""
     return torch.repeat_interleave(
-        torch.arange(A.shape[0], dtype=torch.int32, device=A.device),
-        A.crow_indices().diff(),
+        torch.arange(crow.numel() - 1, dtype=torch.int32, device=crow.device),
+        crow.diff(),
     )
 
 
@@ -221,7 +221,8 @@ class Solve(Function):
         # Backprop rule: gradA = -gradb @ x^T, sparse version. The gradient
         # reuses the index arrays of `A`.
         crow, col = A.crow_indices(), A.col_indices()
-        val = -gradb[_rows(A)] * x[col]
+        row = _rows(crow)
+        val = -gradb[row] * x[col]
         with torch.sparse.check_sparse_tensor_invariants(False):
             gradA = torch.sparse_csr_tensor(crow, col, val, size=A.shape)
 
@@ -975,7 +976,7 @@ class Eigensolve(Function):
             # dL/dK_ij = sum_k dL/dlambda_k * phi_hat_i_k * phi_hat_j_k
             if K.requires_grad:
                 crow, col = K.crow_indices(), K.col_indices()
-                row = _rows(K)
+                row = _rows(crow)
                 weighted = phi_hat[row] * phi_hat[col]
                 grad_K_vals = (weighted * grad_lambdas.unsqueeze(0)).sum(-1)
                 with torch.sparse.check_sparse_tensor_invariants(False):
@@ -986,7 +987,7 @@ class Eigensolve(Function):
             # dL/dM_ij = -sum_k dL/dlambda_k * lambda_k * phi_hat_i_k * phi_hat_j_k
             if M.requires_grad:
                 crow, col = M.crow_indices(), M.col_indices()
-                row = _rows(M)
+                row = _rows(crow)
                 weighted_lam = phi_hat[row] * phi_hat[col]
                 grad_M_vals = -(
                     weighted_lam * (lambdas * grad_lambdas).unsqueeze(0)

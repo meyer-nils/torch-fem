@@ -420,11 +420,10 @@ class FEM(ABC):
         val.index_add_(0, self.k_map, k.ravel())
 
         # Apply Dirichlet boundary conditions. CSR stores no row per entry.
-        self.is_constrained = torch.zeros(self.n_dofs, dtype=torch.bool)
-        self.is_constrained[con] = True
-        row_con = torch.repeat_interleave(self.is_constrained, self.crow.diff())
-        col_con = self.is_constrained[self.col]
-        val[row_con | col_con] = 0.0
+        constrained = torch.zeros(self.n_dofs, dtype=torch.bool)
+        constrained[con] = True
+        row = torch.repeat_interleave(constrained, self.crow.diff())
+        val[row | constrained[self.col]] = 0.0
         val[self.diag_map[con]] = 1.0
 
         # Create sparse global stiffness matrix

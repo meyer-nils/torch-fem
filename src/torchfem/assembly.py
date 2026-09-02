@@ -276,17 +276,17 @@ class Assembly:
         cols = torch.cat([column[retained], column[primary]])
         values = torch.cat([torch.ones(len(retained)), coeffs])
         # Built as COO to sort the entries, then compressed, which is what the
-        # matrix-vector products and `_eliminator` read.
+        # matrix-vector products and `_assembler` read.
         with torch.sparse.check_sparse_tensor_invariants(False):
             T = torch.sparse_coo_tensor(
                 torch.stack([rows, cols]), values, (self.n_dofs, len(retained))
             ).coalesce()
             return T.to_sparse_csr(), retained
 
-    def _eliminator(
+    def _assembler(
         self, T: Tensor
     ) -> Callable[[list[tuple[int, Tensor]], Tensor], Tensor]:
-        """Return the function that reduces the part tangents to `T^T K T`.
+        """Return the function that assembles `T^T K T` from the part tangents.
 
         `(T^T K T)[a, b]` sums `T[i, a] K[i, j] T[j, b]`, so every entry of `K`
         spreads over the entries `T` holds in its row and its column. `T` and the
@@ -301,14 +301,14 @@ class Assembly:
             for offset, part in zip(self.offsets, self.parts)
             if isinstance(part, FEM)
         ]
-        # (row, col) of the block diagonal, in the order `eliminate` concatenates
-        row = torch.cat(
+        # (row, col) of the block diagonal, in the order the values concatenate
+        k_row = torch.cat(
             [
                 torch.repeat_interleave(torch.arange(p.n_dofs), p.crow.diff()) + offset
                 for offset, p in parts
             ]
         )
-        col = torch.cat([p.col.long() + offset for offset, p in parts])
+        k_col = torch.cat([p.col.long() + offset for offset, p in parts])
 
         # `T` is compressed by row, so its offsets already say where the entries
         # of each row sit and how many there are.
@@ -316,18 +316,18 @@ class Assembly:
         start = T.crow_indices().long()
         count = start.diff()
 
-        # Every entry expands over count[row] x count[col] of them
-        repeats = count[row] * count[col]
-        source = torch.repeat_interleave(torch.arange(len(row)), repeats)
+        # Each entry expands over the T entries of its row by those of its column
+        repeats = count[k_row] * count[k_col]
+        source = torch.repeat_interleave(torch.arange(len(k_row)), repeats)
         first = torch.cat([torch.zeros(1, dtype=torch.int64), repeats.cumsum(0)[:-1]])
         within = torch.arange(int(repeats.sum())) - torch.repeat_interleave(
             first, repeats
         )
-        width = count[col][source]
-        a = start[row[source]] + within // width
-        b = start[col[source]] + within % width
-        coefficient = t_val[a] * t_val[b]
-        a, b = t_col[a], t_col[b]
+        width = count[k_col][source]
+        left = start[k_row[source]] + within // width
+        right = start[k_col[source]] + within % width
+        coefficient = t_val[left] * t_val[right]
+        a, b = t_col[left], t_col[right]
 
         # A part without stiffness, a reference point say, contributes no
         # diagonal, so pad one that carries nothing but holds a slot open.
@@ -345,23 +345,23 @@ class Assembly:
         crow = torch.zeros(n + 1, dtype=torch.int32)
         crow[1:] = torch.bincount(unique >> 32, minlength=n).cumsum(0)
 
-        def eliminate(blocks: list[tuple[int, Tensor]], con: Tensor) -> Tensor:
-            """Reduce the part tangents onto the retained DOFs and constrain."""
+        def assemble_matrix(blocks: list[tuple[int, Tensor]], con: Tensor) -> Tensor:
+            """Assemble the part tangents onto the retained DOFs and constrain."""
             values = torch.cat([K.values() for _, K in blocks])
             val = torch.zeros(col.numel())
             val.index_add_(0, slot, coefficient * values[source])
 
             # Apply Dirichlet boundary conditions. CSR stores no row per entry.
-            is_constrained = torch.zeros(n, dtype=torch.bool)
-            is_constrained[con] = True
-            row_con = torch.repeat_interleave(is_constrained, crow.diff())
-            val[row_con | is_constrained[col]] = 0.0
+            constrained = torch.zeros(n, dtype=torch.bool)
+            constrained[con] = True
+            row = torch.repeat_interleave(constrained, crow.diff())
+            val[row | constrained[col]] = 0.0
             val[diag_map[con]] = 1.0
 
             with torch.sparse.check_sparse_tensor_invariants(False):
                 return torch.sparse_csr_tensor(crow, col, val, size=(n, n))
 
-        return eliminate
+        return assemble_matrix
 
     def _near_null_space(self) -> Tensor:
         """The near-null space an algebraic multigrid setup needs, over all DOFs.
@@ -449,7 +449,7 @@ class Assembly:
 
         T, retained = self._build_T()
         Tt = T.transpose(0, 1)
-        eliminate = self._eliminator(T)
+        assemble_matrix = self._assembler(T)
 
         # Global boundary conditions, gathered from the parts in DOF order
         neumann = torch.cat([part._neumann.ravel() for part in self.parts])
@@ -537,7 +537,7 @@ class Assembly:
                 blocks, F_int, _ = integrate(prev, du, step, iteration)
                 res = _mv(Tt, F_int - F_ext)
                 res[con] = 0.0
-                return res, eliminate(blocks, con)
+                return res, assemble_matrix(blocks, con)
 
             return eval_residual
 
