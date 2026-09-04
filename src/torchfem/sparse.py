@@ -49,7 +49,6 @@ try:
     from cupyx.scipy.sparse import csr_matrix as cupy_csr_matrix
     from cupyx.scipy.sparse import diags as cupy_diags
     from cupyx.scipy.sparse.linalg import cg as cupy_cg
-    from cupyx.scipy.sparse.linalg import eigsh as cupy_eigsh
     from cupyx.scipy.sparse.linalg import minres as cupy_minres
     from cupyx.scipy.sparse.linalg import spsolve as cupy_spsolve
 
@@ -812,78 +811,6 @@ def newton_solve(
     return du
 
 
-def _eigsolve_cpu(
-    K: Tensor,
-    M: Tensor,
-    n_modes: int,
-    free_indices: Tensor,
-    shape: torch.Size,
-    n_dofs: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Solve the generalized eigenproblem on the CPU via SciPy.
-
-    Shift-invert at `sigma=0.0` targets the lowest modes. Eigenvectors are
-    scattered back from the free-DOF subspace, leaving constrained rows at zero.
-    See `modal_eigsolve` for arguments.
-    """
-    K_csr = scipy_csr_matrix(
-        (K.values(), K.col_indices(), K.crow_indices()), shape=shape
-    )
-    M_csr = scipy_csr_matrix(
-        (M.values(), M.col_indices(), M.crow_indices()), shape=shape
-    )
-
-    fi = free_indices.cpu().numpy()
-    eigenvalues, evecs_free = scipy_eigsh(
-        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
-    )
-    eigenvectors = np.zeros((n_dofs, n_modes))
-    eigenvectors[fi] = evecs_free
-    order = np.argsort(eigenvalues)
-    return eigenvalues[order], eigenvectors[:, order]
-
-
-def _eigsolve_gpu(
-    K: Tensor,
-    M: Tensor,
-    n_modes: int,
-    free_indices: Tensor,
-    shape: torch.Size,
-    n_dofs: int,
-) -> tuple[Any, Any]:
-    """Solve the generalized eigenproblem on the GPU via CuPy.
-
-    Mirrors `_eigsolve_cpu` and returns CuPy arrays.
-    """
-    if "cupy" not in available_backends:
-        raise RuntimeError(ERR_CUPY_MISSING)
-    K_csr = cupy_csr_matrix(
-        (
-            cupy.asarray(K.values()),
-            cupy.asarray(K.col_indices()),
-            cupy.asarray(K.crow_indices()),
-        ),
-        shape=shape,
-    )
-    M_csr = cupy_csr_matrix(
-        (
-            cupy.asarray(M.values()),
-            cupy.asarray(M.col_indices()),
-            cupy.asarray(M.crow_indices()),
-        ),
-        shape=shape,
-    )
-
-    fi = free_indices.cpu().numpy()
-    eigenvalues, evecs_free = cupy_eigsh(
-        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
-    )
-    eigenvectors = cupy.zeros((n_dofs, n_modes), dtype=eigenvalues.dtype)
-    eigenvectors[fi] = evecs_free
-    order = cupy.argsort(eigenvalues)
-    return eigenvalues[order], eigenvectors[:, order]
-
-
 def modal_eigsolve(
     K: Tensor,
     M: Tensor,
@@ -891,6 +818,9 @@ def modal_eigsolve(
     free_indices: Tensor,
 ) -> tuple[Tensor, Tensor]:
     """Solve the generalized eigenvalue problem `K φ = ω² M φ`.
+
+    The solve always runs on CPU, since CuPy carries no generalized or
+    shift-invert eigensolver. The eigenpairs return on `K`'s device.
 
     Args:
         K (sparse_csr_tensor): Stiffness matrix K.
@@ -908,16 +838,27 @@ def modal_eigsolve(
             *Shape:* `(n_dofs, n_modes)`.
     """
     shape = K.size()
-    n_dofs = shape[0]
+    K_cpu = K.cpu()
+    M_cpu = M.cpu()
 
-    if K.device.type == "cuda":
-        vals, vecs = _eigsolve_gpu(K, M, n_modes, free_indices, shape, n_dofs)
-    else:
-        vals, vecs = _eigsolve_cpu(K, M, n_modes, free_indices, shape, n_dofs)
+    K_csr = scipy_csr_matrix(
+        (K_cpu.values(), K_cpu.col_indices(), K_cpu.crow_indices()), shape=shape
+    )
+    M_csr = scipy_csr_matrix(
+        (M_cpu.values(), M_cpu.col_indices(), M_cpu.crow_indices()), shape=shape
+    )
+
+    fi = free_indices.cpu().numpy()
+    eigenvalues, evecs_free = scipy_eigsh(
+        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
+    )
+    eigenvectors = np.zeros((shape[0], n_modes))
+    eigenvectors[fi] = evecs_free
+    order = np.argsort(eigenvalues)
 
     return (
-        torch.tensor(vals, dtype=K.dtype, device=K.device),
-        torch.tensor(vecs, dtype=K.dtype, device=K.device),
+        torch.tensor(eigenvalues[order], dtype=K.dtype, device=K.device),
+        torch.tensor(eigenvectors[:, order], dtype=K.dtype, device=K.device),
     )
 
 
