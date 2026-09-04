@@ -4,46 +4,47 @@
   "python": "3.13.12",
   "libraries": "CuPy 14.0.1, CUDA 12.9",
   "dtype": "float64",
+  "commit": "b237a01",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.1646,
-      "fwd_s": 0.4564,
-      "bwd_s": 0.4797,
+      "setup_s": 0.181,
+      "fwd_s": 0.2515,
+      "bwd_s": 0.4003,
       "peak_ram_mb": null,
-      "peak_vram_mb": 472.0,
+      "peak_vram_mb": 444.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.1638,
-      "fwd_s": 0.6842,
-      "bwd_s": 0.5691,
+      "setup_s": 0.1668,
+      "fwd_s": 0.3821,
+      "bwd_s": 0.4925,
       "peak_ram_mb": null,
-      "peak_vram_mb": 654.0,
+      "peak_vram_mb": 516.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.1699,
-      "fwd_s": 0.9198,
-      "bwd_s": 0.7257,
+      "setup_s": 0.1629,
+      "fwd_s": 0.6246,
+      "bwd_s": 0.6363,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1560.0,
+      "peak_vram_mb": 1364.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.1912,
-      "fwd_s": 2.0207,
-      "bwd_s": 1.4545,
+      "setup_s": 0.1828,
+      "fwd_s": 1.5996,
+      "bwd_s": 1.2219,
       "peak_ram_mb": null,
-      "peak_vram_mb": 5322.0,
+      "peak_vram_mb": 4280.0,
       "solver": "amgx | iterative | AMG | amgx | cuda"
     }
   ]
