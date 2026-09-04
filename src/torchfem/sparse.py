@@ -126,8 +126,8 @@ class Solve(Function):
         stol: float = 1e-10,
         device: str | None = None,
         method: str | None = None,
-        M: LinearOperator | AmgXSolver | None = None,
-    ) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
+        M: LinearOperator | None = None,
+    ) -> tuple[Tensor, LinearOperator | None]:
         """Solve `A x = b`.
 
         See `sparse_solve` for the arguments.
@@ -135,18 +135,15 @@ class Solve(Function):
         Returns:
             x (Tensor): Solution vector.
                 *Shape:* `(n_dofs,)`.
-            M (LinearOperator | AmgXSolver | None): Preconditioner built or
-                reused by the solve, passed on to `backward` for the adjoint
-                system, or `None` where an AmgX solver was built and closed.
+            M (LinearOperator | None): Preconditioner built or reused by the
+                solve, passed on to `backward` for the adjoint system.
         """
-        owned = M is None
-        x, M = sparse_solve(A, b, B, stol, device, method, M)
+        x, M, solver = sparse_solve(A, b, B, stol, device, method, M)
 
         # An AmgX solver built here is freed here, and `backward` builds its
         # own: nothing else frees one. See `torchfem.amgx`.
-        if owned and "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
-            M = None
+        if solver is not None:
+            solver.close()
 
         return x, M
 
@@ -168,14 +165,13 @@ class Solve(Function):
 
         # Adjoint solve: A^T lambda = grad_x, where `A.t()` is a CSC view of the
         # same arrays rather than a transposed copy.
-        owned = ctx.M is None
-        gradb, M = sparse_solve(
+        gradb, _, solver = sparse_solve(
             A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M
         )
 
         # An AmgX solver built for this adjoint does not outlive it either
-        if owned and "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
+        if solver is not None:
+            solver.close()
 
         # Backprop rule: gradA = -gradb @ x^T, sparse version. The gradient
         # reuses the index arrays of `A`.
@@ -193,7 +189,6 @@ class Solve(Function):
 
         Stores the preconditioner *returned* by the forward pass, not the one
         passed in, so the adjoint solve reuses the AMG hierarchy built there.
-        An AmgX solver is the exception: forward closed it, and returned `None`.
         """
         A, b, B, stol, device, method, M = inputs
         x, M_computed = output
@@ -214,7 +209,7 @@ def differentiable_sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
-    M: LinearOperator | AmgXSolver | None = None,
+    M: LinearOperator | None = None,
 ) -> Tensor:
     """Solve `A x = b` with custom sparse adjoint autograd support.
 
@@ -239,8 +234,9 @@ def sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
-    M: LinearOperator | AmgXSolver | None = None,
-) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
+    M: LinearOperator | None = None,
+    solver: AmgXSolver | None = None,
+) -> tuple[Tensor, LinearOperator | None, AmgXSolver | None]:
     """
     Solve the linear system Ax = b.
 
@@ -257,15 +253,20 @@ def sparse_solve(
             'cg', 'pardiso', 'amgx'). Defaults to None for automatic selection based
             on the input size and available backends, which picks 'amgx' for
             iterative solves on CUDA once it is installed (see `torchfem.amgx`).
-        M (Tensor, optional): Preconditioner matrix for iterative methods, or an
-            `AmgXSolver` to reuse for method='amgx'. Defaults to None.
+        M (LinearOperator, optional): Preconditioner for iterative methods.
+            Defaults to None, which builds one.
+        solver (AmgXSolver, optional): Solver to reuse for method='amgx'.
+            Defaults to None, which builds one. Kept apart from `M` because it
+            is freed by `close()` rather than by the garbage collector, so it
+            must not outlive the loop that owns it.
 
     Returns:
         x (Tensor): Solution vector.
             *Shape:* `(n_dofs,)`.
-        M (LinearOperator | AmgXSolver | None): Preconditioner or AmgX solver
-            built or reused by the solve, `None` for direct methods. An
-            `AmgXSolver` holds its hierarchy until the caller calls `close()`.
+        M (LinearOperator | None): Preconditioner built or reused by the solve,
+            `None` for direct methods and for 'amgx'.
+        solver (AmgXSolver | None): Solver built or reused by the solve, `None`
+            for every method but 'amgx'. Holds its hierarchy until `close()`.
     """
     # Check the input shape
     if A.ndim != 2 or (A.shape[0] != A.shape[1]):
@@ -298,14 +299,14 @@ def sparse_solve(
 
     # Solve either on CPU or GPU
     if A.device.type == "cuda":
-        x_xp, M_xp = _solve_gpu(A, b, B, method, stol, M, shape)
+        x_xp, M, solver = _solve_gpu(A, b, B, method, stol, M, solver, shape)
     else:
-        x_xp, M_xp = _solve_cpu(A, b, B, method, stol, M, shape)
+        x_xp, M = _solve_cpu(A, b, B, method, stol, M, shape)
 
     # Convert back to torch
     x = torch.tensor(x_xp, dtype=b.dtype, device=out_device)
 
-    return x, M_xp
+    return x, M, solver
 
 
 def _solve_gpu(
@@ -314,15 +315,16 @@ def _solve_gpu(
     B: Tensor | None,
     method: str,
     stol: float,
-    M: LinearOperator | AmgXSolver | None,
+    M: LinearOperator | None,
+    solver: AmgXSolver | None,
     shape: torch.Size,
-) -> tuple[Any, Any]:
+) -> tuple[Any, Any, Any]:
     """Solve `A x = b` on the GPU via CuPy. See `sparse_solve` for arguments.
 
     Iterative methods build a Jacobi preconditioner from `A` unless `M` is
-    supplied, mirroring `_solve_cpu`. `amgx` reuses `M` as an `AmgXSolver` the
-    same way, refreshing coefficients instead of a fresh setup, and reads the
-    nodal block size off `B`. `pardiso` is CPU only and raises.
+    supplied, mirroring `_solve_cpu`. `amgx` reuses `solver` the same way,
+    refreshing coefficients instead of a fresh setup, and reads the nodal block
+    size off `B`. `pardiso` is CPU only and raises.
     """
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
@@ -373,8 +375,11 @@ def _solve_gpu(
             raise RuntimeError(ERR_AMGX_MISSING)
         # AMG hierarchy, built from scratch unless one was already passed in,
         # in which case only its coefficients are refreshed.
-        if M is None:
-            # AmgX uses coordinates instead of null space B
+        if solver is None:
+            # AmgX uses coordinates instead of null space B, read back off the
+            # rotation modes. Both this and the block size assume `B` still
+            # holds whole nodal blocks, which an `Assembly` breaks where a
+            # coupling eliminates part of a node.
             coords = None
             block_size = {6: 3, 3: 2}.get(B.shape[1], 1) if B is not None else 1
             if B is not None and B.shape[1] == 6:
@@ -383,14 +388,13 @@ def _solve_gpu(
                     for c in (B[1::3, 5], B[2::3, 3], B[0::3, 4])
                 )
                 coords = x, y, z
-            M = AmgXSolver(shape[0], stol, block_size, coords)
-            M.setup(A_cp)
+            solver = AmgXSolver(shape[0], stol, block_size, coords)
+            solver.setup(A_cp)
         else:
-            assert isinstance(M, AmgXSolver)
-            M.resetup(A_cp)
-        x_xp = M.solve(b_cp)
+            solver.resetup(A_cp)
+        x_xp = solver.solve(b_cp)
 
-    return x_xp, M
+    return x_xp, M, solver
 
 
 def _solve_cpu(
@@ -399,9 +403,9 @@ def _solve_cpu(
     B: Tensor | None,
     method: str,
     stol: float,
-    M: LinearOperator | AmgXSolver | None,
+    M: LinearOperator | None,
     shape: torch.Size,
-) -> tuple[Any, LinearOperator | AmgXSolver | None]:
+) -> tuple[Any, LinearOperator | None]:
     """Solve `A x = b` on the CPU via SciPy. See `sparse_solve` for arguments.
 
     Iterative methods build an AMG preconditioner from `A` and `B` unless `M` is
@@ -516,6 +520,7 @@ class NewtonRaphsonAdjoint(Function):
                 iteration limit is reached.
         """
         M = None
+        solver = None
         converged_iter = max_iter - 1
 
         # Newton-Raphson iterations
@@ -544,16 +549,17 @@ class NewtonRaphsonAdjoint(Function):
                 break
 
             # Solve for displacement increment
-            du_i, M = sparse_solve(K, residual, B, stol, device, method, M)
+            du_i, M, solver = sparse_solve(
+                K, residual, B, stol, device, method, M, solver
+            )
 
             du = du - du_i
 
         # An AmgX solver is freed only by `close()` and does not outlive the
         # call that built it: `backward` builds its own, and a solve that fails
         # closes itself. See `torchfem.amgx`.
-        if "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
-            M = None
+        if solver is not None:
+            solver.close()
 
         # Final convergence check, which a residual that is not finite fails
         if not (res_norm < rtol * res_norm0 or res_norm < atol):
@@ -597,11 +603,11 @@ class NewtonRaphsonAdjoint(Function):
         converged_iter = ctx.converged_iter
 
         # Solve adjoint system, where `K.t()` is a CSC view of the same arrays.
-        lambda_, M = sparse_solve(K.t(), grad_du, B, stol, device, method, M)
+        lambda_, _, solver = sparse_solve(K.t(), grad_du, B, stol, device, method, M)
 
-        # `ctx.M` holds no AmgX solver, so this one is the adjoint's own
-        if "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
+        # An AmgX solver built for this adjoint does not outlive it either
+        if solver is not None:
+            solver.close()
 
         # Recompute the residual with a differentiable local state.
         du_local = du.detach().requires_grad_(True)
