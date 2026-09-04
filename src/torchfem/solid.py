@@ -51,7 +51,7 @@ class SolidGeometry(FEM):
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
         """Element stiffness matrix contribution."""
-        return torch.einsum("j,jkl->jkl", detJ, BCB)
+        return BCB.mul_(detJ[:, None, None])
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
         """Element internal force vector."""

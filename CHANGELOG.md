@@ -1,5 +1,13 @@
 # Changelog 
 
+## Unreleased
+
+### Changed
+- A model builds its sparse index maps from the node adjacency and expands them by degree of freedom, rather than sorting the degree-of-freedom pairs themselves, which leaves `n_dof_per_node**2` fewer keys to sort. This speeds up setup significantly.
+- **Breaking:** `FEM.assemble_matrix(...)` returns a CSR tensor with int32 indices rather than a COO tensor with int64 ones, which is the layout the linear solvers convert to anyway. A model's index data shrinks to a quarter.
+- `Assembly` eliminates its constrained degrees of freedom with a precomputed scatter map rather than a sparse-sparse product, which is about ten times faster per Newton iteration and needs no MKL.
+- **Breaking:** `sparse_solve(...)` and `modal_eigsolve(...)` take matrices compressed by row, or the `t()` of one as its transpose, rather than COO ones. They converted to that layout internally anyway, and every caller in the library now assembles it directly.
+
 ## Version 0.10.0 - August 26 2026
 
 ### Added

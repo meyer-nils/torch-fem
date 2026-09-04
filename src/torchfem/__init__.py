@@ -1,3 +1,7 @@
+import warnings
+
+warnings.filterwarnings("ignore", "Sparse CSR tensor support is in beta")
+
 from .assembly import Assembly, ReferencePoint, ReferencePointHeat  # noqa
 from .laminate import Laminate  # noqa
 from .planar import Planar, PlanarHeat  # noqa

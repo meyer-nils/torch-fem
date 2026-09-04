@@ -481,7 +481,7 @@ class Shell(Mechanics):
         return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        return torch.einsum("i,ijk->ijk", detJ, BCB)
+        return BCB.mul_(detJ[:, None, None])
 
     def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
         raise NotImplementedError

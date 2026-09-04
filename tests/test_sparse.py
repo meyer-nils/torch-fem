@@ -46,48 +46,47 @@ def _to_sparse(dense: torch.Tensor, values: torch.Tensor | None = None):
     return torch.sparse_coo_tensor(idx, vals, dense.shape).coalesce(), idx
 
 
+def _to_csr(dense: torch.Tensor, values: torch.Tensor | None = None) -> torch.Tensor:
+    """Sparse CSR copy of `dense`, the layout the solvers take."""
+    return _to_sparse(dense, values)[0].to_sparse_csr()
+
+
 class TestSparseSolve:
     @pytest.mark.parametrize("method", [None, "spsolve", "cg", "minres"])
     def test_matches_dense_solution(self, method):
         A_dense = _spd(N, 0)
         b = torch.randn(N)
-        A, _ = _to_sparse(A_dense)
-        x, _ = sparse_solve(A, b, method=method)
+        x, _ = sparse_solve(_to_csr(A_dense), b, method=method)
         assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_direct_method_returns_no_preconditioner(self):
-        A, _ = _to_sparse(_spd(N, 0))
-        _, M = sparse_solve(A, torch.randn(N), method="spsolve")
+        _, M = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="spsolve")
         assert M is None
 
     @pytest.mark.parametrize("method", ["cg", "minres"])
     def test_iterative_method_builds_a_preconditioner(self, method):
         """The preconditioner is returned so the adjoint solve can reuse it."""
-        A, _ = _to_sparse(_spd(N, 0))
-        _, M = sparse_solve(A, torch.randn(N), method=method)
+        _, M = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
         assert M is not None
 
     def test_rejects_non_square_matrix(self):
         """The message is matched on purpose: without this guard the call still
         fails, but deep inside SciPy with a different message."""
-        A = torch.sparse_coo_tensor(
-            torch.tensor([[0, 1], [0, 1]]), torch.ones(2), (2, 3)
-        ).coalesce()
         with pytest.raises(ValueError, match="square 2D matrix"):
-            sparse_solve(A, torch.ones(2))
+            sparse_solve(_to_csr(torch.ones(2, 3)), torch.ones(2))
 
     def test_rejects_unknown_method(self):
-        A, _ = _to_sparse(_spd(N, 0))
         with pytest.raises(ValueError, match="is not supported"):
-            sparse_solve(A, torch.randn(N), method="not-a-solver")
+            sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="not-a-solver")
 
     def test_initial_guess_does_not_change_the_solution(self):
         """A warm start may only change the iteration count, never the answer."""
         A_dense = _spd(N, 0)
         b = torch.randn(N)
-        A, _ = _to_sparse(A_dense)
         reference = torch.linalg.solve(A_dense, b)
-        x, _ = sparse_solve(A, b, method="cg", x0=reference + 0.1 * torch.randn(N))
+        x, _ = sparse_solve(
+            _to_csr(A_dense), b, method="cg", x0=reference + 0.1 * torch.randn(N)
+        )
         assert torch.allclose(x, reference, atol=1e-8)
 
 
@@ -95,11 +94,11 @@ class TestDifferentiableSparseSolve:
     """The adjoint backward pass of `Solve`, checked against dense autograd."""
 
     @staticmethod
-    def _sparse_grads(A_dense, b, w):
+    def _sparse_grads(A_dense, b, w, compressed=True):
         values = A_dense.flatten().clone().requires_grad_(True)
         A, idx = _to_sparse(A_dense, values)
         b_grad = b.clone().requires_grad_(True)
-        x = differentiable_sparse_solve(A, b_grad)
+        x = differentiable_sparse_solve(A.to_sparse_csr() if compressed else A, b_grad)
         grad_values, grad_b = torch.autograd.grad((x * w).sum(), [values, b_grad])
         grad_A = torch.sparse_coo_tensor(idx, grad_values, A_dense.shape).to_dense()
         return x, grad_A, grad_b
@@ -131,6 +130,19 @@ class TestDifferentiableSparseSolve:
         _, grad_A, _ = self._sparse_grads(A_dense, b, w)
         _, grad_A_dense, _ = self._dense_grads(A_dense, b, w)
         assert torch.allclose(grad_A, grad_A_dense, atol=1e-10)
+
+    @pytest.mark.parametrize("build", [_spd, _nonsymmetric])
+    def test_a_coo_matrix_gives_the_same_gradients(self, build):
+        """A COO input is compressed on the way in, and its gradient chains back.
+
+        The non-symmetric case pins the adjoint, whose `A.t()` is a CSC view.
+        """
+        A_dense, b, w = build(N, 0), torch.randn(N), torch.randn(N)
+        for coo, csr in zip(
+            self._sparse_grads(A_dense, b, w, compressed=False),
+            self._sparse_grads(A_dense, b, w),
+        ):
+            assert torch.allclose(coo, csr, atol=1e-10)
 
     @pytest.mark.parametrize("build", [_spd, _nonsymmetric])
     def test_gradient_wrt_rhs_is_the_adjoint_solution(self, build):
@@ -211,8 +223,7 @@ class TestModalEigsolve:
     def _problem(n=8):
         K_dense, M_dense = _spd(n, 0), _spd(n, 1)
         free = torch.arange(2, n)
-        K, _ = _to_sparse(K_dense)
-        M, _ = _to_sparse(M_dense)
+        K, M = _to_csr(K_dense), _to_csr(M_dense)
         return K_dense, M_dense, K, M, free
 
     def test_matches_dense_generalized_eigenproblem(self):
@@ -260,16 +271,16 @@ class TestEigensolveGradients:
         n, eps = 8, 1e-6
         K_dense, M_dense = _spd(n, 0), _spd(n, 1)
         free = torch.arange(2, n)
-        M, _ = _to_sparse(M_dense)
+        M = _to_csr(M_dense)
         D = self._direction(n)
 
         values = K_dense.flatten().clone().requires_grad_(True)
-        K, _ = _to_sparse(K_dense, values)
+        K = _to_csr(K_dense, values)
         lambdas, _ = differentiable_modal_eigsolve(K, M, N_MODES, free)
         (grad,) = torch.autograd.grad(lambdas.sum(), [values])
 
-        plus, _ = modal_eigsolve(_to_sparse(K_dense + eps * D)[0], M, N_MODES, free)
-        minus, _ = modal_eigsolve(_to_sparse(K_dense - eps * D)[0], M, N_MODES, free)
+        plus, _ = modal_eigsolve(_to_csr(K_dense + eps * D), M, N_MODES, free)
+        minus, _ = modal_eigsolve(_to_csr(K_dense - eps * D), M, N_MODES, free)
         finite_difference = (plus.sum() - minus.sum()) / (2 * eps)
         assert torch.allclose(
             torch.dot(grad, D.flatten()), finite_difference, rtol=1e-5
@@ -279,16 +290,16 @@ class TestEigensolveGradients:
         n, eps = 8, 1e-6
         K_dense, M_dense = _spd(n, 0), _spd(n, 1)
         free = torch.arange(2, n)
-        K, _ = _to_sparse(K_dense)
+        K = _to_csr(K_dense)
         D = self._direction(n)
 
         values = M_dense.flatten().clone().requires_grad_(True)
-        M, _ = _to_sparse(M_dense, values)
+        M = _to_csr(M_dense, values)
         lambdas, _ = differentiable_modal_eigsolve(K, M, N_MODES, free)
         (grad,) = torch.autograd.grad(lambdas.sum(), [values])
 
-        plus, _ = modal_eigsolve(K, _to_sparse(M_dense + eps * D)[0], N_MODES, free)
-        minus, _ = modal_eigsolve(K, _to_sparse(M_dense - eps * D)[0], N_MODES, free)
+        plus, _ = modal_eigsolve(K, _to_csr(M_dense + eps * D), N_MODES, free)
+        minus, _ = modal_eigsolve(K, _to_csr(M_dense - eps * D), N_MODES, free)
         finite_difference = (plus.sum() - minus.sum()) / (2 * eps)
         assert torch.allclose(
             torch.dot(grad, D.flatten()), finite_difference, rtol=1e-5
@@ -300,8 +311,8 @@ class TestEigensolveGradients:
         n = 8
         K_dense, M_dense = _spd(n, 0), _spd(n, 1)
         values = K_dense.flatten().clone().requires_grad_(True)
-        K, _ = _to_sparse(K_dense, values)
-        M, _ = _to_sparse(M_dense)
+        K = _to_csr(K_dense, values)
+        M = _to_csr(M_dense)
         lambdas, phis = differentiable_modal_eigsolve(K, M, N_MODES, torch.arange(2, n))
         assert lambdas.requires_grad
         assert not phis.requires_grad

@@ -110,52 +110,41 @@ class FEM(ABC):
         idx = (self.n_dof_per_node * self.elements).unsqueeze(-1) + torch.arange(
             self.n_dof_per_node
         )
-        self.idx = idx.reshape(self.n_elem, -1)
+        self.idx = idx.reshape(self.n_elem, -1).to(torch.int32)
 
-        # Precompute global index mapping for sparse matrix assembly
-        n = self.idx.shape[1]
-        chunk = max(1, min(self.n_elem, (16 * 1024 * 1024) // (n * n)))
-        # Phase 1: find unique (row, col) index pairs
-        parts = []
-        for s in range(0, self.n_elem, chunk):
-            e = s + chunk
-            ic = self.idx[s:e]
-            parts.append(
-                torch.unique(((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1))
-            )
-        diag = torch.arange(self.n_dofs, dtype=torch.int64)
-        parts.append((diag << 32) | diag)
-        glob_idx_packed = torch.unique(torch.cat(parts))
-        del parts
-        # Phase 2: map element entries to global sparse indices
-        k_parts = []
-        for s in range(0, self.n_elem, chunk):
-            e = s + chunk
-            ic = self.idx[s:e]
-            k_parts.append(
-                torch.searchsorted(
-                    glob_idx_packed,
-                    ((ic.unsqueeze(-1) << 32) | ic.unsqueeze(1)).reshape(-1),
-                ).to(torch.int32)
-            )
-        self.k_map = torch.cat(k_parts)
-        del k_parts
-        self.diag_map = torch.searchsorted(glob_idx_packed, (diag << 32) | diag).to(
-            torch.int32
-        )
-        del diag
-        # int64, the index dtype of a sparse tensor, so that `assemble_matrix`
-        # shares this storage instead of widening a copy on every assembly
-        self.glob_idx = torch.stack(
-            [
-                torch.div(glob_idx_packed, 2**32, rounding_mode="floor"),
-                glob_idx_packed % 2**32,
-            ]
-        )
-        del glob_idx_packed
-        self.idx = self.idx.to(torch.int32)
+        # Sparse assembly maps, built from the node adjacency and expanded by
+        # degree of freedom, which leaves n_dof_per_node**2 fewer keys to sort.
+        ndof = self.n_dof_per_node
+        dof = torch.arange(ndof, dtype=torch.int32)
+        nod = torch.arange(self.n_nod)
+        el = self.elements.contiguous()
+        pair = (el.unsqueeze(-1) << 32) | el.unsqueeze(1)
+        loop = (nod << 32) | nod  # a node with itself, so no row lacks a diagonal
+        packed = torch.unique(torch.cat([pair.ravel(), loop]))
+        deg = torch.bincount(packed >> 32, minlength=self.n_nod)
+        node_crow = torch.cat([deg.new_zeros(1), deg.cumsum(0)]).to(torch.int32)
+        entry = torch.searchsorted(packed, pair, out_int32=True)
+        block = ndof * (entry - node_crow[el][..., None])
+        diag = torch.searchsorted(packed, loop, out_int32=True) - node_crow[:-1]
+        node_col = ((ndof * (packed % 2**32)).to(torch.int32)[..., None] + dof).ravel()
+        del pair, loop, packed, entry
+
+        # Each node row becomes ndof rows repeating that node's columns
+        length = (ndof * deg).repeat_interleave(ndof)
+        crow = torch.cat([length.new_zeros(1), length.cumsum(0)]).to(torch.int32)
+        shift = (ndof * node_crow[:-1]).repeat_interleave(ndof) - crow[:-1]
+        pos = shift.repeat_interleave(length)
+        pos += torch.arange(len(pos), dtype=torch.int32)
+        self.col = node_col[pos]
+        del node_col, shift, pos
+
+        # Entry (p, i, q, j) of an element goes to the row of node p and dof i,
+        # into the column block of node q, at dof j
+        row = crow[(ndof * el)[..., None] + dof]
+        self.k_map = (row[..., None, None] + block[:, :, None, :, None] + dof).ravel()
+        self.diag_map = (crow[:-1].view(-1, ndof) + ndof * diag[:, None] + dof).ravel()
+        self.crow = crow
         if self.nodes.is_cuda:
-            # The packed keys leave GBs in Torch's pool that assembly cannot reuse
             torch.cuda.empty_cache()
 
         # Vectorize material
@@ -347,7 +336,7 @@ class FEM(ABC):
         detJ = torch.linalg.det(J)
         if torch.any(detJ <= 0.0):
             raise ValueError("Negative Jacobian. Check element numbering.")
-        B = torch.einsum("...Eij,...jN->...EiN", torch.linalg.inv(J), b)
+        B = torch.linalg.solve(J, b.unsqueeze(-3))
         return self.etype.N(xi), B, detJ
 
     def near_null_space(self) -> Tensor:
@@ -414,27 +403,25 @@ class FEM(ABC):
             con: Flattened indices of constrained global degrees of freedom.
 
         Returns:
-            Global sparse matrix with Dirichlet constraints enforced.
+            Global CSR matrix with Dirichlet constraints enforced.
         """
 
         # Fill in stiffness matrix values at appropriate indices
-        val = torch.zeros(self.glob_idx.shape[1])
+        val = torch.zeros(self.col.numel())
         val.index_add_(0, self.k_map, k.ravel())
 
-        # Apply Dirichlet boundary conditions
-        self.is_constrained = torch.zeros(self.n_dofs, dtype=torch.bool)
-        self.is_constrained[con] = True
-        row_con = self.is_constrained[self.glob_idx[0]]
-        col_con = self.is_constrained[self.glob_idx[1]]
-        val[row_con | col_con] = 0.0
+        # Apply Dirichlet boundary conditions. CSR stores no row per entry.
+        constrained = torch.zeros(self.n_dofs, dtype=torch.bool)
+        constrained[con] = True
+        row = torch.repeat_interleave(constrained, self.crow.diff())
+        val[row | constrained[self.col]] = 0.0
         val[self.diag_map[con]] = 1.0
 
         # Create sparse global stiffness matrix
         with torch.sparse.check_sparse_tensor_invariants(False):
-            K = torch.sparse_coo_tensor(
-                self.glob_idx, val, size=(self.n_dofs, self.n_dofs), is_coalesced=True
+            return torch.sparse_csr_tensor(
+                self.crow, self.col, val, size=(self.n_dofs, self.n_dofs)
             )
-        return K
 
     def assemble_rhs(self, f: Tensor) -> Tensor:
         """Assemble a global right-hand-side vector from element values.
@@ -1492,11 +1479,12 @@ class Heat(FEM, ABC):
                 f_int = self.assemble_rhs(f_int)
                 f_ext = self._neumann.ravel()
 
-                # assemble stiffness and mass matrices
+                # assemble stiffness and mass matrices, as COO: the sum below
+                # and its accumulated gradient need MKL for CSR.
                 if k is not None:
-                    self.K = self.assemble_matrix(k, con)
+                    self.K = self.assemble_matrix(k, con).to_sparse_coo()
                 if self.M.numel() == 0:
-                    self.M = self.assemble_matrix(m, con)
+                    self.M = self.assemble_matrix(m, con).to_sparse_coo()
 
                 f_inertia = self.M @ du
 
