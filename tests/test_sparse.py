@@ -1,17 +1,13 @@
-import inspect
-
 import pytest
 import torch
 from scipy.linalg import eigh as scipy_eigh
 
 from torchfem.sparse import (
-    CachedSolve,
     available_backends,
     describe_method,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     modal_eigsolve,
-    newton_solve,
     resolve_method,
     sparse_solve,
 )
@@ -78,16 +74,6 @@ class TestSparseSolve:
     def test_rejects_unknown_method(self):
         with pytest.raises(ValueError, match="is not supported"):
             sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="not-a-solver")
-
-    def test_initial_guess_does_not_change_the_solution(self):
-        """A warm start may only change the iteration count, never the answer."""
-        A_dense = _spd(N, 0)
-        b = torch.randn(N)
-        reference = torch.linalg.solve(A_dense, b)
-        x, _ = sparse_solve(
-            _to_csr(A_dense), b, method="cg", x0=reference + 0.1 * torch.randn(N)
-        )
-        assert torch.allclose(x, reference, atol=1e-8)
 
 
 class TestDifferentiableSparseSolve:
@@ -168,54 +154,6 @@ class TestDifferentiableSparseSolve:
         x = differentiable_sparse_solve(A, b)
         (grad_values,) = torch.autograd.grad(x.sum(), [values])
         assert grad_values.shape == values.shape
-
-
-class TestCachedSolve:
-    def test_update_x_stores_a_detached_copy(self):
-        cache = CachedSolve()
-        x = torch.ones(3, requires_grad=True)
-        cache.update_x(x)
-        assert cache.previous_x is not None
-        assert not cache.previous_x.requires_grad
-        assert cache.previous_x is not x
-
-    def test_update_grad_stores_a_detached_copy(self):
-        cache = CachedSolve()
-        g = torch.ones(3, requires_grad=True)
-        cache.update_grad(g)
-        assert cache.previous_grad is not None
-        assert not cache.previous_grad.requires_grad
-
-    def test_update_with_none_clears_the_entry(self):
-        cache = CachedSolve(previous_x=torch.ones(3), previous_grad=torch.ones(3))
-        cache.update_x(None)
-        cache.update_grad(None)
-        assert cache.previous_x is None
-        assert cache.previous_grad is None
-
-    @pytest.mark.parametrize("func", [differentiable_sparse_solve, newton_solve])
-    def test_solvers_do_not_share_a_default_cache(self, func):
-        """Regression guard: a `CachedSolve()` default would be constructed once
-        at import and shared by every caller, so one solve could warm-start a
-        later, unrelated solve from a stale (possibly wrong-sized) vector."""
-        assert inspect.signature(func).parameters["cached_solve"].default is None
-
-    def test_warm_start_reaches_the_same_solution(self):
-        A_dense = _spd(N, 0)
-        b = torch.randn(N)
-        A, _ = _to_sparse(A_dense)
-        reference = torch.linalg.solve(A_dense, b)
-
-        cache = CachedSolve()
-        first = differentiable_sparse_solve(
-            A, b, method="cg", cached_solve=cache, update_cache=True
-        )
-        assert cache.previous_x is not None
-        second = differentiable_sparse_solve(
-            A, b, method="cg", cached_solve=cache, update_cache=True
-        )
-        assert torch.allclose(first, reference, atol=1e-8)
-        assert torch.allclose(second, reference, atol=1e-8)
 
 
 class TestModalEigsolve:

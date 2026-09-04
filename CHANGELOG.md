@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Removed
+- **Breaking:** `CachedSolve`, the `use_cached_solve` argument of `solve(...)` and `time_integration(...)`, and the `x0` initial guess of `sparse_solve(...)`. Warm-starting an iterative solve from the previous solution saved at most 10% of the Krylov iterations and no measurable wall time: a guess 0.7% off in solution norm still leaves a 48% residual, and the preconditioner is rebuilt on every call anyway.
+
 ### Changed
 - A model builds its sparse index maps from the node adjacency and expands them by degree of freedom, rather than sorting the degree-of-freedom pairs themselves, which leaves `n_dof_per_node**2` fewer keys to sort. This speeds up setup significantly.
 - **Breaking:** `FEM.assemble_matrix(...)` returns a CSR tensor with int32 indices rather than a COO tensor with int64 ones, which is the layout the linear solvers convert to anyway. A model's index data shrinks to a quarter.

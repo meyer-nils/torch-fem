@@ -12,7 +12,6 @@ from .elements import Element
 from .materials import Material
 from .report import SolveReport, machine
 from .sparse import (
-    CachedSolve,
     describe_method,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
@@ -153,9 +152,6 @@ class FEM(ABC):
             self.material = material
         else:
             self.material = material.vectorize(self.n_elem)
-
-        # Cached solve for sparse linear systems
-        self.cached_solve = CachedSolve()
 
     @property
     def n_state(self) -> int:
@@ -607,7 +603,6 @@ class FEM(ABC):
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
-        use_cached_solve: bool = False,
         nlgeom: bool = False,
         alpha: float = 0.0,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
@@ -638,7 +633,6 @@ class FEM(ABC):
             return_intermediate: If True, returns values for all increments.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            use_cached_solve: If True, reuses cached linear solver data.
             nlgeom: If True, includes geometric nonlinearity.
             alpha: Damping factor for viscous stabilization. Dissipated
                 energy is accumulated in `self.stabilization_energy`.
@@ -806,11 +800,6 @@ class FEM(ABC):
                     state_prev = state_cur.detach()
 
                 # Solve for increment using Newton-Raphson method
-                if use_cached_solve:
-                    cached_solve = self.cached_solve
-                else:
-                    cached_solve = CachedSolve()
-
                 try:
                     du = newton_solve(
                         make_eval_residual(F_ext, DU, de0, k_visc),
@@ -823,8 +812,6 @@ class FEM(ABC):
                         report,
                         method,
                         device,
-                        cached_solve,
-                        use_cached_solve,
                         u_prev,
                         grad_prev,
                         flux_prev,
@@ -1302,7 +1289,6 @@ class Heat(FEM, ABC):
         device: str | None = None,
         method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
         aggregate_integration_points: bool = True,
-        use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Integrate the heat equation in time with implicit increments.
@@ -1325,7 +1311,6 @@ class Heat(FEM, ABC):
             method: Linear solver backend name.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            use_cached_solve: If True, reuses cached linear solver data.
             differentiable_parameters: Explicit parameters that should receive
                 gradients through implicit solves. Accepts either a single
                 tensor or an iterable of tensors.
@@ -1359,7 +1344,6 @@ class Heat(FEM, ABC):
         # solve for initial conditions
         temp_eq, f_int_eq, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
             aggregate_integration_points=False,
-            use_cached_solve=use_cached_solve,
             differentiable_parameters=differentiable_parameters,
         )
 
@@ -1506,15 +1490,6 @@ class Heat(FEM, ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
-                # Use cached solve from previous increment if available.
-                if it == 0 and use_cached_solve:
-                    cached_solve = self.cached_solve
-                else:
-                    cached_solve = CachedSolve()
-
-                # Keep cache tied to first Newton iteration only.
-                update_cache = it == 0
-
                 du = differentiable_sparse_solve(
                     self.M + 0.5 * dt_n * self.K,
                     -residual,
@@ -1522,9 +1497,6 @@ class Heat(FEM, ABC):
                     stol,
                     device,
                     method,
-                    None,
-                    cached_solve,
-                    update_cache,
                 )
 
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))

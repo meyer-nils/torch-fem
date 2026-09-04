@@ -347,11 +347,11 @@ class AmgXSolver:
         )
         return indptr, indices, values, len(uniq)
 
-    def solve(self, b_cp: Any, x0_cp: Any | None) -> Any:
-        """Solve for `b_cp` as a CuPy array, warm-started from `x0_cp`."""
+    def solve(self, b_cp: Any) -> Any:
+        """Solve for `b_cp` as a CuPy array."""
         import cupy
 
-        x_cp = cupy.zeros(self.n) if x0_cp is None else cupy.asarray(x0_cp).copy()
+        x_cp = cupy.zeros(self.n)
         rows, bs = self.n_rows, self.block_size
 
         _check(_lib.AMGX_vector_upload(self._rhs, rows, bs, b_cp.data.ptr))

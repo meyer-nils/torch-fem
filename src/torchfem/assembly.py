@@ -576,8 +576,6 @@ class Assembly:
                 report,
                 method,
                 device,
-                None,
-                False,
                 *prev,
                 *differentiable_parameters,
             )

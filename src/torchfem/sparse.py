@@ -109,34 +109,6 @@ def _rows(crow: Tensor) -> Tensor:
     )
 
 
-class CachedSolve:
-    """Cache of the previous solution and gradient, used to warm-start solvers.
-
-    Written only when the caller passes `update_cache=True`. Direct solvers
-    ignore it.
-
-    Args:
-        previous_x (Tensor | None): Previous forward solution.
-            *Shape:* `(n_dofs,)`.
-        previous_grad (Tensor | None): Previous adjoint solution.
-            *Shape:* `(n_dofs,)`.
-    """
-
-    def __init__(
-        self, previous_x: Tensor | None = None, previous_grad: Tensor | None = None
-    ) -> None:
-        self.previous_x = previous_x
-        self.previous_grad = previous_grad
-
-    def update_grad(self, grad: Tensor | None) -> None:
-        """Stores a detached copy of `grad` as the next backward warm start."""
-        self.previous_grad = grad.detach().clone() if grad is not None else None
-
-    def update_x(self, x: Tensor | None) -> None:
-        """Stores a detached copy of `x` as the next forward warm start."""
-        self.previous_x = x.detach().clone() if x is not None else None
-
-
 class Solve(Function):
     """
     Inspired by
@@ -155,10 +127,8 @@ class Solve(Function):
         device: str | None = None,
         method: str | None = None,
         M: LinearOperator | AmgXSolver | None = None,
-        cached_solve: CachedSolve | None = None,
-        update_cache: bool = False,
     ) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
-        """Solve `A x = b`, warm-starting from `cached_solve`.
+        """Solve `A x = b`.
 
         See `sparse_solve` for the arguments.
 
@@ -169,15 +139,8 @@ class Solve(Function):
                 reused by the solve, passed on to `backward` for the adjoint
                 system, or `None` where an AmgX solver was built and closed.
         """
-        x0 = None
-        if cached_solve is not None and cached_solve.previous_x is not None:
-            x0 = cached_solve.previous_x
-
         owned = M is None
-        x, M = sparse_solve(A, b, B, stol, device, method, M, x0)
-
-        if update_cache and cached_solve is not None:
-            cached_solve.update_x(x)
+        x, M = sparse_solve(A, b, B, stol, device, method, M)
 
         # An AmgX solver built here is freed here, and `backward` builds its
         # own: nothing else frees one. See `torchfem.amgx`.
@@ -203,15 +166,11 @@ class Solve(Function):
         # Access the saved variables
         A, x = ctx.saved_tensors
 
-        x0 = None
-        if ctx.cached_solve is not None and ctx.cached_solve.previous_grad is not None:
-            x0 = ctx.cached_solve.previous_grad
-
         # Adjoint solve: A^T lambda = grad_x, where `A.t()` is a CSC view of the
         # same arrays rather than a transposed copy.
         owned = ctx.M is None
         gradb, M = sparse_solve(
-            A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
+            A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M
         )
 
         # An AmgX solver built for this adjoint does not outlive it either
@@ -226,11 +185,7 @@ class Solve(Function):
         with torch.sparse.check_sparse_tensor_invariants(False):
             gradA = torch.sparse_csr_tensor(crow, col, val, size=A.shape)
 
-        # Update storage for next iteration
-        if ctx.update_cache and ctx.cached_solve is not None:
-            ctx.cached_solve.update_grad(gradb.detach().clone())
-
-        return gradA, gradb, None, None, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output) -> None:
@@ -240,7 +195,7 @@ class Solve(Function):
         passed in, so the adjoint solve reuses the AMG hierarchy built there.
         An AmgX solver is the exception: forward closed it, and returned `None`.
         """
-        A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
+        A, b, B, stol, device, method, M = inputs
         x, M_computed = output
         ctx.save_for_backward(A, x)
 
@@ -250,8 +205,6 @@ class Solve(Function):
         ctx.device = device
         ctx.method = method
         ctx.M = M_computed
-        ctx.cached_solve = cached_solve
-        ctx.update_cache = update_cache
 
 
 def differentiable_sparse_solve(
@@ -262,8 +215,6 @@ def differentiable_sparse_solve(
     device: str | None = None,
     method: str | None = None,
     M: LinearOperator | AmgXSolver | None = None,
-    cached_solve: CachedSolve | None = None,
-    update_cache: bool = False,
 ) -> Tensor:
     """Solve `A x = b` with custom sparse adjoint autograd support.
 
@@ -275,9 +226,7 @@ def differentiable_sparse_solve(
     # COO caller still gets its gradient back through this conversion.
     if A.layout == torch.sparse_coo:
         A = A.to_sparse_csr()
-    result, _ = Solve.apply(
-        A, b, B, stol, device, method, M, cached_solve, update_cache
-    )  # type: ignore
+    result, _ = Solve.apply(A, b, B, stol, device, method, M)  # type: ignore
     if result is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return result
@@ -291,7 +240,6 @@ def sparse_solve(
     device: str | None = None,
     method: str | None = None,
     M: LinearOperator | AmgXSolver | None = None,
-    x0: Tensor | None = None,
 ) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
     """
     Solve the linear system Ax = b.
@@ -311,7 +259,6 @@ def sparse_solve(
             iterative solves on CUDA once it is installed (see `torchfem.amgx`).
         M (Tensor, optional): Preconditioner matrix for iterative methods, or an
             `AmgXSolver` to reuse for method='amgx'. Defaults to None.
-        x0 (Tensor, optional): Initial guess for iterative solvers. Defaults to None.
 
     Returns:
         x (Tensor): Solution vector.
@@ -345,17 +292,15 @@ def sparse_solve(
         b = b.to(device)
         if B is not None:
             B = B.to(device)
-        if x0 is not None:
-            x0 = x0.to(device)
 
     # Make default solver choice based on shape and available backends
     method = resolve_method(shape[0], A.device.type, method)
 
     # Solve either on CPU or GPU
     if A.device.type == "cuda":
-        x_xp, M_xp = _solve_gpu(A, b, B, method, stol, M, shape, x0)
+        x_xp, M_xp = _solve_gpu(A, b, B, method, stol, M, shape)
     else:
-        x_xp, M_xp = _solve_cpu(A, b, B, method, stol, M, shape, x0)
+        x_xp, M_xp = _solve_cpu(A, b, B, method, stol, M, shape)
 
     # Convert back to torch
     x = torch.tensor(x_xp, dtype=b.dtype, device=out_device)
@@ -371,7 +316,6 @@ def _solve_gpu(
     stol: float,
     M: LinearOperator | AmgXSolver | None,
     shape: torch.Size,
-    x0: Tensor | None,
 ) -> tuple[Any, Any]:
     """Solve `A x = b` on the GPU via CuPy. See `sparse_solve` for arguments.
 
@@ -403,11 +347,6 @@ def _solve_gpu(
     A_cp.has_sorted_indices = True
     b_cp = cupy.asarray(b.data)
 
-    if x0 is not None:
-        x0_cp = cupy.asarray(x0)
-    else:
-        x0_cp = None
-
     if method == "pardiso":
         raise RuntimeError("Pardiso backend is not available on GPU.")
     elif method == "spsolve":
@@ -418,7 +357,7 @@ def _solve_gpu(
         if M is None:
             M = cupy_diags(1.0 / A_cp.diagonal())
         # Solve with minres
-        x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
+        x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=stol)
         if exit_code != 0:
             raise RuntimeError(f"minres failed with exit code {exit_code}")
     elif method == "cg":
@@ -426,7 +365,7 @@ def _solve_gpu(
         if M is None:
             M = cupy_diags(1.0 / A_cp.diagonal())
         # Solve with conjugate gradients
-        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, rtol=stol, x0=x0_cp)
+        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, rtol=stol)
         if exit_code != 0:
             raise RuntimeError(f"CG failed with exit code {exit_code}")
     elif method == "amgx":
@@ -449,7 +388,7 @@ def _solve_gpu(
         else:
             assert isinstance(M, AmgXSolver)
             M.resetup(A_cp)
-        x_xp = M.solve(b_cp, x0_cp)
+        x_xp = M.solve(b_cp)
 
     return x_xp, M
 
@@ -462,7 +401,6 @@ def _solve_cpu(
     stol: float,
     M: LinearOperator | AmgXSolver | None,
     shape: torch.Size,
-    x0: Tensor | None,
 ) -> tuple[Any, LinearOperator | AmgXSolver | None]:
     """Solve `A x = b` on the CPU via SciPy. See `sparse_solve` for arguments.
 
@@ -480,11 +418,6 @@ def _solve_cpu(
             (A.values(), A.col_indices(), A.crow_indices()), shape=shape
         )
     b_np = b.data.numpy()
-
-    if x0 is not None:
-        x0_np = x0.data.numpy()
-    else:
-        x0_np = None
 
     if B is None:
         B_np = None
@@ -514,7 +447,7 @@ def _solve_cpu(
             M = ml.aspreconditioner()
 
         # Solve with minres
-        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol, x0=x0_np)  # type: ignore
+        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol)  # type: ignore
         if exit_code != 0:
             raise RuntimeError(f"minres failed with exit code {exit_code}")
     elif method == "cg":
@@ -524,7 +457,7 @@ def _solve_cpu(
             M = ml.aspreconditioner()
 
         # Solve with cg
-        x_xp, exit_code = scipy_cg(A_np, b_np, M=M, rtol=stol, x0=x0_np)
+        x_xp, exit_code = scipy_cg(A_np, b_np, M=M, rtol=stol)
         if exit_code != 0:
             raise RuntimeError(f"CG failed with exit code {exit_code}")
 
@@ -567,8 +500,6 @@ class NewtonRaphsonAdjoint(Function):
         report: SolveReport | None,
         method: str | None = None,
         device: str | None = None,
-        cached_solve: CachedSolve | None = None,
-        update_cache: bool = False,
         u_prev: Tensor | None = None,
         grad_prev: Tensor | None = None,
         flux_prev: Tensor | None = None,
@@ -577,8 +508,8 @@ class NewtonRaphsonAdjoint(Function):
     ) -> Tensor:
         """Run Newton iterations until the residual meets `rtol` or `atol`.
 
-        Only the converged state is saved for backward, and the warm start
-        applies to the first Newton step only. See `newton_solve` for arguments.
+        Only the converged state is saved for backward. See `newton_solve` for
+        arguments.
 
         Raises:
             RuntimeError: If the residual becomes NaN or infinite, or the
@@ -612,19 +543,8 @@ class NewtonRaphsonAdjoint(Function):
             if not torch.isfinite(res_norm):
                 break
 
-            x0 = None
-            if (
-                i == 0
-                and cached_solve is not None
-                and cached_solve.previous_x is not None
-            ):
-                x0 = cached_solve.previous_x
-
             # Solve for displacement increment
-            du_i, M = sparse_solve(K, residual, B, stol, device, method, M, x0=x0)
-
-            if i == 0 and update_cache and cached_solve is not None:
-                cached_solve.update_x(du_i)
+            du_i, M = sparse_solve(K, residual, B, stol, device, method, M)
 
             du = du - du_i
 
@@ -648,8 +568,6 @@ class NewtonRaphsonAdjoint(Function):
         ctx.device = device
         ctx.method = method
         ctx.eval_residual = eval_residual
-        ctx.cached_solve = cached_solve
-        ctx.update_cache = update_cache
         ctx.n_parameters = len(parameters)
         ctx.converged_iter = converged_iter
 
@@ -676,32 +594,14 @@ class NewtonRaphsonAdjoint(Function):
         device = ctx.device
         method = ctx.method
         eval_residual = ctx.eval_residual
-        cached_solve = ctx.cached_solve
-        update_cache = ctx.update_cache
         converged_iter = ctx.converged_iter
 
-        x0 = None
-        if cached_solve is not None and cached_solve.previous_grad is not None:
-            x0 = cached_solve.previous_grad
-
         # Solve adjoint system, where `K.t()` is a CSC view of the same arrays.
-        lambda_, M = sparse_solve(
-            K.t(),
-            grad_du,
-            B,
-            stol,
-            device,
-            method,
-            M,
-            x0=x0,
-        )
+        lambda_, M = sparse_solve(K.t(), grad_du, B, stol, device, method, M)
 
         # `ctx.M` holds no AmgX solver, so this one is the adjoint's own
         if "amgx" in available_backends and isinstance(M, AmgXSolver):
             M.close()
-
-        if update_cache and cached_solve is not None:
-            cached_solve.update_grad(lambda_)
 
         # Recompute the residual with a differentiable local state.
         du_local = du.detach().requires_grad_(True)
@@ -734,8 +634,6 @@ class NewtonRaphsonAdjoint(Function):
             None,
             None,
             None,
-            None,
-            None,
             *grad_prev_state,
             *grad_parameters,
         )
@@ -752,8 +650,6 @@ def newton_solve(
     report: SolveReport | None,
     method: str | None = None,
     device: str | None = None,
-    cached_solve: CachedSolve | None = None,
-    update_cache: bool = False,
     u_prev: Tensor | None = None,
     grad_prev: Tensor | None = None,
     flux_prev: Tensor | None = None,
@@ -774,8 +670,6 @@ def newton_solve(
         report: Optional progress report receiving the iteration residuals.
         method: Sparse backend method name.
         device: Optional sparse backend device hint.
-        cached_solve: Optional storage for warm-start vectors.
-        update_cache: If True, updates cached vectors.
         u_prev: Previous increment's field values. Receives residual gradients
             in backward so sensitivities chain across increments.
         grad_prev: Previous increment's gradient (e.g. deformation gradient).
@@ -799,8 +693,6 @@ def newton_solve(
         report,
         method,
         device,
-        cached_solve,
-        update_cache,
         u_prev,
         grad_prev,
         flux_prev,
