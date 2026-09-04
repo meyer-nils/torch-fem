@@ -52,17 +52,17 @@ class TestSparseSolve:
     def test_matches_dense_solution(self, method):
         A_dense = _spd(N, 0)
         b = torch.randn(N)
-        x, _ = sparse_solve(_to_csr(A_dense), b, method=method)
+        x, _, _ = sparse_solve(_to_csr(A_dense), b, method=method)
         assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_direct_method_returns_no_preconditioner(self):
-        _, M = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="spsolve")
+        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="spsolve")
         assert M is None
 
     @pytest.mark.parametrize("method", ["cg", "minres"])
     def test_iterative_method_builds_a_preconditioner(self, method):
         """The preconditioner is returned so the adjoint solve can reuse it."""
-        _, M = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
+        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
         assert M is not None
 
     def test_rejects_non_square_matrix(self):
