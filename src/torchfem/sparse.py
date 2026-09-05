@@ -396,7 +396,7 @@ def sparse_solve(
             `resolve_preconditioner` to choose by device and available backends.
         M (LinearOperator, optional): Preconditioner for iterative methods.
             Defaults to None, which builds one.
-        solver (AmgXSolver, optional): Solver to reuse for method='amgx'.
+        solver (AmgXSolver, optional): Solver to reuse where AmgX runs the solve.
             Defaults to None, which builds one. Kept apart from `M` because it
             is freed by `close()` rather than by the garbage collector, so it
             must not outlive the loop that owns it.
@@ -405,9 +405,9 @@ def sparse_solve(
         x (Tensor): Solution vector.
             *Shape:* `(n_dofs,)`.
         M (LinearOperator | None): Preconditioner built or reused by the solve,
-            `None` for direct methods and for 'amgx'.
+            `None` for a direct solve and wherever AmgX runs it.
         solver (AmgXSolver | None): Solver built or reused by the solve, `None`
-            for every method but 'amgx'. Holds its hierarchy until `close()`.
+            unless AmgX ran it. Holds its hierarchy until `close()`.
     """
     if A.ndim != 2 or A.shape[0] != A.shape[1]:
         raise ValueError("A should be a square 2D matrix.")

@@ -30,10 +30,11 @@ has no coordinates to read. AmgX reads the problem dimension from whether a
 third coordinate is attached, so a planar model attaches two rather than a flat
 z, which it would call degenerate.
 
-`resolve_method` prefers `amgx` for iterative solves on CUDA once it is
-installed. Aggregation wants a definite operator, which an indefinite tangent
-costs dearly, so `max_iters` stays low and a solve that exhausts it raises: such
-a tangent is worth reformulating instead.
+`resolve_preconditioner` prefers AMG for iterative solves on CUDA once AmgX is
+installed, and `resolve_library` then routes the whole solve here. Aggregation
+wants a definite operator, which an indefinite tangent costs dearly, so
+`max_iters` stays low and a solve that exhausts it raises: such a tangent is
+worth reformulating instead.
 """
 
 from __future__ import annotations
