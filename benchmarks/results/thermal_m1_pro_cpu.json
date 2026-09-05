@@ -2,60 +2,60 @@
   "hardware": "Apple M1 Pro",
   "device": "cpu",
   "python": "3.10.13",
-  "libraries": "SciPy 1.15.3, PyTorch 2.13.0",
+  "libraries": "SciPy 1.15.3, PyTorch 2.14.0",
   "dtype": "float64",
-  "commit": "2774fd8",
+  "commit": "48f4b58",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.027,
-      "fwd_s": 0.1113,
-      "bwd_s": 0.1972,
-      "peak_ram_mb": 536.3,
+      "setup_s": 0.0257,
+      "fwd_s": 0.1168,
+      "bwd_s": 0.1952,
+      "peak_ram_mb": 526.1,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.094,
-      "fwd_s": 0.3405,
-      "bwd_s": 0.2721,
-      "peak_ram_mb": 868.5,
+      "setup_s": 0.0957,
+      "fwd_s": 0.3652,
+      "bwd_s": 0.3029,
+      "peak_ram_mb": 846.8,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.3669,
-      "fwd_s": 1.2433,
-      "bwd_s": 0.5903,
-      "peak_ram_mb": 1856.1,
+      "setup_s": 0.3683,
+      "fwd_s": 1.4293,
+      "bwd_s": 0.8045,
+      "peak_ram_mb": 1798.1,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 1.4879,
-      "fwd_s": 5.045,
-      "bwd_s": 1.9592,
-      "peak_ram_mb": 4746.1,
+      "setup_s": 1.5768,
+      "fwd_s": 5.9201,
+      "bwd_s": 2.5857,
+      "peak_ram_mb": 4742.4,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 2048,
       "dofs": 4200450,
-      "setup_s": 6.028,
-      "fwd_s": 28.826,
-      "bwd_s": 10.3258,
-      "peak_ram_mb": 9343.5,
+      "setup_s": 6.0213,
+      "fwd_s": 31.9826,
+      "bwd_s": 12.5045,
+      "peak_ram_mb": 9871.4,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     }
   ]
 }
