@@ -4,48 +4,48 @@
   "python": "3.12.12",
   "libraries": "CuPy 14.1.1, CUDA 12.9",
   "dtype": "float64",
-  "commit": "144fed7",
+  "commit": "a5b9607",
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.1717,
-      "fwd_s": 17.7356,
-      "bwd_s": 4.038,
+      "setup_s": 0.1731,
+      "fwd_s": 12.7482,
+      "bwd_s": 3.0985,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1420.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 1378.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.1835,
-      "fwd_s": 24.2563,
-      "bwd_s": 5.5801,
+      "setup_s": 0.1762,
+      "fwd_s": 17.9864,
+      "bwd_s": 4.5457,
       "peak_ram_mb": null,
       "peak_vram_mb": 2262.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.176,
-      "fwd_s": 30.593,
-      "bwd_s": 7.3321,
+      "setup_s": 0.1785,
+      "fwd_s": 24.6652,
+      "bwd_s": 6.3337,
       "peak_ram_mb": null,
       "peak_vram_mb": 3350.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.1825,
-      "fwd_s": 39.4403,
-      "bwd_s": 9.4529,
+      "setup_s": 0.1739,
+      "fwd_s": 33.727,
+      "bwd_s": 8.6084,
       "peak_ram_mb": null,
       "peak_vram_mb": 4578.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     }
   ]
 }
