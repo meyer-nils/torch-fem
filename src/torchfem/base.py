@@ -112,17 +112,9 @@ class FEM(ABC):
         )
         self.idx = idx.reshape(self.n_elem, -1).to(torch.int32)
 
-        # Sparse assembly maps, built from the node adjacency. The matrix is
-        # blocked by node, storing one column index per block rather than per
-        # entry, and AmgX aggregates over those blocks. It takes none wider than
-        # five, so a node splits into `s` blocks where its degrees of freedom
-        # outrun that: a shell's six become two of three. A scalar problem has
-        # nothing to block and stays compressed by row, for want of a torch
-        # product over a block of one on CUDA.
+        # Sparse assembly maps, built from the node adjacency and expanded by
+        # degree of freedom, which leaves n_dof_per_node**2 fewer keys to sort.
         ndof = self.n_dof_per_node
-        self.block_size = bs = max(d for d in range(1, 6) if ndof % d == 0)
-        s = ndof // bs
-        sub = torch.arange(s, dtype=torch.int32)
         dof = torch.arange(ndof, dtype=torch.int32)
         nod = torch.arange(self.n_nod)
         el = self.elements.contiguous()
@@ -131,38 +123,27 @@ class FEM(ABC):
         packed = torch.unique(torch.cat([pair.ravel(), loop]))
         deg = torch.bincount(packed >> 32, minlength=self.n_nod)
         node_crow = torch.cat([deg.new_zeros(1), deg.cumsum(0)]).to(torch.int32)
-        node_col = (packed % 2**32).to(torch.int32)
         entry = torch.searchsorted(packed, pair, out_int32=True)
-        # Where a node holds its own block, so the diagonal can be found again
-        within = torch.searchsorted(packed, loop, out_int32=True) - node_crow[:-1]
-        del pair, loop, packed
+        block = ndof * (entry - node_crow[el][..., None])
+        diag = torch.searchsorted(packed, loop, out_int32=True) - node_crow[:-1]
+        node_col = ((ndof * (packed % 2**32)).to(torch.int32)[..., None] + dof).ravel()
+        del pair, loop, packed, entry
 
-        # Each node row becomes `s` block rows repeating that node's columns
-        length = (s * deg).repeat_interleave(s)
+        # Each node row becomes ndof rows repeating that node's columns
+        length = (ndof * deg).repeat_interleave(ndof)
         crow = torch.cat([length.new_zeros(1), length.cumsum(0)]).to(torch.int32)
-        cols = (node_col[:, None] * s + sub).ravel()
-        shift = (s * node_crow[:-1]).repeat_interleave(s) - crow[:-1]
+        shift = (ndof * node_crow[:-1]).repeat_interleave(ndof) - crow[:-1]
         pos = shift.repeat_interleave(length)
         pos += torch.arange(len(pos), dtype=torch.int32)
-        self.crow = crow
-        self.col = cols[pos]
-        self.n_blocks = self.col.numel()
-        # Where the diagonal of each block row sits, by node and block within it
-        self.diag = (crow[:-1].view(-1, s) + within[:, None] * s + sub).ravel()
-        del cols, shift, pos
+        self.col = node_col[pos]
+        del node_col, shift, pos
 
-        # Entry (p, i, q, j) of an element goes to the block holding row i of
-        # node p and column j of node q, at (i, j) within it
-        offset = (entry - node_crow[el][..., None])[:, :, None, :, None]
-        start = crow[(s * el)[..., None] + dof // bs][..., None, None]
-        block = start + offset * s + (dof // bs)
-        self.k_map = (
-            block * (bs * bs) + (dof % bs)[:, None, None] * bs + dof % bs
-        ).ravel()
-        # The block row each stored block sits in, which constrained rows need
-        self.block_row = torch.repeat_interleave(
-            torch.arange(crow.numel() - 1), crow.diff()
-        )
+        # Entry (p, i, q, j) of an element goes to the row of node p and dof i,
+        # into the column block of node q, at dof j
+        row = crow[(ndof * el)[..., None] + dof]
+        self.k_map = (row[..., None, None] + block[:, :, None, :, None] + dof).ravel()
+        self.diag_map = (crow[:-1].view(-1, ndof) + ndof * diag[:, None] + dof).ravel()
+        self.crow = crow
         if self.nodes.is_cuda:
             torch.cuda.empty_cache()
 
@@ -424,36 +405,25 @@ class FEM(ABC):
             con: Flattened indices of constrained global degrees of freedom.
 
         Returns:
-            Global matrix, blocked by node where the blocking is worth keeping
-            and compressed by row otherwise, with Dirichlet constraints enforced.
+            Global CSR matrix with Dirichlet constraints enforced.
         """
 
         # Fill in stiffness matrix values at appropriate indices
-        bs = self.block_size
-        val = torch.zeros(self.n_blocks * bs * bs)
+        val = torch.zeros(self.col.numel())
         val.index_add_(0, self.k_map, k.ravel())
 
+        # Apply Dirichlet boundary conditions. CSR stores no row per entry.
         constrained = torch.zeros(self.n_dofs, dtype=torch.bool)
         constrained[con] = True
-        size = (self.n_dofs, self.n_dofs)
+        row = torch.repeat_interleave(constrained, self.crow.diff())
+        val[row | constrained[self.col]] = 0.0
+        val[self.diag_map[con]] = 1.0
 
+        # Create sparse global stiffness matrix
         with torch.sparse.check_sparse_tensor_invariants(False):
-            if bs == 1:
-                # Apply Dirichlet conditions. CSR stores no row per entry.
-                row = torch.repeat_interleave(constrained, self.crow.diff())
-                val[row | constrained[self.col]] = 0.0
-                val[self.diag[con]] = 1.0
-                return torch.sparse_csr_tensor(self.crow, self.col, val, size=size)
-
-            # A constrained degree of freedom clears its row and its column,
-            # over the blocks that hold either.
-            val = val.view(self.n_blocks, bs, bs)
-            mask = constrained.view(-1, bs)
-            val[mask[self.block_row]] = 0.0
-            val.transpose(1, 2)[mask[self.col]] = 0.0
-            block, within = con // bs, con % bs
-            val[self.diag[block], within, within] = 1.0
-            return torch.sparse_bsr_tensor(self.crow, self.col, val, size=size)
+            return torch.sparse_csr_tensor(
+                self.crow, self.col, val, size=(self.n_dofs, self.n_dofs)
+            )
 
     def assemble_rhs(self, f: Tensor) -> Tensor:
         """Assemble a global right-hand-side vector from element values.
@@ -851,6 +821,7 @@ class FEM(ABC):
                         make_eval_residual(F_ext, DU, de0, k_visc),
                         du.detach(),
                         B,
+                        self.nodes,
                         max_iter,
                         rtol,
                         atol,
@@ -1549,6 +1520,7 @@ class Heat(FEM, ABC):
                     self.M + 0.5 * dt_n * self.K,
                     -residual,
                     B,
+                    self.nodes,
                     stol,
                     device,
                     solve_method,

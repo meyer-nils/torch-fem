@@ -17,11 +17,10 @@
 - A material declares whether its tangent has major symmetry through `Material.symmetric_tangent`, which decides `cg` against `bicgstab`. `IsotropicDamage3D` sets it to `False`: its algorithmic tangent carries a rank-one term whose factors differ, and `cg` stagnates on the result rather than converging slowly.
 - GPU acceleration requires CuPy 14.2 or newer, which is where `bicgstab` arrives and `cg` takes `rtol`.
 - A model builds its sparse index maps from the node adjacency and expands them by degree of freedom, rather than sorting the degree-of-freedom pairs themselves, which leaves `n_dof_per_node**2` fewer keys to sort. This speeds up setup significantly.
-- **Breaking:** `FEM.assemble_matrix(...)` returns a BSR tensor blocked by node with int32 indices, or a CSR one where a node carries a single degree of freedom, rather than a COO tensor with int64 ones. Storing one index per block rather than per entry shrinks a model's index data, and AmgX aggregates over the same blocks.
-- A planar model's AmgX solve aggregates geometrically, as a solid one already did, for roughly 40% fewer iterations. AmgX reads the problem dimension from whether a third coordinate is attached, so a planar model attaches two rather than a flat z.
+- **Breaking:** `FEM.assemble_matrix(...)` returns a CSR tensor with int32 indices rather than a COO tensor with int64 ones, which is the layout the linear solvers convert to anyway. A model's index data shrinks to a quarter.
 - `Assembly` eliminates its constrained degrees of freedom with a precomputed scatter map rather than a sparse-sparse product, which is about ten times faster per Newton iteration and needs no MKL.
 - **Breaking:** `sparse_solve(...)` takes and returns the reusable AmgX solver in its own `solver` slot rather than in `M`, which now holds a preconditioner alone. A preconditioner is freed by the garbage collector and an AmgX solver only by `close()`, so one slot could not follow one rule and every adjoint had to check the type of what it got back before deciding whether to free it.
-- **Breaking:** `sparse_solve(...)` and `modal_eigsolve(...)` take matrices compressed by row or blocked by node, or the `t()` of one as its transpose, rather than COO ones. They converted to that layout internally anyway, and every caller in the library now assembles it directly.
+- **Breaking:** `sparse_solve(...)` and `modal_eigsolve(...)` take matrices compressed by row, or the `t()` of one as its transpose, rather than COO ones. They converted to that layout internally anyway, and every caller in the library now assembles it directly.
 
 ## Version 0.10.0 - August 26 2026
 

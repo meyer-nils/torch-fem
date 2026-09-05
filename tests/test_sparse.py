@@ -3,7 +3,6 @@ import torch
 from scipy.linalg import eigh as scipy_eigh
 
 from torchfem.sparse import (
-    _coords,
     available_backends,
     describe_method,
     differentiable_modal_eigsolve,
@@ -347,50 +346,6 @@ class TestResolvePreconditioner:
             assert resolve_preconditioner("cg", "cuda", None) == "jacobi"
             with pytest.raises(RuntimeError, match="AmgX is not available"):
                 resolve_preconditioner("cg", "cuda", "amg")
-
-
-class TestCoords:
-    """The nodal coordinates AmgX aggregates over, read back out of `B`."""
-
-    @staticmethod
-    def _model(kind):
-        from torchfem import Planar, Shell, Solid, SolidHeat
-        from torchfem.materials import (
-            IsotropicConductivity3D,
-            IsotropicElasticity3D,
-            IsotropicElasticityPlaneStress,
-        )
-        from torchfem.mesh import cube_hexa, rect_quad, rect_tri
-
-        if kind == "shell":
-            flat, elements = rect_tri(4, 4)
-            nodes = torch.cat([flat, torch.zeros(len(flat), 1)], dim=1)
-            mat = IsotropicElasticityPlaneStress(7e4, 0.3)
-            return Shell(nodes, elements, mat, thickness=0.1)
-        if kind == "planar":
-            mat = IsotropicElasticityPlaneStress(1e3, 0.3)
-            return Planar(*rect_quad(4, 4), mat)
-        if kind == "heat":
-            return SolidHeat(*cube_hexa(3, 3, 3), IsotropicConductivity3D(1.0))
-        return Solid(*cube_hexa(3, 3, 3), IsotropicElasticity3D(1e3, 0.3))
-
-    @pytest.mark.parametrize("kind", ["solid", "planar"])
-    def test_a_model_gets_its_nodes_back(self, kind):
-        """Three coordinates in 3D and two in 2D, which AmgX reads as its
-        problem dimension."""
-        model = self._model(kind)
-        coords = _coords(model.near_null_space(), model.n_nod)
-        assert coords is not None and len(coords) == model.n_dim
-        for axis, got in enumerate(coords):
-            assert torch.allclose(torch.as_tensor(got), model.nodes[:, axis])
-
-    @pytest.mark.parametrize("kind", ["shell", "heat"])
-    def test_geometry_only_where_a_node_is_one_block(self, kind):
-        """A shell splits its node over two blocks, so it has no coordinate per
-        block row; a scalar model carries no rotation modes to read."""
-        model = self._model(kind)
-        K = model.assemble_matrix(model.k0(), torch.tensor([0, 1]))
-        assert _coords(model.near_null_space(), K.shape[0] // model.block_size) is None
 
 
 class TestResolveLibrary:
