@@ -154,6 +154,7 @@ class Solve(Function):
         A: Tensor,
         b: Tensor,
         B: Tensor | None = None,
+        nodes: Tensor | None = None,
         stol: float = 1e-10,
         device: str | None = None,
         method: str | None = None,
@@ -170,7 +171,9 @@ class Solve(Function):
             M (LinearOperator | None): Preconditioner built or reused by the
                 solve, passed on to `backward` for the adjoint system.
         """
-        x, M, solver = sparse_solve(A, b, B, stol, device, method, preconditioner, M)
+        x, M, solver = sparse_solve(
+            A, b, B, nodes, stol, device, method, preconditioner, M
+        )
 
         # An AmgX solver built here is freed here, and `backward` builds its
         # own: nothing else frees one. See `torchfem.amgx`.
@@ -198,7 +201,15 @@ class Solve(Function):
         # Adjoint solve: A^T lambda = grad_x, where `A.t()` is a CSC view of the
         # same arrays rather than a transposed copy.
         gradb, _, solver = sparse_solve(
-            A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.pre, ctx.M
+            A.t(),
+            grad_x,
+            ctx.B,
+            ctx.nodes,
+            ctx.stol,
+            ctx.device,
+            ctx.method,
+            ctx.pre,
+            ctx.M,
         )
 
         # An AmgX solver built for this adjoint does not outlive it either
@@ -213,7 +224,7 @@ class Solve(Function):
         with torch.sparse.check_sparse_tensor_invariants(False):
             gradA = torch.sparse_csr_tensor(crow, col, val, size=A.shape)
 
-        return gradA, gradb, None, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output) -> None:
@@ -222,12 +233,13 @@ class Solve(Function):
         Stores the preconditioner *returned* by the forward pass, not the one
         passed in, so the adjoint solve reuses the AMG hierarchy built there.
         """
-        A, b, B, stol, device, method, preconditioner, M = inputs
+        A, b, B, nodes, stol, device, method, preconditioner, M = inputs
         x, M_computed = output
         ctx.save_for_backward(A, x)
 
         # Save the parameters for backward pass (including the preconditioner)
         ctx.B = B
+        ctx.nodes = None if nodes is None else nodes.detach()
         ctx.stol = stol
         ctx.device = device
         ctx.method = method
@@ -239,6 +251,7 @@ def differentiable_sparse_solve(
     A: Tensor,
     b: Tensor,
     B: Tensor | None = None,
+    nodes: Tensor | None = None,
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
@@ -256,7 +269,7 @@ def differentiable_sparse_solve(
     if A.layout == torch.sparse_coo:
         A = A.to_sparse_csr()
     result, _ = Solve.apply(  # type: ignore
-        A, b, B, stol, device, method, preconditioner, M
+        A, b, B, nodes, stol, device, method, preconditioner, M
     )
     if result is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
@@ -267,6 +280,7 @@ def sparse_solve(
     A: Tensor,
     b: Tensor,
     B: Tensor | None = None,
+    nodes: Tensor | None = None,
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
@@ -282,6 +296,10 @@ def sparse_solve(
             one, which is compressed by column, is accepted as its transpose.
         b (Tensor): Right-hand side vector b.
         B (Tensor, optional): Null space rigid body modes for AMG preconditioner.
+        nodes (Tensor, optional): Nodal coordinates, which AmgX aggregates over
+            instead of a null space. Their count gives the degrees of freedom
+            per node, so they must describe every row of `A` in nodal blocks.
+            Defaults to None, where AmgX aggregates single rows.
         stol (float, optional): Relative solver tolerance for the iterative solver.
             Defaults to 1e-10.
         device (str, optional): Device to run the computation on ('cpu' or 'cuda').
@@ -339,7 +357,7 @@ def sparse_solve(
     # Solve either on CPU or GPU
     if A.device.type == "cuda":
         x_xp, M, solver = _solve_gpu(
-            A, b, B, method, preconditioner, stol, M, solver, shape
+            A, b, nodes, method, preconditioner, stol, M, solver, shape
         )
     else:
         x_xp, M = _solve_cpu(A, b, B, method, preconditioner, stol, M, shape)
@@ -353,7 +371,7 @@ def sparse_solve(
 def _solve_gpu(
     A: Tensor,
     b: Tensor,
-    B: Tensor | None,
+    nodes: Tensor | None,
     method: str,
     preconditioner: str,
     stol: float,
@@ -365,7 +383,7 @@ def _solve_gpu(
 
     AMG is AmgX, which brings its own Krylov solver and so runs the whole solve,
     reusing `solver` to refresh coefficients instead of building a fresh
-    hierarchy, and reading the nodal block size off `B`. Everything else runs in
+    hierarchy, and taking its nodal blocks from `nodes`. Everything else runs in
     CuPy, over a Jacobi preconditioner built from `A` unless `M` is supplied.
     """
     if "cupy" not in available_backends:
@@ -395,16 +413,12 @@ def _solve_gpu(
         # AMG hierarchy, built from scratch unless one was already passed in,
         # in which case only its coefficients are refreshed.
         if solver is None:
-            # AmgX uses coordinates instead of null space B, read back off the
-            # rotation modes. Both this and the block size assume `B` still
-            # holds whole nodal blocks, which an `Assembly` breaks where a
-            # coupling eliminates part of a node.
+            block_size = shape[0] // len(nodes) if nodes is not None else 1
             coords = None
-            block_size = {6: 3, 3: 2}.get(B.shape[1], 1) if B is not None else 1
-            if B is not None and B.shape[1] == 6:
+            # Geometry only where the rotational modes have no DOFs of their own
+            if nodes is not None and nodes.shape[1] == 3 and block_size == 3:
                 x, y, z = (
-                    np.ascontiguousarray(c.detach().cpu().numpy())
-                    for c in (B[1::3, 5], B[2::3, 3], B[0::3, 4])
+                    np.ascontiguousarray(c.detach().cpu().numpy()) for c in nodes.t()
                 )
                 coords = x, y, z
             krylov = "PCG" if method == "cg" else "PBICGSTAB"
@@ -513,6 +527,7 @@ class NewtonRaphsonAdjoint(Function):
         eval_residual: Callable,
         du: Tensor,
         B: Tensor,
+        nodes: Tensor | None,
         max_iter: int,
         rtol: float,
         atol: float,
@@ -567,7 +582,7 @@ class NewtonRaphsonAdjoint(Function):
 
             # Solve for displacement increment
             du_i, M, solver = sparse_solve(
-                K, residual, B, stol, device, method, preconditioner, M, solver
+                K, residual, B, nodes, stol, device, method, preconditioner, M, solver
             )
 
             du = du - du_i
@@ -586,6 +601,7 @@ class NewtonRaphsonAdjoint(Function):
             K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters
         )
         ctx.B = B
+        ctx.nodes = None if nodes is None else nodes.detach()
         ctx.M = M
         ctx.stol = stol
         ctx.device = device
@@ -613,6 +629,7 @@ class NewtonRaphsonAdjoint(Function):
         K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters = ctx.saved_tensors
 
         B = ctx.B
+        nodes = ctx.nodes
         M = ctx.M
         stol = ctx.stol
         device = ctx.device
@@ -623,7 +640,7 @@ class NewtonRaphsonAdjoint(Function):
 
         # Solve adjoint system, where `K.t()` is a CSC view of the same arrays.
         lambda_, _, solver = sparse_solve(
-            K.t(), grad_du, B, stol, device, method, preconditioner, M
+            K.t(), grad_du, B, nodes, stol, device, method, preconditioner, M
         )
 
         # An AmgX solver built for this adjoint does not outlive it either
@@ -662,6 +679,7 @@ class NewtonRaphsonAdjoint(Function):
             None,
             None,
             None,
+            None,
             *grad_prev_state,
             *grad_parameters,
         )
@@ -671,6 +689,7 @@ def newton_solve(
     eval_residual: Callable,
     du: Tensor,
     B: Tensor,
+    nodes: Tensor | None,
     max_iter: int,
     rtol: float,
     atol: float,
@@ -692,6 +711,8 @@ def newton_solve(
             current iterate, Newton iteration index, and previous state.
         du: Initial guess for the unknown increment.
         B: Null-space rigid-body basis for AMG preconditioning.
+        nodes: Nodal coordinates for AmgX, or None where the rows carry no
+            nodal blocking.
         max_iter: Maximum Newton iterations.
         rtol: Relative residual tolerance.
         atol: Absolute residual tolerance.
@@ -716,6 +737,7 @@ def newton_solve(
         eval_residual,
         du,
         B,
+        nodes,
         max_iter,
         rtol,
         atol,
