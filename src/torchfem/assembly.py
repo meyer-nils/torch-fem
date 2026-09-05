@@ -586,7 +586,6 @@ class Assembly:
                 make_eval_residual(F_ext, DU, step),
                 dq.detach(),
                 B,
-                None,  # elimination leaves the rows in no nodal blocking
                 max_iter,
                 rtol,
                 atol,

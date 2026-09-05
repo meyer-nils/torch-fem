@@ -3,6 +3,7 @@ import torch
 from scipy.linalg import eigh as scipy_eigh
 
 from torchfem.sparse import (
+    _nodal,
     available_backends,
     describe_method,
     differentiable_modal_eigsolve,
@@ -366,3 +367,61 @@ class TestResolveLibrary:
     ):
         """Only a hierarchy or a factorisation is worth another library."""
         assert resolve_library("cg", device, preconditioner) == "torch"
+
+
+class TestNodal:
+    """The blocking and geometry AmgX aggregates over, read out of `B`."""
+
+    @staticmethod
+    def _model(kind):
+        from torchfem import Planar, Shell, Solid, SolidHeat
+        from torchfem.materials import (
+            IsotropicConductivity3D,
+            IsotropicElasticity3D,
+            IsotropicElasticityPlaneStress,
+        )
+        from torchfem.mesh import cube_hexa, rect_quad, rect_tri
+
+        if kind == "planar":
+            return Planar(*rect_quad(4, 4), IsotropicElasticityPlaneStress(1e3, 0.3))
+        if kind == "heat":
+            return SolidHeat(*cube_hexa(4, 4, 4), IsotropicConductivity3D(400.0))
+        if kind == "shell":
+            flat, elements = rect_tri(4, 4)
+            nodes = torch.cat([flat, torch.zeros(len(flat), 1)], dim=1)
+            mat = IsotropicElasticityPlaneStress(7e4, 0.3)
+            return Shell(nodes, elements, mat, thickness=0.1)
+        return Solid(*cube_hexa(4, 4, 4), IsotropicElasticity3D(1e3, 0.3))
+
+    @pytest.mark.parametrize(
+        "kind,block_size", [("solid", 3), ("planar", 2), ("shell", 3), ("heat", 1)]
+    )
+    def test_the_block_size_is_the_degrees_of_freedom_a_node_carries(
+        self, kind, block_size
+    ):
+        """A shell's six outrun what AmgX aggregates, so its node splits in two."""
+        model = self._model(kind)
+        assert _nodal(model.near_null_space(), model.n_dofs)[0] == block_size
+
+    def test_a_solid_gets_its_nodes_back(self):
+        model = self._model("solid")
+        coords = _nodal(model.near_null_space(), model.n_dofs)[1]
+        assert coords is not None
+        for axis, got in enumerate(coords):
+            assert torch.allclose(torch.as_tensor(got), model.nodes[:, axis])
+
+    @pytest.mark.parametrize("kind", ["planar", "shell", "heat"])
+    def test_geometry_only_where_a_node_is_one_block_in_three_dimensions(self, kind):
+        """A shell splits its node over two blocks, so it has no coordinate per
+        block row; a planar or scalar model carries no third coordinate."""
+        model = self._model(kind)
+        assert _nodal(model.near_null_space(), model.n_dofs)[1] is None
+
+    def test_rows_in_no_nodal_stride_are_not_blocked(self):
+        """An assembly eliminates constrained rows, leaving no uniform blocking."""
+        B = torch.zeros(17, 6)
+        B[[0, 5], 0] = 1.0
+        assert _nodal(B, 17) == (1, None)
+
+    def test_no_basis_is_not_blocked(self):
+        assert _nodal(None, 100) == (1, None)
