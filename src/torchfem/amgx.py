@@ -24,11 +24,11 @@ elasticity. Two things recover most of it. Aggregating over
 `block_size x block_size` nodal blocks holds the translational rigid-body modes
 implicitly, and passing nodal coordinates to `AMGX_matrix_attach_geometry` lets
 the `GEO` selector aggregate geometrically, which is where the rotational modes
-hide. Together they bring it close to what pyamg reaches with the same
-unsmoothed prolongation and an explicit `B`. `_solve_amgx` derives both the block
-size and the coordinates from the nodes it is passed. Coordinates are solids
-only; scalar, planar and shell problems keep the algebraic `SIZE_8` selector,
-which `GEO` cannot replace without one coordinate triple per block row.
+hide. `GEO` needs one coordinate per block row, so a shell, whose node spans
+two blocks, keeps the algebraic `SIZE_8` selector, as does a scalar problem that
+has no coordinates to read. AmgX reads the problem dimension from whether a
+third coordinate is attached, so a planar model attaches two rather than a flat
+z, which it would call degenerate.
 
 `resolve_method` prefers `amgx` for iterative solves on CUDA once it is
 installed. Aggregation wants a definite operator, which an indefinite tangent
@@ -192,7 +192,8 @@ class AmgXSolver:
     values and int32 indices; `resetup()` reuses it across a Newton loop
     where only the coefficients change. `block_size` is the degrees of freedom
     per node, which AmgX aggregates as a unit. `coords` are host arrays of nodal
-    x, y and z, which switch aggregation to `GEO`; see the module docstring.
+    x and y, and z in three dimensions, which switch aggregation to `GEO`; see
+    the module docstring.
     `krylov` is the solver AMG preconditions, `PCG` for a symmetric matrix and
     `PBICGSTAB` otherwise.
     """
@@ -202,7 +203,7 @@ class AmgXSolver:
         n: int,
         stol: float,
         block_size: int = 1,
-        coords: tuple[Any, Any, Any] | None = None,
+        coords: tuple[Any, ...] | None = None,
         krylov: str = "PBICGSTAB",
     ) -> None:
         _initialize()
@@ -249,10 +250,12 @@ class AmgXSolver:
         if self._coords is not None:
             # Host pointers: AmgX copies these element by element on the CPU,
             # unlike the uploads above.
-            x, y, z = self._coords
+            x, y, *rest = self._coords
+            # A null third coordinate is how AmgX is told the problem is planar.
+            z = rest[0].ctypes.data if rest else None
             _check(
                 _lib.AMGX_matrix_attach_geometry(
-                    self._mtx, x.ctypes.data, y.ctypes.data, z.ctypes.data, self.n_rows
+                    self._mtx, x.ctypes.data, y.ctypes.data, z, self.n_rows
                 )
             )
         _check(_lib.AMGX_solver_setup(self._slv, self._mtx))

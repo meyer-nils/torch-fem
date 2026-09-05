@@ -403,17 +403,20 @@ class TestNodal:
         model = self._model(kind)
         assert _nodal(model.near_null_space(), model.n_dofs)[0] == block_size
 
-    def test_a_solid_gets_its_nodes_back(self):
-        model = self._model("solid")
+    @pytest.mark.parametrize("kind", ["solid", "planar"])
+    def test_a_model_gets_its_nodes_back(self, kind):
+        """Three coordinates in 3D and two in 2D, which AmgX reads as its
+        problem dimension."""
+        model = self._model(kind)
         coords = _nodal(model.near_null_space(), model.n_dofs)[1]
-        assert coords is not None
+        assert coords is not None and len(coords) == model.n_dim
         for axis, got in enumerate(coords):
             assert torch.allclose(torch.as_tensor(got), model.nodes[:, axis])
 
-    @pytest.mark.parametrize("kind", ["planar", "shell", "heat"])
-    def test_geometry_only_where_a_node_is_one_block_in_three_dimensions(self, kind):
+    @pytest.mark.parametrize("kind", ["shell", "heat"])
+    def test_geometry_only_where_a_node_is_one_block(self, kind):
         """A shell splits its node over two blocks, so it has no coordinate per
-        block row; a planar or scalar model carries no third coordinate."""
+        block row; a scalar model carries no rotation modes to read."""
         model = self._model(kind)
         assert _nodal(model.near_null_space(), model.n_dofs)[1] is None
 

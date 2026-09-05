@@ -162,9 +162,15 @@ def _nodal(B: Tensor | None, n: int) -> tuple[int, tuple[Any, ...] | None]:
     # freedom split into a translational and a rotational block of three.
     block_size = 3 if dofs == 6 else dofs
     # `GEO` needs one coordinate per block row, which a split node denies it.
-    if dofs != block_size or B.shape[1] != 6:
+    if dofs != block_size:
         return block_size, None
-    cols = B[base + 1, 5], B[base + 2, 3], B[base, 4]
+    # A rotation about z moves x by -y and y by x, which gives the coordinates.
+    if B.shape[1] == 3:  # two translations and a rotation about z
+        cols = B[base + 1, 2], -B[base, 2]
+    elif B.shape[1] == 6:  # three of each
+        cols = B[base + 1, 5], B[base + 2, 3], B[base, 4]
+    else:
+        return block_size, None
     return block_size, tuple(
         np.ascontiguousarray(c.detach().cpu().numpy()) for c in cols
     )
