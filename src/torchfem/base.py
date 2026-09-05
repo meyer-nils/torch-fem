@@ -16,6 +16,7 @@ from .sparse import (
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     newton_solve,
+    resolve_method,
 )
 
 
@@ -339,6 +340,11 @@ class FEM(ABC):
         """The near-null space an algebraic multigrid setup needs for this model."""
         return near_null_space(self.nodes, self.n_dof_per_node)
 
+    @property
+    def symmetric_tangent(self) -> bool:
+        """Whether the material tangent has major symmetry."""
+        return self.material is None or self.material.symmetric_tangent
+
     def integrate_shape_functions(self) -> Tensor:
         """Integrate each shape function over its element.
 
@@ -566,7 +572,8 @@ class FEM(ABC):
         verbose: bool,
         title: str,
         dtype: torch.dtype,
-        method: str | None,
+        method: str,
+        preconditioner: str | None,
         device: str | None,
         newton: str,
         **kwargs: str,
@@ -579,7 +586,7 @@ class FEM(ABC):
             "model": f"{type(self).__name__} | {self.n_elem:,} elem | "
             f"{self.n_dofs:,} dof | {str(dtype).removeprefix('torch.')}",
             "machine": machine(device),
-            "solver": describe_method(self.n_dofs, device, method),
+            "solver": describe_method(method, device, preconditioner),
             "newton": newton,
         }
         if dtype != torch.float64:
@@ -599,7 +606,8 @@ class FEM(ABC):
         growth_factor: float = 1.1,
         max_cutbacks: int = 10,
         verbose: bool = False,
-        method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
+        method: Literal["direct", "cg", "bicgstab"] | None = None,
+        preconditioner: Literal["amg", "jacobi", "none"] | None = None,
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
@@ -628,7 +636,10 @@ class FEM(ABC):
                 increment before the solve is given up.
             verbose: If True, reports the solver configuration and a table of
                 per-increment progress, updated in place inside notebooks.
-            method: Linear solver backend name.
+            method: Linear solver method, chosen by size and tangent symmetry
+                when omitted.
+            preconditioner: Preconditioner for an iterative method, chosen by
+                device and available backends when omitted.
             device: Optional device hint for the linear solver backend.
             return_intermediate: If True, returns values for all increments.
             aggregate_integration_points: If True, averages flux, gradient, and
@@ -690,7 +701,12 @@ class FEM(ABC):
             + (" | nlgeom" if nlgeom else "")
             + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
         )
-        report = self._report(verbose, "solve", u.dtype, method, device, newton)
+        # Resolved once here, from what the model knows about its own tangent,
+        # rather than per linear solve.
+        solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
+        report = self._report(
+            verbose, "solve", u.dtype, solve_method, preconditioner, device, newton
+        )
 
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
@@ -810,7 +826,8 @@ class FEM(ABC):
                         atol,
                         stol,
                         report,
-                        method,
+                        solve_method,
+                        preconditioner,
                         device,
                         u_prev,
                         grad_prev,
@@ -1287,7 +1304,8 @@ class Heat(FEM, ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         device: str | None = None,
-        method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
+        method: Literal["direct", "cg", "bicgstab"] | None = None,
+        preconditioner: Literal["amg", "jacobi", "none"] | None = None,
         aggregate_integration_points: bool = True,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -1308,7 +1326,10 @@ class Heat(FEM, ABC):
             atol: Absolute residual tolerance for Newton convergence.
             stol: Tolerance used by iterative linear solvers.
             device: Optional device hint for the linear solver backend.
-            method: Linear solver backend name.
+            method: Linear solver method, chosen by size and tangent symmetry
+                when omitted.
+            preconditioner: Preconditioner for an iterative method, chosen by
+                device and available backends when omitted.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
             differentiable_parameters: Explicit parameters that should receive
@@ -1424,11 +1445,15 @@ class Heat(FEM, ABC):
         newton = (
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it | dt <= {delta_t:g}"
         )
+        # The transient tangent adds the mass matrix, which is symmetric, so the
+        # material alone decides, as in `solve`.
+        solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
         report = self._report(
             verbose,
             "time integration",
             u.dtype,
-            method,
+            solve_method,
+            preconditioner,
             device,
             newton,
             label="Time step",
@@ -1496,7 +1521,8 @@ class Heat(FEM, ABC):
                     B,
                     stol,
                     device,
-                    method,
+                    solve_method,
+                    preconditioner,
                 )
 
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))

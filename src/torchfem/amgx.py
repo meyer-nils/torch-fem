@@ -216,6 +216,8 @@ class AmgXSolver:
     where only the coefficients change. `block_size` is the degrees of freedom
     per node, which AmgX aggregates as a unit. `coords` are host arrays of nodal
     x, y and z, which switch aggregation to `GEO`; see the module docstring.
+    `krylov` is the solver AMG preconditions, `PCG` for a symmetric matrix and
+    `PBICGSTAB` otherwise.
     """
 
     def __init__(
@@ -224,12 +226,14 @@ class AmgXSolver:
         stol: float,
         block_size: int = 1,
         coords: tuple[Any, Any, Any] | None = None,
+        krylov: str = "PBICGSTAB",
     ) -> None:
         _initialize()
         self._closed = False
         self._coords = coords
 
         config = deepcopy(_DEFAULT_CONFIG)
+        config["solver"]["solver"] = krylov
         config["solver"]["tolerance"] = stol
         if coords is not None:
             config["solver"]["preconditioner"]["selector"] = "GEO"

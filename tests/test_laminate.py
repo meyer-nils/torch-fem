@@ -370,3 +370,18 @@ def test_symmetric_offset_recouples():
 
     assert _uz_under_inplane_stretch(centered).abs().max() < 1e-9
     assert _uz_under_inplane_stretch(offset).abs().max() > 1e-5
+
+
+def test_the_tangent_symmetry_of_a_laminate_follows_its_layers():
+    """A shell asks its section, not the material the base class holds."""
+    nodes, elements = square_plate()
+    mat = IsotropicElasticityPlaneStress(E=70000.0, nu=0.3)
+    lam = Shell(nodes, elements, Laminate([mat, mat], [1.0, 1.0], [0.0, 90.0]))
+
+    assert lam.material is None
+    assert lam.symmetric_tangent is True
+
+    # A layer without major symmetry carries through to the shell
+    assert lam.section is not None
+    lam.section.materials[1].symmetric_tangent = False
+    assert lam.symmetric_tangent is False

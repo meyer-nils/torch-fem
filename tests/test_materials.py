@@ -352,6 +352,18 @@ class TestIsotropicPlasticityPlaneStrain:
 
 
 class TestIsotropicDamage3D:
+    def test_declares_an_unsymmetric_tangent(self):
+        """Its rank-one term has two different factors, so CG cannot solve it."""
+
+        def d(kappa, cl):
+            return torch.clamp(1 - 0.01 / kappa, min=0.0)
+
+        mat = IsotropicDamage3D(210e3, 0.3, d, lambda k, cl: 0.01 / k**2, "rankine")
+        assert mat.symmetric_tangent is False
+        # A class attribute, so batching the tensor properties leaves it alone
+        assert mat.vectorize(N_ELEM).symmetric_tangent is False
+        assert IsotropicElasticity3D(210e3, 0.3).symmetric_tangent is True
+
     def test_elastic_step(self):
         def d(kappa, cl):
             return torch.clamp(1 - 0.01 / kappa, min=0.0)

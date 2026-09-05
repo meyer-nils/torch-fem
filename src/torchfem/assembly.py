@@ -13,7 +13,7 @@ from torch import Tensor
 
 from .base import FEM, Heat, near_null_space, skew
 from .report import SolveReport, machine
-from .sparse import describe_method, newton_solve
+from .sparse import describe_method, newton_solve, resolve_method
 
 # An empty constraint set, so `assemble_matrix` leaves the part matrix raw.
 EMPTY = torch.empty(0, dtype=torch.int64)
@@ -373,8 +373,18 @@ class Assembly:
             [near_null_space(part.nodes, part.n_dof_per_node) for part in self.parts]
         )
 
+    @property
+    def symmetric_tangent(self) -> bool:
+        """Whether every part has a symmetric tangent. See `Material`."""
+        return all(getattr(part, "symmetric_tangent", True) for part in self.parts)
+
     def _report(
-        self, verbose: bool, method: str | None, device: str | None, newton: str
+        self,
+        verbose: bool,
+        method: str,
+        preconditioner: str | None,
+        device: str | None,
+        newton: str,
     ) -> SolveReport | None:
         """Open a report on this assembly and its linear solver, if verbose."""
         if not verbose:
@@ -386,7 +396,7 @@ class Assembly:
             "model": f"Assembly | {len(self.parts)} parts | {n_elem:,} elem | "
             f"{self.n_dofs:,} dof | {dtype}",
             "machine": machine(device),
-            "solver": describe_method(self.n_dofs, device, method),
+            "solver": describe_method(method, device, preconditioner),
             "newton": newton,
         }
         return SolveReport("torch-fem | solve", header)
@@ -399,7 +409,8 @@ class Assembly:
         atol: float = 1e-6,
         stol: float = 1e-10,
         verbose: bool = False,
-        method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
+        method: Literal["direct", "cg", "bicgstab"] | None = None,
+        preconditioner: Literal["amg", "jacobi", "none"] | None = None,
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
@@ -416,7 +427,10 @@ class Assembly:
             atol: Absolute residual tolerance for Newton convergence.
             stol: Tolerance used by iterative linear solvers.
             verbose: If True, reports solver configuration and progress.
-            method: Linear solver backend name.
+            method: Linear solver method, chosen by size and tangent symmetry
+                when omitted.
+            preconditioner: Preconditioner for an iterative method, chosen by
+                device and available backends when omitted.
             device: Optional device hint for the linear solver backend.
             return_intermediate: If True, returns values for all increments.
             aggregate_integration_points: If True, averages flux, gradient, and
@@ -480,7 +494,10 @@ class Assembly:
         shapes = [[x[0].shape for x in q] for q in (u, grad, flux, state)]
 
         newton = f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
-        report = self._report(verbose, method, device, newton)
+        # Resolved on the reduced system that is actually solved, before the
+        # report names it.
+        solve_method = resolve_method(len(retained), method, self.symmetric_tangent)
+        report = self._report(verbose, solve_method, preconditioner, device, newton)
 
         # Each part caches its own tangent block, reused when a linear material
         # reports no new element stiffness.
@@ -574,7 +591,8 @@ class Assembly:
                 atol,
                 stol,
                 report,
-                method,
+                solve_method,
+                preconditioner,
                 device,
                 *prev,
                 *differentiable_parameters,

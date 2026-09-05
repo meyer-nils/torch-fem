@@ -9,10 +9,11 @@ import torch
 from scipy.sparse import csc_matrix as scipy_csc_matrix
 from scipy.sparse import csgraph
 from scipy.sparse import csr_matrix as scipy_csr_matrix
-from scipy.sparse.linalg import LinearOperator
+from scipy.sparse import diags as scipy_diags
+from scipy.sparse.linalg import LinearOperator, aslinearoperator
+from scipy.sparse.linalg import bicgstab as scipy_bicgstab
 from scipy.sparse.linalg import cg as scipy_cg
 from scipy.sparse.linalg import eigsh as scipy_eigsh
-from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
 from torch.autograd import Function
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 
 ERR_CUPY_MISSING = (
     "CuPy is not available.\n\n"
-    "Please install CuPy to use GPU acceleration:\n"
+    "Please install CuPy 14.2 or newer to use GPU acceleration:\n"
     "> pip install cupy-cuda12x # v12.x\n"
     "> pip install cupy-cuda13x # v13.x"
 )
@@ -48,9 +49,9 @@ try:
     from cupyx.scipy.sparse import csc_matrix as cupy_csc_matrix
     from cupyx.scipy.sparse import csr_matrix as cupy_csr_matrix
     from cupyx.scipy.sparse import diags as cupy_diags
+    from cupyx.scipy.sparse.linalg import bicgstab as cupy_bicgstab
     from cupyx.scipy.sparse.linalg import cg as cupy_cg
     from cupyx.scipy.sparse.linalg import eigsh as cupy_eigsh
-    from cupyx.scipy.sparse.linalg import minres as cupy_minres
     from cupyx.scipy.sparse.linalg import spsolve as cupy_spsolve
 
     available_backends.append("cupy")
@@ -72,33 +73,63 @@ except ImportError:
     pass
 
 
-def resolve_method(n_dofs: int, device: str, method: str | None) -> str:
-    """Return the backend that `sparse_solve` uses for a system of this size."""
+def resolve_method(n_dofs: int, method: str | None, symmetric: bool = True) -> str:
+    """Return the method `sparse_solve` uses for a system of this size.
+
+    A direct solve below 10000 degrees of freedom, and beyond it the Krylov
+    method the tangent's symmetry allows: `cg` needs a symmetric matrix, while
+    `bicgstab` does not. Where the crossover really lies depends on the mesh,
+    the device and the backend, so this is one compromise for all of them.
+    """
     if method is not None:
         return method
     if n_dofs < 10000:
-        if device == "cpu" and "pypardiso" in available_backends:
-            return "pardiso"
-        return "spsolve"
-    if device == "cuda" and "amgx" in available_backends:
-        return "amgx"
-    return "minres"
+        return "direct"
+    return "cg" if symmetric else "bicgstab"
 
 
-def describe_method(n_dofs: int, device: str, method: str | None) -> str:
-    """Describe the backend that `resolve_method` picks, for verbose output."""
-    resolved = resolve_method(n_dofs, device, method)
-    kind = "direct"
-    if resolved in ("minres", "cg"):
-        kind = "iterative | " + ("jacobi" if device == "cuda" else "AMG")
-    elif resolved == "amgx":
-        kind = "iterative | AMG"
-    library = "cupy" if device == "cuda" else "scipy"
-    if resolved == "pardiso":
-        library = "pypardiso"
-    elif resolved == "amgx":
-        library = "amgx"
-    return f"{resolved} | {kind} | {library} | {device}"
+def resolve_preconditioner(method: str, device: str, preconditioner: str | None) -> str:
+    """Return the preconditioner `sparse_solve` builds for this method.
+
+    Algebraic multigrid wherever it is available, which is every CPU solve and
+    those CUDA solves that AmgX provides for, and a Jacobi diagonal otherwise.
+
+    Raises:
+        ValueError: If a preconditioner is requested for a direct solve.
+        RuntimeError: If AMG is requested on CUDA without AmgX installed.
+    """
+    if method == "direct":
+        if preconditioner not in (None, "none"):
+            raise ValueError("A direct solve takes no preconditioner.")
+        return "none"
+    if preconditioner is None:
+        if device == "cpu" or "amgx" in available_backends:
+            return "amg"
+        return "jacobi"
+    if preconditioner == "amg" and device == "cuda":
+        if "amgx" not in available_backends:
+            raise RuntimeError(ERR_AMGX_MISSING)
+    return preconditioner
+
+
+def resolve_library(method: str, device: str, preconditioner: str) -> str:
+    """Return the library that implements this method and preconditioner.
+
+    AmgX carries its own Krylov solver, so it implements the whole solve rather
+    than only the AMG hierarchy it is named for.
+    """
+    if device == "cuda":
+        return "amgx" if preconditioner == "amg" else "cupy"
+    if method == "direct" and "pypardiso" in available_backends:
+        return "pypardiso"
+    return "scipy"
+
+
+def describe_method(method: str, device: str, preconditioner: str | None) -> str:
+    """Describe a resolved solve, for verbose output."""
+    p = resolve_preconditioner(method, device, preconditioner)
+    kind = "direct" if method == "direct" else f"iterative | {p}"
+    return f"{method} | {kind} | {resolve_library(method, device, p)} | {device}"
 
 
 def _rows(crow: Tensor) -> Tensor:
@@ -126,6 +157,7 @@ class Solve(Function):
         stol: float = 1e-10,
         device: str | None = None,
         method: str | None = None,
+        preconditioner: str | None = None,
         M: LinearOperator | None = None,
     ) -> tuple[Tensor, LinearOperator | None]:
         """Solve `A x = b`.
@@ -138,7 +170,7 @@ class Solve(Function):
             M (LinearOperator | None): Preconditioner built or reused by the
                 solve, passed on to `backward` for the adjoint system.
         """
-        x, M, solver = sparse_solve(A, b, B, stol, device, method, M)
+        x, M, solver = sparse_solve(A, b, B, stol, device, method, preconditioner, M)
 
         # An AmgX solver built here is freed here, and `backward` builds its
         # own: nothing else frees one. See `torchfem.amgx`.
@@ -166,7 +198,7 @@ class Solve(Function):
         # Adjoint solve: A^T lambda = grad_x, where `A.t()` is a CSC view of the
         # same arrays rather than a transposed copy.
         gradb, _, solver = sparse_solve(
-            A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M
+            A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.pre, ctx.M
         )
 
         # An AmgX solver built for this adjoint does not outlive it either
@@ -181,7 +213,7 @@ class Solve(Function):
         with torch.sparse.check_sparse_tensor_invariants(False):
             gradA = torch.sparse_csr_tensor(crow, col, val, size=A.shape)
 
-        return gradA, gradb, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output) -> None:
@@ -190,7 +222,7 @@ class Solve(Function):
         Stores the preconditioner *returned* by the forward pass, not the one
         passed in, so the adjoint solve reuses the AMG hierarchy built there.
         """
-        A, b, B, stol, device, method, M = inputs
+        A, b, B, stol, device, method, preconditioner, M = inputs
         x, M_computed = output
         ctx.save_for_backward(A, x)
 
@@ -199,6 +231,7 @@ class Solve(Function):
         ctx.stol = stol
         ctx.device = device
         ctx.method = method
+        ctx.pre = preconditioner
         ctx.M = M_computed
 
 
@@ -209,6 +242,7 @@ def differentiable_sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
+    preconditioner: str | None = None,
     M: LinearOperator | None = None,
 ) -> Tensor:
     """Solve `A x = b` with custom sparse adjoint autograd support.
@@ -221,7 +255,9 @@ def differentiable_sparse_solve(
     # COO caller still gets its gradient back through this conversion.
     if A.layout == torch.sparse_coo:
         A = A.to_sparse_csr()
-    result, _ = Solve.apply(A, b, B, stol, device, method, M)  # type: ignore
+    result, _ = Solve.apply(  # type: ignore
+        A, b, B, stol, device, method, preconditioner, M
+    )
     if result is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return result
@@ -234,6 +270,7 @@ def sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
+    preconditioner: str | None = None,
     M: LinearOperator | None = None,
     solver: AmgXSolver | None = None,
 ) -> tuple[Tensor, LinearOperator | None, AmgXSolver | None]:
@@ -249,10 +286,12 @@ def sparse_solve(
             Defaults to 1e-10.
         device (str, optional): Device to run the computation on ('cpu' or 'cuda').
             Defaults to None, which uses the current device.
-        method (str, optional): Method to use for solving ('spsolve', 'minres',
-            'cg', 'pardiso', 'amgx'). Defaults to None for automatic selection based
-            on the input size and available backends, which picks 'amgx' for
-            iterative solves on CUDA once it is installed (see `torchfem.amgx`).
+        method (str, optional): Method to use for solving ('direct', 'cg' or
+            'bicgstab'). Defaults to None for `resolve_method` to choose by size.
+            'cg' requires a symmetric matrix; 'bicgstab' does not.
+        preconditioner (str, optional): Preconditioner to build for an iterative
+            method ('amg', 'jacobi' or 'none'). Defaults to None for
+            `resolve_preconditioner` to choose by device and available backends.
         M (LinearOperator, optional): Preconditioner for iterative methods.
             Defaults to None, which builds one.
         solver (AmgXSolver, optional): Solver to reuse for method='amgx'.
@@ -275,16 +314,15 @@ def sparse_solve(
     out_device = b.device
 
     # Check the input method
-    if method is not None and method not in [
-        "spsolve",
-        "minres",
-        "cg",
-        "pardiso",
-        "amgx",
-    ]:
+    if method is not None and method not in ["direct", "cg", "bicgstab"]:
         raise ValueError(
             f"Method {method} is not supported. "
-            "Choose from 'spsolve', 'minres', 'cg', 'pardiso', or 'amgx'."
+            "Choose from 'direct', 'cg', or 'bicgstab'."
+        )
+    if preconditioner is not None and preconditioner not in ["amg", "jacobi", "none"]:
+        raise ValueError(
+            f"Preconditioner {preconditioner} is not supported. "
+            "Choose from 'amg', 'jacobi', or 'none'."
         )
 
     # Move to requested device, if available
@@ -295,13 +333,16 @@ def sparse_solve(
             B = B.to(device)
 
     # Make default solver choice based on shape and available backends
-    method = resolve_method(shape[0], A.device.type, method)
+    method = resolve_method(shape[0], method)
+    preconditioner = resolve_preconditioner(method, A.device.type, preconditioner)
 
     # Solve either on CPU or GPU
     if A.device.type == "cuda":
-        x_xp, M, solver = _solve_gpu(A, b, B, method, stol, M, solver, shape)
+        x_xp, M, solver = _solve_gpu(
+            A, b, B, method, preconditioner, stol, M, solver, shape
+        )
     else:
-        x_xp, M = _solve_cpu(A, b, B, method, stol, M, shape)
+        x_xp, M = _solve_cpu(A, b, B, method, preconditioner, stol, M, shape)
 
     # Convert back to torch
     x = torch.tensor(x_xp, dtype=b.dtype, device=out_device)
@@ -314,6 +355,7 @@ def _solve_gpu(
     b: Tensor,
     B: Tensor | None,
     method: str,
+    preconditioner: str,
     stol: float,
     M: LinearOperator | None,
     solver: AmgXSolver | None,
@@ -321,10 +363,10 @@ def _solve_gpu(
 ) -> tuple[Any, Any, Any]:
     """Solve `A x = b` on the GPU via CuPy. See `sparse_solve` for arguments.
 
-    Iterative methods build a Jacobi preconditioner from `A` unless `M` is
-    supplied, mirroring `_solve_cpu`. `amgx` reuses `solver` the same way,
-    refreshing coefficients instead of a fresh setup, and reads the nodal block
-    size off `B`. `pardiso` is CPU only and raises.
+    AMG is AmgX, which brings its own Krylov solver and so runs the whole solve,
+    reusing `solver` to refresh coefficients instead of building a fresh
+    hierarchy, and reading the nodal block size off `B`. Everything else runs in
+    CuPy, over a Jacobi preconditioner built from `A` unless `M` is supplied.
     """
     if "cupy" not in available_backends:
         raise RuntimeError(ERR_CUPY_MISSING)
@@ -349,30 +391,7 @@ def _solve_gpu(
     A_cp.has_sorted_indices = True
     b_cp = cupy.asarray(b.data)
 
-    if method == "pardiso":
-        raise RuntimeError("Pardiso backend is not available on GPU.")
-    elif method == "spsolve":
-        x_xp = cupy_spsolve(A_cp, b_cp)
-        M = None
-    elif method == "minres":
-        # Jacobi preconditioner, unless one was already built and passed in
-        if M is None:
-            M = cupy_diags(1.0 / A_cp.diagonal())
-        # Solve with minres
-        x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=stol)
-        if exit_code != 0:
-            raise RuntimeError(f"minres failed with exit code {exit_code}")
-    elif method == "cg":
-        # Jacobi preconditioner, unless one was already built and passed in
-        if M is None:
-            M = cupy_diags(1.0 / A_cp.diagonal())
-        # Solve with conjugate gradients
-        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, rtol=stol)
-        if exit_code != 0:
-            raise RuntimeError(f"CG failed with exit code {exit_code}")
-    elif method == "amgx":
-        if "amgx" not in available_backends:
-            raise RuntimeError(ERR_AMGX_MISSING)
+    if preconditioner == "amg":
         # AMG hierarchy, built from scratch unless one was already passed in,
         # in which case only its coefficients are refreshed.
         if solver is None:
@@ -388,11 +407,24 @@ def _solve_gpu(
                     for c in (B[1::3, 5], B[2::3, 3], B[0::3, 4])
                 )
                 coords = x, y, z
-            solver = AmgXSolver(shape[0], stol, block_size, coords)
+            krylov = "PCG" if method == "cg" else "PBICGSTAB"
+            solver = AmgXSolver(shape[0], stol, block_size, coords, krylov)
             solver.setup(A_cp)
         else:
             solver.resetup(A_cp)
-        x_xp = solver.solve(b_cp)
+        return solver.solve(b_cp), M, solver
+
+    if method == "direct":
+        return cupy_spsolve(A_cp, b_cp), None, solver
+
+    # Jacobi preconditioner, unless one was already built and passed in
+    if M is None and preconditioner == "jacobi":
+        M = cupy_diags(1.0 / A_cp.diagonal())
+
+    solve = cupy_cg if method == "cg" else cupy_bicgstab
+    x_xp, exit_code = solve(A_cp, b_cp, M=M, rtol=stol)
+    if exit_code != 0:
+        raise RuntimeError(f"{method} failed with exit code {exit_code}")
 
     return x_xp, M, solver
 
@@ -402,14 +434,17 @@ def _solve_cpu(
     b: Tensor,
     B: Tensor | None,
     method: str,
+    preconditioner: str,
     stol: float,
     M: LinearOperator | None,
     shape: torch.Size,
 ) -> tuple[Any, LinearOperator | None]:
     """Solve `A x = b` on the CPU via SciPy. See `sparse_solve` for arguments.
 
-    Iterative methods build an AMG preconditioner from `A` and `B` unless `M` is
-    supplied. `pardiso` reorders with reverse Cuthill-McKee before factorising.
+    A direct solve goes to Pardiso where it is installed, reordering with
+    reverse Cuthill-McKee before factorising, and to SuperLU otherwise. An
+    iterative one builds its preconditioner from `A`, and from `B` for AMG,
+    unless `M` is supplied.
     """
     # SciPy takes the arrays as they are. An adjoint passes `K.t()`, the same
     # arrays read as CSC.
@@ -423,47 +458,28 @@ def _solve_cpu(
         )
     b_np = b.data.numpy()
 
-    if B is None:
-        B_np = None
-    else:
-        B_np = B.data.numpy()
-
-    if method == "pardiso":
+    if method == "direct":
         if "pypardiso" not in available_backends:
-            raise RuntimeError(ERR_PYPARDISO_MISSING)
+            return scipy_spsolve(A_np, b_np), None
         # Reorder the matrix using reverse Cuthill-McKee algorithm
         rcm_order = csgraph.reverse_cuthill_mckee(A_np)
         A_rcm = A_np[np.ix_(rcm_order, rcm_order)]
-        b_rcm = b_np[rcm_order]
-        # Solve with pypardiso
-        x_rcm = pypardiso.spsolve(A_rcm, b_rcm)
+        x_rcm = pypardiso.spsolve(A_rcm, b_np[rcm_order])
         # Restore the original order
-        inv_rcm_order = np.argsort(rcm_order)
-        x_xp = x_rcm[inv_rcm_order]
-        M = None
-    elif method == "spsolve":
-        x_xp = scipy_spsolve(A_np, b_np)
-        M = None
-    elif method == "minres":
-        # AMG preconditioner with Jacobi smoother
-        if M is None:
-            ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
-            M = ml.aspreconditioner()
+        return x_rcm[np.argsort(rcm_order)], None
 
-        # Solve with minres
-        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol)  # type: ignore
-        if exit_code != 0:
-            raise RuntimeError(f"minres failed with exit code {exit_code}")
-    elif method == "cg":
+    if M is None and preconditioner == "jacobi":
+        M = aslinearoperator(scipy_diags(1.0 / A_np.diagonal().astype(float)))
+    elif M is None and preconditioner == "amg":
         # AMG preconditioner with Jacobi smoother
-        if M is None:
-            ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
-            M = ml.aspreconditioner()
+        B_np = None if B is None else B.data.numpy()
+        ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
+        M = ml.aspreconditioner()
 
-        # Solve with cg
-        x_xp, exit_code = scipy_cg(A_np, b_np, M=M, rtol=stol)
-        if exit_code != 0:
-            raise RuntimeError(f"CG failed with exit code {exit_code}")
+    solve = scipy_cg if method == "cg" else scipy_bicgstab
+    x_xp, exit_code = solve(A_np, b_np, M=M, rtol=stol)
+    if exit_code != 0:
+        raise RuntimeError(f"{method} failed with exit code {exit_code}")
 
     return x_xp, M
 
@@ -503,6 +519,7 @@ class NewtonRaphsonAdjoint(Function):
         stol: float,
         report: SolveReport | None,
         method: str | None = None,
+        preconditioner: str | None = None,
         device: str | None = None,
         u_prev: Tensor | None = None,
         grad_prev: Tensor | None = None,
@@ -550,7 +567,7 @@ class NewtonRaphsonAdjoint(Function):
 
             # Solve for displacement increment
             du_i, M, solver = sparse_solve(
-                K, residual, B, stol, device, method, M, solver
+                K, residual, B, stol, device, method, preconditioner, M, solver
             )
 
             du = du - du_i
@@ -573,6 +590,7 @@ class NewtonRaphsonAdjoint(Function):
         ctx.stol = stol
         ctx.device = device
         ctx.method = method
+        ctx.pre = preconditioner
         ctx.eval_residual = eval_residual
         ctx.n_parameters = len(parameters)
         ctx.converged_iter = converged_iter
@@ -599,11 +617,14 @@ class NewtonRaphsonAdjoint(Function):
         stol = ctx.stol
         device = ctx.device
         method = ctx.method
+        preconditioner = ctx.pre
         eval_residual = ctx.eval_residual
         converged_iter = ctx.converged_iter
 
         # Solve adjoint system, where `K.t()` is a CSC view of the same arrays.
-        lambda_, _, solver = sparse_solve(K.t(), grad_du, B, stol, device, method, M)
+        lambda_, _, solver = sparse_solve(
+            K.t(), grad_du, B, stol, device, method, preconditioner, M
+        )
 
         # An AmgX solver built for this adjoint does not outlive it either
         if solver is not None:
@@ -640,6 +661,7 @@ class NewtonRaphsonAdjoint(Function):
             None,
             None,
             None,
+            None,
             *grad_prev_state,
             *grad_parameters,
         )
@@ -655,6 +677,7 @@ def newton_solve(
     stol: float,
     report: SolveReport | None,
     method: str | None = None,
+    preconditioner: str | None = None,
     device: str | None = None,
     u_prev: Tensor | None = None,
     grad_prev: Tensor | None = None,
@@ -675,6 +698,7 @@ def newton_solve(
         stol: Linear-solver tolerance used inside Newton steps for iterative solvers.
         report: Optional progress report receiving the iteration residuals.
         method: Sparse backend method name.
+        preconditioner: Sparse backend preconditioner name.
         device: Optional sparse backend device hint.
         u_prev: Previous increment's field values. Receives residual gradients
             in backward so sensitivities chain across increments.
@@ -698,6 +722,7 @@ def newton_solve(
         stol,
         report,
         method,
+        preconditioner,
         device,
         u_prev,
         grad_prev,

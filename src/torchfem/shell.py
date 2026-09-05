@@ -247,6 +247,13 @@ class Shell(Mechanics):
         return self.material.n_state
 
     @property
+    def symmetric_tangent(self) -> bool:
+        """The tangent symmetry of the section, where the shell has one."""
+        if self.section is not None:
+            return self.section.symmetric_tangent
+        return super().symmetric_tangent
+
+    @property
     def n_dof_per_node(self) -> int:
         """Number of DOFs per node"""
         return 6

@@ -24,6 +24,8 @@ class Material(ABC):
             *Shape:* `(..., 1)` or scalar.
     """
 
+    symmetric_tangent: bool = True
+
     def __init__(self):
         self.n_state: int = 0
         self.is_vectorized: bool = False

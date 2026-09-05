@@ -158,7 +158,7 @@ class TestShellTransverseShear:
         tip = nodes[:, 0] > self.L - 1e-9
         beam.forces[tip, 2] = self.P / int(tip.sum())
         beam.constraints[nodes[:, 0] < 1e-9, :] = True
-        u, _, _, _, _ = beam.solve(method="spsolve")
+        u, _, _, _, _ = beam.solve(method="direct")
 
         bending = self.P * self.L**3 / (3 * self.E * self.b * t**3 / 12)
         shear = self.P * self.L / (self.kappa * (self.E / 2) * self.b * t)
@@ -177,7 +177,7 @@ def _clamped_plate(n: int, t: float, E: float = 1.0e6, nu: float = 0.3, q: float
     edge = ((nodes[:, :2] < 1e-9) | (nodes[:, :2] > 1.0 - 1e-9)).any(dim=1)
     plate.constraints[edge, :] = True
     plate.constraints[:, [0, 1, 5]] = True
-    u, _, _, _, _ = plate.solve(method="spsolve")
+    u, _, _, _, _ = plate.solve(method="direct")
     # Normalized on the thin-plate deflection 0.00126 q L^4 / D of Timoshenko
     D = E * t**3 / (12 * (1 - nu**2))
     return float(u[:, 2].max()) / (0.00126 * q / D)
@@ -220,7 +220,7 @@ class TestShellQuadrilateral:
         patch.constraints[:] = True
         patch.displacements[:, 0] = eps * self.nodes[:, 0]
         patch.displacements[:, 1] = -0.3 * eps * self.nodes[:, 1]
-        _, _, sigma, _, _ = patch.solve(method="spsolve")
+        _, _, sigma, _, _ = patch.solve(method="direct")
         assert sigma[..., 0, 0] == pytest.approx(1000.0 * eps, abs=1e-12)
         assert sigma[..., 1, 1] == pytest.approx(0.0, abs=1e-12)
         assert sigma[..., 0, 1] == pytest.approx(0.0, abs=1e-12)
@@ -236,7 +236,7 @@ class TestShellQuadrilateral:
         patch.displacements[:, 3] = -c * self.nodes[:, 1]
         patch.displacements[:, 4] = c * self.nodes[:, 0]
         _, _, sigma, _, _ = patch.solve(
-            method="spsolve", aggregate_integration_points=False
+            method="direct", aggregate_integration_points=False
         )
         # Integration points run over the in-plane points and the Simpson stations
         outer = sigma.reshape(-1, patch.n_z, patch.n_elem, 2, 2)[:, -1]
@@ -297,7 +297,7 @@ class TestShellDrilling:
         model.forces[outward, 0] = 1.0
         model.forces[inward, 1] = -1.0
 
-        u, *_ = model.solve(method="spsolve")
+        u, *_ = model.solve(method="direct")
         assert u[outward, 0].item() / 0.0940 == pytest.approx(1.0, rel=0.03)
 
     @pytest.mark.parametrize("n", [4, 3])

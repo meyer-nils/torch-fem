@@ -8,7 +8,9 @@ from torchfem.sparse import (
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     modal_eigsolve,
+    resolve_library,
     resolve_method,
+    resolve_preconditioner,
     sparse_solve,
 )
 
@@ -48,7 +50,7 @@ def _to_csr(dense: torch.Tensor, values: torch.Tensor | None = None) -> torch.Te
 
 
 class TestSparseSolve:
-    @pytest.mark.parametrize("method", [None, "spsolve", "cg", "minres"])
+    @pytest.mark.parametrize("method", [None, "direct", "cg", "bicgstab"])
     def test_matches_dense_solution(self, method):
         A_dense = _spd(N, 0)
         b = torch.randn(N)
@@ -56,14 +58,34 @@ class TestSparseSolve:
         assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_direct_method_returns_no_preconditioner(self):
-        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="spsolve")
+        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="direct")
         assert M is None
 
-    @pytest.mark.parametrize("method", ["cg", "minres"])
+    @pytest.mark.parametrize("method", ["cg", "bicgstab"])
     def test_iterative_method_builds_a_preconditioner(self, method):
         """The preconditioner is returned so the adjoint solve can reuse it."""
         _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
         assert M is not None
+
+    def test_bicgstab_solves_a_non_symmetric_system(self):
+        """CG assumes a symmetric matrix; a damage tangent is not one."""
+        A_dense = _nonsymmetric(40, 0)
+        b = torch.randn(40)
+        x, _, _ = sparse_solve(_to_csr(A_dense), b, method="bicgstab")
+        assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
+
+    def test_rejects_unknown_preconditioner(self):
+        with pytest.raises(ValueError, match="is not supported"):
+            sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), preconditioner="ilu")
+
+    @pytest.mark.parametrize("preconditioner", ["amg", "jacobi", "none"])
+    def test_every_preconditioner_reaches_the_same_solution(self, preconditioner):
+        A_dense = _spd(N, 0)
+        b = torch.randn(N)
+        x, _, _ = sparse_solve(
+            _to_csr(A_dense), b, method="cg", preconditioner=preconditioner
+        )
+        assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_rejects_non_square_matrix(self):
         """The message is matched on purpose: without this guard the call still
@@ -258,20 +280,56 @@ class TestEigensolveGradients:
 
 class TestResolveMethod:
     def test_an_explicit_method_is_kept(self):
-        assert resolve_method(10, "cpu", "cg") == "cg"
-        assert resolve_method(10**6, "cuda", "spsolve") == "spsolve"
-
-    def test_large_systems_switch_to_an_iterative_solver(self):
-        assert resolve_method(9999, "cpu", None) != "minres"
-        assert resolve_method(10000, "cpu", None) == "minres"
+        assert resolve_method(10, "cg") == "cg"
+        assert resolve_method(10**6, "direct") == "direct"
 
     def test_small_systems_use_a_direct_solver(self):
-        direct = "pardiso" if "pypardiso" in available_backends else "spsolve"
-        assert resolve_method(10, "cpu", None) == direct
-        # Pardiso is CPU only, so the GPU falls back to the CuPy direct solver.
-        assert resolve_method(10, "cuda", None) == "spsolve"
+        assert resolve_method(9999, None) == "direct"
+        assert resolve_method(10000, None) != "direct"
+
+    def test_an_unsymmetric_tangent_needs_bicgstab(self):
+        assert resolve_method(10**6, None, symmetric=True) == "cg"
+        assert resolve_method(10**6, None, symmetric=False) == "bicgstab"
 
     def test_the_description_names_preconditioner_library_and_device(self):
-        assert describe_method(10, "cpu", "cg") == "cg | iterative | AMG | scipy | cpu"
-        assert "jacobi" in describe_method(10, "cuda", "cg")
-        assert "cupy" in describe_method(10, "cuda", "spsolve")
+        assert (
+            describe_method("cg", "cpu", None) == "cg | iterative | amg | scipy | cpu"
+        )
+        assert "jacobi" in describe_method("cg", "cuda", None)
+        assert "cupy" in describe_method("direct", "cuda", None)
+
+
+class TestResolvePreconditioner:
+    def test_a_direct_solve_takes_none(self):
+        assert resolve_preconditioner("direct", "cpu", None) == "none"
+
+    def test_a_direct_solve_rejects_one(self):
+        with pytest.raises(ValueError, match="takes no preconditioner"):
+            resolve_preconditioner("direct", "cpu", "amg")
+
+    def test_an_iterative_solve_defaults_to_amg_on_the_cpu(self):
+        assert resolve_preconditioner("cg", "cpu", None) == "amg"
+
+    def test_an_explicit_preconditioner_is_kept(self):
+        assert resolve_preconditioner("cg", "cpu", "jacobi") == "jacobi"
+
+    def test_amg_on_cuda_needs_amgx(self):
+        if "amgx" in available_backends:
+            assert resolve_preconditioner("cg", "cuda", "amg") == "amg"
+        else:
+            assert resolve_preconditioner("cg", "cuda", None) == "jacobi"
+            with pytest.raises(RuntimeError, match="AmgX is not available"):
+                resolve_preconditioner("cg", "cuda", "amg")
+
+
+class TestResolveLibrary:
+    def test_the_cpu_uses_pardiso_for_a_direct_solve_where_it_is_installed(self):
+        direct = "pypardiso" if "pypardiso" in available_backends else "scipy"
+        assert resolve_library("direct", "cpu", "none") == direct
+
+    def test_amg_on_cuda_is_amgx(self):
+        assert resolve_library("cg", "cuda", "amg") == "amgx"
+        assert resolve_library("cg", "cuda", "jacobi") == "cupy"
+
+    def test_the_cpu_uses_scipy_for_an_iterative_solve(self):
+        assert resolve_library("cg", "cpu", "amg") == "scipy"

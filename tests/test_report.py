@@ -6,7 +6,7 @@ from torchfem import Planar, PlanarHeat
 from torchfem.materials import IsotropicConductivity2D, IsotropicElasticityPlaneStress
 from torchfem.mesh import rect_quad
 from torchfem.report import WIDTH, SolveReport, machine
-from torchfem.sparse import describe_method
+from torchfem.sparse import describe_method, resolve_method
 
 
 def _build_cantilever() -> Planar:
@@ -72,7 +72,7 @@ class TestVerboseSolve:
         model.solve(increments=torch.linspace(0, 1, 4), verbose=True)
 
         out = capsys.readouterr().out
-        assert describe_method(model.n_dofs, "cpu", None) in out
+        assert describe_method(resolve_method(model.n_dofs, None), "cpu", None) in out
         assert f"{model.n_elem:,} elem" in out
         assert f" machine  {machine()}" in out
         assert "3 increments" in out
