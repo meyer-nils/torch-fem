@@ -90,8 +90,8 @@ class VramMonitor:
     """Sample peak GPU memory at the driver level via ``torch.cuda.mem_get_info``.
 
     Runs in the benchmark child process. Unlike PyTorch's allocator stats, this
-    also covers the CuPy pool and cuSOLVER/cuSPARSE workspaces (see
-    torchfem.sparse). Emits MB figures as ``TAG:value`` stdout lines:
+    also covers what AmgX and cuSPARSE allocate outside it (see torchfem.sparse).
+    Emits MB figures as ``TAG:value`` stdout lines:
     VRAM_BASELINE_MB (init/context overhead) and PEAK_VRAM_DRIVER_MB (run peak).
     """
 
@@ -109,14 +109,6 @@ class VramMonitor:
 
     def start(self):
         torch.cuda.init()
-        # Force CuPy init so its one-time overhead lands in the baseline.
-        try:
-            import cupy
-
-            cupy.zeros(1)
-            cupy.get_default_memory_pool().free_all_blocks()
-        except Exception:
-            pass
         torch.cuda.synchronize()
         self._baseline = self._used_mb()
         self._peak_used = self._baseline

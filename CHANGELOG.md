@@ -5,7 +5,13 @@
 ### Removed
 - **Breaking:** `CachedSolve`, the `use_cached_solve` argument of `solve(...)` and `time_integration(...)`, and the `x0` initial guess of `sparse_solve(...)`. Warm-starting an iterative solve from the previous solution saved at most 10% of the Krylov iterations and no measurable wall time: a guess 0.7% off in solution norm still leaves a 48% residual, and the preconditioner is rebuilt on every call anyway.
 
+### Removed
+- **Breaking:** CuPy is no longer a dependency, and `"cupy"` no longer appears in `available_backends`. GPU support needs nothing but PyTorch.
+
 ### Changed
+- `cg` and `bicgstab` run in PyTorch on either device, over a Jacobi diagonal or nothing, rather than dispatching to CuPy or SciPy. They are 1.2 to 2.3 times faster than CuPy's on a GPU and 3 to 4 times faster than SciPy's on a CPU, at the same tolerance and iteration count, and `resolve_library` reports them as `torch`. An AMG preconditioner still goes to AmgX on CUDA and pyamg on CPU, where SciPy's Krylov solvers stay: they drive pyamg's hierarchy as fast as a PyTorch loop can, and the hierarchy is what dominates.
+- A direct solve of a CUDA matrix runs on the CPU, transfers included, because cuSOLVER's sparse LU is about 1.75 times slower than SuperLU over the sizes a direct solve is chosen for.
+- `modal_eigsolve(...)` solves on the CPU wherever its matrices live. The CUDA path called `eigsh` with arguments CuPy does not accept, so it had never worked.
 - **Breaking:** `minres` is gone. Its `rtol` is a normwise backward error, `||r||/(||A|| ||x||)`, rather than the relative residual `cg` tests, so the same tolerance bought a much weaker solution: over the systems the example notebooks solve, it missed the requested tolerance on 55% of them, by a median factor of 45 and up to 8e8, while taking fewer iterations than `cg` for it. Symmetric systems now go to `cg` and unsymmetric ones to `bicgstab`.
 - **Breaking:** `method` names the algorithm (`direct`, `cg`, `bicgstab`) and the new `preconditioner` names what preconditions it (`amg`, `jacobi`, `none`), with the library inferred from both and the device. The values `spsolve`, `pardiso` and `amgx` are gone: the first two were the libraries behind a direct solve, which is now chosen by availability, and the third was a Krylov method and an AMG preconditioner under a library's name. `preconditioner='amg'` on CUDA is how AmgX is now requested.
 - A material declares whether its tangent has major symmetry through `Material.symmetric_tangent`, which decides `cg` against `bicgstab`. `IsotropicDamage3D` sets it to `False`: its algorithmic tangent carries a rank-one term whose factors differ, and `cg` stagnates on the result rather than converging slowly.

@@ -177,6 +177,23 @@ class TestDifferentiableSparseSolve:
         (grad_values,) = torch.autograd.grad(x.sum(), [values])
         assert grad_values.shape == values.shape
 
+    @pytest.mark.parametrize("method", ["cg", "bicgstab"])
+    @pytest.mark.parametrize("preconditioner", ["jacobi", "none"])
+    def test_an_iterative_adjoint_matches_dense(self, method, preconditioner):
+        """The adjoint hands the solver `A.t()`, compressed by column. `cg`
+        rereads those arrays as rows rather than transposing them, which is only
+        the same matrix because `cg` already assumes symmetry."""
+        A_dense, b, w = _spd(N, 0), torch.randn(N), torch.randn(N)
+        values = A_dense.flatten().clone().requires_grad_(True)
+        A, _ = _to_sparse(A_dense, values)
+        b_grad = b.clone().requires_grad_(True)
+        x = differentiable_sparse_solve(
+            A.to_sparse_csr(), b_grad, method=method, preconditioner=preconditioner
+        )
+        grad_b = torch.autograd.grad((x * w).sum(), [b_grad])[0]
+        assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
+        assert torch.allclose(grad_b, torch.linalg.solve(A_dense.T, w), atol=1e-8)
+
 
 class TestModalEigsolve:
     @staticmethod
@@ -292,11 +309,20 @@ class TestResolveMethod:
         assert resolve_method(10**6, None, symmetric=False) == "bicgstab"
 
     def test_the_description_names_preconditioner_library_and_device(self):
+        """Every preconditioner is named on purpose: what `None` resolves to on
+        CUDA depends on whether AmgX is installed, which the machine decides."""
+        direct = "pypardiso" if "pypardiso" in available_backends else "scipy"
         assert (
             describe_method("cg", "cpu", None) == "cg | iterative | amg | scipy | cpu"
         )
-        assert "jacobi" in describe_method("cg", "cuda", None)
-        assert "cupy" in describe_method("direct", "cuda", None)
+        assert (
+            describe_method("cg", "cuda", "jacobi")
+            == "cg | iterative | jacobi | torch | cuda"
+        )
+        assert (
+            describe_method("direct", "cuda", None)
+            == f"direct | direct | {direct} | cuda"
+        )
 
 
 class TestResolvePreconditioner:
@@ -329,7 +355,14 @@ class TestResolveLibrary:
 
     def test_amg_on_cuda_is_amgx(self):
         assert resolve_library("cg", "cuda", "amg") == "amgx"
-        assert resolve_library("cg", "cuda", "jacobi") == "cupy"
 
     def test_the_cpu_uses_scipy_for_an_iterative_solve(self):
         assert resolve_library("cg", "cpu", "amg") == "scipy"
+
+    @pytest.mark.parametrize("device", ["cpu", "cuda"])
+    @pytest.mark.parametrize("preconditioner", ["jacobi", "none"])
+    def test_a_diagonal_preconditioner_keeps_the_solve_in_torch(
+        self, device, preconditioner
+    ):
+        """Only a hierarchy or a factorisation is worth another library."""
+        assert resolve_library("cg", device, preconditioner) == "torch"

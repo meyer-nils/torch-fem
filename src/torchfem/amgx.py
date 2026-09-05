@@ -2,13 +2,13 @@
 
 AmgX ships no wheels: build it from source and point `AMGX_DLL` at the shared
 library. Importing raises `ImportError` when it is missing, so `sparse.py` can
-guard it like CuPy and PyPardiso. Binding touches no GPU -- `AMGX_initialize()`
+guard it like PyPardiso. Binding touches no GPU -- `AMGX_initialize()`
 waits for the first solver, so importing torchfem creates no CUDA context.
 
 Only mode "dDDI" is used (device, double matrix, double vector, int32 index),
-matching the CSR that `_solve_gpu` already builds. Uploads point straight at
-CuPy device pointers, which AmgX resolves with `cudaMemcpyDefault`, so nothing
-round-trips through the host.
+matching the CSR a model already assembles. Uploads point straight at torch
+device pointers, which AmgX resolves with `cudaMemcpyDefault`, so nothing
+round-trips through the host and no array is copied into another library.
 
 Handles are freed explicitly by `close()`, never from `__del__`: destruction is
 order-dependent and a stale handle segfaults rather than raises. A dropped
@@ -16,8 +16,7 @@ solver would therefore hold its hierarchy until the process exits, so `sparse.py
 closes each one at the end of the solve that built it, and no solver is handed
 from a forward pass to its adjoint. A solve that fails closes itself, since it
 is never reused and a cutback would otherwise leave one behind on every retry.
-`AMGX_finalize()` is still never called, which beats risking a bad teardown
-order.
+`AMGX_finalize()` is never called, which beats risking a bad teardown order.
 
 The C API takes no near-null-space basis, pyamg's `B`, which costs dearly on
 elasticity. Two things recover most of it. Aggregating over
@@ -25,7 +24,7 @@ elasticity. Two things recover most of it. Aggregating over
 implicitly, and passing nodal coordinates to `AMGX_matrix_attach_geometry` lets
 the `GEO` selector aggregate geometrically, which is where the rotational modes
 hide. Together they bring it close to what pyamg reaches with the same
-unsmoothed prolongation and an explicit `B`. `_solve_gpu` derives both the block
+unsmoothed prolongation and an explicit `B`. `_solve_amgx` derives both the block
 size and the coordinates from the nodes it is passed. Coordinates are solids
 only; scalar, planar and shell problems keep the algebraic `SIZE_8` selector,
 which `GEO` cannot replace without one coordinate triple per block row.
@@ -35,9 +34,8 @@ installed. It wins comfortably wherever the operator is awkward, most of all on
 scalar conduction and on elasticity whose stiffness varies element to element,
 and gives up a little only on uniform stiffness under smooth loading, where the
 solution leaves multigrid little to remove. Aggregation also wants a definite
-operator, an indefinite tangent costing every AMG an order of magnitude more
-iterations, so `max_iters` stays low and a solve that exhausts it raises, on the
-grounds that such a tangent is worth reformulating instead.
+operator, which an indefinite tangent costs dearly, so `max_iters` stays low and
+a solve that exhausts it raises: such a tangent is worth reformulating instead.
 
 `sparse.py` imports torch first because AmgX's `cublasDdot` returns
 CUBLAS_STATUS_NOT_SUPPORTED otherwise; importing torchfem is enough.
@@ -50,6 +48,9 @@ import json
 import os
 from copy import deepcopy
 from typing import Any
+
+import torch
+from torch import Tensor
 
 # AMGX_mode_dDDI: device-resident, double matrix, double vector, int32 index.
 # Hardcoded from the enum value documented in amgx_c.h/amgx_config.h ("mode ==
@@ -64,10 +65,9 @@ _AMGX_SOLVE_STATUS_NAMES = {1: "FAILED", 2: "DIVERGED", 3: "NOT_CONVERGED"}
 # smoothed_aggregation_solver, smooth="jacobi"): two damped Jacobi sweeps either
 # side of the cycle and an exact coarse solve. SIZE_8 shortens the hierarchy by
 # more than the iterations it costs. The smoother has to be symmetric, because
-# PCG preconditions with the whole cycle, and heavily damped over two sweeps,
-# because a lighter setting stalls on a hyperelastic tangent once the deformation
-# grows. `solver` and `tolerance` are overwritten per solve with the Krylov
-# method and `stol`.
+# PCG preconditions with the whole cycle, and damped enough to hold a
+# hyperelastic tangent as the deformation grows. `solver` and `tolerance` are
+# overwritten per solve with the Krylov method and `stol`.
 _DEFAULT_CONFIG: dict[str, Any] = {
     "config_version": 2,
     "determinism_flag": 1,
@@ -174,21 +174,6 @@ def _initialize() -> None:
     _initialized = True
 
 
-def _free_pool() -> None:
-    """Hand both cached pools back to the driver, for AmgX to allocate from.
-
-    Torch and CuPy each keep freed blocks in a private pool that AmgX cannot
-    use for its hierarchy. Assembly leaves Torch holding the element tangents
-    and converting to nodal blocks leaves CuPy holding its index arrays, a few
-    GB each on a large system, so both are released either side of the upload.
-    """
-    import cupy
-    import torch
-
-    cupy.get_default_memory_pool().free_all_blocks()
-    torch.cuda.empty_cache()
-
-
 def _check(rc: int) -> None:
     """Raise with AmgX's own message unless `rc` reports success."""
     if rc == _AMGX_RC_OK:
@@ -208,8 +193,8 @@ def _create(entry_point: Any, *args: Any) -> C.c_void_p:
 class AmgXSolver:
     """Owns one AmgX config/resources/matrix/vector/solver handle set.
 
-    `setup()` builds the hierarchy from a `cupyx.scipy.sparse.csr_matrix` with
-    float64 data and int32 indices; `resetup()` reuses it across a Newton loop
+    `setup()` builds the hierarchy from a torch sparse CSR tensor with float64
+    values and int32 indices; `resetup()` reuses it across a Newton loop
     where only the coefficients change. `block_size` is the degrees of freedom
     per node, which AmgX aggregates as a unit. `coords` are host arrays of nodal
     x, y and z, which switch aggregation to `GEO`; see the module docstring.
@@ -246,10 +231,9 @@ class AmgXSolver:
         self.block_size = block_size
         self.n_rows = n // block_size
 
-    def setup(self, A_cp: Any) -> None:
-        """Upload `A_cp` and build the AMG hierarchy from scratch."""
-        _free_pool()
-        indptr, indices, data, n_blocks = self._blocks(A_cp)
+    def setup(self, A: Tensor) -> None:
+        """Upload `A` and build the AMG hierarchy from scratch."""
+        indptr, indices, data, n_blocks = self._blocks(A)
         _check(
             _lib.AMGX_matrix_upload_all(
                 self._mtx,
@@ -257,14 +241,16 @@ class AmgXSolver:
                 n_blocks,
                 self.block_size,
                 self.block_size,
-                indptr.data.ptr,
-                indices.data.ptr,
-                data.data.ptr,
+                indptr.data_ptr(),
+                indices.data_ptr(),
+                data.data_ptr(),
                 None,
             )
         )
+        # The block arrays are torch's, and AmgX allocates its hierarchy from
+        # what torch is not holding, so they go back to the driver here.
         del indptr, indices, data
-        _free_pool()
+        torch.cuda.empty_cache()
         if self._coords is not None:
             # Host pointers: AmgX copies these element by element on the CPU,
             # unlike the uploads above.
@@ -276,13 +262,12 @@ class AmgXSolver:
             )
         _check(_lib.AMGX_solver_setup(self._slv, self._mtx))
 
-    def resetup(self, A_cp: Any) -> None:
+    def resetup(self, A: Tensor) -> None:
         """Refresh coefficients in place and rebuild only what changed.
 
         Geometry is the exception: AmgX consumes the attached coordinates during
-        the first setup and a hierarchy rebuilt without them takes three times
-        the iterations, so the handles are replaced and the hierarchy is built
-        again. That costs a few hundredths of a second and is well repaid.
+        the first setup, and a hierarchy rebuilt without them needs far more
+        iterations, so the handles are replaced and the hierarchy built again.
         """
         if self._coords is not None:
             _lib.AMGX_solver_destroy(self._slv)
@@ -291,72 +276,66 @@ class AmgXSolver:
             self._slv = _create(
                 _lib.AMGX_solver_create, self._rsc, _MODE_dDDI, self._cfg
             )
-            self.setup(A_cp)
+            self.setup(A)
             return
 
-        _free_pool()
-        _, _, data, n_blocks = self._blocks(A_cp)
+        _, _, data, n_blocks = self._blocks(A)
         _check(
             _lib.AMGX_matrix_replace_coefficients(
-                self._mtx, self.n_rows, n_blocks, data.data.ptr, None
+                self._mtx, self.n_rows, n_blocks, data.data_ptr(), None
             )
         )
         del data
-        _free_pool()
+        torch.cuda.empty_cache()
         _check(_lib.AMGX_solver_resetup(self._slv, self._mtx))
 
-    def _blocks(self, A_cp: Any) -> tuple[Any, Any, Any, int]:
-        """Return `A_cp` as `(indptr, indices, values, count)` over nodal blocks.
+    def _blocks(self, A: Tensor) -> tuple[Tensor, Tensor, Tensor, int]:
+        """Return `A` as `(indptr, indices, values, count)` over nodal blocks.
 
         A scalar problem passes the CSR arrays straight through. The ordering
         follows from the entry pattern alone, so `resetup` on an unchanged
         structure reproduces it and can replace the values in place.
         """
+        # Mode dDDI indexes in int32; a model that assembles one passes through.
+        crow = A.crow_indices().to(torch.int32)
+        col = A.col_indices().to(torch.int32)
+        data = A.values()
         if self.block_size == 1:
-            return A_cp.indptr, A_cp.indices, A_cp.data, A_cp.nnz
-
-        import cupy
+            return crow, col, data, data.numel()
 
         bs = self.block_size
-        coo = A_cp.tocoo()
-        # The key runs to n_rows**2, which overflows the int32 column indices at
-        # about 46k block rows, so it is int64. Both it and the scatter index are
-        # built in place and dropped as soon as they are spent: at tens of
-        # millions of entries every spare copy costs hundreds of megabytes.
-        key = coo.row.astype(cupy.int64)
-        key //= bs
+        row = torch.repeat_interleave(
+            torch.arange(self.n, dtype=torch.int64, device=col.device), crow.diff()
+        )
+        # The key runs to n_rows**2, which int32 cannot hold. It and the
+        # scatter index are built in place and dropped as soon as they are
+        # spent, since either is as long as the matrix has entries.
+        key = row // bs
         key *= self.n_rows
-        key += coo.col // bs
-        uniq: Any = cupy.unique(key)
-        idx = cupy.searchsorted(uniq, key)
+        key += col // bs
+        uniq = torch.unique(key)
+        idx = torch.searchsorted(uniq, key)
         del key
-        # The offset inside the block is built in int32 beside the spent key,
-        # rather than widened and scaled into int64 temporaries of its own.
-        sub = coo.row % bs
-        sub *= bs
-        sub += coo.col % bs
         idx *= bs * bs
-        idx += sub
-        del sub
-        values = cupy.zeros(len(uniq) * bs * bs)
-        values[idx] = coo.data
+        idx += (row % bs) * bs + col % bs
+        del row
+        values = torch.zeros(len(uniq) * bs * bs, dtype=data.dtype, device=data.device)
+        values[idx] = data
         del idx
-        indices = (uniq % self.n_rows).astype(cupy.int32)
-        indptr = cupy.zeros(self.n_rows + 1, dtype=cupy.int32)
-        indptr[1:] = cupy.cumsum(
-            cupy.bincount(uniq // self.n_rows, minlength=self.n_rows)
+        indices = (uniq % self.n_rows).to(torch.int32)
+        indptr = torch.zeros(self.n_rows + 1, dtype=torch.int32, device=col.device)
+        indptr[1:] = torch.cumsum(
+            torch.bincount(uniq // self.n_rows, minlength=self.n_rows), 0
         )
         return indptr, indices, values, len(uniq)
 
-    def solve(self, b_cp: Any) -> Any:
-        """Solve for `b_cp` as a CuPy array."""
-        import cupy
-
-        x_cp = cupy.zeros(self.n)
+    def solve(self, b: Tensor) -> Tensor:
+        """Solve for `b` as a torch tensor, returning one."""
+        x = torch.zeros(self.n, dtype=b.dtype, device=b.device)
         rows, bs = self.n_rows, self.block_size
 
-        _check(_lib.AMGX_vector_upload(self._rhs, rows, bs, b_cp.data.ptr))
-        _check(_lib.AMGX_vector_upload(self._sol, rows, bs, x_cp.data.ptr))
+        _check(_lib.AMGX_vector_upload(self._rhs, rows, bs, b.data_ptr()))
+        _check(_lib.AMGX_vector_upload(self._sol, rows, bs, x.data_ptr()))
         _check(_lib.AMGX_solver_solve(self._slv, self._rhs, self._sol))
 
         status = C.c_int()
@@ -374,8 +353,8 @@ class AmgXSolver:
                 "_DEFAULT_CONFIG for this problem."
             )
 
-        _check(_lib.AMGX_vector_download(self._sol, x_cp.data.ptr))
-        return x_cp
+        _check(_lib.AMGX_vector_download(self._sol, x.data_ptr()))
+        return x
 
     @property
     def iterations(self) -> int:

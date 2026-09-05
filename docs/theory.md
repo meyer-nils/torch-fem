@@ -186,9 +186,9 @@ The viscous forces vanish as the solution approaches a stable equilibrium, so a 
 The sparse linear system can be solved with different backends via the `method` argument of `solve()`:
 
 - direct sparse solvers (`"spsolve"`, `"pardiso"`),
-- iterative Krylov solvers (`"cg"`, `"minres"`) with an algebraic multigrid preconditioner built from rigid-body modes.
+- iterative Krylov solvers (`"cg"`, `"bicgstab"`) over an algebraic multigrid preconditioner built from rigid-body modes, or a Jacobi diagonal.
 
-On CUDA devices, the sparse solves are performed with CuPy for GPU acceleration.
+The Krylov solvers run in PyTorch on either device. On CUDA, an algebraic multigrid preconditioner is AmgX, which runs the whole solve.
 
 !!! info
 

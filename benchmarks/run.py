@@ -110,11 +110,7 @@ def main():
 
     use_cuda = args.device == "cuda"
     if use_cuda:
-        import cupy
-
-        cuda_ver = cupy.cuda.runtime.runtimeGetVersion()
-        cuda_str = f"{cuda_ver // 1000}.{cuda_ver % 1000 // 10}"
-        libraries = f"CuPy {cupy.__version__}, CUDA {cuda_str}"
+        libraries = f"PyTorch {torch.__version__}, CUDA {torch.version.cuda}"
     else:
         libraries = f"SciPy {scipy.__version__}, PyTorch {torch.__version__}"
 
