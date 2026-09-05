@@ -4,48 +4,58 @@
   "python": "3.13.12",
   "libraries": "SciPy 1.15.3, PyTorch 2.11.0+cu128",
   "dtype": "float64",
-  "commit": "da46f0b",
+  "commit": "48f4b58",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.0532,
-      "fwd_s": 0.1455,
-      "bwd_s": 0.3555,
-      "peak_ram_mb": 793.8,
+      "setup_s": 0.0515,
+      "fwd_s": 0.1612,
+      "bwd_s": 0.3746,
+      "peak_ram_mb": 781.4,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.1639,
-      "fwd_s": 0.2911,
-      "bwd_s": 0.4029,
-      "peak_ram_mb": 1037.3,
+      "setup_s": 0.1721,
+      "fwd_s": 0.3185,
+      "bwd_s": 0.4541,
+      "peak_ram_mb": 1024.7,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.6532,
-      "fwd_s": 1.185,
-      "bwd_s": 0.6481,
-      "peak_ram_mb": 2123.1,
+      "setup_s": 0.6559,
+      "fwd_s": 1.3142,
+      "bwd_s": 0.7746,
+      "peak_ram_mb": 2112.1,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 2.6574,
-      "fwd_s": 4.1345,
-      "bwd_s": 1.4296,
-      "peak_ram_mb": 5723.1,
+      "setup_s": 2.5734,
+      "fwd_s": 4.7922,
+      "bwd_s": 2.199,
+      "peak_ram_mb": 5712.3,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
+    },
+    {
+      "N": 2048,
+      "dofs": 4200450,
+      "setup_s": 10.9302,
+      "fwd_s": 18.2587,
+      "bwd_s": 6.466,
+      "peak_ram_mb": 17778.6,
+      "peak_vram_mb": null,
+      "solver": "cg | iterative | amg | scipy | cpu"
     }
   ]
 }

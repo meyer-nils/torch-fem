@@ -2,50 +2,60 @@
   "hardware": "RTX PRO 4000",
   "device": "cuda",
   "python": "3.13.12",
-  "libraries": "CuPy 14.0.1, CUDA 12.9",
+  "libraries": "PyTorch 2.11.0+cu128, CUDA 12.8",
   "dtype": "float64",
-  "commit": "b237a01",
+  "commit": "48f4b58",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.181,
-      "fwd_s": 0.2515,
-      "bwd_s": 0.4003,
+      "setup_s": 0.1605,
+      "fwd_s": 0.2095,
+      "bwd_s": 0.3677,
       "peak_ram_mb": null,
-      "peak_vram_mb": 444.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 458.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.1668,
-      "fwd_s": 0.3821,
-      "bwd_s": 0.4925,
+      "setup_s": 0.1671,
+      "fwd_s": 0.2745,
+      "bwd_s": 0.4036,
       "peak_ram_mb": null,
-      "peak_vram_mb": 516.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 624.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.1629,
-      "fwd_s": 0.6246,
-      "bwd_s": 0.6363,
+      "setup_s": 0.1683,
+      "fwd_s": 0.4663,
+      "bwd_s": 0.498,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1364.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 1368.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.1828,
-      "fwd_s": 1.5996,
-      "bwd_s": 1.2219,
+      "setup_s": 0.1869,
+      "fwd_s": 1.308,
+      "bwd_s": 0.9184,
       "peak_ram_mb": null,
       "peak_vram_mb": 4280.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 2048,
+      "dofs": 4200450,
+      "setup_s": 0.2872,
+      "fwd_s": 6.0805,
+      "bwd_s": 3.9982,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 17322.3,
+      "solver": "cg | iterative | amg | amgx | cuda"
     }
   ]
 }

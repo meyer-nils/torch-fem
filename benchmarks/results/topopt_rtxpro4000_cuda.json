@@ -2,60 +2,60 @@
   "hardware": "RTX PRO 4000",
   "device": "cuda",
   "python": "3.13.12",
-  "libraries": "CuPy 14.0.1, CUDA 12.9",
+  "libraries": "PyTorch 2.11.0+cu128, CUDA 12.8",
   "dtype": "float64",
-  "commit": "b237a01",
+  "commit": "48f4b58",
   "problem": "structural_cantilever_simp",
   "rows": [
     {
       "N": 20,
       "dofs": 54243,
-      "setup_s": 0.1678,
-      "fwd_s": 0.9279,
-      "bwd_s": 0.8792,
+      "setup_s": 0.1608,
+      "fwd_s": 0.3656,
+      "bwd_s": 0.4495,
       "peak_ram_mb": null,
-      "peak_vram_mb": 790.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 694.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 30,
       "dofs": 175863,
-      "setup_s": 0.1677,
-      "fwd_s": 1.6562,
-      "bwd_s": 1.5123,
+      "setup_s": 0.1655,
+      "fwd_s": 0.8241,
+      "bwd_s": 0.7984,
       "peak_ram_mb": null,
       "peak_vram_mb": 1752.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 40,
       "dofs": 408483,
-      "setup_s": 0.1885,
-      "fwd_s": 2.5585,
-      "bwd_s": 2.134,
+      "setup_s": 0.1802,
+      "fwd_s": 1.6311,
+      "bwd_s": 1.328,
       "peak_ram_mb": null,
       "peak_vram_mb": 4060.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 50,
       "dofs": 788103,
-      "setup_s": 0.1899,
-      "fwd_s": 5.1058,
-      "bwd_s": 4.2016,
+      "setup_s": 0.2081,
+      "fwd_s": 3.6772,
+      "bwd_s": 2.8742,
       "peak_ram_mb": null,
       "peak_vram_mb": 7840.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 60,
       "dofs": 1350723,
-      "setup_s": 0.2191,
-      "fwd_s": 7.0734,
-      "bwd_s": 5.9495,
+      "setup_s": 0.2195,
+      "fwd_s": 6.0028,
+      "bwd_s": 4.5513,
       "peak_ram_mb": null,
       "peak_vram_mb": 13458.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     }
   ]
 }
