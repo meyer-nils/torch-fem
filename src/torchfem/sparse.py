@@ -238,7 +238,7 @@ class Solve(Function):
         ctx.save_for_backward(A, x)
 
         # Save the parameters for backward pass (including the preconditioner)
-        ctx.B = B
+        ctx.B = None if B is None else B.detach()
         ctx.nodes = None if nodes is None else nodes.detach()
         ctx.stol = stol
         ctx.device = device
@@ -306,7 +306,8 @@ def sparse_solve(
             Defaults to None, which uses the current device.
         method (str, optional): Method to use for solving ('direct', 'cg' or
             'bicgstab'). Defaults to None for `resolve_method` to choose by size.
-            'cg' requires a symmetric matrix; 'bicgstab' does not.
+            'cg' needs a symmetric positive definite matrix, 'bicgstab' needs
+            neither.
         preconditioner (str, optional): Preconditioner to build for an iterative
             method ('amg', 'jacobi' or 'none'). Defaults to None for
             `resolve_preconditioner` to choose by device and available backends.
@@ -600,7 +601,7 @@ class NewtonRaphsonAdjoint(Function):
         ctx.save_for_backward(
             K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters
         )
-        ctx.B = B
+        ctx.B = B.detach()
         ctx.nodes = None if nodes is None else nodes.detach()
         ctx.M = M
         ctx.stol = stol
