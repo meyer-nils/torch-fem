@@ -2,13 +2,14 @@
 
 AmgX ships no wheels: build it from source and point `AMGX_DLL` at the shared
 library. Importing raises `ImportError` when it is missing, so `sparse.py` can
-guard it like PyPardiso. Binding touches no GPU -- `AMGX_initialize()`
-waits for the first solver, so importing torchfem creates no CUDA context.
+guard it like PyPardiso, and touches no GPU: `AMGX_initialize()` waits for the
+first solver, so importing torchfem creates no CUDA context. `sparse.py` imports
+torch first, without which `cublasDdot` returns CUBLAS_STATUS_NOT_SUPPORTED.
 
 Only mode "dDDI" is used (device, double matrix, double vector, int32 index),
-matching the CSR a model already assembles. Uploads point straight at torch
-device pointers, which AmgX resolves with `cudaMemcpyDefault`, so nothing
-round-trips through the host and no array is copied into another library.
+matching the CSR a model assembles. Uploads point straight at torch device
+pointers, which AmgX resolves with `cudaMemcpyDefault`, so no array is copied
+into another library and nothing round-trips through the host.
 
 Handles are freed explicitly by `close()`, never from `__del__`: destruction is
 order-dependent and a stale handle segfaults rather than raises. A dropped
@@ -30,15 +31,9 @@ only; scalar, planar and shell problems keep the algebraic `SIZE_8` selector,
 which `GEO` cannot replace without one coordinate triple per block row.
 
 `resolve_method` prefers `amgx` for iterative solves on CUDA once it is
-installed. It wins comfortably wherever the operator is awkward, most of all on
-scalar conduction and on elasticity whose stiffness varies element to element,
-and gives up a little only on uniform stiffness under smooth loading, where the
-solution leaves multigrid little to remove. Aggregation also wants a definite
-operator, which an indefinite tangent costs dearly, so `max_iters` stays low and
-a solve that exhausts it raises: such a tangent is worth reformulating instead.
-
-`sparse.py` imports torch first because AmgX's `cublasDdot` returns
-CUBLAS_STATUS_NOT_SUPPORTED otherwise; importing torchfem is enough.
+installed. Aggregation wants a definite operator, which an indefinite tangent
+costs dearly, so `max_iters` stays low and a solve that exhausts it raises: such
+a tangent is worth reformulating instead.
 """
 
 from __future__ import annotations
