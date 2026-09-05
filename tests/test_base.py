@@ -75,11 +75,16 @@ class TestMechanicsBoundaryConditions:
 
 
 class TestAssembleMatrix:
-    def test_the_matrix_is_compressed_with_int32_indices(self):
-        """The index arrays outweigh the values, so their width is the memory."""
+    def test_the_matrix_is_blocked_by_node_with_int32_indices(self):
+        """One index per nodal block rather than per entry, in the narrower
+        width, since the index arrays are what the matrix costs beyond values."""
         model = _planar()
+        ndof = model.n_dof_per_node
         K = model.assemble_matrix(model.k0(), torch.tensor([0, 1]))
-        assert K.layout == torch.sparse_csr
+        assert K.layout == torch.sparse_bsr
+        assert K.values().shape[1:] == (ndof, ndof)
+        assert K.crow_indices().numel() == model.n_nod + 1
+        assert K.col_indices().numel() == K.values().shape[0]
         assert K.crow_indices().dtype == torch.int32
         assert K.col_indices().dtype == torch.int32
 

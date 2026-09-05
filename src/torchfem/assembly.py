@@ -301,14 +301,21 @@ class Assembly:
             for offset, part in zip(self.offsets, self.parts)
             if isinstance(part, FEM)
         ]
-        # (row, col) of the block diagonal, in the order the values concatenate
-        k_row = torch.cat(
-            [
-                torch.repeat_interleave(torch.arange(p.n_dofs), p.crow.diff()) + offset
-                for offset, p in parts
-            ]
-        )
-        k_col = torch.cat([p.col.long() + offset for offset, p in parts])
+
+        # (row, col) of the block diagonal, in the order the values concatenate.
+        # A part stores its tangent in nodal blocks and this assembly is scalar,
+        # so each block spreads over the degrees of freedom it holds.
+        def spread(part: FEM, offset: int) -> tuple[Tensor, Tensor]:
+            bs = part.block_size
+            within = torch.arange(bs)
+            shape = (part.n_blocks, bs, bs)
+            rows = (part.block_row[:, None, None] * bs + within[:, None]).expand(shape)
+            cols = (part.col.long()[:, None, None] * bs + within).expand(shape)
+            return rows.ravel() + offset, cols.ravel() + offset
+
+        spread_parts = [spread(p, offset) for offset, p in parts]
+        k_row = torch.cat([r for r, _ in spread_parts])
+        k_col = torch.cat([c for _, c in spread_parts])
 
         # `T` is compressed by row, so its offsets already say where the entries
         # of each row sit and how many there are.
@@ -347,7 +354,9 @@ class Assembly:
 
         def assemble_matrix(blocks: list[tuple[int, Tensor]], con: Tensor) -> Tensor:
             """Assemble the part tangents onto the retained DOFs and constrain."""
-            values = torch.cat([K.values() for _, K in blocks])
+            # A part stores nodal blocks; `k_row` and `k_col` spread them in the
+            # order the entries of a block run.
+            values = torch.cat([K.values().ravel() for _, K in blocks])
             val = torch.zeros(col.numel())
             val.index_add_(0, slot, coefficient * values[source])
 
@@ -586,7 +595,6 @@ class Assembly:
                 make_eval_residual(F_ext, DU, step),
                 dq.detach(),
                 B,
-                None,  # elimination leaves the rows in no nodal blocking
                 max_iter,
                 rtol,
                 atol,
