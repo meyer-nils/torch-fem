@@ -25,10 +25,10 @@ elasticity. Two things recover most of it. Aggregating over
 implicitly, and passing nodal coordinates to `AMGX_matrix_attach_geometry` lets
 the `GEO` selector aggregate geometrically, which is where the rotational modes
 hide. Together they bring it close to what pyamg reaches with the same
-unsmoothed prolongation and an explicit `B`. `_solve_gpu` takes both the block
-size and the coordinates off `B`, so nothing extra is threaded through.
-Coordinates are solids only; scalar and planar problems keep the algebraic
-`SIZE_8` selector, which `GEO` cannot replace without geometry.
+unsmoothed prolongation and an explicit `B`. `_solve_gpu` derives both the block
+size and the coordinates from the nodes it is passed. Coordinates are solids
+only; scalar, planar and shell problems keep the algebraic `SIZE_8` selector,
+which `GEO` cannot replace without one coordinate triple per block row.
 
 `resolve_method` prefers `amgx` for iterative solves on CUDA once it is
 installed. It wins comfortably wherever the operator is awkward, most of all on
@@ -61,13 +61,13 @@ _AMGX_SOLVE_SUCCESS = 0
 _AMGX_SOLVE_STATUS_NAMES = {1: "FAILED", 2: "DIVERGED", 3: "NOT_CONVERGED"}
 
 # Aggregation AMG shaped after the CPU default (pyamg
-# smoothed_aggregation_solver, smooth="jacobi"): a symmetric Gauss-Seidel sweep
-# either side of the cycle and an exact coarse solve, which roughly halves the
-# iterations AmgX's own defaults need. SIZE_8 then shortens the hierarchy by
-# more than the iterations it costs. BiCGStab wraps it because the sweeps are
-# not symmetric, so PCG stalls short of a tight `stol`; FGMRES matches it on
-# elasticity but is slower on heat conduction and stores restart vectors.
-# `tolerance` is overwritten per solve with `stol`.
+# smoothed_aggregation_solver, smooth="jacobi"): two damped Jacobi sweeps either
+# side of the cycle and an exact coarse solve. SIZE_8 shortens the hierarchy by
+# more than the iterations it costs. The smoother has to be symmetric, because
+# PCG preconditions with the whole cycle, and heavily damped over two sweeps,
+# because a lighter setting stalls on a hyperelastic tangent once the deformation
+# grows. `solver` and `tolerance` are overwritten per solve with the Krylov
+# method and `stol`.
 _DEFAULT_CONFIG: dict[str, Any] = {
     "config_version": 2,
     "determinism_flag": 1,
@@ -82,12 +82,9 @@ _DEFAULT_CONFIG: dict[str, Any] = {
             "algorithm": "AGGREGATION",
             "selector": "SIZE_8",
             "interpolator": "D2",
-            "smoother": {"solver": "MULTICOLOR_GS"},
-            "symmetric_GS": 1,
-            "matrix_coloring_scheme": "MIN_MAX",
-            "max_uncolored_percentage": 0.15,
-            "presweeps": 1,
-            "postsweeps": 1,
+            "smoother": {"solver": "BLOCK_JACOBI", "relaxation_factor": 0.5},
+            "presweeps": 2,
+            "postsweeps": 2,
             "cycle": "V",
             "max_iters": 1,
             "coarse_solver": "DENSE_LU_SOLVER",
@@ -373,7 +370,7 @@ class AmgXSolver:
             self.close()
             raise RuntimeError(
                 f"AmgX solve did not converge ({name}) in {iterations} "
-                "iterations. Try 'cg' or 'minres' instead, or tune "
+                "iterations. Try preconditioner='jacobi' instead, or tune "
                 "_DEFAULT_CONFIG for this problem."
             )
 

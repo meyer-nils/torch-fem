@@ -4,48 +4,58 @@
   "python": "3.12.12",
   "libraries": "CuPy 14.1.1, CUDA 12.9",
   "dtype": "float64",
-  "commit": "144fed7",
+  "commit": "a5b9607",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.1937,
-      "fwd_s": 0.3068,
-      "bwd_s": 0.528,
+      "setup_s": 0.1936,
+      "fwd_s": 0.2435,
+      "bwd_s": 0.4548,
       "peak_ram_mb": null,
-      "peak_vram_mb": 402.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 392.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.1905,
-      "fwd_s": 0.4382,
-      "bwd_s": 0.609,
+      "setup_s": 0.1983,
+      "fwd_s": 0.3341,
+      "bwd_s": 0.5028,
       "peak_ram_mb": null,
       "peak_vram_mb": 536.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.2185,
-      "fwd_s": 0.8375,
-      "bwd_s": 0.8793,
+      "setup_s": 0.2013,
+      "fwd_s": 0.6328,
+      "bwd_s": 0.6383,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1314.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 1324.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.2562,
-      "fwd_s": 2.5508,
-      "bwd_s": 1.9261,
+      "setup_s": 0.2442,
+      "fwd_s": 2.1781,
+      "bwd_s": 1.5258,
       "peak_ram_mb": null,
       "peak_vram_mb": 4260.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 2048,
+      "dofs": 4200450,
+      "setup_s": 0.47,
+      "fwd_s": 12.8253,
+      "bwd_s": 8.0865,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 15225.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     }
   ]
 }
