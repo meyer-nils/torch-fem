@@ -413,14 +413,21 @@ def _solve_gpu(
         # AMG hierarchy, built from scratch unless one was already passed in,
         # in which case only its coefficients are refreshed.
         if solver is None:
-            block_size = shape[0] // len(nodes) if nodes is not None else 1
+            block_size = 1
             coords = None
-            # Geometry only where the rotational modes have no DOFs of their own
-            if nodes is not None and nodes.shape[1] == 3 and block_size == 3:
-                x, y, z = (
-                    np.ascontiguousarray(c.detach().cpu().numpy()) for c in nodes.t()
-                )
-                coords = x, y, z
+            if nodes is not None:
+                dofs = shape[0] // len(nodes)
+                # AmgX aggregates blocks of at most 5, so a shell's 6 DOFs split
+                # into a translational and a rotational block of 3.
+                block_size = 3 if dofs == 6 else dofs
+                # Geometry needs one coordinate triple per block row, so only a
+                # node whose DOFs are its three translations carries one.
+                if nodes.shape[1] == 3 and dofs == 3:
+                    x, y, z = (
+                        np.ascontiguousarray(c.detach().cpu().numpy())
+                        for c in nodes.t()
+                    )
+                    coords = x, y, z
             krylov = "PCG" if method == "cg" else "PBICGSTAB"
             solver = AmgXSolver(shape[0], stol, block_size, coords, krylov)
             solver.setup(A_cp)
