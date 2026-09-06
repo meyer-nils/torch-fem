@@ -26,6 +26,9 @@ import torch
 # Fraction of RAM `_prime_memory` claims before a CPU case.
 PRIMER_FRACTION = 0.4
 
+# Size of the throwaway case `run_case` warms up on, odd as a stretch mesh needs.
+WARMUP_N = 5
+
 
 @dataclass
 class Case:
@@ -62,6 +65,14 @@ def run_case(problem: Problem) -> None:
 
     torch.set_default_dtype(torch.float64)
     torch.set_default_device(args.device)
+
+    # Warm up on a throwaway case, so torch's first-call cost, the same at every
+    # size, falls outside the phases below. `cg` holds it on the iterative path.
+    warmup = problem.setup(WARMUP_N, args.method or "cg")
+    warmup.forward()
+    warmup.backward()
+    if args.device == "cuda":
+        torch.cuda.empty_cache()
 
     # Sample driver-level VRAM (cuda only) around all problem-specific work.
     monitor = VramMonitor() if args.device == "cuda" else None
