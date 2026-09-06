@@ -202,6 +202,9 @@ def _krylov(
     x = torch.zeros_like(b)
     r = b.clone()
     threshold = stol * stol * torch.dot(b, b)
+    # Zero solves to zero, and would divide by a residual that never shrinks.
+    if not torch.any(b):
+        return x
 
     if method == "cg":
         z = r if M is None else r * M
