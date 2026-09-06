@@ -30,7 +30,7 @@ MEMORY_YLIM = (0.1, 36)
 DOFS_XLIM = (9_000, 11_000_000)
 
 # Shared time range (s) of the timing plots, spanning every suite.
-TIMING_YLIM = (0.3, 200)
+TIMING_YLIM = (0.1, 100)
 
 
 def load_results() -> dict[str, list[dict]]:
