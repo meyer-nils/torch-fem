@@ -391,7 +391,9 @@ def sparse_solve(
         device (str, optional): Device to run the computation on ('cpu' or 'cuda').
             Defaults to None, which uses the current device.
         method (str, optional): Method to use for solving ('direct', 'cg' or
-            'bicgstab'). Defaults to None for `resolve_method` to choose by size.
+            'bicgstab'). Defaults to None for `resolve_method` to choose by size,
+            assuming symmetry: name 'bicgstab' for a matrix without it, since a
+            model resolves the method from its own tangent before calling here.
             'cg' needs a symmetric positive definite matrix, 'bicgstab' needs
             neither.
         preconditioner (str, optional): Preconditioner to build for an iterative
