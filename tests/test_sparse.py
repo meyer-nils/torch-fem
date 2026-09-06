@@ -320,10 +320,7 @@ class TestResolveMethod:
             describe_method("cg", "cuda", "jacobi")
             == "cg | iterative | jacobi | torch | cuda"
         )
-        assert (
-            describe_method("direct", "cuda", None)
-            == f"direct | direct | {direct} | cuda"
-        )
+        assert describe_method("direct", "cuda", None) == f"direct | {direct} | cuda"
 
 
 class TestResolvePreconditioner:

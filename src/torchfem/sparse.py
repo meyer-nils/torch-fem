@@ -106,8 +106,8 @@ def resolve_library(method: str, device: str, preconditioner: str) -> str:
 def describe_method(method: str, device: str, preconditioner: str | None) -> str:
     """Describe a resolved solve, for verbose output."""
     p = resolve_preconditioner(method, device, preconditioner)
-    kind = "direct" if method == "direct" else f"iterative | {p}"
-    return f"{method} | {kind} | {resolve_library(method, device, p)} | {device}"
+    named = [method] if method == "direct" else [method, "iterative", p]
+    return " | ".join([*named, resolve_library(method, device, p), device])
 
 
 def _rows(crow: Tensor) -> Tensor:
