@@ -22,6 +22,7 @@ class Material(ABC):
         is_vectorized (bool): Indicates if material parameters are batched.
         rho (Tensor): Mass density.
             *Shape:* `(..., 1)` or scalar.
+        symmetric_tangent (bool): Whether the tangent has major symmetry.
     """
 
     symmetric_tangent: bool = True
