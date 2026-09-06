@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pyamg
 import torch
-from scipy.sparse import csc_matrix as scipy_csc_matrix
 from scipy.sparse import csgraph
 from scipy.sparse import csr_matrix as scipy_csr_matrix
 from scipy.sparse.linalg import LinearOperator
+from scipy.sparse.linalg import bicgstab as scipy_bicgstab
 from scipy.sparse.linalg import cg as scipy_cg
 from scipy.sparse.linalg import eigsh as scipy_eigsh
-from scipy.sparse.linalg import minres as scipy_minres
 from scipy.sparse.linalg import spsolve as scipy_spsolve
 from torch import Tensor
 from torch.autograd import Function
@@ -20,13 +19,6 @@ from torch.autograd import Function
 if TYPE_CHECKING:
     from .amgx import AmgXSolver
     from .report import SolveReport
-
-ERR_CUPY_MISSING = (
-    "CuPy is not available.\n\n"
-    "Please install CuPy to use GPU acceleration:\n"
-    "> pip install cupy-cuda12x # v12.x\n"
-    "> pip install cupy-cuda13x # v13.x"
-)
 
 ERR_PYPARDISO_MISSING = (
     "PyPardiso is not available.\n\n"
@@ -44,20 +36,6 @@ ERR_AMGX_MISSING = (
 available_backends = ["scipy"]
 
 try:
-    import cupy
-    from cupyx.scipy.sparse import csc_matrix as cupy_csc_matrix
-    from cupyx.scipy.sparse import csr_matrix as cupy_csr_matrix
-    from cupyx.scipy.sparse import diags as cupy_diags
-    from cupyx.scipy.sparse.linalg import cg as cupy_cg
-    from cupyx.scipy.sparse.linalg import eigsh as cupy_eigsh
-    from cupyx.scipy.sparse.linalg import minres as cupy_minres
-    from cupyx.scipy.sparse.linalg import spsolve as cupy_spsolve
-
-    available_backends.append("cupy")
-except ImportError:
-    pass
-
-try:
     import pypardiso
 
     available_backends.append("pypardiso")
@@ -72,33 +50,64 @@ except ImportError:
     pass
 
 
-def resolve_method(n_dofs: int, device: str, method: str | None) -> str:
-    """Return the backend that `sparse_solve` uses for a system of this size."""
+def resolve_method(n_dofs: int, method: str | None, symmetric: bool = True) -> str:
+    """Return the method `sparse_solve` uses for a system of this size.
+
+    A direct solve for a small system, and beyond it the Krylov method the
+    tangent's symmetry allows. Where the crossover lies depends on the mesh, the
+    device and the backend, so the threshold is one compromise for all of them.
+    """
     if method is not None:
         return method
     if n_dofs < 10000:
-        if device == "cpu" and "pypardiso" in available_backends:
-            return "pardiso"
-        return "spsolve"
-    if device == "cuda" and "amgx" in available_backends:
+        return "direct"
+    return "cg" if symmetric else "bicgstab"
+
+
+def resolve_preconditioner(method: str, device: str, preconditioner: str | None) -> str:
+    """Return the preconditioner `sparse_solve` builds for this method.
+
+    Algebraic multigrid wherever it is available, and a Jacobi diagonal
+    otherwise.
+
+    Raises:
+        ValueError: If a preconditioner is requested for a direct solve.
+        RuntimeError: If AMG is requested on CUDA without AmgX installed.
+    """
+    if method == "direct":
+        if preconditioner not in (None, "none"):
+            raise ValueError("A direct solve takes no preconditioner.")
+        return "none"
+    if preconditioner is None:
+        return "amg" if device == "cpu" or "amgx" in available_backends else "jacobi"
+    if preconditioner == "amg" and device == "cuda":
+        if "amgx" not in available_backends:
+            raise RuntimeError(ERR_AMGX_MISSING)
+    return preconditioner
+
+
+def resolve_library(method: str, device: str, preconditioner: str) -> str:
+    """Return the library that implements this method and preconditioner.
+
+    An iterative solve over a diagonal needs nothing but sparse matrix-vector
+    products, which torch has. AmgX carries its own Krylov solver, so it takes
+    the whole solve rather than only the hierarchy it is named for. Everything
+    else is SciPy's, on the CPU even where the matrix is not.
+    """
+    if method != "direct" and preconditioner != "amg":
+        return "torch"
+    if preconditioner == "amg" and device == "cuda":
         return "amgx"
-    return "minres"
+    if method == "direct" and "pypardiso" in available_backends:
+        return "pypardiso"
+    return "scipy"
 
 
-def describe_method(n_dofs: int, device: str, method: str | None) -> str:
-    """Describe the backend that `resolve_method` picks, for verbose output."""
-    resolved = resolve_method(n_dofs, device, method)
-    kind = "direct"
-    if resolved in ("minres", "cg"):
-        kind = "iterative | " + ("jacobi" if device == "cuda" else "AMG")
-    elif resolved == "amgx":
-        kind = "iterative | AMG"
-    library = "cupy" if device == "cuda" else "scipy"
-    if resolved == "pardiso":
-        library = "pypardiso"
-    elif resolved == "amgx":
-        library = "amgx"
-    return f"{resolved} | {kind} | {library} | {device}"
+def describe_method(method: str, device: str, preconditioner: str | None) -> str:
+    """Describe a resolved solve, for verbose output."""
+    p = resolve_preconditioner(method, device, preconditioner)
+    named = [method] if method == "direct" else [method, "iterative", p]
+    return " | ".join([*named, resolve_library(method, device, p), device])
 
 
 def _rows(crow: Tensor) -> Tensor:
@@ -109,32 +118,132 @@ def _rows(crow: Tensor) -> Tensor:
     )
 
 
-class CachedSolve:
-    """Cache of the previous solution and gradient, used to warm-start solvers.
+# Iterations between residual tests in `_krylov`, which each cost a host sync.
+_CHECK = 10
 
-    Written only when the caller passes `update_cache=True`. Direct solvers
-    ignore it.
 
-    Args:
-        previous_x (Tensor | None): Previous forward solution.
-            *Shape:* `(n_dofs,)`.
-        previous_grad (Tensor | None): Previous adjoint solution.
-            *Shape:* `(n_dofs,)`.
+def _as_rows(A: Tensor, method: str) -> Tensor:
+    """Return `A` compressed by row, as every solver here reads it.
+
+    An adjoint passes `K.t()`, compressed by column. `cg` assumes a symmetric
+    matrix, whose transpose is itself, so that `t()` is undone rather than
+    carried out. `bicgstab` assumes nothing and pays for the transpose.
     """
+    if A.layout != torch.sparse_csc:
+        return A
+    return A.t() if method == "cg" else A.to_sparse_csr()
 
-    def __init__(
-        self, previous_x: Tensor | None = None, previous_grad: Tensor | None = None
-    ) -> None:
-        self.previous_x = previous_x
-        self.previous_grad = previous_grad
 
-    def update_grad(self, grad: Tensor | None) -> None:
-        """Stores a detached copy of `grad` as the next backward warm start."""
-        self.previous_grad = grad.detach().clone() if grad is not None else None
+def _to_scipy(A: Tensor) -> Any:
+    """Return `A` as a SciPy matrix compressed by row."""
+    return scipy_csr_matrix(
+        (A.values().numpy(), A.col_indices().numpy(), A.crow_indices().numpy()),
+        shape=A.shape,
+    )
 
-    def update_x(self, x: Tensor | None) -> None:
-        """Stores a detached copy of `x` as the next forward warm start."""
-        self.previous_x = x.detach().clone() if x is not None else None
+
+def _nodal(B: Tensor | None, n: int) -> tuple[int, tuple[Any, ...] | None]:
+    """Nodal blocking and coordinates for AmgX, from the rigid body modes.
+
+    A translation mode holds a one at each node's first degree of freedom, so an
+    evenly strided pattern gives away how many a node carries, and the rotation
+    modes hold the coordinates themselves. Rows in no such blocking, as an
+    eliminated assembly's are, get neither.
+    """
+    if B is None or not len(B):
+        return 1, None
+    base = (B[:, 0] == 1.0).nonzero().ravel()
+    dofs = n // len(base) if len(base) else 0
+    if not dofs or len(base) * dofs != n:
+        return 1, None
+    if not torch.equal(base, torch.arange(len(base), device=base.device) * dofs):
+        return 1, None
+    # AmgX aggregates blocks of at most five, so a shell's six degrees of
+    # freedom split into a translational and a rotational block of three.
+    block_size = 3 if dofs == 6 else dofs
+    # `GEO` needs one coordinate per block row, which a split node denies it.
+    if dofs != block_size:
+        return block_size, None
+    # A rotation about z moves x by -y and y by x, which gives the coordinates.
+    if B.shape[1] == 3:  # two translations and a rotation about z
+        cols = B[base + 1, 2], -B[base, 2]
+    elif B.shape[1] == 6:  # three of each
+        cols = B[base + 1, 5], B[base + 2, 3], B[base, 4]
+    else:
+        return block_size, None
+    return block_size, tuple(
+        np.ascontiguousarray(c.detach().cpu().numpy()) for c in cols
+    )
+
+
+def _diagonal(A: Tensor) -> Tensor:
+    """Diagonal of a matrix compressed by row, as a dense vector."""
+    col = A.col_indices()
+    on_diagonal = _rows(A.crow_indices()).to(col.dtype) == col
+    diag = torch.zeros(A.shape[0], dtype=A.dtype, device=A.device)
+    diag[col[on_diagonal].long()] = A.values()[on_diagonal]
+    return diag
+
+
+def _krylov(
+    A: Tensor, b: Tensor, method: str, preconditioner: str, stol: float
+) -> Tensor:
+    """Solve `A x = b` in torch, over a Jacobi diagonal or nothing.
+
+    The diagonal is rebuilt per solve rather than carried between them, costing
+    a fraction of one iteration. Testing the residual every `_CHECK` iterations
+    rather than every one synchronises with the host that much less often, at
+    the cost of overshooting the tolerance by up to `_CHECK - 1` iterations.
+
+    Raises:
+        RuntimeError: If the iteration limit is reached before `stol`.
+    """
+    M = 1.0 / _diagonal(A) if preconditioner == "jacobi" else None
+    x = torch.zeros_like(b)
+    r = b.clone()
+    threshold = stol * stol * torch.dot(b, b)
+    # Zero solves to zero, and would divide by a residual that never shrinks.
+    if not torch.any(b):
+        return x
+
+    if method == "cg":
+        z = r if M is None else r * M
+        p = z.clone()
+        rz = torch.dot(r, z)
+        for i in range(10 * len(b)):
+            Ap = A @ p
+            alpha = rz / torch.dot(p, Ap)
+            x.add_(p, alpha=alpha)  # type: ignore[arg-type]
+            r.sub_(Ap, alpha=alpha)  # type: ignore[arg-type]
+            z = r if M is None else r * M
+            rz_next = torch.dot(r, z)
+            if i % _CHECK == _CHECK - 1 and torch.dot(r, r) <= threshold:
+                return x
+            p.mul_(rz_next / rz).add_(z)
+            rz = rz_next
+    else:
+        # BiCGStab, with the shadow residual fixed at the initial one
+        r0 = r.clone()
+        p = torch.zeros_like(b)
+        v = torch.zeros_like(b)
+        rho = alpha = omega = torch.ones((), dtype=b.dtype, device=b.device)
+        for i in range(10 * len(b)):
+            rho_next = torch.dot(r0, r)
+            p = r + (rho_next / rho) * (alpha / omega) * (p - omega * v)
+            rho = rho_next
+            y = p if M is None else p * M
+            v = A @ y
+            alpha = rho / torch.dot(r0, v)
+            s = r - alpha * v
+            zs = s if M is None else s * M
+            t = A @ zs
+            omega = torch.dot(t, s) / torch.dot(t, t)
+            x = x + alpha * y + omega * zs
+            r = s - omega * t
+            if i % _CHECK == _CHECK - 1 and torch.dot(r, r) <= threshold:
+                return x
+
+    raise RuntimeError(f"{method} did not reach {stol:g} within the iteration limit.")
 
 
 class Solve(Function):
@@ -154,36 +263,24 @@ class Solve(Function):
         stol: float = 1e-10,
         device: str | None = None,
         method: str | None = None,
-        M: LinearOperator | AmgXSolver | None = None,
-        cached_solve: CachedSolve | None = None,
-        update_cache: bool = False,
-    ) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
-        """Solve `A x = b`, warm-starting from `cached_solve`.
+        preconditioner: str | None = None,
+        M: LinearOperator | None = None,
+    ) -> tuple[Tensor, LinearOperator | None]:
+        """Solve `A x = b`.
 
         See `sparse_solve` for the arguments.
 
         Returns:
             x (Tensor): Solution vector.
                 *Shape:* `(n_dofs,)`.
-            M (LinearOperator | AmgXSolver | None): Preconditioner built or
-                reused by the solve, passed on to `backward` for the adjoint
-                system, or `None` where an AmgX solver was built and closed.
+            M (LinearOperator | None): Preconditioner built or reused by the
+                solve, passed on to `backward` for the adjoint system.
         """
-        x0 = None
-        if cached_solve is not None and cached_solve.previous_x is not None:
-            x0 = cached_solve.previous_x
+        x, M, solver = sparse_solve(A, b, B, stol, device, method, preconditioner, M)
 
-        owned = M is None
-        x, M = sparse_solve(A, b, B, stol, device, method, M, x0)
-
-        if update_cache and cached_solve is not None:
-            cached_solve.update_x(x)
-
-        # An AmgX solver built here is freed here, and `backward` builds its
-        # own: nothing else frees one. See `torchfem.amgx`.
-        if owned and "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
-            M = None
+        # A solver is freed by the solve that built it. See `torchfem.amgx`.
+        if solver is not None:
+            solver.close()
 
         return x, M
 
@@ -197,40 +294,30 @@ class Solve(Function):
         Returns:
             Gradients for `A` and `b`, then `None` for the other arguments.
         """
-        # Upstream gradient for the solution x
-        grad_x = grad_outputs[0]
-
-        # Access the saved variables
         A, x = ctx.saved_tensors
 
-        x0 = None
-        if ctx.cached_solve is not None and ctx.cached_solve.previous_grad is not None:
-            x0 = ctx.cached_solve.previous_grad
-
-        # Adjoint solve: A^T lambda = grad_x, where `A.t()` is a CSC view of the
-        # same arrays rather than a transposed copy.
-        owned = ctx.M is None
-        gradb, M = sparse_solve(
-            A.t(), grad_x, ctx.B, ctx.stol, ctx.device, ctx.method, ctx.M, x0=x0
+        # `A.t()` is a CSC view of the same arrays, not a transposed copy.
+        gradb, _, solver = sparse_solve(
+            A.t(),
+            grad_outputs[0],
+            ctx.B,
+            ctx.stol,
+            ctx.device,
+            ctx.method,
+            ctx.pre,
+            ctx.M,
         )
+        if solver is not None:
+            solver.close()
 
-        # An AmgX solver built for this adjoint does not outlive it either
-        if owned and "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
-
-        # Backprop rule: gradA = -gradb @ x^T, sparse version. The gradient
-        # reuses the index arrays of `A`.
+        # gradA = -gradb x^T, over the index arrays of `A`
         crow, col = A.crow_indices(), A.col_indices()
         row = _rows(crow)
         val = -gradb[row] * x[col]
         with torch.sparse.check_sparse_tensor_invariants(False):
             gradA = torch.sparse_csr_tensor(crow, col, val, size=A.shape)
 
-        # Update storage for next iteration
-        if ctx.update_cache and ctx.cached_solve is not None:
-            ctx.cached_solve.update_grad(gradb.detach().clone())
-
-        return gradA, gradb, None, None, None, None, None, None, None
+        return gradA, gradb, None, None, None, None, None, None
 
     @staticmethod
     def setup_context(ctx, inputs, output) -> None:
@@ -238,20 +325,18 @@ class Solve(Function):
 
         Stores the preconditioner *returned* by the forward pass, not the one
         passed in, so the adjoint solve reuses the AMG hierarchy built there.
-        An AmgX solver is the exception: forward closed it, and returned `None`.
         """
-        A, b, B, stol, device, method, M, cached_solve, update_cache = inputs
+        A, b, B, stol, device, method, preconditioner, M = inputs
         x, M_computed = output
         ctx.save_for_backward(A, x)
 
         # Save the parameters for backward pass (including the preconditioner)
-        ctx.B = B
+        ctx.B = None if B is None else B.detach()
         ctx.stol = stol
         ctx.device = device
         ctx.method = method
+        ctx.pre = preconditioner
         ctx.M = M_computed
-        ctx.cached_solve = cached_solve
-        ctx.update_cache = update_cache
 
 
 def differentiable_sparse_solve(
@@ -261,23 +346,22 @@ def differentiable_sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
-    M: LinearOperator | AmgXSolver | None = None,
-    cached_solve: CachedSolve | None = None,
-    update_cache: bool = False,
+    preconditioner: str | None = None,
+    M: LinearOperator | None = None,
 ) -> Tensor:
     """Solve `A x = b` with custom sparse adjoint autograd support.
 
-    The forward pass may use non-differentiable sparse backends (SciPy, CuPy,
-    Pardiso). The backward pass solves the adjoint system and returns gradients
+    The forward pass may use non-differentiable sparse backends (SciPy,
+    Pardiso, AmgX). The backward pass solves the adjoint system and returns gradients
     with respect to both `A` and `b`.
     """
     # Compressed here, not inside `Solve`, so the adjoint fills one layout and a
     # COO caller still gets its gradient back through this conversion.
     if A.layout == torch.sparse_coo:
         A = A.to_sparse_csr()
-    result, _ = Solve.apply(
-        A, b, B, stol, device, method, M, cached_solve, update_cache
-    )  # type: ignore
+    result, _ = Solve.apply(  # type: ignore
+        A, b, B, stol, device, method, preconditioner, M
+    )
     if result is None:
         raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return result
@@ -290,9 +374,10 @@ def sparse_solve(
     stol: float = 1e-10,
     device: str | None = None,
     method: str | None = None,
-    M: LinearOperator | AmgXSolver | None = None,
-    x0: Tensor | None = None,
-) -> tuple[Tensor, LinearOperator | AmgXSolver | None]:
+    preconditioner: str | None = None,
+    M: LinearOperator | None = None,
+    solver: AmgXSolver | None = None,
+) -> tuple[Tensor, LinearOperator | None, AmgXSolver | None]:
     """
     Solve the linear system Ax = b.
 
@@ -305,228 +390,129 @@ def sparse_solve(
             Defaults to 1e-10.
         device (str, optional): Device to run the computation on ('cpu' or 'cuda').
             Defaults to None, which uses the current device.
-        method (str, optional): Method to use for solving ('spsolve', 'minres',
-            'cg', 'pardiso', 'amgx'). Defaults to None for automatic selection based
-            on the input size and available backends, which picks 'amgx' for
-            iterative solves on CUDA once it is installed (see `torchfem.amgx`).
-        M (Tensor, optional): Preconditioner matrix for iterative methods, or an
-            `AmgXSolver` to reuse for method='amgx'. Defaults to None.
-        x0 (Tensor, optional): Initial guess for iterative solvers. Defaults to None.
+        method (str, optional): Method to use for solving ('direct', 'cg' or
+            'bicgstab'). Defaults to None for `resolve_method` to choose by size,
+            assuming symmetry: name 'bicgstab' for a matrix without it, since a
+            model resolves the method from its own tangent before calling here.
+            'cg' needs a symmetric positive definite matrix, 'bicgstab' needs
+            neither.
+        preconditioner (str, optional): Preconditioner to build for an iterative
+            method ('amg', 'jacobi' or 'none'). Defaults to None for
+            `resolve_preconditioner` to choose by device and available backends.
+        M (LinearOperator, optional): Preconditioner for iterative methods.
+            Defaults to None, which builds one.
+        solver (AmgXSolver, optional): Solver to reuse where AmgX runs the solve.
+            Defaults to None, which builds one. Kept apart from `M` because it
+            is freed by `close()` rather than by the garbage collector, so it
+            must not outlive the loop that owns it.
 
     Returns:
         x (Tensor): Solution vector.
             *Shape:* `(n_dofs,)`.
-        M (LinearOperator | AmgXSolver | None): Preconditioner or AmgX solver
-            built or reused by the solve, `None` for direct methods. An
-            `AmgXSolver` holds its hierarchy until the caller calls `close()`.
+        M (LinearOperator | None): Preconditioner built or reused by the solve,
+            `None` for a direct solve and wherever AmgX runs it.
+        solver (AmgXSolver | None): Solver built or reused by the solve, `None`
+            unless AmgX ran it. Holds its hierarchy until `close()`.
     """
-    # Check the input shape
-    if A.ndim != 2 or (A.shape[0] != A.shape[1]):
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
         raise ValueError("A should be a square 2D matrix.")
-    shape = A.size()
+    for name, value, choices in (
+        ("Method", method, ("direct", "cg", "bicgstab")),
+        ("Preconditioner", preconditioner, ("amg", "jacobi", "none")),
+    ):
+        if value is not None and value not in choices:
+            raise ValueError(f"{name} {value} is not supported. Choose from {choices}.")
+
     out_device = b.device
-
-    # Check the input method
-    if method is not None and method not in [
-        "spsolve",
-        "minres",
-        "cg",
-        "pardiso",
-        "amgx",
-    ]:
-        raise ValueError(
-            f"Method {method} is not supported. "
-            "Choose from 'spsolve', 'minres', 'cg', 'pardiso', or 'amgx'."
-        )
-
-    # Move to requested device, if available
     if device is not None:
         A = A.to(device)
         b = b.to(device)
         if B is not None:
             B = B.to(device)
-        if x0 is not None:
-            x0 = x0.to(device)
 
-    # Make default solver choice based on shape and available backends
-    method = resolve_method(shape[0], A.device.type, method)
+    method = resolve_method(A.shape[0], method)
+    preconditioner = resolve_preconditioner(method, A.device.type, preconditioner)
+    library = resolve_library(method, A.device.type, preconditioner)
+    A = _as_rows(A, method)
 
-    # Solve either on CPU or GPU
-    if A.device.type == "cuda":
-        x_xp, M_xp = _solve_gpu(A, b, B, method, stol, M, shape, x0)
-    else:
-        x_xp, M_xp = _solve_cpu(A, b, B, method, stol, M, shape, x0)
+    if library == "torch":
+        return _krylov(A, b, method, preconditioner, stol).to(out_device), M, solver
 
-    # Convert back to torch
-    x = torch.tensor(x_xp, dtype=b.dtype, device=out_device)
+    if library == "amgx":
+        x, solver = _solve_amgx(A, b, B, method, stol, solver)
+        return x.to(out_device), M, solver
 
-    return x, M_xp
+    # SciPy and Pardiso read host arrays, CUDA data included: cuSOLVER's sparse
+    # LU is slower than SuperLU even counting the transfer either way.
+    x_np, M = _solve_scipy(
+        A.cpu(), b.cpu(), None if B is None else B.cpu(), method, stol, M
+    )
+    return torch.tensor(x_np, dtype=b.dtype, device=out_device), M, solver
 
 
-def _solve_gpu(
+def _solve_amgx(
     A: Tensor,
     b: Tensor,
     B: Tensor | None,
     method: str,
     stol: float,
-    M: LinearOperator | AmgXSolver | None,
-    shape: torch.Size,
-    x0: Tensor | None,
-) -> tuple[Any, Any]:
-    """Solve `A x = b` on the GPU via CuPy. See `sparse_solve` for arguments.
+    solver: AmgXSolver | None,
+) -> tuple[Tensor, AmgXSolver]:
+    """Solve `A x = b` on the GPU via AmgX. See `sparse_solve` for arguments.
 
-    Iterative methods build a Jacobi preconditioner from `A` unless `M` is
-    supplied, mirroring `_solve_cpu`. `amgx` reuses `M` as an `AmgXSolver` the
-    same way, refreshing coefficients instead of a fresh setup, and reads the
-    nodal block size off `B`. `pardiso` is CPU only and raises.
+    AmgX brings its own Krylov solver and so runs the whole solve, reusing
+    `solver` to refresh coefficients instead of building a fresh hierarchy. It
+    reads torch's arrays where they lie.
     """
-    if "cupy" not in available_backends:
-        raise RuntimeError(ERR_CUPY_MISSING)
+    if "amgx" not in available_backends:
+        raise RuntimeError(ERR_AMGX_MISSING)
 
-    # Torch's pool holds GBs of freed blocks that CuPy cannot allocate from
-    cupy.get_default_memory_pool().free_all_blocks()
+    # AmgX allocates its hierarchy from what torch is not holding.
     torch.cuda.empty_cache()
-
-    # Copy the arrays as they are. An adjoint passes `K.t()`, the same arrays
-    # read as CSC, which the CuPy solvers want back as rows.
-    values = cupy.asarray(A.values())
-    if A.layout == torch.sparse_csc:
-        A_cp = cupy_csc_matrix(
-            (values, cupy.asarray(A.row_indices()), cupy.asarray(A.ccol_indices())),
-            shape=shape,
-        ).tocsr()
+    if solver is None:
+        block_size, coords = _nodal(B, A.shape[0])
+        krylov = "PCG" if method == "cg" else "PBICGSTAB"
+        solver = AmgXSolver(A.shape[0], stol, block_size, coords, krylov)
+        solver.setup(A)
     else:
-        A_cp = cupy_csr_matrix(
-            (values, cupy.asarray(A.col_indices()), cupy.asarray(A.crow_indices())),
-            shape=shape,
-        )
-    A_cp.has_sorted_indices = True
-    b_cp = cupy.asarray(b.data)
-
-    if x0 is not None:
-        x0_cp = cupy.asarray(x0)
-    else:
-        x0_cp = None
-
-    if method == "pardiso":
-        raise RuntimeError("Pardiso backend is not available on GPU.")
-    elif method == "spsolve":
-        x_xp = cupy_spsolve(A_cp, b_cp)
-        M = None
-    elif method == "minres":
-        # Jacobi preconditioner, unless one was already built and passed in
-        if M is None:
-            M = cupy_diags(1.0 / A_cp.diagonal())
-        # Solve with minres
-        x_xp, exit_code = cupy_minres(A_cp, b_cp, M=M, tol=stol, x0=x0_cp)
-        if exit_code != 0:
-            raise RuntimeError(f"minres failed with exit code {exit_code}")
-    elif method == "cg":
-        # Jacobi preconditioner, unless one was already built and passed in
-        if M is None:
-            M = cupy_diags(1.0 / A_cp.diagonal())
-        # Solve with conjugate gradients
-        x_xp, exit_code = cupy_cg(A_cp, b_cp, M=M, rtol=stol, x0=x0_cp)
-        if exit_code != 0:
-            raise RuntimeError(f"CG failed with exit code {exit_code}")
-    elif method == "amgx":
-        if "amgx" not in available_backends:
-            raise RuntimeError(ERR_AMGX_MISSING)
-        # AMG hierarchy, built from scratch unless one was already passed in,
-        # in which case only its coefficients are refreshed.
-        if M is None:
-            # AmgX uses coordinates instead of null space B
-            coords = None
-            block_size = {6: 3, 3: 2}.get(B.shape[1], 1) if B is not None else 1
-            if B is not None and B.shape[1] == 6:
-                x, y, z = (
-                    np.ascontiguousarray(c.detach().cpu().numpy())
-                    for c in (B[1::3, 5], B[2::3, 3], B[0::3, 4])
-                )
-                coords = x, y, z
-            M = AmgXSolver(shape[0], stol, block_size, coords)
-            M.setup(A_cp)
-        else:
-            assert isinstance(M, AmgXSolver)
-            M.resetup(A_cp)
-        x_xp = M.solve(b_cp, x0_cp)
-
-    return x_xp, M
+        solver.resetup(A)
+    return solver.solve(b.contiguous()), solver
 
 
-def _solve_cpu(
+def _solve_scipy(
     A: Tensor,
     b: Tensor,
     B: Tensor | None,
     method: str,
     stol: float,
-    M: LinearOperator | AmgXSolver | None,
-    shape: torch.Size,
-    x0: Tensor | None,
-) -> tuple[Any, LinearOperator | AmgXSolver | None]:
-    """Solve `A x = b` on the CPU via SciPy. See `sparse_solve` for arguments.
+    M: LinearOperator | None,
+) -> tuple[Any, LinearOperator | None]:
+    """Solve `A x = b` via SciPy. See `sparse_solve` for arguments.
 
-    Iterative methods build an AMG preconditioner from `A` and `B` unless `M` is
-    supplied. `pardiso` reorders with reverse Cuthill-McKee before factorising.
+    A direct solve goes to Pardiso where it is installed, reordering with
+    reverse Cuthill-McKee before factorising, and to SuperLU otherwise. An
+    AMG-preconditioned one takes its hierarchy from pyamg, built from `A` and
+    `B` unless `M` is supplied.
     """
-    # SciPy takes the arrays as they are. An adjoint passes `K.t()`, the same
-    # arrays read as CSC.
-    if A.layout == torch.sparse_csc:
-        A_np = scipy_csc_matrix(
-            (A.values(), A.row_indices(), A.ccol_indices()), shape=shape
-        )
-    else:
-        A_np = scipy_csr_matrix(
-            (A.values(), A.col_indices(), A.crow_indices()), shape=shape
-        )
+    A_np = _to_scipy(A)
     b_np = b.data.numpy()
 
-    if x0 is not None:
-        x0_np = x0.data.numpy()
-    else:
-        x0_np = None
-
-    if B is None:
-        B_np = None
-    else:
-        B_np = B.data.numpy()
-
-    if method == "pardiso":
+    if method == "direct":
         if "pypardiso" not in available_backends:
-            raise RuntimeError(ERR_PYPARDISO_MISSING)
-        # Reorder the matrix using reverse Cuthill-McKee algorithm
-        rcm_order = csgraph.reverse_cuthill_mckee(A_np)
-        A_rcm = A_np[np.ix_(rcm_order, rcm_order)]
-        b_rcm = b_np[rcm_order]
-        # Solve with pypardiso
-        x_rcm = pypardiso.spsolve(A_rcm, b_rcm)
-        # Restore the original order
-        inv_rcm_order = np.argsort(rcm_order)
-        x_xp = x_rcm[inv_rcm_order]
-        M = None
-    elif method == "spsolve":
-        x_xp = scipy_spsolve(A_np, b_np)
-        M = None
-    elif method == "minres":
-        # AMG preconditioner with Jacobi smoother
-        if M is None:
-            ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
-            M = ml.aspreconditioner()
+            return scipy_spsolve(A_np, b_np), None
+        order = csgraph.reverse_cuthill_mckee(A_np)
+        x = pypardiso.spsolve(A_np[np.ix_(order, order)], b_np[order])
+        return x[np.argsort(order)], None
 
-        # Solve with minres
-        x_xp, exit_code = scipy_minres(A_np, b_np, M=M, rtol=stol, x0=x0_np)  # type: ignore
-        if exit_code != 0:
-            raise RuntimeError(f"minres failed with exit code {exit_code}")
-    elif method == "cg":
-        # AMG preconditioner with Jacobi smoother
-        if M is None:
-            ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
-            M = ml.aspreconditioner()
+    if M is None:
+        B_np = None if B is None else B.data.numpy()
+        ml = pyamg.smoothed_aggregation_solver(A_np, B_np, smooth="jacobi")
+        M = ml.aspreconditioner()
 
-        # Solve with cg
-        x_xp, exit_code = scipy_cg(A_np, b_np, M=M, rtol=stol, x0=x0_np)
-        if exit_code != 0:
-            raise RuntimeError(f"CG failed with exit code {exit_code}")
+    solve = scipy_cg if method == "cg" else scipy_bicgstab
+    x_xp, exit_code = solve(A_np, b_np, M=M, rtol=stol)
+    if exit_code != 0:
+        raise RuntimeError(f"{method} failed with exit code {exit_code}")
 
     return x_xp, M
 
@@ -566,9 +552,8 @@ class NewtonRaphsonAdjoint(Function):
         stol: float,
         report: SolveReport | None,
         method: str | None = None,
+        preconditioner: str | None = None,
         device: str | None = None,
-        cached_solve: CachedSolve | None = None,
-        update_cache: bool = False,
         u_prev: Tensor | None = None,
         grad_prev: Tensor | None = None,
         flux_prev: Tensor | None = None,
@@ -577,14 +562,15 @@ class NewtonRaphsonAdjoint(Function):
     ) -> Tensor:
         """Run Newton iterations until the residual meets `rtol` or `atol`.
 
-        Only the converged state is saved for backward, and the warm start
-        applies to the first Newton step only. See `newton_solve` for arguments.
+        Only the converged state is saved for backward. See `newton_solve` for
+        arguments.
 
         Raises:
             RuntimeError: If the residual becomes NaN or infinite, or the
                 iteration limit is reached.
         """
         M = None
+        solver = None
         converged_iter = max_iter - 1
 
         # Newton-Raphson iterations
@@ -612,28 +598,16 @@ class NewtonRaphsonAdjoint(Function):
             if not torch.isfinite(res_norm):
                 break
 
-            x0 = None
-            if (
-                i == 0
-                and cached_solve is not None
-                and cached_solve.previous_x is not None
-            ):
-                x0 = cached_solve.previous_x
-
             # Solve for displacement increment
-            du_i, M = sparse_solve(K, residual, B, stol, device, method, M, x0=x0)
-
-            if i == 0 and update_cache and cached_solve is not None:
-                cached_solve.update_x(du_i)
+            du_i, M, solver = sparse_solve(
+                K, residual, B, stol, device, method, preconditioner, M, solver
+            )
 
             du = du - du_i
 
-        # An AmgX solver is freed only by `close()` and does not outlive the
-        # call that built it: `backward` builds its own, and a solve that fails
-        # closes itself. See `torchfem.amgx`.
-        if "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
-            M = None
+        # A solver is freed by the loop that built it. See `torchfem.amgx`.
+        if solver is not None:
+            solver.close()
 
         # Final convergence check, which a residual that is not finite fails
         if not (res_norm < rtol * res_norm0 or res_norm < atol):
@@ -642,14 +616,13 @@ class NewtonRaphsonAdjoint(Function):
         ctx.save_for_backward(
             K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters
         )
-        ctx.B = B
+        ctx.B = B.detach()
         ctx.M = M
         ctx.stol = stol
         ctx.device = device
         ctx.method = method
+        ctx.pre = preconditioner
         ctx.eval_residual = eval_residual
-        ctx.cached_solve = cached_solve
-        ctx.update_cache = update_cache
         ctx.n_parameters = len(parameters)
         ctx.converged_iter = converged_iter
 
@@ -666,79 +639,38 @@ class NewtonRaphsonAdjoint(Function):
         Returns:
             `None` for solver arguments, then state and parameter gradients.
         """
-        grad_du = grad_outputs[0]
-
         K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters = ctx.saved_tensors
+        prev = (u_prev, grad_prev, flux_prev, state_prev)
 
-        B = ctx.B
-        M = ctx.M
-        stol = ctx.stol
-        device = ctx.device
-        method = ctx.method
-        eval_residual = ctx.eval_residual
-        cached_solve = ctx.cached_solve
-        update_cache = ctx.update_cache
-        converged_iter = ctx.converged_iter
-
-        x0 = None
-        if cached_solve is not None and cached_solve.previous_grad is not None:
-            x0 = cached_solve.previous_grad
-
-        # Solve adjoint system, where `K.t()` is a CSC view of the same arrays.
-        lambda_, M = sparse_solve(
+        # `K.t()` is a CSC view of the same arrays, not a transposed copy.
+        lambda_, _, solver = sparse_solve(
             K.t(),
-            grad_du,
-            B,
-            stol,
-            device,
-            method,
-            M,
-            x0=x0,
+            grad_outputs[0],
+            ctx.B,
+            ctx.stol,
+            ctx.device,
+            ctx.method,
+            ctx.pre,
+            ctx.M,
         )
+        if solver is not None:
+            solver.close()
 
-        # `ctx.M` holds no AmgX solver, so this one is the adjoint's own
-        if "amgx" in available_backends and isinstance(M, AmgXSolver):
-            M.close()
-
-        if update_cache and cached_solve is not None:
-            cached_solve.update_grad(lambda_)
-
-        # Recompute the residual with a differentiable local state.
         du_local = du.detach().requires_grad_(True)
-        prev_local = tuple(
-            p.detach().requires_grad_(True)
-            for p in (u_prev, grad_prev, flux_prev, state_prev)
-        )
+        prev_local = tuple(p.detach().requires_grad_(True) for p in prev)
         with torch.enable_grad(), torch.device(du_local.device):
-            residual, _ = eval_residual(du_local, converged_iter, *prev_local)
+            residual, _ = ctx.eval_residual(du_local, ctx.converged_iter, *prev_local)
 
-        grad_inputs = (du_local, *prev_local, *parameters)
         grads = torch.autograd.grad(
             residual,
-            grad_inputs,
+            (du_local, *prev_local, *parameters),
             grad_outputs=-lambda_,
             allow_unused=True,
             retain_graph=True,
         )
-        grad_prev_state = grads[1:5]
-        grad_parameters = grads[5:]
-
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            *grad_prev_state,
-            *grad_parameters,
-        )
+        # The gradient for `du` itself is not returned; the rest are the state
+        # gradients that chain across increments, then the parameters.
+        return (*(None,) * 11, *grads[1:])
 
 
 def newton_solve(
@@ -751,9 +683,8 @@ def newton_solve(
     stol: float,
     report: SolveReport | None,
     method: str | None = None,
+    preconditioner: str | None = None,
     device: str | None = None,
-    cached_solve: CachedSolve | None = None,
-    update_cache: bool = False,
     u_prev: Tensor | None = None,
     grad_prev: Tensor | None = None,
     flux_prev: Tensor | None = None,
@@ -773,9 +704,8 @@ def newton_solve(
         stol: Linear-solver tolerance used inside Newton steps for iterative solvers.
         report: Optional progress report receiving the iteration residuals.
         method: Sparse backend method name.
+        preconditioner: Sparse backend preconditioner name.
         device: Optional sparse backend device hint.
-        cached_solve: Optional storage for warm-start vectors.
-        update_cache: If True, updates cached vectors.
         u_prev: Previous increment's field values. Receives residual gradients
             in backward so sensitivities chain across increments.
         grad_prev: Previous increment's gradient (e.g. deformation gradient).
@@ -798,9 +728,8 @@ def newton_solve(
         stol,
         report,
         method,
+        preconditioner,
         device,
-        cached_solve,
-        update_cache,
         u_prev,
         grad_prev,
         flux_prev,
@@ -812,112 +741,38 @@ def newton_solve(
     return du
 
 
-def _eigsolve_cpu(
-    K: Tensor,
-    M: Tensor,
-    n_modes: int,
-    free_indices: Tensor,
-    shape: torch.Size,
-    n_dofs: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Solve the generalized eigenproblem on the CPU via SciPy.
-
-    Shift-invert at `sigma=0.0` targets the lowest modes. Eigenvectors are
-    scattered back from the free-DOF subspace, leaving constrained rows at zero.
-    See `modal_eigsolve` for arguments.
-    """
-    K_csr = scipy_csr_matrix(
-        (K.values(), K.col_indices(), K.crow_indices()), shape=shape
-    )
-    M_csr = scipy_csr_matrix(
-        (M.values(), M.col_indices(), M.crow_indices()), shape=shape
-    )
-
-    fi = free_indices.cpu().numpy()
-    eigenvalues, evecs_free = scipy_eigsh(
-        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
-    )
-    eigenvectors = np.zeros((n_dofs, n_modes))
-    eigenvectors[fi] = evecs_free
-    order = np.argsort(eigenvalues)
-    return eigenvalues[order], eigenvectors[:, order]
-
-
-def _eigsolve_gpu(
-    K: Tensor,
-    M: Tensor,
-    n_modes: int,
-    free_indices: Tensor,
-    shape: torch.Size,
-    n_dofs: int,
-) -> tuple[Any, Any]:
-    """Solve the generalized eigenproblem on the GPU via CuPy.
-
-    Mirrors `_eigsolve_cpu` and returns CuPy arrays.
-    """
-    if "cupy" not in available_backends:
-        raise RuntimeError(ERR_CUPY_MISSING)
-    K_csr = cupy_csr_matrix(
-        (
-            cupy.asarray(K.values()),
-            cupy.asarray(K.col_indices()),
-            cupy.asarray(K.crow_indices()),
-        ),
-        shape=shape,
-    )
-    M_csr = cupy_csr_matrix(
-        (
-            cupy.asarray(M.values()),
-            cupy.asarray(M.col_indices()),
-            cupy.asarray(M.crow_indices()),
-        ),
-        shape=shape,
-    )
-
-    fi = free_indices.cpu().numpy()
-    eigenvalues, evecs_free = cupy_eigsh(
-        K_csr[fi, :][:, fi], k=n_modes, M=M_csr[fi, :][:, fi], sigma=0.0
-    )
-    eigenvectors = cupy.zeros((n_dofs, n_modes), dtype=eigenvalues.dtype)
-    eigenvectors[fi] = evecs_free
-    order = cupy.argsort(eigenvalues)
-    return eigenvalues[order], eigenvectors[:, order]
-
-
 def modal_eigsolve(
-    K: Tensor,
-    M: Tensor,
-    n_modes: int,
-    free_indices: Tensor,
+    K: Tensor, M: Tensor, n_modes: int, free_indices: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Solve the generalized eigenvalue problem `K φ = ω² M φ`.
 
+    ARPACK is the only shift-invert this depends on, so a CUDA model pays the
+    transfer and solves on the CPU. Shift-invert at `sigma=0.0` targets the
+    lowest modes.
+
     Args:
-        K (sparse_csr_tensor): Stiffness matrix K.
-        M (sparse_csr_tensor): Mass matrix M.
-        n_modes (int): Number of eigenpairs to compute.
-        free_indices (Tensor): Free DOF indices for subspace extraction.
-            The eigenproblem is solved in the free-DOF subspace to avoid
-            spurious eigenvalues from the Dirichlet penalty
+        K: Stiffness matrix.
+        M: Mass matrix.
+        n_modes: Number of eigenpairs to compute.
+        free_indices: Free DOF indices. The eigenproblem is solved in their
+            subspace to avoid spurious eigenvalues from the Dirichlet penalty
             (`K_ii = M_ii = 1  =>  ω² = 1`).
 
     Returns:
-        eigenvalues (Tensor): Squared angular frequencies, ascending.
-            *Shape:* `(n_modes,)`.
-        eigenvectors (Tensor): Mode shapes, constrained rows left at zero.
-            *Shape:* `(n_dofs, n_modes)`.
+        Squared angular frequencies ascending, and the mode shapes, scattered
+        back from the free-DOF subspace with constrained rows left at zero.
     """
-    shape = K.size()
-    n_dofs = shape[0]
-
-    if K.device.type == "cuda":
-        vals, vecs = _eigsolve_gpu(K, M, n_modes, free_indices, shape, n_dofs)
-    else:
-        vals, vecs = _eigsolve_cpu(K, M, n_modes, free_indices, shape, n_dofs)
-
+    K_np, M_np = _to_scipy(K.cpu()), _to_scipy(M.cpu())
+    fi = free_indices.cpu().numpy()
+    vals, free = scipy_eigsh(
+        K_np[fi, :][:, fi], k=n_modes, M=M_np[fi, :][:, fi], sigma=0.0
+    )
+    vecs = np.zeros((K.shape[0], n_modes))
+    vecs[fi] = free
+    order = np.argsort(vals)
     return (
-        torch.tensor(vals, dtype=K.dtype, device=K.device),
-        torch.tensor(vecs, dtype=K.dtype, device=K.device),
+        torch.tensor(vals[order], dtype=K.dtype, device=K.device),
+        torch.tensor(vecs[:, order], dtype=K.dtype, device=K.device),
     )
 
 
@@ -930,10 +785,7 @@ class Eigensolve(Function):
 
     @staticmethod
     def forward(
-        K: Tensor,
-        M: Tensor,
-        n_modes: int,
-        free_indices: Tensor,
+        K: Tensor, M: Tensor, n_modes: int, free_indices: Tensor
     ) -> tuple[Tensor, Tensor]:
         """Compute the eigenpairs. See `modal_eigsolve` for the arguments."""
         return modal_eigsolve(K, M, n_modes, free_indices)
@@ -962,50 +814,29 @@ class Eigensolve(Function):
         """
         grad_lambdas = grad_outputs[0]
         K, M, lambdas, phis = ctx.saved_tensors
+        if grad_lambdas is None:
+            return None, None, None, None
 
-        # Re-normalise eigenvectors to unit norm in the M-metric.
-        # (eigsh returns M-normalised vectors, but we re-normalise for safety)
-        M_phis = torch.sparse.mm(M, phis)  # [n_dofs, n_modes]
-        denom = (phis * M_phis).sum(0).abs()  # [n_modes]
-        phi_hat = phis / denom.sqrt().unsqueeze(0)  # [n_dofs, n_modes]
+        # eigsh M-normalises the mode shapes; this holds whether or not it did
+        phi_hat = phis / (phis * torch.sparse.mm(M, phis)).sum(0).abs().sqrt()
 
-        grad_K = None
-        grad_M = None
+        def gradient(mat: Tensor, weights: Tensor) -> Tensor:
+            """`phi_i phi_j` weighted per mode and summed, at `mat`'s pattern."""
+            crow, col = mat.crow_indices(), mat.col_indices()
+            values = (phi_hat[_rows(crow)] * phi_hat[col] * weights).sum(-1)
+            with torch.sparse.check_sparse_tensor_invariants(False):
+                return torch.sparse_csr_tensor(crow, col, values, size=mat.shape)
 
-        if grad_lambdas is not None:
-            # dL/dK_ij = sum_k dL/dlambda_k * phi_hat_i_k * phi_hat_j_k
-            if K.requires_grad:
-                crow, col = K.crow_indices(), K.col_indices()
-                row = _rows(crow)
-                weighted = phi_hat[row] * phi_hat[col]
-                grad_K_vals = (weighted * grad_lambdas.unsqueeze(0)).sum(-1)
-                with torch.sparse.check_sparse_tensor_invariants(False):
-                    grad_K = torch.sparse_csr_tensor(
-                        crow, col, grad_K_vals, size=K.shape
-                    )
-
-            # dL/dM_ij = -sum_k dL/dlambda_k * lambda_k * phi_hat_i_k * phi_hat_j_k
-            if M.requires_grad:
-                crow, col = M.crow_indices(), M.col_indices()
-                row = _rows(crow)
-                weighted_lam = phi_hat[row] * phi_hat[col]
-                grad_M_vals = -(
-                    weighted_lam * (lambdas * grad_lambdas).unsqueeze(0)
-                ).sum(-1)
-                with torch.sparse.check_sparse_tensor_invariants(False):
-                    grad_M = torch.sparse_csr_tensor(
-                        crow, col, grad_M_vals, size=M.shape
-                    )
-
-        # Return None for n_modes and free_indices (non-tensor inputs)
-        return grad_K, grad_M, None, None
+        return (
+            gradient(K, grad_lambdas) if K.requires_grad else None,
+            gradient(M, -lambdas * grad_lambdas) if M.requires_grad else None,
+            None,
+            None,
+        )
 
 
 def differentiable_modal_eigsolve(
-    K: Tensor,
-    M: Tensor,
-    n_modes: int,
-    free_indices: Tensor,
+    K: Tensor, M: Tensor, n_modes: int, free_indices: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Solve the modal eigenvalue problem `K φ = ω² M φ`.
 

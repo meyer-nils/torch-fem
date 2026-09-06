@@ -26,6 +26,9 @@ import torch
 # Fraction of RAM `_prime_memory` claims before a CPU case.
 PRIMER_FRACTION = 0.4
 
+# Size of the throwaway case `run_case` warms up on, odd as a stretch mesh needs.
+WARMUP_N = 5
+
 
 @dataclass
 class Case:
@@ -63,6 +66,14 @@ def run_case(problem: Problem) -> None:
     torch.set_default_dtype(torch.float64)
     torch.set_default_device(args.device)
 
+    # Warm up on a throwaway case, so torch's first-call cost, the same at every
+    # size, falls outside the phases below. `cg` holds it on the iterative path.
+    warmup = problem.setup(WARMUP_N, args.method or "cg")
+    warmup.forward()
+    warmup.backward()
+    if args.device == "cuda":
+        torch.cuda.empty_cache()
+
     # Sample driver-level VRAM (cuda only) around all problem-specific work.
     monitor = VramMonitor() if args.device == "cuda" else None
     if monitor is not None:
@@ -90,8 +101,8 @@ class VramMonitor:
     """Sample peak GPU memory at the driver level via ``torch.cuda.mem_get_info``.
 
     Runs in the benchmark child process. Unlike PyTorch's allocator stats, this
-    also covers the CuPy pool and cuSOLVER/cuSPARSE workspaces (see
-    torchfem.sparse). Emits MB figures as ``TAG:value`` stdout lines:
+    also covers what AmgX and cuSPARSE allocate outside it (see torchfem.sparse).
+    Emits MB figures as ``TAG:value`` stdout lines:
     VRAM_BASELINE_MB (init/context overhead) and PEAK_VRAM_DRIVER_MB (run peak).
     """
 
@@ -109,14 +120,6 @@ class VramMonitor:
 
     def start(self):
         torch.cuda.init()
-        # Force CuPy init so its one-time overhead lands in the baseline.
-        try:
-            import cupy
-
-            cupy.zeros(1)
-            cupy.get_default_memory_pool().free_all_blocks()
-        except Exception:
-            pass
         torch.cuda.synchronize()
         self._baseline = self._used_mb()
         self._peak_used = self._baseline

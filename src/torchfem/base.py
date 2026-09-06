@@ -12,11 +12,11 @@ from .elements import Element
 from .materials import Material
 from .report import SolveReport, machine
 from .sparse import (
-    CachedSolve,
     describe_method,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     newton_solve,
+    resolve_method,
 )
 
 
@@ -153,9 +153,6 @@ class FEM(ABC):
             self.material = material
         else:
             self.material = material.vectorize(self.n_elem)
-
-        # Cached solve for sparse linear systems
-        self.cached_solve = CachedSolve()
 
     @property
     def n_state(self) -> int:
@@ -342,6 +339,11 @@ class FEM(ABC):
     def near_null_space(self) -> Tensor:
         """The near-null space an algebraic multigrid setup needs for this model."""
         return near_null_space(self.nodes, self.n_dof_per_node)
+
+    @property
+    def symmetric_tangent(self) -> bool:
+        """Whether the material tangent has major symmetry."""
+        return self.material is None or self.material.symmetric_tangent
 
     def integrate_shape_functions(self) -> Tensor:
         """Integrate each shape function over its element.
@@ -570,7 +572,8 @@ class FEM(ABC):
         verbose: bool,
         title: str,
         dtype: torch.dtype,
-        method: str | None,
+        method: str,
+        preconditioner: str | None,
         device: str | None,
         newton: str,
         **kwargs: str,
@@ -583,7 +586,7 @@ class FEM(ABC):
             "model": f"{type(self).__name__} | {self.n_elem:,} elem | "
             f"{self.n_dofs:,} dof | {str(dtype).removeprefix('torch.')}",
             "machine": machine(device),
-            "solver": describe_method(self.n_dofs, device, method),
+            "solver": describe_method(method, device, preconditioner),
             "newton": newton,
         }
         if dtype != torch.float64:
@@ -603,11 +606,11 @@ class FEM(ABC):
         growth_factor: float = 1.1,
         max_cutbacks: int = 10,
         verbose: bool = False,
-        method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
+        method: Literal["direct", "cg", "bicgstab"] | None = None,
+        preconditioner: Literal["amg", "jacobi", "none"] | None = None,
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
-        use_cached_solve: bool = False,
         nlgeom: bool = False,
         alpha: float = 0.0,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
@@ -633,12 +636,14 @@ class FEM(ABC):
                 increment before the solve is given up.
             verbose: If True, reports the solver configuration and a table of
                 per-increment progress, updated in place inside notebooks.
-            method: Linear solver backend name.
+            method: Linear solver method, chosen by size and tangent symmetry
+                when omitted.
+            preconditioner: Preconditioner for an iterative method, chosen by
+                device and available backends when omitted.
             device: Optional device hint for the linear solver backend.
             return_intermediate: If True, returns values for all increments.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            use_cached_solve: If True, reuses cached linear solver data.
             nlgeom: If True, includes geometric nonlinearity.
             alpha: Damping factor for viscous stabilization. Dissipated
                 energy is accumulated in `self.stabilization_energy`.
@@ -696,7 +701,12 @@ class FEM(ABC):
             + (" | nlgeom" if nlgeom else "")
             + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
         )
-        report = self._report(verbose, "solve", u.dtype, method, device, newton)
+        # Resolved once here, from what the model knows about its own tangent,
+        # rather than per linear solve.
+        solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
+        report = self._report(
+            verbose, "solve", u.dtype, solve_method, preconditioner, device, newton
+        )
 
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
@@ -806,11 +816,6 @@ class FEM(ABC):
                     state_prev = state_cur.detach()
 
                 # Solve for increment using Newton-Raphson method
-                if use_cached_solve:
-                    cached_solve = self.cached_solve
-                else:
-                    cached_solve = CachedSolve()
-
                 try:
                     du = newton_solve(
                         make_eval_residual(F_ext, DU, de0, k_visc),
@@ -821,10 +826,9 @@ class FEM(ABC):
                         atol,
                         stol,
                         report,
-                        method,
+                        solve_method,
+                        preconditioner,
                         device,
-                        cached_solve,
-                        use_cached_solve,
                         u_prev,
                         grad_prev,
                         flux_prev,
@@ -1300,9 +1304,9 @@ class Heat(FEM, ABC):
         atol: float = 1e-6,
         stol: float = 1e-10,
         device: str | None = None,
-        method: Literal["spsolve", "minres", "cg", "pardiso", "amgx"] | None = None,
+        method: Literal["direct", "cg", "bicgstab"] | None = None,
+        preconditioner: Literal["amg", "jacobi", "none"] | None = None,
         aggregate_integration_points: bool = True,
-        use_cached_solve: bool = False,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Integrate the heat equation in time with implicit increments.
@@ -1322,10 +1326,12 @@ class Heat(FEM, ABC):
             atol: Absolute residual tolerance for Newton convergence.
             stol: Tolerance used by iterative linear solvers.
             device: Optional device hint for the linear solver backend.
-            method: Linear solver backend name.
+            method: Linear solver method, chosen by size and tangent symmetry
+                when omitted.
+            preconditioner: Preconditioner for an iterative method, chosen by
+                device and available backends when omitted.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            use_cached_solve: If True, reuses cached linear solver data.
             differentiable_parameters: Explicit parameters that should receive
                 gradients through implicit solves. Accepts either a single
                 tensor or an iterable of tensors.
@@ -1359,7 +1365,6 @@ class Heat(FEM, ABC):
         # solve for initial conditions
         temp_eq, f_int_eq, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
             aggregate_integration_points=False,
-            use_cached_solve=use_cached_solve,
             differentiable_parameters=differentiable_parameters,
         )
 
@@ -1440,11 +1445,15 @@ class Heat(FEM, ABC):
         newton = (
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it | dt <= {delta_t:g}"
         )
+        # The transient tangent adds the mass matrix, which is symmetric, so the
+        # material alone decides, as in `solve`.
+        solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
         report = self._report(
             verbose,
             "time integration",
             u.dtype,
-            method,
+            solve_method,
+            preconditioner,
             device,
             newton,
             label="Time step",
@@ -1506,25 +1515,14 @@ class Heat(FEM, ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
-                # Use cached solve from previous increment if available.
-                if it == 0 and use_cached_solve:
-                    cached_solve = self.cached_solve
-                else:
-                    cached_solve = CachedSolve()
-
-                # Keep cache tied to first Newton iteration only.
-                update_cache = it == 0
-
                 du = differentiable_sparse_solve(
                     self.M + 0.5 * dt_n * self.K,
                     -residual,
                     B,
                     stol,
                     device,
-                    method,
-                    None,
-                    cached_solve,
-                    update_cache,
+                    solve_method,
+                    preconditioner,
                 )
 
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))

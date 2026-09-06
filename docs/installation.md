@@ -11,28 +11,27 @@ pip install torch-fem[notebook]
 Plain `pip install torch-fem` installs only what is required to build and solve models, if you do not intend to run the notebooks.
 
 ## GPU support (optional)
-Install PyTorch and CuPy for your CUDA version. For CUDA 13:
+Install PyTorch for your CUDA version. For CUDA 13:
 ``` sh
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
-pip install cupy-cuda13x
 ```
 
-For CUDA 12, use the `cu129` index URL and `cupy-cuda12x` instead. CUDA 11 is not supported.
+For CUDA 12, use the `cu129` index URL instead. CUDA 11 is not supported.
 
 ## Advanced solver backends (optional)
-*torch-fem* solves with SciPy on CPU and CuPy on GPU out of the box. Two optional backends can be faster, and both are selected per solve with `method=...` in `solve(...)`.
+*torch-fem* runs its iterative solvers in PyTorch itself, on either device, and falls back to SciPy for a direct solve and for the algebraic multigrid preconditioner on CPU. Two optional backends can be faster, and *torch-fem* picks up either one as soon as it is installed.
 
 **Pardiso** is a direct CPU solver:
 ``` sh
 pip install pypardiso
 ```
-Once installed, *torch-fem* uses it automatically for small models on CPU, where a direct solve beats an iterative one. Pass `method="pardiso"` to force it.
+Once installed, *torch-fem* uses it automatically for a direct solve, which is what small models get by default.
 
-**AmgX** is NVIDIA's GPU algebraic multigrid library, which needs far fewer iterations than the Jacobi preconditioner of the GPU default. It ships no wheels, so build it from source against a matching CUDA toolkit by following the instructions in the [AmgX repository](https://github.com/NVIDIA/AMGX), then point *torch-fem* at the resulting shared library:
+**AmgX** is NVIDIA's GPU algebraic multigrid library, which needs far fewer iterations than a Jacobi preconditioner. It ships no wheels, so build it from source against a matching CUDA toolkit by following the instructions in the [AmgX repository](https://github.com/NVIDIA/AMGX), then point *torch-fem* at the resulting shared library:
 ``` sh
 export AMGX_DLL=/path/to/libamgxsh.so # amgxsh.dll on Windows
 ```
-Iterative solves on the GPU then use it automatically. Pass `method="cg"` or `method="minres"` to fall back to the Jacobi-preconditioned default.
+Iterative solves on the GPU then use it automatically. Pass `preconditioner="jacobi"` to fall back to the diagonal one.
 
 ## Development (optional)
 To develop new features for *torch-fem*, you should fork the GitHub repository and clone it to your machine via 

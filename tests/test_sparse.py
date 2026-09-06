@@ -1,18 +1,17 @@
-import inspect
-
 import pytest
 import torch
 from scipy.linalg import eigh as scipy_eigh
 
 from torchfem.sparse import (
-    CachedSolve,
+    _nodal,
     available_backends,
     describe_method,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     modal_eigsolve,
-    newton_solve,
+    resolve_library,
     resolve_method,
+    resolve_preconditioner,
     sparse_solve,
 )
 
@@ -52,22 +51,42 @@ def _to_csr(dense: torch.Tensor, values: torch.Tensor | None = None) -> torch.Te
 
 
 class TestSparseSolve:
-    @pytest.mark.parametrize("method", [None, "spsolve", "cg", "minres"])
+    @pytest.mark.parametrize("method", [None, "direct", "cg", "bicgstab"])
     def test_matches_dense_solution(self, method):
         A_dense = _spd(N, 0)
         b = torch.randn(N)
-        x, _ = sparse_solve(_to_csr(A_dense), b, method=method)
+        x, _, _ = sparse_solve(_to_csr(A_dense), b, method=method)
         assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_direct_method_returns_no_preconditioner(self):
-        _, M = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="spsolve")
+        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="direct")
         assert M is None
 
-    @pytest.mark.parametrize("method", ["cg", "minres"])
+    @pytest.mark.parametrize("method", ["cg", "bicgstab"])
     def test_iterative_method_builds_a_preconditioner(self, method):
         """The preconditioner is returned so the adjoint solve can reuse it."""
-        _, M = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
+        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
         assert M is not None
+
+    def test_bicgstab_solves_a_non_symmetric_system(self):
+        """CG assumes a symmetric matrix; a damage tangent is not one."""
+        A_dense = _nonsymmetric(40, 0)
+        b = torch.randn(40)
+        x, _, _ = sparse_solve(_to_csr(A_dense), b, method="bicgstab")
+        assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
+
+    def test_rejects_unknown_preconditioner(self):
+        with pytest.raises(ValueError, match="is not supported"):
+            sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), preconditioner="ilu")
+
+    @pytest.mark.parametrize("preconditioner", ["amg", "jacobi", "none"])
+    def test_every_preconditioner_reaches_the_same_solution(self, preconditioner):
+        A_dense = _spd(N, 0)
+        b = torch.randn(N)
+        x, _, _ = sparse_solve(
+            _to_csr(A_dense), b, method="cg", preconditioner=preconditioner
+        )
+        assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_rejects_non_square_matrix(self):
         """The message is matched on purpose: without this guard the call still
@@ -78,16 +97,6 @@ class TestSparseSolve:
     def test_rejects_unknown_method(self):
         with pytest.raises(ValueError, match="is not supported"):
             sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="not-a-solver")
-
-    def test_initial_guess_does_not_change_the_solution(self):
-        """A warm start may only change the iteration count, never the answer."""
-        A_dense = _spd(N, 0)
-        b = torch.randn(N)
-        reference = torch.linalg.solve(A_dense, b)
-        x, _ = sparse_solve(
-            _to_csr(A_dense), b, method="cg", x0=reference + 0.1 * torch.randn(N)
-        )
-        assert torch.allclose(x, reference, atol=1e-8)
 
 
 class TestDifferentiableSparseSolve:
@@ -169,53 +178,22 @@ class TestDifferentiableSparseSolve:
         (grad_values,) = torch.autograd.grad(x.sum(), [values])
         assert grad_values.shape == values.shape
 
-
-class TestCachedSolve:
-    def test_update_x_stores_a_detached_copy(self):
-        cache = CachedSolve()
-        x = torch.ones(3, requires_grad=True)
-        cache.update_x(x)
-        assert cache.previous_x is not None
-        assert not cache.previous_x.requires_grad
-        assert cache.previous_x is not x
-
-    def test_update_grad_stores_a_detached_copy(self):
-        cache = CachedSolve()
-        g = torch.ones(3, requires_grad=True)
-        cache.update_grad(g)
-        assert cache.previous_grad is not None
-        assert not cache.previous_grad.requires_grad
-
-    def test_update_with_none_clears_the_entry(self):
-        cache = CachedSolve(previous_x=torch.ones(3), previous_grad=torch.ones(3))
-        cache.update_x(None)
-        cache.update_grad(None)
-        assert cache.previous_x is None
-        assert cache.previous_grad is None
-
-    @pytest.mark.parametrize("func", [differentiable_sparse_solve, newton_solve])
-    def test_solvers_do_not_share_a_default_cache(self, func):
-        """Regression guard: a `CachedSolve()` default would be constructed once
-        at import and shared by every caller, so one solve could warm-start a
-        later, unrelated solve from a stale (possibly wrong-sized) vector."""
-        assert inspect.signature(func).parameters["cached_solve"].default is None
-
-    def test_warm_start_reaches_the_same_solution(self):
-        A_dense = _spd(N, 0)
-        b = torch.randn(N)
-        A, _ = _to_sparse(A_dense)
-        reference = torch.linalg.solve(A_dense, b)
-
-        cache = CachedSolve()
-        first = differentiable_sparse_solve(
-            A, b, method="cg", cached_solve=cache, update_cache=True
+    @pytest.mark.parametrize("method", ["cg", "bicgstab"])
+    @pytest.mark.parametrize("preconditioner", ["jacobi", "none"])
+    def test_an_iterative_adjoint_matches_dense(self, method, preconditioner):
+        """The adjoint hands the solver `A.t()`, compressed by column. `cg`
+        rereads those arrays as rows rather than transposing them, which is only
+        the same matrix because `cg` already assumes symmetry."""
+        A_dense, b, w = _spd(N, 0), torch.randn(N), torch.randn(N)
+        values = A_dense.flatten().clone().requires_grad_(True)
+        A, _ = _to_sparse(A_dense, values)
+        b_grad = b.clone().requires_grad_(True)
+        x = differentiable_sparse_solve(
+            A.to_sparse_csr(), b_grad, method=method, preconditioner=preconditioner
         )
-        assert cache.previous_x is not None
-        second = differentiable_sparse_solve(
-            A, b, method="cg", cached_solve=cache, update_cache=True
-        )
-        assert torch.allclose(first, reference, atol=1e-8)
-        assert torch.allclose(second, reference, atol=1e-8)
+        grad_b = torch.autograd.grad((x * w).sum(), [b_grad])[0]
+        assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
+        assert torch.allclose(grad_b, torch.linalg.solve(A_dense.T, w), atol=1e-8)
 
 
 class TestModalEigsolve:
@@ -320,20 +298,130 @@ class TestEigensolveGradients:
 
 class TestResolveMethod:
     def test_an_explicit_method_is_kept(self):
-        assert resolve_method(10, "cpu", "cg") == "cg"
-        assert resolve_method(10**6, "cuda", "spsolve") == "spsolve"
-
-    def test_large_systems_switch_to_an_iterative_solver(self):
-        assert resolve_method(9999, "cpu", None) != "minres"
-        assert resolve_method(10000, "cpu", None) == "minres"
+        assert resolve_method(10, "cg") == "cg"
+        assert resolve_method(10**6, "direct") == "direct"
 
     def test_small_systems_use_a_direct_solver(self):
-        direct = "pardiso" if "pypardiso" in available_backends else "spsolve"
-        assert resolve_method(10, "cpu", None) == direct
-        # Pardiso is CPU only, so the GPU falls back to the CuPy direct solver.
-        assert resolve_method(10, "cuda", None) == "spsolve"
+        assert resolve_method(9999, None) == "direct"
+        assert resolve_method(10000, None) != "direct"
+
+    def test_an_unsymmetric_tangent_needs_bicgstab(self):
+        assert resolve_method(10**6, None, symmetric=True) == "cg"
+        assert resolve_method(10**6, None, symmetric=False) == "bicgstab"
 
     def test_the_description_names_preconditioner_library_and_device(self):
-        assert describe_method(10, "cpu", "cg") == "cg | iterative | AMG | scipy | cpu"
-        assert "jacobi" in describe_method(10, "cuda", "cg")
-        assert "cupy" in describe_method(10, "cuda", "spsolve")
+        """Every preconditioner is named on purpose: what `None` resolves to on
+        CUDA depends on whether AmgX is installed, which the machine decides."""
+        direct = "pypardiso" if "pypardiso" in available_backends else "scipy"
+        assert (
+            describe_method("cg", "cpu", None) == "cg | iterative | amg | scipy | cpu"
+        )
+        assert (
+            describe_method("cg", "cuda", "jacobi")
+            == "cg | iterative | jacobi | torch | cuda"
+        )
+        assert describe_method("direct", "cuda", None) == f"direct | {direct} | cuda"
+
+
+class TestResolvePreconditioner:
+    def test_a_direct_solve_takes_none(self):
+        assert resolve_preconditioner("direct", "cpu", None) == "none"
+
+    def test_a_direct_solve_rejects_one(self):
+        with pytest.raises(ValueError, match="takes no preconditioner"):
+            resolve_preconditioner("direct", "cpu", "amg")
+
+    def test_an_iterative_solve_defaults_to_amg_on_the_cpu(self):
+        assert resolve_preconditioner("cg", "cpu", None) == "amg"
+
+    def test_an_explicit_preconditioner_is_kept(self):
+        assert resolve_preconditioner("cg", "cpu", "jacobi") == "jacobi"
+
+    def test_amg_on_cuda_needs_amgx(self):
+        if "amgx" in available_backends:
+            assert resolve_preconditioner("cg", "cuda", "amg") == "amg"
+        else:
+            assert resolve_preconditioner("cg", "cuda", None) == "jacobi"
+            with pytest.raises(RuntimeError, match="AmgX is not available"):
+                resolve_preconditioner("cg", "cuda", "amg")
+
+
+class TestResolveLibrary:
+    def test_the_cpu_uses_pardiso_for_a_direct_solve_where_it_is_installed(self):
+        direct = "pypardiso" if "pypardiso" in available_backends else "scipy"
+        assert resolve_library("direct", "cpu", "none") == direct
+
+    def test_amg_on_cuda_is_amgx(self):
+        assert resolve_library("cg", "cuda", "amg") == "amgx"
+
+    def test_the_cpu_uses_scipy_for_an_iterative_solve(self):
+        assert resolve_library("cg", "cpu", "amg") == "scipy"
+
+    @pytest.mark.parametrize("device", ["cpu", "cuda"])
+    @pytest.mark.parametrize("preconditioner", ["jacobi", "none"])
+    def test_a_diagonal_preconditioner_keeps_the_solve_in_torch(
+        self, device, preconditioner
+    ):
+        """Only a hierarchy or a factorisation is worth another library."""
+        assert resolve_library("cg", device, preconditioner) == "torch"
+
+
+class TestNodal:
+    """The blocking and geometry AmgX aggregates over, read out of `B`."""
+
+    @staticmethod
+    def _model(kind):
+        from torchfem import Planar, Shell, Solid, SolidHeat
+        from torchfem.materials import (
+            IsotropicConductivity3D,
+            IsotropicElasticity3D,
+            IsotropicElasticityPlaneStress,
+        )
+        from torchfem.mesh import cube_hexa, rect_quad, rect_tri
+
+        if kind == "planar":
+            return Planar(*rect_quad(4, 4), IsotropicElasticityPlaneStress(1e3, 0.3))
+        if kind == "heat":
+            return SolidHeat(*cube_hexa(4, 4, 4), IsotropicConductivity3D(400.0))
+        if kind == "shell":
+            flat, elements = rect_tri(4, 4)
+            nodes = torch.cat([flat, torch.zeros(len(flat), 1)], dim=1)
+            mat = IsotropicElasticityPlaneStress(7e4, 0.3)
+            return Shell(nodes, elements, mat, thickness=0.1)
+        return Solid(*cube_hexa(4, 4, 4), IsotropicElasticity3D(1e3, 0.3))
+
+    @pytest.mark.parametrize(
+        "kind,block_size", [("solid", 3), ("planar", 2), ("shell", 3), ("heat", 1)]
+    )
+    def test_the_block_size_is_the_degrees_of_freedom_a_node_carries(
+        self, kind, block_size
+    ):
+        """A shell's six outrun what AmgX aggregates, so its node splits in two."""
+        model = self._model(kind)
+        assert _nodal(model.near_null_space(), model.n_dofs)[0] == block_size
+
+    @pytest.mark.parametrize("kind", ["solid", "planar"])
+    def test_a_model_gets_its_nodes_back(self, kind):
+        """Three coordinates in 3D and two in 2D, which AmgX reads as its
+        problem dimension."""
+        model = self._model(kind)
+        coords = _nodal(model.near_null_space(), model.n_dofs)[1]
+        assert coords is not None and len(coords) == model.n_dim
+        for axis, got in enumerate(coords):
+            assert torch.allclose(torch.as_tensor(got), model.nodes[:, axis])
+
+    @pytest.mark.parametrize("kind", ["shell", "heat"])
+    def test_geometry_only_where_a_node_is_one_block(self, kind):
+        """A shell splits its node over two blocks, so it has no coordinate per
+        block row; a scalar model carries no rotation modes to read."""
+        model = self._model(kind)
+        assert _nodal(model.near_null_space(), model.n_dofs)[1] is None
+
+    def test_rows_in_no_nodal_stride_are_not_blocked(self):
+        """An assembly eliminates constrained rows, leaving no uniform blocking."""
+        B = torch.zeros(17, 6)
+        B[[0, 5], 0] = 1.0
+        assert _nodal(B, 17) == (1, None)
+
+    def test_no_basis_is_not_blocked(self):
+        assert _nodal(None, 100) == (1, None)

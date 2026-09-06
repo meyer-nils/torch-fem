@@ -2,50 +2,50 @@
   "hardware": "RTX 4060 Ti",
   "device": "cuda",
   "python": "3.12.12",
-  "libraries": "CuPy 14.1.1, CUDA 12.9",
+  "libraries": "PyTorch 2.10.0+cu126, CUDA 12.6",
   "dtype": "float64",
-  "commit": "144fed7",
+  "commit": "a8c8b91",
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.1717,
-      "fwd_s": 17.7356,
-      "bwd_s": 4.038,
+      "setup_s": 0.006,
+      "fwd_s": 11.3932,
+      "bwd_s": 3.0587,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1420.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 1310.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.1835,
-      "fwd_s": 24.2563,
-      "bwd_s": 5.5801,
+      "setup_s": 0.0141,
+      "fwd_s": 16.6147,
+      "bwd_s": 4.4805,
       "peak_ram_mb": null,
-      "peak_vram_mb": 2262.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 2150.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.176,
-      "fwd_s": 30.593,
-      "bwd_s": 7.3321,
+      "setup_s": 0.0196,
+      "fwd_s": 22.9926,
+      "bwd_s": 6.1819,
       "peak_ram_mb": null,
-      "peak_vram_mb": 3350.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 3240.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.1825,
-      "fwd_s": 39.4403,
-      "bwd_s": 9.4529,
+      "setup_s": 0.0299,
+      "fwd_s": 32.3929,
+      "bwd_s": 8.3974,
       "peak_ram_mb": null,
-      "peak_vram_mb": 4578.0,
-      "solver": "amgx | iterative | AMG | amgx | cuda"
+      "peak_vram_mb": 4430.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     }
   ]
 }

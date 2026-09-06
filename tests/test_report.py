@@ -6,7 +6,7 @@ from torchfem import Planar, PlanarHeat
 from torchfem.materials import IsotropicConductivity2D, IsotropicElasticityPlaneStress
 from torchfem.mesh import rect_quad
 from torchfem.report import WIDTH, SolveReport, machine
-from torchfem.sparse import describe_method
+from torchfem.sparse import describe_method, resolve_method
 
 
 def _build_cantilever() -> Planar:
@@ -72,7 +72,7 @@ class TestVerboseSolve:
         model.solve(increments=torch.linspace(0, 1, 4), verbose=True)
 
         out = capsys.readouterr().out
-        assert describe_method(model.n_dofs, "cpu", None) in out
+        assert describe_method(resolve_method(model.n_dofs, None), "cpu", None) in out
         assert f"{model.n_elem:,} elem" in out
         assert f" machine  {machine()}" in out
         assert "3 increments" in out
@@ -97,10 +97,16 @@ class TestVerboseSolve:
 
 class TestMachine:
     def test_the_thread_count_is_read_per_call(self):
-        """Only the CPU name and memory are cached, so a later change shows up."""
+        """Only the CPU name and memory are cached, so a later change shows up.
+
+        Two counts, since one proves nothing about a cache that happens to hold
+        the same number, and they differ in plural so both spellings are read.
+        """
         threads = torch.get_num_threads()
         try:
             torch.set_num_threads(1)
-            assert "1 thread |" in machine()
+            assert "1 thread" in machine()
+            torch.set_num_threads(2)
+            assert "2 threads" in machine()
         finally:
             torch.set_num_threads(threads)

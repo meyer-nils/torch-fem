@@ -2,10 +2,22 @@
 
 ## Unreleased
 
+### Removed
+- **Breaking:** `CachedSolve`, the `use_cached_solve` argument of `solve(...)` and `time_integration(...)`, and the `x0` initial guess of `sparse_solve(...)`. Warm-starting an iterative solve from the previous solution saved at most 10% of the Krylov iterations and no measurable wall time: a guess 0.7% off in solution norm still leaves a 48% residual, and the preconditioner is rebuilt on every call anyway.
+- **Breaking:** CuPy is no longer a dependency, and `"cupy"` no longer appears in `available_backends`. GPU support needs nothing but PyTorch.
+
 ### Changed
+- `cg` and `bicgstab` run in PyTorch on either device, over a Jacobi diagonal or nothing, rather than dispatching to CuPy or SciPy. They are 1.2 to 2.3 times faster than CuPy's on a GPU and 3 to 4 times faster than SciPy's on a CPU, at the same tolerance and iteration count, and `resolve_library` reports them as `torch`. An AMG preconditioner still goes to AmgX on CUDA and pyamg on CPU, where SciPy's Krylov solvers stay: they drive pyamg's hierarchy as fast as a PyTorch loop can, and the hierarchy is what dominates.
+- A direct solve of a CUDA matrix runs on the CPU, transfers included, because cuSOLVER's sparse LU is about 1.75 times slower than SuperLU over the sizes a direct solve is chosen for.
+- `modal_eigsolve(...)` solves on the CPU wherever its matrices live. The CUDA path called `eigsh` with arguments CuPy does not accept, so it had never worked.
+- **Breaking:** `minres` is gone. Its `rtol` is a normwise backward error, `||r||/(||A|| ||x||)`, rather than the relative residual `cg` tests, so the same tolerance bought a much weaker solution: over the systems the example notebooks solve, it missed the requested tolerance on 55% of them, by a median factor of 45 and up to 8e8, while taking fewer iterations than `cg` for it. Symmetric systems now go to `cg` and unsymmetric ones to `bicgstab`. The iterations it skipped were mostly the adjoint's, so a CPU backward pass now takes up to two and a half times as long, growing with the system, for a gradient that meets the tolerance it was given.
+- **Breaking:** `method` names the algorithm (`direct`, `cg`, `bicgstab`) and the new `preconditioner` names what preconditions it (`amg`, `jacobi`, `none`), with the library inferred from both and the device. The values `spsolve`, `pardiso` and `amgx` are gone: the first two were the libraries behind a direct solve, which is now chosen by availability, and the third was a Krylov method and an AMG preconditioner under a library's name. `preconditioner='amg'` on CUDA is how AmgX is now requested.
+- A material declares whether its tangent has major symmetry through `Material.symmetric_tangent`, which decides `cg` against `bicgstab`. `IsotropicDamage3D` sets it to `False`: its algorithmic tangent carries a rank-one term whose factors differ, and `cg` stagnates on the result rather than converging slowly.
 - A model builds its sparse index maps from the node adjacency and expands them by degree of freedom, rather than sorting the degree-of-freedom pairs themselves, which leaves `n_dof_per_node**2` fewer keys to sort. This speeds up setup significantly.
 - **Breaking:** `FEM.assemble_matrix(...)` returns a CSR tensor with int32 indices rather than a COO tensor with int64 ones, which is the layout the linear solvers convert to anyway. A model's index data shrinks to a quarter.
+- A planar model's AmgX solve aggregates geometrically, as a solid one already did, for roughly 40% fewer iterations. AmgX reads the problem dimension from whether a third coordinate is attached, so a planar model attaches two rather than a flat z.
 - `Assembly` eliminates its constrained degrees of freedom with a precomputed scatter map rather than a sparse-sparse product, which is about ten times faster per Newton iteration and needs no MKL.
+- **Breaking:** `sparse_solve(...)` takes and returns the reusable AmgX solver in its own `solver` slot rather than in `M`, which now holds a preconditioner alone. A preconditioner is freed by the garbage collector and an AmgX solver only by `close()`, so one slot could not follow one rule and every adjoint had to check the type of what it got back before deciding whether to free it.
 - **Breaking:** `sparse_solve(...)` and `modal_eigsolve(...)` take matrices compressed by row, or the `t()` of one as its transpose, rather than COO ones. They converted to that layout internally anyway, and every caller in the library now assembles it directly.
 
 ## Version 0.10.0 - August 26 2026

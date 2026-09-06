@@ -24,7 +24,7 @@ For a linear system
 $$
 Ax = b,
 $$
-the forward pass computes $x$ with a non-differentiable sparse backend (for example SciPy, CuPy, or Pardiso). In the backward pass, given an upstream gradient $\partial \mathcal{L}/\partial x$, we solve the adjoint system
+the forward pass computes $x$ with a non-differentiable sparse backend (for example SciPy, Pardiso, or AmgX). In the backward pass, given an upstream gradient $\partial \mathcal{L}/\partial x$, we solve the adjoint system
 $$
 A^\top\lambda = \partial \mathcal{L}/\partial x.
 $$
@@ -62,7 +62,7 @@ $$
 Practically, this has two major benefits:
 
 - Memory and runtime scale much better than backpropagating through every Newton and linear-solver iteration.
-- The forward solver can use non-differentiable external sparse backends (SciPy/CuPy/Pardiso), while gradients remain correct through the adjoint equations.
+- The forward solver can use non-differentiable external sparse backends (SciPy/Pardiso/AmgX), while gradients remain correct through the adjoint equations.
 
 In other words, the differentiable interface is preserved even when the numerical linear algebra backend itself is not natively differentiable.
 

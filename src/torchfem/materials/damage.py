@@ -56,6 +56,8 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         regularization.
     """
 
+    symmetric_tangent = False
+
     def __init__(
         self,
         E: float | Tensor,

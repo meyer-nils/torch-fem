@@ -82,15 +82,8 @@ The scripts live in `benchmarks/` at the repository root.
 # All benchmarks on CPU (default)
 python benchmarks/run.py
 
-# Structural benchmark on CUDA
+# Just the cube benchmark on CUDA
 python benchmarks/run.py -problem cube -device cuda --label rtx5090_cuda --hardware "RTX 5090"
-
-# Thermal benchmark
-python benchmarks/run.py -problem thermal --label m1_pro_cpu --hardware "Apple M1 Pro"
-
-# SIMP cantilever benchmark
-python benchmarks/run.py -problem topopt --label m1_pro_cpu --hardware "Apple M1 Pro"
-
 ```
 
 The label identifies the machine; results are written to `benchmarks/results/<problem>_<label>.json`.

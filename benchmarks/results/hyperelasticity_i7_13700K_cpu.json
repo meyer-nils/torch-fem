@@ -4,48 +4,48 @@
   "python": "3.12.12",
   "libraries": "SciPy 1.15.3, PyTorch 2.10.0+cu126",
   "dtype": "float64",
-  "commit": "8bbfc2a",
+  "commit": "115337d",
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.0524,
-      "fwd_s": 24.0064,
-      "bwd_s": 6.7206,
-      "peak_ram_mb": 2216.6,
+      "setup_s": 0.0409,
+      "fwd_s": 22.8355,
+      "bwd_s": 6.8364,
+      "peak_ram_mb": 2240.1,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.0829,
-      "fwd_s": 38.8825,
-      "bwd_s": 10.2955,
-      "peak_ram_mb": 3419.8,
+      "setup_s": 0.076,
+      "fwd_s": 36.7003,
+      "bwd_s": 10.0395,
+      "peak_ram_mb": 3470.6,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.1209,
-      "fwd_s": 52.953,
-      "bwd_s": 13.5406,
-      "peak_ram_mb": 4661.4,
+      "setup_s": 0.1113,
+      "fwd_s": 51.1652,
+      "bwd_s": 13.3091,
+      "peak_ram_mb": 4677.9,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.1743,
-      "fwd_s": 75.3739,
-      "bwd_s": 18.7192,
-      "peak_ram_mb": 6183.4,
+      "setup_s": 0.1688,
+      "fwd_s": 73.059,
+      "bwd_s": 18.4923,
+      "peak_ram_mb": 6204.4,
       "peak_vram_mb": null,
-      "solver": "minres | iterative | AMG | scipy | cpu"
+      "solver": "cg | iterative | amg | scipy | cpu"
     }
   ]
 }

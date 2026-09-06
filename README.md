@@ -45,7 +45,7 @@ You may install *torch-fem* via pip with
 pip install torch-fem
 ```
 
-To run the example notebooks, install with the `notebook` extra (`pip install torch-fem[notebook]`). For GPU acceleration, install PyTorch with CUDA support and the matching CuPy version - see the [installation guide](https://meyer-nils.github.io/torch-fem/installation/) for details.
+To run the example notebooks, install with the `notebook` extra (`pip install torch-fem[notebook]`). For GPU acceleration, install PyTorch with CUDA support - see the [installation guide](https://meyer-nils.github.io/torch-fem/installation/) for details.
 
 ## Minimal example
 This is a minimal example of how to use *torch-fem* to solve a very simple planar cantilever problem. 

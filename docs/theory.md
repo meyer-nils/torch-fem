@@ -183,12 +183,18 @@ where $\Delta \mathbf{u}/\Delta \lambda$ is the nodal velocity with respect to t
 
 The viscous forces vanish as the solution approaches a stable equilibrium, so a sufficiently small $\alpha$ barely perturbs the result. To verify this, the dissipated energy is accumulated per increment in `model.stabilization_energy` (the Abaqus `ALLSD` output) and should stay small compared to the strain energy. The default $\alpha = 0$ disables stabilization.
 
-The sparse linear system can be solved with different backends via the `method` argument of `solve()`:
+#### Linear solvers
 
-- direct sparse solvers (`"spsolve"`, `"pardiso"`),
-- iterative Krylov solvers (`"cg"`, `"minres"`) with an algebraic multigrid preconditioner built from rigid-body modes.
+The sparse system of each Newton iteration is solved either directly, by factorizing $\mathbf{K}$, or iteratively, by a Krylov method that needs no more than the product $\mathbf{K} \mathbf{v}$. The `method` argument of `solve()` names the algorithm (`"direct"`, `"cg"`, `"bicgstab"`) and `preconditioner` names what accelerates it (`"amg"`, `"jacobi"`, `"none"`).
 
-On CUDA devices, the sparse solves are performed with CuPy for GPU acceleration.
+Left at their default `None`, both are resolved per solve. A factorization costs more than a Krylov solve beyond a few tens of thousands of unknowns, so small systems go direct. Larger ones go to conjugate gradients where the tangent is symmetric, which a material declares through `Material.symmetric_tangent`, and to the biconjugate gradient stabilized method where it is not. An algebraic multigrid preconditioner is worth its setup on elasticity, whose smooth error modes a Jacobi diagonal leaves untouched, so it is used wherever an implementation is installed.
+
+| Condition | `method` | `preconditioner` | Library |
+| --- | --- | --- | --- |
+| Below 10 000 DOF | `direct` | `none` | Pardiso, else SuperLU |
+| Larger, CPU | `cg` or `bicgstab` | `amg` | pyamg, driven by SciPy |
+| Larger, CUDA with AmgX | `cg` or `bicgstab` | `amg` | AmgX |
+| Larger, CUDA without AmgX | `cg` or `bicgstab` | `jacobi` | PyTorch |
 
 !!! info
 

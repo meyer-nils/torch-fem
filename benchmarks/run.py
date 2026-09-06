@@ -22,7 +22,7 @@ import topopt
 import torch
 from utils import profile_and_capture_cpu, profile_and_capture_gpu
 
-from torchfem.sparse import describe_method
+from torchfem.sparse import describe_method, resolve_method
 
 # name -> problem module; each module defines a `PROBLEM` descriptor and is
 # runnable as the child process that solves one (N, device) case.
@@ -72,7 +72,7 @@ def run_problem(
                 "bwd_s": round(bwd_t, 4),
                 "peak_ram_mb": round(peak_mem, 1) if not use_cuda else None,
                 "peak_vram_mb": round(peak_mem, 1) if use_cuda else None,
-                "solver": describe_method(dofs, device, method),
+                "solver": describe_method(resolve_method(dofs, method), device, None),
             }
         )
     return rows
@@ -110,11 +110,7 @@ def main():
 
     use_cuda = args.device == "cuda"
     if use_cuda:
-        import cupy
-
-        cuda_ver = cupy.cuda.runtime.runtimeGetVersion()
-        cuda_str = f"{cuda_ver // 1000}.{cuda_ver % 1000 // 10}"
-        libraries = f"CuPy {cupy.__version__}, CUDA {cuda_str}"
+        libraries = f"PyTorch {torch.__version__}, CUDA {torch.version.cuda}"
     else:
         libraries = f"SciPy {scipy.__version__}, PyTorch {torch.__version__}"
 

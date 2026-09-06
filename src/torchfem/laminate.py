@@ -58,6 +58,11 @@ class Laminate:
         "bottom": -0.5,
     }
 
+    @property
+    def symmetric_tangent(self) -> bool:
+        """Whether every layer has a symmetric tangent. See `Material`."""
+        return all(material.symmetric_tangent for material in self.materials)
+
     def __init__(
         self,
         materials: Sequence[Material],

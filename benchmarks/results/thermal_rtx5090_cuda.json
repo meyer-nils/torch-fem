@@ -1,18 +1,18 @@
 {
-  "hardware": "RTX PRO 4000",
+  "hardware": "RTX 5090",
   "device": "cuda",
   "python": "3.13.12",
-  "libraries": "PyTorch 2.11.0+cu128, CUDA 12.8",
+  "libraries": "PyTorch 2.8.0+cu129, CUDA 12.9",
   "dtype": "float64",
-  "commit": "ab60607",
+  "commit": "115337d",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.0046,
-      "fwd_s": 0.0881,
-      "bwd_s": 0.06,
+      "setup_s": 0.0048,
+      "fwd_s": 0.0877,
+      "bwd_s": 0.0623,
       "peak_ram_mb": null,
       "peak_vram_mb": 384.0,
       "solver": "cg | iterative | amg | amgx | cuda"
@@ -20,19 +20,19 @@
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.0059,
-      "fwd_s": 0.1618,
-      "bwd_s": 0.1035,
+      "setup_s": 0.0056,
+      "fwd_s": 0.1424,
+      "bwd_s": 0.0982,
       "peak_ram_mb": null,
-      "peak_vram_mb": 546.0,
+      "peak_vram_mb": 556.0,
       "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.0123,
-      "fwd_s": 0.3492,
-      "bwd_s": 0.1853,
+      "setup_s": 0.0105,
+      "fwd_s": 0.2334,
+      "bwd_s": 0.1347,
       "peak_ram_mb": null,
       "peak_vram_mb": 1308.0,
       "solver": "cg | iterative | amg | amgx | cuda"
@@ -40,21 +40,21 @@
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.0416,
-      "fwd_s": 1.2353,
-      "bwd_s": 0.6429,
+      "setup_s": 0.0265,
+      "fwd_s": 0.6452,
+      "bwd_s": 0.3392,
       "peak_ram_mb": null,
-      "peak_vram_mb": 4226.0,
+      "peak_vram_mb": 4228.0,
       "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 2048,
       "dofs": 4200450,
-      "setup_s": 0.1633,
-      "fwd_s": 5.8535,
-      "bwd_s": 3.6158,
+      "setup_s": 0.0935,
+      "fwd_s": 2.5871,
+      "bwd_s": 1.4381,
       "peak_ram_mb": null,
-      "peak_vram_mb": 17221.4,
+      "peak_vram_mb": 16808.0,
       "solver": "cg | iterative | amg | amgx | cuda"
     }
   ]
