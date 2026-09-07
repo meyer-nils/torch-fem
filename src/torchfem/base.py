@@ -677,8 +677,11 @@ class FEM(ABC):
         # Number of increments
         N = len(increments)
 
-        # Mass matrix and dissipated energy for viscous stabilization
+        # Viscous stabilization: the element mass it damps with, the substep the
+        # cached tangent was built for, and the work it dissipates.
         m = self.integrate_mass() if alpha > 0.0 else None
+        k_step = 0.0
+        energy = torch.zeros(())
         self.stabilization_energy = torch.zeros(N)
 
         # Determine differentiable dependencies for this solve call.
@@ -730,14 +733,11 @@ class FEM(ABC):
         grad_cur = grad[0].clone()
         flux_cur = flux[0].clone()
         state_cur = state[0].clone()
-        energy = torch.zeros(())
 
-        # Pseudo time, the fraction of an increment attempted per substep, and
-        # the substep the cached viscous tangent belongs to, all carried across
-        # increments. A fraction rescales to each increment's own span.
+        # Pseudo time and the fraction of an increment attempted per substep, both
+        # carried across increments. A fraction rescales to each increment's span.
         lam = float(increments[0])
         step_frac = 1.0
-        k_step = 0.0
 
         # Incremental loading with automatic cutback
         for n in range(1, N):
@@ -758,14 +758,12 @@ class FEM(ABC):
                 DU = step * self._dirichlet.ravel()
                 de0 = step * self._external_gradient
 
-                # Element viscous stiffness alpha/dt * M for this substep. A
-                # linear model caches K, so it must be rebuilt when it changes.
-                k_visc = None
-                if m is not None:
-                    k_visc = alpha / abs(step) * m
-                    if abs(step) != k_step:
-                        self.K = torch.empty(0)
-                    k_step = abs(step)
+                # Element viscous stiffness for this substep. A linear model caches
+                # K, which holds the last one, so a new substep size rebuilds it.
+                k_visc = None if m is None else alpha / abs(step) * m
+                if k_visc is not None and abs(step) != k_step:
+                    self.K = torch.empty(0)
+                k_step = abs(step)
 
                 # State the adjoint differentiates against to chain sensitivities
                 # across substeps. The solver saves it for backward while the
