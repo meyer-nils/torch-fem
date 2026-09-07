@@ -1,10 +1,6 @@
 # Changelog 
 
-## Unreleased
-
-### Removed
-- **Breaking:** `CachedSolve`, the `use_cached_solve` argument of `solve(...)` and `time_integration(...)`, and the `x0` initial guess of `sparse_solve(...)`. Warm-starting an iterative solve from the previous solution saved at most 10% of the Krylov iterations and no measurable wall time: a guess 0.7% off in solution norm still leaves a 48% residual, and the preconditioner is rebuilt on every call anyway.
-- **Breaking:** CuPy is no longer a dependency, and `"cupy"` no longer appears in `available_backends`. GPU support needs nothing but PyTorch.
+## Version 0.11.0 - September 7 2026
 
 ### Changed
 - `cg` and `bicgstab` run in PyTorch on either device, over a Jacobi diagonal or nothing, rather than dispatching to CuPy or SciPy. They are 1.2 to 2.3 times faster than CuPy's on a GPU and 3 to 4 times faster than SciPy's on a CPU, at the same tolerance and iteration count, and `resolve_library` reports them as `torch`. An AMG preconditioner still goes to AmgX on CUDA and pyamg on CPU, where SciPy's Krylov solvers stay: they drive pyamg's hierarchy as fast as a PyTorch loop can, and the hierarchy is what dominates.
@@ -19,6 +15,14 @@
 - `Assembly` eliminates its constrained degrees of freedom with a precomputed scatter map rather than a sparse-sparse product, which is about ten times faster per Newton iteration and needs no MKL.
 - **Breaking:** `sparse_solve(...)` takes and returns the reusable AmgX solver in its own `solver` slot rather than in `M`, which now holds a preconditioner alone. A preconditioner is freed by the garbage collector and an AmgX solver only by `close()`, so one slot could not follow one rule and every adjoint had to check the type of what it got back before deciding whether to free it.
 - **Breaking:** `sparse_solve(...)` and `modal_eigsolve(...)` take matrices compressed by row, or the `t()` of one as its transpose, rather than COO ones. They converted to that layout internally anyway, and every caller in the library now assembles it directly.
+
+### Removed
+- **Breaking:** `CachedSolve`, the `use_cached_solve` argument of `solve(...)` and `time_integration(...)`, and the `x0` initial guess of `sparse_solve(...)`. Warm-starting an iterative solve from the previous solution saved at most 10% of the Krylov iterations and no measurable wall time: a guess 0.7% off in solution norm still leaves a 48% residual, and the preconditioner is rebuilt on every call anyway.
+- **Breaking:** CuPy is no longer a dependency, and `"cupy"` no longer appears in `available_backends`. GPU support needs nothing but PyTorch.
+
+### Fixed
+- `cg` and `bicgstab` return zero for a zero right-hand side rather than iterating on it. The convergence threshold is relative to `||b||`, so it was zero as well, and the first step divided zero by zero: the solution filled with `NaN`, the residual test could never pass, and the solve ran its full iteration limit before raising a spurious `RuntimeError`. An adjoint reaches this whenever the loss does not depend on a particular solve, which hands the backward pass a zero seed.
+- The near-null space saved for the adjoint solve is detached, as the node coordinates beside it already were. It configures the multigrid aggregation and never enters the solution, but in shape optimization it is built from nodes that carry a gradient, so the saved copy held the node graph alive past the forward pass.
 
 ## Version 0.10.0 - August 26 2026
 

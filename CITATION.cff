@@ -10,8 +10,8 @@ repository-code: https://github.com/meyer-nils/torch-fem
 url: https://meyer-nils.github.io/torch-fem/
 doi: 10.5281/zenodo.20306384
 license: MIT
-version: 0.10.0
-date-released: 2026-08-26
+version: 0.11.0
+date-released: 2026-09-07
 keywords:
   - finite elements
   - differentiable simulation
