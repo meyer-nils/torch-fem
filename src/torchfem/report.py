@@ -6,18 +6,14 @@ from functools import cache
 
 import torch
 
+from .sparse import describe_method
+
 WIDTH = 88
+RULE = "-" * WIDTH
 # The columns leave a margin at the right edge for the substep flags.
 COLUMNS = "  {:>10}  {:>12}  {:>9}  {:>10}  {:>15}  {:>10}"
 # Longest pause between notebook redraws, which bounds their message rate.
 REFRESH = 0.05
-
-
-def _rule(title: str = "") -> str:
-    """Horizontal rule of `WIDTH` characters, optionally carrying a title."""
-    if not title:
-        return "-" * WIDTH
-    return f"--- {title} " + "-" * (WIDTH - len(title) - 5)
 
 
 def _plural(n: int, unit: str) -> str:
@@ -88,8 +84,8 @@ class SolveReport:
     table is stored. Everywhere else rows are streamed with `print`.
 
     Args:
-        title: Title placed in the top rule.
-        header: Label and text of the lines above the table.
+        header: Label and text of the lines above the table. None for a report
+            that records progress but writes nothing.
         label: Name of the first column.
         value: Name of the second column.
         unit: Plural noun for one row, used in the summary.
@@ -97,14 +93,14 @@ class SolveReport:
 
     def __init__(
         self,
-        title: str,
-        header: dict[str, str],
+        header: dict[str, str] | None,
         label: str = "Increment",
         value: str = "Load factor",
         unit: str = "increments",
     ):
+        self.silent = header is None
         self.unit = unit
-        self.handle = _display_handle()
+        self.handle = None if self.silent else _display_handle()
         self.rows: list[str] = []
         self.foot: list[str] = []
         self.total = 0
@@ -112,9 +108,9 @@ class SolveReport:
         self.running = False
 
         self.head = [
-            _rule(title),
-            *(f" {key:<8} {text}" for key, text in header.items()),
-            _rule(),
+            RULE,
+            *(f" {key:<8} {text}" for key, text in (header or {}).items()),
+            RULE,
             COLUMNS.format(
                 label, value, "Steps", "Iterations", "Residual", "Wall time"
             ),
@@ -138,6 +134,8 @@ class SolveReport:
         """Record the residual of Newton iteration `i`, which opens a substep at
         `i == 0`. The count reports linear solves, so a linear problem needs one.
         """
+        if self.silent:
+            return
         if i == 0:
             self.steps += 1
         else:
@@ -157,6 +155,8 @@ class SolveReport:
 
     def end(self) -> None:
         """Close the row of the open increment."""
+        if self.silent:
+            return
         self.running = False
         self.total += self.iters
         self.rows.append(self._row())
@@ -165,7 +165,7 @@ class SolveReport:
     def close(self) -> None:
         """Write the summary below the table."""
         self.foot = [
-            _rule(),
+            RULE,
             f" converged | {_plural(len(self.rows), self.unit)}"
             f" | {_plural(self.total, 'iterations')}"
             f" | {time.perf_counter() - self.t0:.2f} s",
@@ -187,13 +187,10 @@ class SolveReport:
         )
         return f"{row}  {' '.join(flags)}".rstrip()
 
-    def _lines(self) -> list[str]:
-        """Render the whole block, including the increment being solved."""
-        running = [self._row()] if self.running else []
-        return self.head + self.rows + running + self.foot
-
     def _emit(self, lines: list[str]) -> None:
         """Print `lines`, or redraw the whole notebook block unconditionally."""
+        if self.silent:
+            return
         if self.handle is None:
             print("\n".join(lines))
         else:
@@ -207,4 +204,37 @@ class SolveReport:
         if self.handle is None or (not force and now - self.drawn < REFRESH):
             return
         self.drawn = now
-        self.handle.update({"text/plain": "\n".join(self._lines())}, raw=True)
+        # The whole block is rendered, the increment being solved included.
+        running = [self._row()] if self.running else []
+        block = self.head + self.rows + running + self.foot
+        self.handle.update({"text/plain": "\n".join(block)}, raw=True)
+
+
+def solve_report(
+    verbose: bool,
+    model: str,
+    method: str,
+    preconditioner: str | None,
+    device: str,
+    newton: str,
+    **kwargs: str,
+) -> SolveReport:
+    """Open a report on a solve, which writes nothing unless verbose.
+
+    It is headed by `model`, the machine, the linear solver named from `method`
+    and `preconditioner`, and `newton`.
+    """
+    if not verbose:
+        return SolveReport(None)
+    dtype = str(torch.get_default_dtype()).removeprefix("torch.")
+    header = {
+        "model": f"{model} | {dtype}",
+        "machine": machine(device),
+        "solver": describe_method(method, device, preconditioner),
+        "newton": newton,
+    }
+    if dtype != "float64":
+        header["warning"] = (
+            "single precision, prefer torch.set_default_dtype(torch.float64)"
+        )
+    return SolveReport(header, **kwargs)

@@ -10,9 +10,8 @@ from torch import Tensor
 
 from .elements import Element
 from .materials import Material
-from .report import SolveReport, machine
+from .report import solve_report
 from .sparse import (
-    describe_method,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     newton_solve,
@@ -567,34 +566,6 @@ class FEM(ABC):
             self._boundary_facets(mask), self.etype.facet_type, load
         )
 
-    def _report(
-        self,
-        verbose: bool,
-        title: str,
-        dtype: torch.dtype,
-        method: str,
-        preconditioner: str | None,
-        device: str | None,
-        newton: str,
-        **kwargs: str,
-    ) -> SolveReport | None:
-        """Open a report on this model and its linear solver, if verbose."""
-        if not verbose:
-            return None
-        device = device or self.nodes.device.type
-        header = {
-            "model": f"{type(self).__name__} | {self.n_elem:,} elem | "
-            f"{self.n_dofs:,} dof | {str(dtype).removeprefix('torch.')}",
-            "machine": machine(device),
-            "solver": describe_method(method, device, preconditioner),
-            "newton": newton,
-        }
-        if dtype != torch.float64:
-            header["warning"] = (
-                "⚠ single precision, prefer torch.set_default_dtype(torch.float64)"
-            )
-        return SolveReport(f"torch-fem | {title}", header, **kwargs)
-
     def solve(
         self,
         increments: Tensor | None = None,
@@ -704,9 +675,9 @@ class FEM(ABC):
         # Resolved once here, from what the model knows about its own tangent,
         # rather than per linear solve.
         solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
-        report = self._report(
-            verbose, "solve", u.dtype, solve_method, preconditioner, device, newton
-        )
+        dev = device or self.nodes.device.type
+        model = f"{type(self).__name__} | {self.n_elem:,} elem | {self.n_dofs:,} dof"
+        report = solve_report(verbose, model, solve_method, preconditioner, dev, newton)
 
         # Initialize global stiffness matrix
         self.K = torch.empty(0)
@@ -773,8 +744,7 @@ class FEM(ABC):
         # Incremental loading with automatic cutback
         for n in range(1, N):
             target = float(increments[n])
-            if report is not None:
-                report.begin(n, target)
+            report.begin(n, target)
 
             span = target - lam
             direction = math.copysign(1.0, span)
@@ -843,8 +813,7 @@ class FEM(ABC):
                             f"Newton-Raphson did not converge in increment {n} "
                             f"after {max_cutbacks} cutbacks."
                         ) from err
-                    if report is not None:
-                        report.cutback()
+                    report.cutback()
                     continue
 
                 # Evaluate converged state. Tangent not needed (compute_stiffness=False)
@@ -879,7 +848,7 @@ class FEM(ABC):
                 # the size the solver asked for, not to `step`, which is clipped
                 # to land on the increment and would shrink the substep for good.
                 lam += step
-                if report is not None and not math.isclose(step_size, abs(span)):
+                if not math.isclose(step_size, abs(span)):
                     report.growth()  # not already spanning the whole increment
                 step_size = min(growth_factor * step_size, abs(span))
 
@@ -894,11 +863,9 @@ class FEM(ABC):
             state[n] = state_cur
             self.stabilization_energy[n] = energy
 
-            if report is not None:
-                report.end()
+            report.end()
 
-        if report is not None:
-            report.close()
+        report.close()
 
         # Create output views without mutating tensors captured by eval_residual.
         out_u = u
@@ -1448,17 +1415,11 @@ class Heat(FEM, ABC):
         # The transient tangent adds the mass matrix, which is symmetric, so the
         # material alone decides, as in `solve`.
         solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
-        report = self._report(
-            verbose,
-            "time integration",
-            u.dtype,
-            solve_method,
-            preconditioner,
-            device,
-            newton,
-            label="Time step",
-            value="Time",
-            unit="time steps",
+        dev = device or self.nodes.device.type
+        model = f"{type(self).__name__} | {self.n_elem:,} elem | {self.n_dofs:,} dof"
+        columns = {"label": "Time step", "value": "Time", "unit": "time steps"}
+        report = solve_report(
+            verbose, model, solve_method, preconditioner, dev, newton, **columns
         )
 
         # Enforce initial BCs on u[0] explicitly, in case line_heat._dirichlet gives
@@ -1470,8 +1431,7 @@ class Heat(FEM, ABC):
             dt_n = dt[n - 1]
             f_int_old = f[n - 1].clone()
 
-            if report is not None:
-                report.begin(n, float(increments[n]))
+            report.begin(n, float(increments[n]))
 
             for it in range(max_iter):
                 du = u_guess - u[n - 1]
@@ -1509,8 +1469,7 @@ class Heat(FEM, ABC):
                     res_norm0 = res_norm
 
                 # Report iteration information
-                if report is not None:
-                    report.iteration(it, res_norm)
+                report.iteration(it, res_norm)
 
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
@@ -1533,11 +1492,9 @@ class Heat(FEM, ABC):
             u[n] = u_guess
             f[n] = f_int.reshape((-1, self.n_dof_per_node))
 
-            if report is not None:
-                report.end()
+            report.end()
 
-        if report is not None:
-            report.close()
+        report.close()
 
         # Create output views without mutating tensors captured by autograd.
         out_u = u[t_rows]

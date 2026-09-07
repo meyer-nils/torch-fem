@@ -19,7 +19,7 @@ def _build_cantilever() -> Planar:
 
 class TestSolveReport:
     def test_a_row_is_streamed_per_increment(self, capsys):
-        report = SolveReport("title", {"model": "a model"})
+        report = SolveReport({"model": "a model"})
         for n in range(1, 4):
             report.begin(n, 0.25 * n)
             report.iteration(0, 1.0)
@@ -40,7 +40,7 @@ class TestSolveReport:
         assert not re.search(r"[v^]\d", out)
 
     def test_cutbacks_and_growths_are_counted(self, capsys):
-        report = SolveReport("title", {})
+        report = SolveReport({})
         report.begin(1, 1.0)
         # Three failed attempts, then a substep that converges in one solve
         # and lets the solver grow the substep twice.
@@ -91,7 +91,7 @@ class TestVerboseSolve:
         model.time_integration(torch.tensor([2.0]), delta_t=1.0, verbose=True)
 
         out = capsys.readouterr().out
-        assert "torch-fem | time integration" in out
+        assert "Time step" in out
         assert "2 time steps" in out
 
 

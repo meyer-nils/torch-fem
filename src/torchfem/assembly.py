@@ -12,8 +12,8 @@ from pyvista import DataSet
 from torch import Tensor
 
 from .base import FEM, Heat, near_null_space, skew
-from .report import SolveReport, machine
-from .sparse import describe_method, newton_solve, resolve_method
+from .report import solve_report
+from .sparse import newton_solve, resolve_method
 
 # An empty constraint set, so `assemble_matrix` leaves the part matrix raw.
 EMPTY = torch.empty(0, dtype=torch.int64)
@@ -378,29 +378,6 @@ class Assembly:
         """Whether every part has a symmetric tangent. See `Material`."""
         return all(getattr(part, "symmetric_tangent", True) for part in self.parts)
 
-    def _report(
-        self,
-        verbose: bool,
-        method: str,
-        preconditioner: str | None,
-        device: str | None,
-        newton: str,
-    ) -> SolveReport | None:
-        """Open a report on this assembly and its linear solver, if verbose."""
-        if not verbose:
-            return None
-        device = device or self.parts[0].nodes.device.type
-        n_elem = sum(getattr(part, "n_elem", 0) for part in self.parts)
-        dtype = str(torch.get_default_dtype()).removeprefix("torch.")
-        header = {
-            "model": f"Assembly | {len(self.parts)} parts | {n_elem:,} elem | "
-            f"{self.n_dofs:,} dof | {dtype}",
-            "machine": machine(device),
-            "solver": describe_method(method, device, preconditioner),
-            "newton": newton,
-        }
-        return SolveReport("torch-fem | solve", header)
-
     def solve(
         self,
         increments: Tensor | None = None,
@@ -497,7 +474,11 @@ class Assembly:
         # Resolved on the reduced system that is actually solved, before the
         # report names it.
         solve_method = resolve_method(len(retained), method, self.symmetric_tangent)
-        report = self._report(verbose, solve_method, preconditioner, device, newton)
+        parts = len(self.parts)
+        elems = sum(getattr(p, "n_elem", 0) for p in self.parts)
+        dev = device or self.parts[0].nodes.device.type
+        model = f"Assembly | {parts} parts | {elems:,} elem | {self.n_dofs:,} dof"
+        report = solve_report(verbose, model, solve_method, preconditioner, dev, newton)
 
         # Each part caches its own tangent block, reused when a linear material
         # reports no new element stiffness.
@@ -572,8 +553,7 @@ class Assembly:
         for n in range(1, N):
             level = float(increments[n])
             step = level - float(increments[n - 1])
-            if report is not None:
-                report.begin(n, level)
+            report.begin(n, level)
 
             F_ext = level * neumann
             DU = (step * dirichlet)[retained]
@@ -618,11 +598,9 @@ class Assembly:
                 f[j][n] = f_cur[block].reshape(shapes[0][j])
                 grad[j][n], flux[j][n], state[j][n] = (q[j] for q in updated)
 
-            if report is not None:
-                report.end()
+            report.end()
 
-        if report is not None:
-            report.close()
+        report.close()
 
         if aggregate_integration_points:
             # A reference point has no integration points to average over

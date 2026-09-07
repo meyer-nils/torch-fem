@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- `Assembly.solve(verbose=True)` warns about single precision, as `FEM.solve(...)` already did. Both reports are built by one `solve_report(...)` in `torchfem.report` now.
 - `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two before. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` used to take from the last.
 - `THEMES`, the color schemes the documentation figures are drawn in, moved from `torchfem.elements` to `torchfem.plot_utils`, where the rest of the plotting helpers live.
 
