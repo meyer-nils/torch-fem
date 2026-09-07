@@ -521,7 +521,7 @@ class NewtonRaphsonAdjoint(Function):
     """Custom autograd function for nonlinear Newton-Raphson solves.
 
     The forward pass performs Newton iterations on the residual callback
-    `eval_residual(du, iter, u_prev, grad_prev, flux_prev, state_prev) ->
+    `eval_residual(du, iter, (u_prev, grad_prev, flux_prev, state_prev)) ->
     (residual, tangent)` and returns the converged increment `du`.
 
     In the backward pass, gradients are computed by an implicit adjoint
@@ -576,7 +576,8 @@ class NewtonRaphsonAdjoint(Function):
         # Newton-Raphson iterations
         for i in range(max_iter):
             # Evaluate residual, stiffness matrix, and internal forces
-            residual, K = eval_residual(du, i, u_prev, grad_prev, flux_prev, state_prev)
+            prev = (u_prev, grad_prev, flux_prev, state_prev)
+            residual, K = eval_residual(du, i, prev)
 
             # Compute residual norm
             res_norm = torch.linalg.norm(residual)
@@ -659,7 +660,7 @@ class NewtonRaphsonAdjoint(Function):
         du_local = du.detach().requires_grad_(True)
         prev_local = tuple(p.detach().requires_grad_(True) for p in prev)
         with torch.enable_grad(), torch.device(du_local.device):
-            residual, _ = ctx.eval_residual(du_local, ctx.converged_iter, *prev_local)
+            residual, _ = ctx.eval_residual(du_local, ctx.converged_iter, prev_local)
 
         grads = torch.autograd.grad(
             residual,
@@ -695,7 +696,8 @@ def newton_solve(
 
     Args:
         eval_residual: Callback returning `(residual, tangent)` for the
-            current iterate, Newton iteration index, and previous state.
+            current iterate, Newton iteration index, and the previous
+            state as one tuple.
         du: Initial guess for the unknown increment.
         B: Null-space rigid-body basis for AMG preconditioning.
         max_iter: Maximum Newton iterations.

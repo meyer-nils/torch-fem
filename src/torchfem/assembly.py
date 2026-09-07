@@ -530,7 +530,7 @@ class Assembly:
         def make_eval_residual(F_ext, DU, step):
             # Bind this increment's loads at definition time, so the adjoint
             # backward replays the increment it belongs to.
-            def eval_residual(dq, iteration, *prev):
+            def eval_residual(dq, iteration, prev):
                 du = _mv(T, constrain(dq, DU))
                 blocks, F_int, _ = integrate(prev, du, step, iteration)
                 res = _mv(Tt, F_int - F_ext)

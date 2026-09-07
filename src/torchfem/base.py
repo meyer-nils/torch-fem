@@ -1,7 +1,7 @@
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from functools import cached_property
+from functools import cached_property, partial
 from itertools import pairwise
 from typing import Literal
 
@@ -566,6 +566,46 @@ class FEM(ABC):
             self._boundary_facets(mask), self.etype.facet_type, load
         )
 
+    def _residual(
+        self,
+        F_ext: Tensor,
+        DU: Tensor,
+        de0: Tensor,
+        k_visc: Tensor | None,
+        nlgeom: bool,
+        con: Tensor,
+        du: Tensor,
+        i: int,
+        prev: tuple[Tensor, Tensor, Tensor, Tensor],
+    ) -> tuple[Tensor, Tensor]:
+        """Residual and tangent of one Newton iteration of a quasi-static solve.
+
+        The leading arguments describe the substep and are bound to it with
+        `partial(...)`, so the adjoint backward replays the substep they belong
+        to rather than the last one a closure would have seen. `du`, `i` and
+        `prev`, the state of the last converged substep, are what
+        `newton_solve(...)` supplies per iteration.
+        """
+        # Enforce Dirichlet BCs on increment
+        du = du.clone()
+        du[con] = DU[con]
+
+        k, f_i, _, _, _ = self.integrate_material(*prev, du, de0, i, nlgeom)
+
+        # Viscous stabilization (k is None when self.K is reused as-is)
+        if k_visc is not None:
+            du_e = du.view(-1, self.n_dof_per_node)[self.elements].flatten(1)
+            f_i = f_i + torch.einsum("...ij,...j->...i", k_visc, du_e)
+            if k is not None:
+                k = k + k_visc
+
+        if k is not None:
+            self.K = self.assemble_matrix(k, con)
+
+        res = self.assemble_rhs(f_i) - F_ext
+        res[con] = 0.0
+        return res, self.K
+
     def solve(
         self,
         increments: Tensor | None = None,
@@ -664,7 +704,7 @@ class FEM(ABC):
         f = torch.zeros(N, self.n_nod, self.n_dof_per_node)
         flux = torch.zeros(N, self.n_int, self.n_elem, *self.n_flux)
         grad = torch.zeros(N, self.n_int, self.n_elem, *self.n_flux)
-        grad[:, :, :, :, :] = self.initial_grad
+        grad[...] = self.initial_grad
         state = torch.zeros(N, self.n_int, self.n_elem, self.n_state)
 
         newton = (
@@ -672,8 +712,7 @@ class FEM(ABC):
             + (" | nlgeom" if nlgeom else "")
             + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
         )
-        # Resolved once here, from what the model knows about its own tangent,
-        # rather than per linear solve.
+        # Resolved once here, from what the model knows about its own tangent.
         solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
         dev = device or self.nodes.device.type
         model = f"{type(self).__name__} | {self.n_elem:,} elem | {self.n_dofs:,} dof"
@@ -684,47 +723,6 @@ class FEM(ABC):
 
         # Initialize field variable increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
-
-        def make_eval_residual(F_ext, DU, de0, k_visc):
-            # Bind this increment's loads at definition time. A plain closure
-            # over the loop variables would late-bind them, so the adjoint
-            # backward replay would see the last increment's loads.
-            def eval_residual(du, i, u_prev, grad_prev, flux_prev, state_prev):
-                # Enforce Dirichlet BCs on increment
-                du_bc = du.clone()
-                du_bc[con] = DU[con]
-
-                # Element-wise integration
-                k, f_i, _, _, _ = self.integrate_material(
-                    u_prev,
-                    grad_prev,
-                    flux_prev,
-                    state_prev,
-                    du_bc,
-                    de0,
-                    i,
-                    nlgeom,
-                )
-
-                # Viscous stabilization (k is None when self.K is reused as-is)
-                if k_visc is not None:
-                    du_e = du_bc.view(-1, self.n_dof_per_node)[self.elements].flatten(1)
-                    f_i = f_i + torch.einsum("...ij,...j->...i", k_visc, du_e)
-                    if k is not None:
-                        k = k + k_visc
-
-                # Assemble global stiffness matrix and internal force vector (if needed)
-                if k is not None:
-                    self.K = self.assemble_matrix(k, con)
-                F_int = self.assemble_rhs(f_i)
-
-                # Compute residual
-                res = F_int - F_ext
-                res[con] = 0.0
-
-                return res, self.K
-
-            return eval_residual
 
         # Running state, advanced by substeps and stored at requested increments
         u_cur = u[0].clone()
@@ -769,26 +767,16 @@ class FEM(ABC):
                         self.K = torch.empty(0)
                     k_step = abs(step)
 
-                # Previous state passed to the Newton solver. The adjoint
-                # backward differentiates the residual w.r.t. this state, which
-                # chains sensitivities across substeps. Clones are required when
-                # tracking gradients, because the solver saves these tensors for
-                # backward while the running state is replaced below.
-                if track_parameter_gradients:
-                    u_prev = u_cur.clone()
-                    grad_prev = grad_cur.clone()
-                    flux_prev = flux_cur.clone()
-                    state_prev = state_cur.clone()
-                else:
-                    u_prev = u_cur.detach()
-                    grad_prev = grad_cur.detach()
-                    flux_prev = flux_cur.detach()
-                    state_prev = state_cur.detach()
+                # State the adjoint differentiates against to chain sensitivities
+                # across substeps. The solver saves it for backward while the
+                # running state is replaced below, so tracking needs a clone.
+                keep = Tensor.clone if track_parameter_gradients else Tensor.detach
+                prev = tuple(keep(x) for x in (u_cur, grad_cur, flux_cur, state_cur))
 
                 # Solve for increment using Newton-Raphson method
                 try:
                     du = newton_solve(
-                        make_eval_residual(F_ext, DU, de0, k_visc),
+                        partial(self._residual, F_ext, DU, de0, k_visc, nlgeom, con),
                         du.detach(),
                         B,
                         max_iter,
@@ -799,10 +787,7 @@ class FEM(ABC):
                         solve_method,
                         preconditioner,
                         device,
-                        u_prev,
-                        grad_prev,
-                        flux_prev,
-                        state_prev,
+                        *prev,
                         *differentiable_parameters,
                     )
                 except RuntimeError as err:
@@ -867,34 +852,15 @@ class FEM(ABC):
 
         report.close()
 
-        # Create output views without mutating tensors captured by eval_residual.
-        out_u = u
-        out_f = f
-        out_flux = flux
-        out_grad = grad
-        out_state = state
-
+        # Rebinding rather than mutating, so what eval_residual captured still holds
         if aggregate_integration_points:
-            out_grad = out_grad.mean(dim=1)
-            out_flux = out_flux.mean(dim=1)
-            out_state = out_state.mean(dim=1)
-
-        out_flux = out_flux.squeeze((-2, -1))
-        out_grad = out_grad.squeeze((-2, -1))
-
+            flux, grad, state = (x.mean(dim=1) for x in (flux, grad, state))
+        flux, grad = flux.squeeze((-2, -1)), grad.squeeze((-2, -1))
         if not track_parameter_gradients:
-            out_u = out_u.detach()
-            out_f = out_f.detach()
-            out_flux = out_flux.detach()
-            out_grad = out_grad.detach()
-            out_state = out_state.detach()
-
-        if return_intermediate:
-            # Return all intermediate values
-            return out_u, out_f, out_flux, out_grad, out_state
-        else:
-            # Return only the final values
-            return out_u[-1], out_f[-1], out_flux[-1], out_grad[-1], out_state[-1]
+            u, f, flux, grad, state = (x.detach() for x in (u, f, flux, grad, state))
+        if not return_intermediate:
+            u, f, flux, grad, state = (x[-1] for x in (u, f, flux, grad, state))
+        return u, f, flux, grad, state
 
 
 class Mechanics(FEM, ABC):
