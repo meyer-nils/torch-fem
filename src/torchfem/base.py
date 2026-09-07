@@ -697,7 +697,7 @@ class FEM(ABC):
         )
 
         # Null space rigid body modes for AMG preconditioner
-        B = self.near_null_space()
+        null_space = self.near_null_space()
 
         # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
@@ -776,7 +776,7 @@ class FEM(ABC):
                     du = newton_solve(
                         partial(self._residual, F_ext, DU, de0, k_visc, nlgeom, con),
                         du.detach(),
-                        B,
+                        null_space,
                         max_iter,
                         rtol,
                         atol,
