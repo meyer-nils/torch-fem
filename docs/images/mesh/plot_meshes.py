@@ -9,8 +9,9 @@ from typing import Literal
 import matplotlib.pyplot as plt
 from torch import Tensor
 
-from torchfem.elements import THEMES, linear_to_quadratic
+from torchfem.elements import linear_to_quadratic
 from torchfem.mesh import cube_hexa, cube_tetra, mesh_to_lattice, rect_quad, rect_tri
+from torchfem.plot_utils import THEMES
 
 Variant = Literal["simple", "up", "down", "cross"]
 

@@ -19,6 +19,16 @@ RERENDER = (
     "if(++i>10)clearInterval(t)},200)</script>"
 )
 
+# Documentation figures are exported once per color scheme. dark_background
+# leaves the 3D panes light grey, so they are cleared here.
+THEMES = (
+    ("light", "default"),
+    (
+        "dark",
+        ["dark_background", {f"axes3d.{a}axis.panecolor": "#0000" for a in "xyz"}],
+    ),
+)
+
 
 def show_html(plotter):
     """Display a plotter in a notebook, redrawing it while the scene loads."""

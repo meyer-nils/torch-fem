@@ -1,20 +1,7 @@
-import tempfile
-from pathlib import Path
-
 import pytest
 import torch
-from matplotlib import pyplot as plt
 
-from torchfem.elements import (
-    ELEMENT_REGISTRY,
-    Bar1,
-    Bar2,
-    Quad1,
-    Quad2,
-    Tria1,
-    Tria2,
-    linear_to_quadratic,
-)
+from torchfem.elements import ELEMENT_REGISTRY, linear_to_quadratic
 from torchfem.mesh import cube_hexa, cube_tetra, rect_quad, rect_tri
 
 
@@ -62,17 +49,6 @@ def test_quadrature_weights(elem):
     assert torch.allclose(
         elem.iweights.sum() - torch.tensor(elem.iso_volume), torch.zeros(1), atol=1e-5
     )
-
-
-@pytest.mark.parametrize("elem", [Bar1, Bar2, Tria1, Tria2, Quad1, Quad2])
-def test_plot(elem):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        path = Path(tmpdir)
-        elem.plot(path=path)
-        for theme in ["light", "dark"]:
-            result = path / f"{elem.__name__}_{theme}.png"
-            assert result.exists()
-    plt.close("all")
 
 
 def _bar_mesh():

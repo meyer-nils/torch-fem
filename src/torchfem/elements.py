@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
-from functools import wraps
 from math import sqrt
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -9,43 +7,6 @@ from torch import Tensor
 
 # Registry of all concrete Element subclasses
 ELEMENT_REGISTRY: list[type["Element"]] = []
-
-FIGURE_ROOT = (
-    Path(__file__).resolve().parents[2] / "docs" / "images" / "shape_functions"
-)
-
-# Shape function figures are exported once per documentation color scheme.
-# dark_background leaves the 3D panes light grey, so they are cleared here.
-THEMES = (
-    ("light", "default"),
-    (
-        "dark",
-        ["dark_background", {f"axes3d.{a}axis.panecolor": "#0000" for a in "xyz"}],
-    ),
-)
-
-
-def _themed(plot):
-    """Run a plot method once per color scheme, passing the scheme through."""
-
-    @wraps(plot)
-    def wrapper(cls, *args, **kwargs):
-        import matplotlib.pyplot as plt
-
-        for theme, style in THEMES:
-            with plt.style.context(style):
-                plot(cls, *args, theme=theme, **kwargs)
-
-    return classmethod(wrapper)
-
-
-def _savefig(fig, cls, path: Path, theme: str) -> None:
-    """Write <Class>_<theme>.png and close the figure."""
-    import matplotlib.pyplot as plt
-
-    name = path / f"{cls.__name__}_{theme}.png"
-    fig.savefig(name, dpi=200, bbox_inches="tight", transparent=True)
-    plt.close(fig)
 
 
 class ClassPropertyDescriptor:
@@ -215,25 +176,6 @@ class Bar1(Element):
     def ipoints(cls) -> Tensor:
         return torch.tensor([[0.0]])
 
-    @_themed
-    def plot(cls, n_points: int = 100, path: Path = FIGURE_ROOT, theme: str = "light"):
-        import matplotlib.pyplot as plt
-
-        # Compute shape functions at evenly spaced points in reference space
-        xi = torch.linspace(-1.0, 1.0, n_points).unsqueeze(-1)
-        N = cls.N(xi)
-
-        # Create plot
-        fig, ax = plt.subplots(figsize=(6, 4))
-        for i in range(cls.nodes):
-            ax.plot(xi, N[:, i], linewidth=2.0, label=f"$N_{i}$")
-        ax.set_xlabel("$\\xi$")
-        ax.set_ylabel("$N_i(\\xi)$")
-        ax.grid(alpha=0.3)
-        ax.legend()
-
-        _savefig(fig, cls, path, theme)
-
 
 class Bar2(Bar1):
     """Three-node quadratic line element.
@@ -285,25 +227,6 @@ class Bar2(Bar1):
     @classproperty
     def ipoints(cls) -> Tensor:
         return torch.tensor([[-1.0 / sqrt(3.0)], [1.0 / sqrt(3.0)]])
-
-    @_themed
-    def plot(cls, n_points: int = 100, path: Path = FIGURE_ROOT, theme: str = "light"):
-        import matplotlib.pyplot as plt
-
-        # Compute shape functions at evenly spaced points in reference space
-        xi = torch.linspace(-1.0, 1.0, n_points).unsqueeze(-1)
-        N = cls.N(xi)
-
-        # Create plot
-        fig, ax = plt.subplots(figsize=(6, 4))
-        for i in range(cls.nodes):
-            ax.plot(xi, N[:, i], linewidth=2.0, label=f"$N_{i}$")
-        ax.set_xlabel("$\\xi$")
-        ax.set_ylabel("$N_i(\\xi)$")
-        ax.grid(alpha=0.3)
-        ax.legend()
-
-        _savefig(fig, cls, path, theme)
 
 
 class Tria1(Element):
@@ -358,28 +281,6 @@ class Tria1(Element):
     @classproperty
     def ipoints(cls) -> Tensor:
         return torch.tensor([[1.0 / 3.0, 1.0 / 3.0]])
-
-    @_themed
-    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT, theme: str = "light"):
-        import matplotlib.pyplot as plt
-
-        # Sample inside triangular reference domain (ξ₁ ≥ 0, ξ₂ ≥ 0, ξ₁+ξ₂ ≤ 1)
-        t = np.linspace(0.0, 1.0, n_points)
-        xi1, xi2 = np.meshgrid(t, t)
-        mask = (xi1 + xi2) <= 1.0
-        xi1f, xi2f = xi1[mask], xi2[mask]
-        xi = torch.tensor(np.stack([xi1f, xi2f], axis=-1), dtype=torch.float32)
-        N = cls.N(xi).detach().cpu().numpy()
-
-        fig, axes = plt.subplots(1, 3, figsize=(10, 4), subplot_kw={"projection": "3d"})
-        for i, ax in enumerate(axes):
-            ax.plot_trisurf(xi1f, xi2f, N[:, i], color=f"C{i}", alpha=0.9)
-            ax.set_xlabel("$\\xi_1$")
-            ax.set_ylabel("$\\xi_2$")
-            ax.set_title(f"$N_{i}$")
-
-        fig.tight_layout()
-        _savefig(fig, cls, path, theme)
 
 
 class Tria2(Tria1):
@@ -465,28 +366,6 @@ class Tria2(Tria1):
     def ipoints(cls) -> Tensor:
         return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
 
-    @_themed
-    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT, theme: str = "light"):
-        import matplotlib.pyplot as plt
-
-        # Sample inside triangular reference domain (ξ₁ ≥ 0, ξ₂ ≥ 0, ξ₁+ξ₂ ≤ 1)
-        t = np.linspace(0.0, 1.0, n_points)
-        xi1, xi2 = np.meshgrid(t, t)
-        mask = (xi1 + xi2) <= 1.0
-        xi1f, xi2f = xi1[mask], xi2[mask]
-        xi = torch.tensor(np.stack([xi1f, xi2f], axis=-1), dtype=torch.float32)
-        N = cls.N(xi).detach().cpu().numpy()
-
-        fig, axes = plt.subplots(2, 3, figsize=(10, 8), subplot_kw={"projection": "3d"})
-        for i, ax in enumerate(axes.ravel()):
-            ax.plot_trisurf(xi1f, xi2f, N[:, i], color=f"C{i}", alpha=0.9)
-            ax.set_xlabel("$\\xi_1$")
-            ax.set_ylabel("$\\xi_2$")
-            ax.set_title(f"$N_{i}$")
-
-        fig.tight_layout()
-        _savefig(fig, cls, path, theme)
-
 
 class Quad1(Element):
     """Four-node bilinear quadrilateral element.
@@ -565,35 +444,6 @@ class Quad1(Element):
                 for xi_1 in [-1, 1]
             ]
         )
-
-    @_themed
-    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT, theme: str = "light"):
-        import matplotlib.pyplot as plt
-
-        # Sample on the square reference domain (ξ₁, ξ₂ ∈ [-1, 1])
-        t = np.linspace(-1.0, 1.0, n_points)
-        xi1, xi2 = np.meshgrid(t, t)
-        xi = torch.tensor(
-            np.stack([xi1.ravel(), xi2.ravel()], axis=-1), dtype=torch.float32
-        )
-        N = cls.N(xi).detach().cpu().numpy()
-
-        fig, axes = plt.subplots(2, 2, figsize=(8, 8), subplot_kw={"projection": "3d"})
-        for i, ax in enumerate(axes.ravel()):
-            ax.plot_surface(
-                xi1,
-                xi2,
-                N[:, i].reshape(n_points, n_points),
-                color=f"C{i}",
-                alpha=0.9,
-                linewidth=0,
-            )
-            ax.set_xlabel("$\\xi_1$")
-            ax.set_ylabel("$\\xi_2$")
-            ax.set_title(f"$N_{i}$")
-
-        fig.tight_layout()
-        _savefig(fig, cls, path, theme)
 
 
 class Quad2(Quad1):
@@ -693,35 +543,6 @@ class Quad2(Quad1):
                 for xi_1 in [-1, 1]
             ]
         )
-
-    @_themed
-    def plot(cls, n_points: int = 30, path: Path = FIGURE_ROOT, theme: str = "light"):
-        import matplotlib.pyplot as plt
-
-        # Sample on the square reference domain (ξ₁, ξ₂ ∈ [-1, 1])
-        t = np.linspace(-1.0, 1.0, n_points)
-        xi1, xi2 = np.meshgrid(t, t)
-        xi = torch.tensor(
-            np.stack([xi1.ravel(), xi2.ravel()], axis=-1), dtype=torch.float32
-        )
-        N = cls.N(xi).detach().cpu().numpy()
-
-        fig, axes = plt.subplots(2, 4, figsize=(14, 8), subplot_kw={"projection": "3d"})
-        for i, ax in enumerate(axes.ravel()):
-            ax.plot_surface(
-                xi1,
-                xi2,
-                N[:, i].reshape(n_points, n_points),
-                color=f"C{i}",
-                alpha=0.9,
-                linewidth=0,
-            )
-            ax.set_xlabel("$\\xi_1$")
-            ax.set_ylabel("$\\xi_2$")
-            ax.set_title(f"$N_{i}$")
-
-        fig.tight_layout()
-        _savefig(fig, cls, path, theme)
 
 
 class Tetra1(Element):

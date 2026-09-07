@@ -8,9 +8,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 
-from torchfem.elements import THEMES
 from torchfem.laminate import Laminate
 from torchfem.materials import OrthotropicElasticityPlaneStress
+from torchfem.plot_utils import THEMES
 
 # Write next to this script, which does not move with an installed torchfem.
 IMAGES_DIR = Path(__file__).parent
