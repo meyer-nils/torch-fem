@@ -136,7 +136,7 @@ class Truss(Mechanics):
     def plot2d(
         self,
         u: float | Tensor = 0.0,
-        element_property: Tensor | None = None,
+        element_property: Tensor | dict[str, Tensor] | None = None,
         node_labels: bool = True,
         show_thickness: bool = False,
         thickness_threshold: float = 0.0,
@@ -155,7 +155,7 @@ class Truss(Mechanics):
             u: Nodal displacements added to the positions, e.g. to plot the
                 deformed configuration. Defaults to 0.0 (undeformed).
             element_property: Element field with shape [n_elem] coloring the
-                bars.
+                bars, optionally keyed by its colorbar label.
             node_labels: If True, annotates nodes with their indices.
             show_thickness: If True, scales line widths with the cross-sectional
                 areas.
@@ -187,16 +187,21 @@ class Truss(Mechanics):
             linewidth = 2.0 * torch.ones(self.n_elem)
             linewidth[self.areas < thickness_threshold] = 0.0
 
-        # Line color from stress (if present)
-        if element_property is not None:
+        # A bare field is titled by its argument, a named one by its key
+        if isinstance(element_property, Tensor):
+            element_property = {"element_property": element_property}
+
+        # Line color from the first field (if present)
+        if element_property:
+            label, values = next(iter(element_property.items()))
             cm = plt.get_cmap(cmap)
             if vmin is None:
-                vmin = min(float(element_property.min()), 0.0)
+                vmin = min(float(values.min()), 0.0)
             if vmax is None:
-                vmax = max(float(element_property.max()), 0.0)
-            color = cm((element_property - vmin) / (vmax - vmin))
+                vmax = max(float(values.max()), 0.0)
+            color = cm((values - vmin) / (vmax - vmin))
             sm = plt.cm.ScalarMappable(cmap=cm, norm=Normalize(vmin=vmin, vmax=vmax))
-            plt.colorbar(sm, ax=ax, shrink=0.5)
+            plt.colorbar(sm, ax=ax, shrink=0.5, label=label)
         else:
             color = self.n_elem * [default_color]
 
@@ -252,7 +257,7 @@ class Truss(Mechanics):
     def plot3d(
         self,
         u: float | Tensor = 0.0,
-        element_property: dict[str, Tensor] | None = None,
+        element_property: Tensor | dict[str, Tensor] | None = None,
         axes: bool = False,
         bcs: bool = True,
         cmap: str | Colormap = "viridis",
@@ -264,7 +269,8 @@ class Truss(Mechanics):
         Args:
             u: Nodal displacements added to the positions, e.g. to plot the
                 deformed configuration. Defaults to 0.0 (undeformed).
-            element_property: Named element fields coloring the bars.
+            element_property: Element field coloring the bars, optionally
+                keyed by its color bar title.
             axes: If True, shows labeled coordinate axes around the truss.
             bcs: If True, renders boundary conditions: arrows for forces and
                 prescribed displacements, spheres at displacement tips, and a
@@ -304,12 +310,17 @@ class Truss(Mechanics):
         joints = pyvista.PolyData(pos.numpy())
         joints.point_data["radius"] = at_joints(radii).numpy()
 
+        # A bare field is titled by its argument, a named one by its key
+        if isinstance(element_property, Tensor):
+            element_property = {"element_property": element_property}
+
         scalars = None
-        if element_property is not None:
-            for scalars, value in element_property.items():
+        if element_property:
+            scalars = next(iter(element_property))
+            for key, value in element_property.items():
                 value = value.squeeze()
-                bars.point_data[scalars] = value.repeat_interleave(2).numpy()
-                joints.point_data[scalars] = at_joints(value).numpy()
+                bars.point_data[key] = value.repeat_interleave(2).numpy()
+                joints.point_data[key] = at_joints(value).numpy()
 
         # Tubes along the bars, with spheres smoothing the joints where they meet
         sphere = pyvista.Sphere(radius=1.0)

@@ -688,8 +688,8 @@ class Shell(Mechanics):
     def plot(
         self,
         u: float | Tensor = 0.0,
-        node_property: dict[str, Tensor] | None = None,
-        element_property: dict[str, Tensor] | None = None,
+        node_property: Tensor | dict[str, Tensor] | None = None,
+        element_property: Tensor | dict[str, Tensor] | None = None,
         orientations: Tensor | None = None,
         thickness: bool = False,
         mirror: tuple[bool, bool, bool] = (False, False, False),
@@ -705,8 +705,9 @@ class Shell(Mechanics):
         Args:
             u: Nodal displacements added to the positions, e.g. to plot the
                 deformed configuration. Defaults to 0.0 (undeformed).
-            node_property: Named nodal fields, e.g. `{"u": u[:, :3]}`.
-            element_property: Named element fields.
+            node_property: Nodal field, optionally keyed by its color bar
+                title, e.g. `{"u": u[:, :3]}`.
+            element_property: Element field, keyed like `node_property`.
             orientations: Per-element direction vectors with shape
                 [n_elem, k, 3] with k <= 3, e.g. the local frames `self.t`,
                 drawn on the unmirrored mesh as red, green, and blue arrows of
@@ -745,6 +746,12 @@ class Shell(Mechanics):
 
         # Create unstructured mesh
         mesh = pyvista.PolyData(pos.tolist(), elements)
+
+        # A bare field is titled by its argument, a named one by its key
+        if isinstance(node_property, Tensor):
+            node_property = {"node_property": node_property}
+        if isinstance(element_property, Tensor):
+            element_property = {"element_property": element_property}
 
         # Plot node properties
         if node_property:

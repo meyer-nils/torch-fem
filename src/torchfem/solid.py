@@ -65,8 +65,8 @@ class SolidGeometry(FEM):
     def plot(
         self,
         u: float | Tensor = 0.0,
-        node_property: dict[str, Tensor] | None = None,
-        element_property: dict[str, Tensor] | None = None,
+        node_property: Tensor | dict[str, Tensor] | None = None,
+        element_property: Tensor | dict[str, Tensor] | None = None,
         orientations: Tensor | None = None,
         show_edges: bool = True,
         show_undeformed: bool = False,
@@ -83,10 +83,12 @@ class SolidGeometry(FEM):
         Args:
             u (float or torch.Tensor, optional):
                 Displacement field. Defaults to 0.0.
-            node_property (dict[str, torch.Tensor], optional):
-                Nodal property to plot. Defaults to None.
-            element_property (dict[str, torch.Tensor], optional):
-                Element property to plot. Defaults to None.
+            node_property (torch.Tensor or dict[str, torch.Tensor], optional):
+                Nodal property to plot, optionally keyed by its color bar title.
+                Defaults to None.
+            element_property (torch.Tensor or dict[str, torch.Tensor], optional):
+                Element property to plot, keyed like `node_property`. Defaults
+                to None.
             orientations (torch.Tensor, optional):
                 Element orientations with shape [n_elem, k, 3] with k <= 3,
                 drawn as red, green, and blue arrows. Defaults to None.
@@ -138,6 +140,12 @@ class SolidGeometry(FEM):
 
         # Create unstructured mesh
         mesh = pyvista.UnstructuredGrid(elements, cell_types, pos.tolist())
+
+        # A bare field is titled by its argument, a named one by its key
+        if isinstance(node_property, Tensor):
+            node_property = {"node_property": node_property}
+        if isinstance(element_property, Tensor):
+            element_property = {"element_property": element_property}
 
         # Plot node properties
         if node_property:

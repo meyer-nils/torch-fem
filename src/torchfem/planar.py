@@ -99,8 +99,8 @@ class PlanarGeometry(FEM):
     def plot(
         self,
         u: float | Tensor = 0.0,
-        node_property: Tensor | None = None,
-        element_property: Tensor | None = None,
+        node_property: Tensor | dict[str, Tensor] | None = None,
+        element_property: Tensor | dict[str, Tensor] | None = None,
         orientation: Tensor | None = None,
         node_labels: bool = False,
         node_markers: bool = False,
@@ -124,9 +124,10 @@ class PlanarGeometry(FEM):
             u: Nodal displacements added to the positions, e.g. to plot the
                 deformed configuration. Defaults to 0.0 (undeformed).
             node_property: Scalar nodal field with shape [n_nod] rendered as
-                interpolated contours.
+                interpolated contours, optionally keyed by its colorbar label.
             element_property: Element field rendered as flat colors (shape
-                [n_elem]) or as vector arrows (shape [n_elem, 2]).
+                [n_elem]) or as vector arrows (shape [n_elem, 2]), keyed like
+                `node_property`.
             orientation: Element-wise material angles in radians, measured
                 counter-clockwise, rendered as line markers.
             node_labels: If True, annotates nodes with their indices.
@@ -182,11 +183,18 @@ class PlanarGeometry(FEM):
         corners = elements[:, :3] if self.etype in (Tria1, Tria2) else elements[:, :4]
         verts = list(pos[corners].numpy())
 
+        # A bare field is titled by its argument, a named one by its key
+        if isinstance(node_property, Tensor):
+            node_property = {"node_property": node_property}
+        if isinstance(element_property, Tensor):
+            element_property = {"element_property": element_property}
+
         # A property colored onto the surface replaces the plain fill
-        colored = node_property is not None
+        colored = bool(node_property)
 
         # Color surface with interpolated nodal properties (if provided)
-        if node_property is not None:
+        if node_property:
+            node_label, node_property = next(iter(node_property.items()))
             node_property = node_property.squeeze().cpu()
             fan = [corners[:, [0, i, i + 1]] for i in range(1, corners.shape[1] - 1)]
             triangulation = Triangulation(pos[:, 0], pos[:, 1], torch.cat(fan))
@@ -204,10 +212,11 @@ class PlanarGeometry(FEM):
                 vmax=vmax,
             )
             if colorbar:
-                plt.colorbar(tri, ax=ax)
+                plt.colorbar(tri, ax=ax, label=node_label)
 
         # Color surface with element properties (if provided)
-        if element_property is not None:
+        if element_property:
+            element_label, element_property = next(iter(element_property.items()))
             element_property = element_property.squeeze().cpu()
             if element_property.numel() == self.n_elem:
                 # Plot scalar field
@@ -217,7 +226,7 @@ class PlanarGeometry(FEM):
                 pc.set_clim(vmin=vmin, vmax=vmax)
                 ax.add_collection(pc)
                 if colorbar:
-                    plt.colorbar(pc, ax=ax)
+                    plt.colorbar(pc, ax=ax, label=element_label)
             elif element_property.numel() == 2 * self.n_elem:
                 # Plot vector field
                 centers = pos[elements, :].mean(dim=1)
