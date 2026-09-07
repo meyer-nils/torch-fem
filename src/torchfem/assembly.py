@@ -542,7 +542,7 @@ class Assembly:
         # Iterative solvers build their preconditioner from the near-null space.
         # `T` is the identity on the retained rows, so restricting the modes to
         # them is the `q` of `u = T q` that reproduces each one.
-        B = self._near_null_space()[retained]
+        null_space = self._near_null_space()[retained]
 
         dq = torch.zeros(len(retained))
         carry = (
@@ -565,7 +565,7 @@ class Assembly:
             dq = newton_solve(
                 make_eval_residual(F_ext, DU, step),
                 dq.detach(),
-                B,
+                null_space,
                 max_iter,
                 rtol,
                 atol,
