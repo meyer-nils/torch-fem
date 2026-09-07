@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -110,3 +112,46 @@ def test_time_integration_converges_to_the_static_solution():
     transient, *_ = model.time_integration(torch.tensor([0.0, 2000.0]), delta_t=1.0)
 
     assert torch.allclose(transient[-1], static, atol=1e-6)
+
+
+def _slab_temperature(x: float, t: float, length: float, hot: float, alpha: float):
+    """Fourier series for a slab held at 0 and suddenly heated to `hot` at x=length."""
+    series = hot * x / length
+    for n in range(1, 200):
+        series += (
+            (2.0 * hot / math.pi)
+            * ((-1) ** n / n)
+            * math.sin(n * math.pi * x / length)
+            * math.exp(-alpha * (n * math.pi / length) ** 2 * t)
+        )
+    return series
+
+
+def test_time_integration_matches_the_analytical_slab_solution():
+    """Pins the time discretization against a transient reference.
+
+    The steady state is reached whatever weight the trapezoidal rule carries, so
+    only a solution on the way there tells the integration is second order.
+    """
+    length, hot, kappa, rho = 1.0, 100.0, 1.0, 1.0
+    material = IsotropicConductivity2D(kappa=kappa, rho=rho)
+    # Insulated along y by the absence of a flux, so the plate conducts in x alone.
+    slab = PlanarHeat(*rect_quad(21, 3, length, 0.2), material)
+    west = torch.isclose(slab.nodes[:, 0], slab.nodes[:, 0].min())
+    east = torch.isclose(slab.nodes[:, 0], slab.nodes[:, 0].max())
+    slab.constraints[west | east] = True
+    slab.temperatures[east, 0] = hot
+
+    t_end = 0.05
+    temperature, _, _, _, _ = slab.time_integration(
+        torch.tensor([0.0, t_end]), delta_t=0.002
+    )
+
+    row = torch.isclose(slab.nodes[:, 1], slab.nodes[:, 1].median())
+    exact = torch.tensor(
+        [
+            _slab_temperature(float(x), t_end, length, hot, kappa / rho)
+            for x in slab.nodes[row, 0]
+        ]
+    )
+    assert (temperature[-1].ravel()[row] - exact).abs().max() < 0.005 * hot

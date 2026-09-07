@@ -1,4 +1,5 @@
 import math
+from functools import partial
 
 import torch
 
@@ -174,3 +175,120 @@ def test_solve_outputs_detached_without_differentiable_parameters():
 
     compliance = torch.inner(f.ravel(), u.ravel())
     assert not compliance.requires_grad
+
+
+# Transient sensitivities. `time_integration(...)` differentiates by unrolling its
+# Newton loop into the graph, where `solve(...)` uses an implicit adjoint. These
+# pin the gradients against finite differences so that path can be changed safely.
+
+T_OUTPUT = torch.tensor([0.0, 0.5, 1.0])
+# Two internal steps per output interval, so a gradient has to chain across them.
+DELTA_T = 0.25
+
+
+def _build_transient_plate(
+    thickness: torch.Tensor | float = 1.0, kappa: torch.Tensor | float = 400.0
+) -> PlanarHeat:
+    """A plate held cold on one edge and hot on the other, small enough to perturb."""
+    material = IsotropicConductivity2D(kappa=kappa, rho=1.0e3)
+    plate = PlanarHeat(*rect_quad(4, 4, 1.0, 1.0), material, thickness=thickness)
+    west = torch.isclose(plate.nodes[:, 0], plate.nodes[:, 0].min())
+    east = torch.isclose(plate.nodes[:, 0], plate.nodes[:, 0].max())
+    plate.constraints[west | east] = True
+    plate.temperatures[east, 0] = 100.0
+    return plate
+
+
+def _central_difference(loss, x0: float, h: float) -> float:
+    """Slope of `loss` at `x0`, from a symmetric perturbation."""
+    return (loss(x0 + h) - loss(x0 - h)) / (2.0 * h)
+
+
+def test_time_integration_gradients_match_finite_differences_for_design_field():
+    # A per-element design field enters both the conductivity and the capacity,
+    # and the stored temperatures depend on it through every internal step.
+    n_elem = _build_transient_plate().n_elem
+    rho_0 = 0.6
+    rho = torch.full((n_elem,), rho_0, requires_grad=True)
+
+    plate = _build_transient_plate(thickness=rho)
+    temperature, _, _, _, _ = plate.time_integration(
+        T_OUTPUT, DELTA_T, differentiable_parameters=rho
+    )
+    gradient = torch.autograd.grad(temperature.sum(), rho)[0]
+
+    def loss(element: int, value: float) -> float:
+        field = torch.full((n_elem,), rho_0)
+        field[element] = value
+        perturbed = _build_transient_plate(thickness=field)
+        temperature, _, _, _, _ = perturbed.time_integration(T_OUTPUT, DELTA_T)
+        return float(temperature.sum())
+
+    for element in (0, 4):
+        slope = partial(loss, element)
+        reference = _central_difference(slope, rho_0, 1e-6)
+        assert torch.allclose(gradient[element], torch.tensor(reference), rtol=1e-6)
+
+
+def test_time_integration_gradients_match_finite_differences_for_material():
+    kappa_0 = 400.0
+    kappa = torch.tensor(kappa_0, requires_grad=True)
+
+    plate = _build_transient_plate(kappa=kappa)
+    temperature, _, _, _, _ = plate.time_integration(
+        T_OUTPUT, DELTA_T, differentiable_parameters=kappa
+    )
+    gradient = torch.autograd.grad(temperature.sum(), kappa)[0]
+
+    def loss(value: float) -> float:
+        perturbed = _build_transient_plate(kappa=value)
+        temperature, _, _, _, _ = perturbed.time_integration(T_OUTPUT, DELTA_T)
+        return float(temperature.sum())
+
+    reference = _central_difference(loss, kappa_0, 1e-2)
+    assert torch.allclose(gradient, torch.tensor(reference), rtol=1e-6)
+
+
+def test_time_integration_gradients_reach_every_output_time():
+    # Only the last output time would still pass a final-state check, so each
+    # time is weighted differently and compared on its own.
+    n_elem = _build_transient_plate().n_elem
+    rho_0 = 0.6
+    weights = torch.tensor([0.0, 1.0, 3.0])
+
+    rho = torch.full((n_elem,), rho_0, requires_grad=True)
+    plate = _build_transient_plate(thickness=rho)
+    temperature, _, _, _, _ = plate.time_integration(
+        T_OUTPUT, DELTA_T, differentiable_parameters=rho
+    )
+    gradient = torch.autograd.grad(
+        (weights * temperature.sum(dim=1).ravel()).sum(), rho
+    )[0]
+
+    def loss(value: float) -> float:
+        field = torch.full((n_elem,), rho_0)
+        field[0] = value
+        perturbed = _build_transient_plate(thickness=field)
+        temperature, _, _, _, _ = perturbed.time_integration(T_OUTPUT, DELTA_T)
+        return float((weights * temperature.sum(dim=1).ravel()).sum())
+
+    reference = _central_difference(loss, rho_0, 1e-6)
+    assert torch.allclose(gradient[0], torch.tensor(reference), rtol=1e-6)
+
+
+def test_time_integration_differentiates_without_declared_parameters():
+    # Characterizes the unrolled path: `solve(...)` detaches its outputs unless a
+    # parameter is declared, because its adjoint cannot account for an undeclared
+    # one, while `time_integration(...)` differentiates through the graph and so
+    # returns a gradient either way, ignoring the argument in its time loop.
+    # Moving it onto the adjoint is expected to change this.
+    n_elem = _build_transient_plate().n_elem
+    rho = torch.full((n_elem,), 0.6, requires_grad=True)
+
+    plate = _build_transient_plate(thickness=rho)
+    temperature, _, _, _, _ = plate.time_integration(T_OUTPUT, DELTA_T)
+
+    assert temperature.requires_grad
+    gradient = torch.autograd.grad(temperature.sum(), rho)[0]
+    assert torch.isfinite(gradient).all()
+    assert (gradient != 0.0).any()
