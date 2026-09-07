@@ -1332,7 +1332,7 @@ class Heat(FEM, ABC):
         self.constraints[:] = bc_constraints
 
         # null space rigid body modes for AMG preconditioner
-        B = self.near_null_space()
+        null_space = self.near_null_space()
 
         # Indexes of constrained and unconstrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
@@ -1441,7 +1441,7 @@ class Heat(FEM, ABC):
                 du = differentiable_sparse_solve(
                     self.M + 0.5 * dt_n * self.K,
                     -residual,
-                    B,
+                    null_space,
                     stol,
                     device,
                     solve_method,
@@ -1460,19 +1460,9 @@ class Heat(FEM, ABC):
 
         report.close()
 
-        # Create output views without mutating tensors captured by autograd.
-        out_u = u[t_rows]
-        out_f = f[t_rows]
-        out_flux = flux[t_rows]
-        out_grad = grad[t_rows]
-        out_state = state[t_rows]
-
+        # Selecting the requested times rebinds rather than mutating, so what the
+        # unrolled graph captured still holds, as in `solve`.
+        u, f, flux, grad, state = (x[t_rows] for x in (u, f, flux, grad, state))
         if aggregate_integration_points:
-            out_grad = out_grad.mean(dim=1)
-            out_flux = out_flux.mean(dim=1)
-            out_state = out_state.mean(dim=1)
-
-        out_flux = out_flux.squeeze((-2, -1))
-        out_grad = out_grad.squeeze((-2, -1))
-
-        return out_u, out_f, out_flux, out_grad, out_state
+            flux, grad, state = (x.mean(dim=1) for x in (flux, grad, state))
+        return u, f, flux.squeeze((-2, -1)), grad.squeeze((-2, -1)), state
