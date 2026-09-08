@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Changed
-- **Breaking:** `Material` no longer defines `step(...)`. Concrete materials derive from `MechanicsMaterial.step(H_inc, F, stress, state, de0, cl, iter)` or `HeatMaterial.step(grad_inc, grad, flux, state, cl, iter)`, each named for its own physics, while `Material` keeps what both share.
+- `import_mesh(...)` and the typed imports return the model matching the material's physics, so a conductivity gives a `PlanarHeat` or `SolidHeat`, and they take a `Laminate` section. Their return types widen accordingly.
+- **Breaking:** `Material` no longer defines `step(...)`. Materials derive from `MechanicsMaterial` or `HeatMaterial`, each carrying the `step(...)` of its own physics.
 - A material declares its spatial dimension through `Material.dim`, and a model takes only a material that matches it.
 - `Assembly.solve(verbose=True)` warns about single precision, as `FEM.solve(...)` already did. Both reports are built by one `solve_report(...)` in `torchfem.report` now.
 - `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two before. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` used to take from the last.

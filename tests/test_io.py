@@ -6,7 +6,7 @@ import pytest
 import torch
 from meshio import Mesh
 
-from torchfem import Planar, Shell, Solid
+from torchfem import Laminate, Planar, PlanarHeat, Shell, Solid, SolidHeat
 from torchfem.elements import Quad1
 from torchfem.io import (
     export_mesh,
@@ -15,13 +15,26 @@ from torchfem.io import (
     import_shell,
     import_solid,
 )
-from torchfem.materials import IsotropicElasticity3D, IsotropicElasticityPlaneStress
+from torchfem.materials import (
+    IsotropicConductivity2D,
+    IsotropicConductivity3D,
+    IsotropicElasticity3D,
+    IsotropicElasticityPlaneStress,
+)
 from torchfem.mesh import cube_hexa, rect_quad
 
 # Corners of a tetrahedron, so no cell built from them lies in the z=0 plane.
 NON_PLANAR_POINTS = np.array(
     [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 )
+PLANAR_POINTS = np.array(
+    [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
+)
+
+
+def write_mesh(path, cells, points=NON_PLANAR_POINTS):
+    """Write a mesh torch-fem cannot export itself."""
+    Mesh(points, cells).write(path)
 
 
 class TestExportMesh:
@@ -138,14 +151,11 @@ class TestTypedImport:
 class TestImportNonPlanarMesh:
     """Meshes torch-fem cannot export itself, written directly with meshio."""
 
-    def _write(self, path, cells, points=NON_PLANAR_POINTS):
-        Mesh(points, cells).write(path)
-
     def test_non_planar_triangle_mesh_returns_shell(self):
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "shell.vtu"
-            self._write(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
             model = import_mesh(path, mat, thickness=0.1)
             assert isinstance(model, Shell)
             assert model.n_elem == 2
@@ -155,7 +165,7 @@ class TestImportNonPlanarMesh:
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "mixed.vtu"
-            self._write(
+            write_mesh(
                 path,
                 [
                     ("triangle", np.array([[0, 1, 2]])),
@@ -169,7 +179,7 @@ class TestImportNonPlanarMesh:
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "shell.vtu"
-            self._write(path, [("quad", np.array([[0, 1, 2, 3]]))])
+            write_mesh(path, [("quad", np.array([[0, 1, 2, 3]]))])
             model = import_mesh(path, mat, thickness=0.1)
             assert isinstance(model, Shell)
             assert model.etype is Quad1
@@ -181,6 +191,62 @@ class TestImportNonPlanarMesh:
         points = np.vstack([NON_PLANAR_POINTS, [[0.5, 0.0, 0.5], [0.0, 0.5, 0.5]]])
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "tria6_3d.vtu"
-            self._write(path, [("triangle6", np.array([[0, 1, 3, 4, 5, 2]]))], points)
+            write_mesh(path, [("triangle6", np.array([[0, 1, 3, 4, 5, 2]]))], points)
             with pytest.raises(ValueError, match="Cannot interpret element type"):
                 import_mesh(path, mat)
+
+
+class TestImportMeshPhysics:
+    """The material decides the physics of the imported model."""
+
+    def test_planar_mesh_with_a_conductivity_gives_planar_heat(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "planar.vtu"
+            write_mesh(path, [("quad", np.array([[0, 1, 2, 3]]))], PLANAR_POINTS)
+            model = import_mesh(path, IsotropicConductivity2D(400.0), thickness=0.1)
+            assert isinstance(model, PlanarHeat)
+            assert torch.allclose(model.thickness, torch.full((1,), 0.1))
+
+    def test_solid_mesh_with_a_conductivity_gives_solid_heat(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "solid.vtu"
+            write_mesh(path, [("tetra", np.array([[0, 1, 2, 3]]))])
+            assert isinstance(
+                import_mesh(path, IsotropicConductivity3D(400.0)), SolidHeat
+            )
+
+    def test_surface_mesh_has_no_heat_model(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "shell.vtu"
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
+            with pytest.raises(ValueError, match="no heat model"):
+                import_mesh(path, IsotropicConductivity2D(400.0))
+
+    def test_a_laminate_section_imports_as_a_shell(self):
+        """A `Laminate` stands in for a material without subclassing one."""
+        layup = Laminate([IsotropicElasticityPlaneStress(1000.0, 0.3)], [1.0], [0.0])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "shell.vtu"
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
+            assert isinstance(import_mesh(path, layup), Shell)
+
+    def test_a_laminate_needs_a_surface_mesh(self):
+        layup = Laminate([IsotropicElasticityPlaneStress(1000.0, 0.3)], [1.0], [0.0])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "solid.vtu"
+            write_mesh(path, [("tetra", np.array([[0, 1, 2, 3]]))])
+            with pytest.raises(ValueError, match="laminate section needs a surface"):
+                import_mesh(path, layup)
+
+    def test_typed_imports_narrow_to_the_heat_model(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            planar = Path(tmpdir) / "planar.vtu"
+            write_mesh(planar, [("quad", np.array([[0, 1, 2, 3]]))], PLANAR_POINTS)
+            assert isinstance(
+                import_planar(planar, IsotropicConductivity2D(400.0)), PlanarHeat
+            )
+            solid = Path(tmpdir) / "solid.vtu"
+            write_mesh(solid, [("tetra", np.array([[0, 1, 2, 3]]))])
+            assert isinstance(
+                import_solid(solid, IsotropicConductivity3D(400.0)), SolidHeat
+            )
