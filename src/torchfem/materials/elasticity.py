@@ -256,7 +256,7 @@ class IsotropicElasticity1D(MechanicsMaterial):
     Notes:
         - Small-strain assumption.
         - No internal state variables (``n_state = 0``).
-        - The stiffness "tensor" is simply $C_{0000} = E$.
+        - Supports batched/vectorized material parameters.
 
     Info: 1D stiffness tensor
         The 1D stiffness "tensor" is simply $C_{0000} = E$.
@@ -549,6 +549,23 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         - The transverse shear modulus is derived as
           $G_T = E_T / (2(1 + \\nu_T))$.
         - Raises `ValueError` if $G_L > E_L / (2(1 + \\nu_L))$.
+
+    Info: Transverse isotropy as a special case
+        Isotropy in the transverse plane (2-3) reduces the nine independent
+        constants of `OrthotropicElasticity3D` to five,
+        $$
+            E_1 = E_L, \\quad E_2 = E_3 = E_T
+        $$
+        $$
+            \\nu_{12} = \\nu_{13} = \\nu_L, \\quad \\nu_{23} = \\nu_T
+        $$
+        $$
+            G_{12} = G_{13} = G_L, \\quad
+            G_{23} = G_T = \\frac{E_T}{2 (1 + \\nu_T)}
+        $$
+        where the transverse shear modulus $G_T$ follows from isotropy in the
+        2-3 plane. These nine values are handed to `OrthotropicElasticity3D`,
+        which assembles the stiffness tensor $C_{ijkl}$.
     """
 
     def __init__(
@@ -694,6 +711,21 @@ class TransverseIsotropicElasticityPlaneStress(OrthotropicElasticityPlaneStress)
         - The transverse shear modulus is derived as
           $G_T = E_T / (2(1 + \\nu_T))$.
         - Raises `ValueError` if $G_L > E_L / (2(1 + \\nu_L))$.
+
+    Info: Transverse isotropy as a special case
+        Isotropy in the transverse plane (2-3) reduces the constants of
+        `OrthotropicElasticityPlaneStress` to five,
+        $$
+            E_1 = E_L, \\quad E_2 = E_T, \\quad \\nu_{12} = \\nu_L
+        $$
+        $$
+            G_{12} = G_{13} = G_L, \\quad
+            G_{23} = G_T = \\frac{E_T}{2 (1 + \\nu_T)}
+        $$
+        where the transverse shear modulus $G_T$ follows from isotropy in the
+        2-3 plane. Only $E_L$, $E_T$, $\\nu_L$ and $G_L$ enter the plane stress
+        stiffness; $G_L$ and $G_T$ are the transverse shear moduli read by
+        `Shell` and `Laminate`.
     """
 
     def __init__(
@@ -851,6 +883,23 @@ class TransverseIsotropicElasticityPlaneStrain(OrthotropicElasticityPlaneStrain)
         - The transverse shear modulus is derived as
           $G_T = E_T / (2(1 + \\nu_T))$.
         - Raises `ValueError` if $G_L > E_L / (2(1 + \\nu_L))$.
+
+    Info: Transverse isotropy as a special case
+        Isotropy in the transverse plane (2-3) reduces the nine independent
+        constants of `OrthotropicElasticityPlaneStrain` to five,
+        $$
+            E_1 = E_L, \\quad E_2 = E_3 = E_T
+        $$
+        $$
+            \\nu_{12} = \\nu_{13} = \\nu_L, \\quad \\nu_{23} = \\nu_T
+        $$
+        $$
+            G_{12} = G_{13} = G_L, \\quad
+            G_{23} = G_T = \\frac{E_T}{2 (1 + \\nu_T)}
+        $$
+        where the transverse shear modulus $G_T$ follows from isotropy in the
+        2-3 plane. The plane strain condition $\\varepsilon_{33} = 0$ is then
+        enforced by `OrthotropicElasticityPlaneStrain`.
     """
 
     def __init__(
