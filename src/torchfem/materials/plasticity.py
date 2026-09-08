@@ -45,6 +45,22 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         - One internal state variable (``n_state = 1``): equivalent plastic
           strain $q$.
         - Supports batched/vectorized material parameters.
+
+    Info: Von Mises plasticity
+        The elastic domain is bounded by the yield surface
+        $$
+            f(\\pmb{\\sigma}, q) = \\|\\pmb{\\sigma}'\\|
+                - \\sqrt{\\tfrac{2}{3}} \\, \\sigma_f(q) = 0
+        $$
+        with the deviatoric stress $\\pmb{\\sigma}'$ and the yield stress
+        $\\sigma_f(q)$, given as a function of the equivalent plastic strain
+        $q$. Linear hardening is $\\sigma_f(q) = \\sigma_y + k q$ with the
+        initial yield stress $\\sigma_y$ and the hardening modulus $k$.
+
+        A state with $f > 0$ is returned to the surface along the associative
+        flow direction $\\mathbf{n} = \\pmb{\\sigma}' /
+        \\|\\pmb{\\sigma}'\\|$, which is the radial return `step(...)`
+        carries out.
     """
 
     def __init__(
@@ -94,7 +110,10 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
         **Elastic step** ($f \\le 0$): The trial stress is accepted.
 
-        **Plastic step** ($f > 0$): The flow direction is
+        **Plastic step** ($f > 0$): The plastic multiplier $\\Delta\\gamma$
+        that restores $f = 0$ solves a nonlinear equation, found by a local
+        Newton iteration bounded by `tolerance` and `max_iter`, and reached in
+        one step for linear hardening. The flow direction is
         $\\mathbf{n} = \\pmb{\\sigma}'_{\\text{trial}}
         / \\|\\pmb{\\sigma}'_{\\text{trial}}\\|$
         and the updates are
@@ -295,7 +314,11 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
                 \\end{bmatrix}.
         $$
 
-        If $\\Psi > 0$, the stress is updated via
+        If $\\Psi > 0$, the plastic multiplier $\\Delta\\gamma$ that restores
+        $\\Psi = 0$ is found by a local Newton iteration bounded by `tolerance`
+        and `max_iter`, in which the trial stress components are scaled by
+        $1 + E \\Delta\\gamma / (3 (1 - \\nu))$ and $1 + 2 G \\Delta\\gamma$.
+        The stress is then updated via
 
         $$
             \\pmb{\\sigma}_{n+1}
