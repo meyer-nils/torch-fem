@@ -69,8 +69,7 @@ class IsotropicConductivity3D(Material):
                 *Shape:* `(..., 1, 3)`.
             state (Tensor): Internal state variables (unused in heat conductivity).
                 *Shape:* Arbitrary, remains unchanged.
-            de0 (Tensor): External temperature gradient increment.
-                *Shape:* `(..., 1, 3)`.
+            de0 (Tensor): Unused. A heat model imposes no external gradient.
             cl (Tensor): Characteristic lengths.
                 *Shape:* `(...)`.
             iter (int): Current iteration number.
@@ -89,7 +88,7 @@ class IsotropicConductivity3D(Material):
 
         # Compute new heat flux
         heat_flux_new = heat_flux + torch.einsum(
-            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc - de0
+            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc
         )
         # Update internal state (this material does not change state)
         state_new = state

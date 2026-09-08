@@ -1129,7 +1129,7 @@ class Heat(FEM, ABC):
                 [n_int, n_elem, n_dof_per_node, n_dim].
             state_prev: Previous internal variables [n_int, n_elem, n_state].
             du: Temperature increment for the current Newton evaluation.
-            de0: External temperature-gradient increment per element.
+            de0: Always zero. A heat model imposes no external gradient.
             iter: Newton iteration index.
             nlgeom: Unused for heat, kept for API compatibility.
 
