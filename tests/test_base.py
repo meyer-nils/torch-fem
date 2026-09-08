@@ -3,7 +3,6 @@ import torch
 
 from torchfem import Planar, PlanarHeat, Solid, SolidHeat
 from torchfem.materials import (
-    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicDamage3D,
@@ -272,8 +271,8 @@ class TestMaterialCompatibility:
                 "Solid needs a 3D MechanicsMaterial, not a 2D IsotropicElasticity",
             ),
             (
-                lambda: PlanarHeat(*rect_quad(3, 3), IsotropicConductivity1D(400.0)),
-                "PlanarHeat needs a 2D HeatMaterial, not a 1D IsotropicConductivity1D",
+                lambda: PlanarHeat(*rect_quad(3, 3), IsotropicConductivity3D(400.0)),
+                "PlanarHeat needs a 2D HeatMaterial, not a 3D IsotropicConductivity3D",
             ),
             (
                 lambda: SolidHeat(*cube_hexa(2, 2, 2), IsotropicConductivity2D(400.0)),
@@ -288,7 +287,7 @@ class TestMaterialCompatibility:
     def test_a_smaller_conductivity_broadcasts_instead_of_failing(self):
         """Why the check is needed: a 1x1 conductivity fits a 2D gradient
         by broadcasting, and returns a wrong flux rather than raising."""
-        kappa = IsotropicConductivity1D(5.0).vectorize(1).KAPPA
+        kappa = torch.full((1, 1, 1), 5.0)
         grad = torch.tensor([[[0.1, 0.7]]])
         flux = torch.einsum("...ij,...kj->...ki", kappa, grad)
         assert torch.allclose(flux, torch.tensor([[[4.0, 4.0]]]))

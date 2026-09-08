@@ -6,7 +6,6 @@ Classes are organized into submodules but re-exported here, so
 
 from .base import HeatMaterial, Material, MechanicsMaterial
 from .conductivity import (
-    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     OrthotropicConductivity2D,
@@ -57,7 +56,6 @@ __all__ = [
     "IsotropicDamage3D",
     "IsotropicConductivity3D",
     "IsotropicConductivity2D",
-    "IsotropicConductivity1D",
     "OrthotropicConductivity3D",
     "OrthotropicConductivity2D",
 ]

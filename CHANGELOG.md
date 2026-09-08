@@ -11,6 +11,7 @@
 - `THEMES`, the color schemes the documentation figures are drawn in, moved from `torchfem.elements` to `torchfem.plot_utils`, where the rest of the plotting helpers live.
 
 ### Removed
+- `IsotropicConductivity1D`. No model consumes a 1D thermal material.
 - `Element.plot(...)` drew the shape function figures of the documentation and nothing else, defaulting to a `docs/` path that an installed package does not carry. `docs/images/shape_functions/plot_elements.py` now draws them, like every other documentation figure.
 
 ## Version 0.11.0 - September 7 2026

@@ -6,7 +6,6 @@ from torchfem.materials import (
     HeatMaterial,
     Hyperelastic3D,
     HyperelasticPlaneStress,
-    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicDamage3D,
@@ -634,30 +633,6 @@ class TestIsotropicConductivity2D:
         assert mat.vectorize(N_ELEM) is mat
 
 
-class TestIsotropicConductivity1D:
-    def test_conductivity_is_scalar_block(self):
-        assert torch.allclose(
-            IsotropicConductivity1D(400.0).KAPPA, 400.0 * torch.eye(1)
-        )
-
-    def test_step_scales_temperature_gradient_by_kappa(self):
-        n = N_ELEM
-        mat = IsotropicConductivity1D(400.0).vectorize(n)
-        grad_inc, grad, q, state, cl = _make_thermal_step_args(1, n)
-        q_new, _, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
-        assert q_new.shape == (n, 1, 1)
-        assert tangent.shape == (n, 1, 1)
-        assert torch.allclose(q_new, 400.0 * grad_inc)
-
-    def test_vectorize(self):
-        mat = IsotropicConductivity1D(400.0).vectorize(N_ELEM)
-        assert mat.KAPPA.shape == (N_ELEM, 1, 1)
-
-    def test_vectorize_idempotent(self):
-        mat = IsotropicConductivity1D(400.0).vectorize(N_ELEM)
-        assert mat.vectorize(N_ELEM) is mat
-
-
 class TestOrthotropicConductivity3D:
     def test_conductivity_is_diagonal_in_principal_axes(self):
         mat = OrthotropicConductivity3D(1.0, 2.0, 3.0)
@@ -819,7 +794,6 @@ class TestMaterialBases:
         [
             IsotropicConductivity3D(400.0),
             IsotropicConductivity2D(400.0),
-            IsotropicConductivity1D(400.0),
             OrthotropicConductivity3D(1.0, 2.0, 3.0),
             OrthotropicConductivity2D(1.0, 2.0),
         ],

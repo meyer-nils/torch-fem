@@ -111,29 +111,6 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
         self.KAPPA = self.KAPPA[..., :2, :2]
 
 
-class IsotropicConductivity1D(IsotropicConductivity2D):
-    """Isotropic heat conductivity material in 1D.
-
-    Uses the same constitutive law as the higher-dimensional classes with a
-    scalar 1x1 conductivity tensor.
-
-    The inherited `step` method operates on thermal tensors with shapes
-    `(..., 1, 1)` and returns an algorithmic tangent of shape `(..., 1, 1)`.
-    """
-
-    dim = 1
-
-    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
-        """Create a 1D isotropic conductivity material.
-
-        Args:
-            kappa (Tensor | float): Thermal conductivity.
-            rho (Tensor | float): Mass density.
-        """
-        super().__init__(kappa, rho)
-        self.KAPPA = self.KAPPA[..., :1, :1]
-
-
 class OrthotropicConductivity3D(IsotropicConductivity3D):
     """Orthotropic heat conductivity material in 3D.
 
