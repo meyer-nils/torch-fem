@@ -86,7 +86,7 @@ def sigma_f(ep):
 
 
 def sigma_f_prime(ep):
-    return torch.tensor(50.0)
+    return torch.full_like(ep, 50.0)
 
 
 class TestIsotropicElasticity3D:
@@ -275,6 +275,25 @@ class TestIsotropicPlasticity1D:
         assert s_new.shape == (n, 1, 1)
         assert torch.allclose(st_new, torch.zeros_like(st_new), atol=1e-8)
         assert torch.isfinite(s_new).all()
+
+    @pytest.mark.parametrize("n_yielding", [1, 2, N_ELEM])
+    def test_plastic_step_yields_a_per_element_tangent(self, n_yielding):
+        """The tangent must broadcast per element, not across the yielding ones."""
+        n, E, H = N_ELEM, 1000.0, 50.0
+        mat = IsotropicPlasticity1D(E, sigma_f, sigma_f_prime).vectorize(n)
+        H_inc, F, stress, state, de0, cl = _make_step_args_1d(n, n_state=1)
+        H_inc[:] = 0.0
+        H_inc[:n_yielding] = 1.0  # well past yield
+        s_new, st_new, tangent = mat.step(H_inc, F, stress, state, de0, cl, 1)
+        assert tangent.shape == (n, 1, 1, 1, 1)
+        assert torch.allclose(
+            tangent[:n_yielding], torch.full((n_yielding, 1, 1, 1, 1), E * H / (E + H))
+        )
+        assert torch.allclose(
+            tangent[n_yielding:], torch.full_like(tangent[n_yielding:], E)
+        )
+        assert (st_new[:n_yielding, 0] > 0).all()
+        assert (st_new[n_yielding:, 0] == 0).all()
 
 
 class TestIsotropicPlasticityPlaneStress:

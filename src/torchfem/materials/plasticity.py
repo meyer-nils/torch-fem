@@ -744,11 +744,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         state_new[..., 0] = q
 
         # Update algorithmic tangent
-        if fm.sum() > 0:
-            ddsdde[fm] = (
-                E[:, None, None, None, None]
-                * self.sigma_f_prime(q[fm])
-                / (E[:, None, None, None, None] + self.sigma_f_prime(q[fm]))
-            )
+        H = self.sigma_f_prime(q[fm])
+        ddsdde[fm] = (E * H / (E + H))[:, None, None, None, None]
 
         return stress_new, state_new, ddsdde
