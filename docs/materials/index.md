@@ -19,9 +19,19 @@ $$
 \mathbb{C}_{n+1} = \frac{\partial \Delta \pmb{\sigma}}{\partial \Delta \mathbf{H}}
 $$
 for convergence speed of the underlying incremental Newton-Raphson solver.
-In `torch-fem`, this logic is encapsulated in the `step()` method of each material inherited from the abstract `Material` base class:
+In `torch-fem`, this logic is encapsulated in the `step()` method of each material. `Material` holds what every material has -- `vectorize()`, `rotate()`, the density, the state width and the spatial dimension -- and one of two bases adds the balance law.
 
-::: torchfem.materials.Material.step
+A `Mechanics` model takes a `MechanicsMaterial`, whose step maps a displacement gradient increment to a stress:
+
+::: torchfem.materials.MechanicsMaterial.step
+    options:
+        show_root_heading: true
+        docstring_section_style: list
+        show_bases: false
+
+A `Heat` model takes a `HeatMaterial`, whose step maps a temperature gradient increment to a heat flux:
+
+::: torchfem.materials.HeatMaterial.step
     options:
         show_root_heading: true
         docstring_section_style: list

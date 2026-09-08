@@ -1,7 +1,9 @@
 import pytest
 import torch
 
+import torchfem.materials
 from torchfem.materials import (
+    HeatMaterial,
     Hyperelastic3D,
     HyperelasticPlaneStress,
     IsotropicConductivity1D,
@@ -16,6 +18,7 @@ from torchfem.materials import (
     IsotropicPlasticity3D,
     IsotropicPlasticityPlaneStrain,
     IsotropicPlasticityPlaneStress,
+    MechanicsMaterial,
     OrthotropicConductivity2D,
     OrthotropicConductivity3D,
     OrthotropicElasticity3D,
@@ -69,12 +72,11 @@ def _make_step_args_1d(n_elem=1, n_state=0):
 def _make_thermal_step_args(dim, n_elem=1):
     """Create minimal tensors for calling step() on a conductivity material."""
     grad_inc = torch.linspace(1.0, float(dim), dim).expand(n_elem, 1, dim).clone()
-    F = torch.zeros(n_elem, 1, dim)
+    grad = torch.zeros(n_elem, 1, dim)
     heat_flux = torch.zeros(n_elem, 1, dim)
     state = torch.zeros(n_elem, 0)
-    de0 = torch.zeros(n_elem, 1, dim)
     cl = torch.ones(n_elem)
-    return grad_inc, F, heat_flux, state, de0, cl
+    return grad_inc, grad, heat_flux, state, cl
 
 
 # Common yield function for plasticity tests
@@ -591,8 +593,8 @@ class TestIsotropicConductivity3D:
     def test_step_scales_temperature_gradient_by_kappa(self):
         n = N_ELEM
         mat = IsotropicConductivity3D(400.0).vectorize(n)
-        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(3, n)
-        q_new, state_new, tangent = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        grad_inc, grad, q, state, cl = _make_thermal_step_args(3, n)
+        q_new, state_new, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
         assert q_new.shape == (n, 1, 3)
         assert tangent.shape == (n, 3, 3)
         assert torch.allclose(q_new, 400.0 * grad_inc)
@@ -617,8 +619,8 @@ class TestIsotropicConductivity2D:
     def test_step_scales_temperature_gradient_by_kappa(self):
         n = N_ELEM
         mat = IsotropicConductivity2D(400.0).vectorize(n)
-        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(2, n)
-        q_new, _, tangent = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        grad_inc, grad, q, state, cl = _make_thermal_step_args(2, n)
+        q_new, _, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
         assert q_new.shape == (n, 1, 2)
         assert tangent.shape == (n, 2, 2)
         assert torch.allclose(q_new, 400.0 * grad_inc)
@@ -641,8 +643,8 @@ class TestIsotropicConductivity1D:
     def test_step_scales_temperature_gradient_by_kappa(self):
         n = N_ELEM
         mat = IsotropicConductivity1D(400.0).vectorize(n)
-        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(1, n)
-        q_new, _, tangent = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        grad_inc, grad, q, state, cl = _make_thermal_step_args(1, n)
+        q_new, _, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
         assert q_new.shape == (n, 1, 1)
         assert tangent.shape == (n, 1, 1)
         assert torch.allclose(q_new, 400.0 * grad_inc)
@@ -664,8 +666,8 @@ class TestOrthotropicConductivity3D:
     def test_step_applies_conductivity_per_direction(self):
         n = N_ELEM
         mat = OrthotropicConductivity3D(1.0, 2.0, 3.0).vectorize(n)
-        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(3, n)
-        q_new, _, _ = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        grad_inc, grad, q, state, cl = _make_thermal_step_args(3, n)
+        q_new, _, _ = mat.step(grad_inc, grad, q, state, cl, 0)
         # Gradient [1, 2, 3] against conductivities [1, 2, 3].
         assert torch.allclose(q_new, torch.tensor([1.0, 4.0, 9.0]).expand(n, 1, 3))
 
@@ -696,8 +698,8 @@ class TestOrthotropicConductivity2D:
     def test_step_applies_conductivity_per_direction(self):
         n = N_ELEM
         mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(n)
-        grad_inc, F, q, state, de0, cl = _make_thermal_step_args(2, n)
-        q_new, _, _ = mat.step(grad_inc, F, q, state, de0, cl, 0)
+        grad_inc, grad, q, state, cl = _make_thermal_step_args(2, n)
+        q_new, _, _ = mat.step(grad_inc, grad, q, state, cl, 0)
         assert torch.allclose(q_new, torch.tensor([1.0, 4.0]).expand(n, 1, 2))
 
     def test_rotation_by_90_deg_swaps_axes(self):
@@ -780,3 +782,48 @@ def test_rotation_commutes_with_vectorization(build):
         _anisotropy(mat.rotate(R).vectorize(N_ELEM)),
         _anisotropy(mat.vectorize(N_ELEM).rotate(R)),
     )
+
+
+class TestMaterialBases:
+    """Every material derives from the base of the balance law it closes."""
+
+    def test_every_exported_material_picks_a_physics(self):
+        m = torchfem.materials
+        undecided = [
+            name
+            for name in m.__all__
+            if isinstance(getattr(m, name), type)
+            and issubclass(getattr(m, name), m.Material)
+            and name not in {"Material", "MechanicsMaterial", "HeatMaterial"}
+            and not issubclass(getattr(m, name), (m.MechanicsMaterial, m.HeatMaterial))
+        ]
+        assert undecided == []
+
+    @pytest.mark.parametrize(
+        "material",
+        [
+            IsotropicElasticity3D(1000.0, 0.3),
+            IsotropicElasticity1D(1000.0),
+            OrthotropicElasticity3D(1e3, 5e2, 5e2, 0.3, 0.3, 0.3, 3e2, 3e2, 3e2),
+            Hyperelastic3D(lambda F, p: (F * F).sum(), [1.0]),
+            IsotropicPlasticity3D(1000.0, 0.3, sigma_f, sigma_f_prime),
+            IsotropicDamage3D(1000.0, 0.3, lambda k, cl: k, lambda k, cl: k, "rankine"),
+        ],
+    )
+    def test_mechanics_materials(self, material):
+        assert isinstance(material, MechanicsMaterial)
+        assert not isinstance(material, HeatMaterial)
+
+    @pytest.mark.parametrize(
+        "material",
+        [
+            IsotropicConductivity3D(400.0),
+            IsotropicConductivity2D(400.0),
+            IsotropicConductivity1D(400.0),
+            OrthotropicConductivity3D(1.0, 2.0, 3.0),
+            OrthotropicConductivity2D(1.0, 2.0),
+        ],
+    )
+    def test_heat_materials(self, material):
+        assert isinstance(material, HeatMaterial)
+        assert not isinstance(material, MechanicsMaterial)

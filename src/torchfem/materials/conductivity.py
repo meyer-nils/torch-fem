@@ -5,10 +5,10 @@ import copy
 import torch
 from torch import Tensor
 
-from .base import Material
+from .base import HeatMaterial
 
 
-class IsotropicConductivity3D(Material):
+class IsotropicConductivity3D(HeatMaterial):
     """Isotropic heat conductivity material in 3D.
 
     This class represents a 3D isotropic heat conductivity material, defined by the
@@ -46,55 +46,46 @@ class IsotropicConductivity3D(Material):
 
     def step(
         self,
-        H_inc: Tensor,
-        F: Tensor,
-        stress: Tensor,
+        grad_inc: Tensor,
+        grad: Tensor,
+        flux: Tensor,
         state: Tensor,
-        de0: Tensor,
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the isotropic heat conduction model.
 
-        This function updates the heat flux from the temperature gradient increment
-        via Fourier's law. The arguments follow the generic `Material.step(...)`
-        signature, so the mechanical names carry thermal meaning here.
+        Fourier's law, $\\Delta \\mathbf{q} = \\pmb{\\kappa} \\cdot
+        \\Delta \\nabla T$, with a constant conductivity.
 
         Args:
-            H_inc (Tensor): Incremental temperature gradient increment.
+            grad_inc (Tensor): Incremental temperature gradient.
                 *Shape:* `(..., 1, 3)`, where `...` represents batch dimensions.
-            F (Tensor): Current temperature gradient.
-                *Shape:* `(..., 1, 3)`, same as `H_inc`.
-            stress (Tensor): Current heat flux.
+            grad (Tensor): Current temperature gradient. Unused.
+                *Shape:* `(..., 1, 3)`, same as `grad_inc`.
+            flux (Tensor): Current heat flux.
                 *Shape:* `(..., 1, 3)`.
             state (Tensor): Internal state variables (unused in heat conductivity).
                 *Shape:* Arbitrary, remains unchanged.
-            de0 (Tensor): Unused. A heat model imposes no external gradient.
             cl (Tensor): Characteristic lengths.
                 *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
-            heat_flux_new (Tensor): Updated heat flux.
+            flux_new (Tensor): Updated heat flux.
                 *Shape:* `(..., 1, 3)`.
             state_new (Tensor): Updated internal state (unchanged).
                 *Shape:* same as `state`.
-            ddheat_flux_ddtemp_grad (Tensor): Algorithmic tangent tensor.
+            dqdg (Tensor): Algorithmic tangent conductivity.
                 *Shape:* `(..., 3, 3)`.
         """
-        # Interpretation of inputs
-        temp_grad_inc = H_inc
-        heat_flux = stress
-
         # Compute new heat flux
-        heat_flux_new = heat_flux + torch.einsum(
-            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc
-        )
+        flux_new = flux + torch.einsum("...ij,...kj->...ki", self.KAPPA, grad_inc)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
-        ddheat_flux_ddtemp_grad = self.KAPPA
-        return heat_flux_new, state_new, ddheat_flux_ddtemp_grad
+        dqdg = self.KAPPA
+        return flux_new, state_new, dqdg
 
 
 class IsotropicConductivity2D(IsotropicConductivity3D):

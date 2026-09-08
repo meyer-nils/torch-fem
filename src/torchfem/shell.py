@@ -25,7 +25,7 @@ from torch import Tensor
 from .base import Mechanics
 from .elements import Element, Quad1, Tria1
 from .laminate import Laminate
-from .materials import Material
+from .materials import Material, MechanicsMaterial
 from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 from .utils import stiffness2voigt, stress2voigt
 
@@ -216,7 +216,7 @@ class Shell(Mechanics):
         )
         return self.thickness[:, None, None] * Cs
 
-    def _thickness_stations(self) -> tuple[list[Material], Tensor, Tensor]:
+    def _thickness_stations(self) -> tuple[list[MechanicsMaterial], Tensor, Tensor]:
         """Through-thickness integration stations.
 
         Returns:
@@ -229,7 +229,7 @@ class Shell(Mechanics):
         if self.section is not None:
             return self.section.materials_per_station, self.section.z, self.section.w
         else:
-            assert self.material is not None
+            assert isinstance(self.material, MechanicsMaterial)
             z = self.z_simpson[:, None] * self.thickness[None, :]
             w = self.w_simpson[:, None] * self.thickness[None, :]
             return [self.material] * self.n_simpson, z, w

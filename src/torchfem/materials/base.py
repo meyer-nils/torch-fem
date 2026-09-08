@@ -10,7 +10,7 @@ from torch import Tensor
 T = TypeVar("T", bound="Material")
 
 
-class Material(ABC):
+class Material:
     """Base class for all material models.
 
     `vectorize(...)` and `rotate(...)` never modify the material they are called on
@@ -54,6 +54,25 @@ class Material(ABC):
                 setattr(new, key, value.repeat(n_elem, *(value.dim() * [1])))
         new.is_vectorized = True
         return new
+
+    def rotate(self, R: Tensor) -> Material:
+        """Returns the material with its properties rotated by `R`.
+
+        Args:
+            R (Tensor): Rotation tensor.
+                *Shape:* `(..., d, d)`.
+
+        Returns:
+            Material: A material with rotated properties, or itself if isotropic.
+        """
+        return self
+
+
+class MechanicsMaterial(Material, ABC):
+    """Base class for the materials a `Mechanics` model takes.
+
+    Its `step(...)` maps a displacement gradient increment to a stress.
+    """
 
     @abstractmethod
     def step(
@@ -100,14 +119,49 @@ class Material(ABC):
         """
         pass
 
-    def rotate(self, R: Tensor) -> Material:
-        """Returns the material with its properties rotated by `R`.
+
+class HeatMaterial(Material, ABC):
+    """Base class for the materials a `Heat` model takes.
+
+    Its `step(...)` maps a temperature gradient increment to a heat flux.
+    """
+
+    @abstractmethod
+    def step(
+        self,
+        grad_inc: Tensor,
+        grad: Tensor,
+        flux: Tensor,
+        state: Tensor,
+        cl: Tensor,
+        iter: int,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Performs an incremental step of the material model.
+
+        This function has to update the heat flux, internal state, and algorithmic
+        tangent conductivity.
 
         Args:
-            R (Tensor): Rotation tensor.
-                *Shape:* `(..., d, d)`.
+            grad_inc (Tensor): Incremental temperature gradient
+                $\\Delta \\nabla T$.
+                *Shape:* `(..., 1, d)`.
+            grad (Tensor): Current temperature gradient $\\nabla T_n$.
+                *Shape:* `(..., 1, d)`.
+            flux (Tensor): Current heat flux $\\mathbf{q}_n$.
+                *Shape:* `(..., 1, d)`.
+            state (Tensor): Internal state variables $\\pmb{\\alpha}_n$.
+                *Shape:* `(..., <number of state variables>)`.
+            cl (Tensor): Characteristic lengths for regularization.
+                *Shape:* `(..., 1)`.
+            iter (int): Current iteration number.
 
         Returns:
-            Material: A material with rotated properties, or itself if isotropic.
+            flux_new (Tensor): Updated heat flux $\\mathbf{q}_{n+1}$.
+                *Shape:* `(..., 1, d)`.
+            state_new (Tensor): Updated internal state $\\pmb{\\alpha}_{n+1}$.
+                *Shape:* `(..., n_state)`.
+            dqdg (Tensor): Algorithmic tangent conductivity
+                $\\frac{\\partial \\Delta \\mathbf{q}}{\\partial \\Delta \\nabla T}$.
+                *Shape:* `(..., d, d)`.
         """
-        return self
+        pass

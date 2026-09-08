@@ -6,10 +6,10 @@ import torch
 from torch import Tensor
 from torch.func import jacrev, vmap
 
-from .base import Material
+from .base import MechanicsMaterial
 
 
-class Hyperelastic3D(Material):
+class Hyperelastic3D(MechanicsMaterial):
     """Hyperelastic material in 3D.
 
     This class implements a hyperelastic material model for large deformations

@@ -19,7 +19,7 @@ from typing import ClassVar
 import torch
 from torch import Tensor
 
-from .materials import Material
+from .materials import MechanicsMaterial
 from .rotations import planar_rotation
 
 
@@ -27,7 +27,7 @@ class Laminate:
     """A stacking sequence of plane-stress layers for shell elements.
 
     Args:
-        materials: Plane-stress materials, one per layer.
+        materials: Plane-stress mechanics materials, one per layer.
         thicknesses: Per-layer thicknesses. Each entry may be a scalar (constant
             over the mesh) or a tensor of shape `(n_elem,)`.
         angles: Per-layer orientation angles in radians, measured from the
@@ -65,7 +65,7 @@ class Laminate:
 
     def __init__(
         self,
-        materials: Sequence[Material],
+        materials: Sequence[MechanicsMaterial],
         thicknesses: Sequence[float] | Sequence[Tensor] | Tensor,
         angles: Sequence[float] | Sequence[Tensor] | Tensor,
         n_simpson: int = 3,

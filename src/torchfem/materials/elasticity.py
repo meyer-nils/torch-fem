@@ -6,10 +6,10 @@ import torch
 from torch import Tensor
 
 from ..utils import stiffness2voigt
-from .base import Material
+from .base import MechanicsMaterial
 
 
-class IsotropicElasticity3D(Material):
+class IsotropicElasticity3D(MechanicsMaterial):
     """Isotropic elastic material in 3D.
 
     Args:
@@ -245,7 +245,7 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         self.C[..., 1, 0, 1, 0] = G
 
 
-class IsotropicElasticity1D(Material):
+class IsotropicElasticity1D(MechanicsMaterial):
     """Isotropic elastic material in 1D.
 
     Args:
@@ -327,7 +327,7 @@ class IsotropicElasticity1D(Material):
         return stress_new, state_new, ddsdde
 
 
-class OrthotropicElasticity3D(Material):
+class OrthotropicElasticity3D(MechanicsMaterial):
     """Orthotropic elastic material in 3D.
 
     Args:

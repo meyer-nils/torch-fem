@@ -4,7 +4,7 @@ Classes are organized into submodules but re-exported here, so
 ``from torchfem.materials import <Class>`` keeps working.
 """
 
-from .base import Material
+from .base import HeatMaterial, Material, MechanicsMaterial
 from .conductivity import (
     IsotropicConductivity1D,
     IsotropicConductivity2D,
@@ -37,6 +37,8 @@ from .plasticity import (
 
 __all__ = [
     "Material",
+    "MechanicsMaterial",
+    "HeatMaterial",
     "IsotropicElasticity3D",
     "IsotropicElasticityPlaneStress",
     "IsotropicElasticityPlaneStrain",
