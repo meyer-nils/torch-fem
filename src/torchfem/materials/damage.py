@@ -44,8 +44,8 @@ class IsotropicDamage3D(IsotropicElasticity3D):
 
         The damage is driven by an equivalent strain measure
         $\\tilde{\\varepsilon}$. For ``eq_strain="rankine"``, this is the
-        largest principal strain. The history variable $\\kappa$ tracks the
-        maximum equivalent strain ever reached:
+        principal strain largest in magnitude. The history variable $\\kappa$
+        tracks the maximum equivalent strain ever reached:
 
         $$
             \\kappa_{n+1} = \\max(\\kappa_n,\\, \\tilde{\\varepsilon}_{n+1})
