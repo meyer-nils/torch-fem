@@ -26,7 +26,7 @@ from .base import Mechanics
 from .elements import Element, Quad1, Tria1
 from .laminate import Laminate
 from .materials import Material
-from .plot_utils import arrows, cones, dots
+from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 from .utils import stiffness2voigt, stress2voigt
 
 
@@ -731,10 +731,7 @@ class Shell(Mechanics):
                 None.
             **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
         """
-        pyvista.set_plot_theme("document")
-        pl = pyvista.Plotter() if plotter is None else plotter
-        pl.enable_anti_aliasing("ssaa")
-        pl.renderer.add_axes()
+        pl = new_plotter(plotter)
 
         # VTK element list
         elements = []
@@ -871,13 +868,4 @@ class Shell(Mechanics):
             cones(pl, points, fixed[:, :3], height)
             cones(pl, points, fixed[:, 3:], height, doubled=True)
 
-        if axes:
-            pl.renderer.show_grid()
-
-        if camera is not None:
-            pl.camera_position = camera
-
-        if plotter is None:
-            from .plot_utils import show_html
-
-            show_html(pl)
+        show_plotter(pl, plotter, axes, camera)

@@ -15,6 +15,9 @@ from .elements import Bar1, Bar2, Element
 from .materials import Material
 from .plot_utils import LABEL_OFFSET, arrows, arrows2d, cones, dots, dots2d, markers2d
 
+# isort: split
+from .plot_utils import new_plotter, show_plotter
+
 
 class Truss(Mechanics):
     """Truss model built from bar elements in 2D or 3D space.
@@ -281,10 +284,7 @@ class Truss(Mechanics):
                 or an explicit position, focal point and view up. Defaults to
                 None.
         """
-        pyvista.set_plot_theme("document")
-        pl = pyvista.Plotter() if plotter is None else plotter
-        pl.enable_anti_aliasing("ssaa")
-        pl.renderer.add_axes()
+        pl = new_plotter(plotter)
 
         # Nodes
         pos = self.nodes + u
@@ -345,13 +345,4 @@ class Truss(Mechanics):
             dots(pl, ends, max(0.5 * radius, 1.25 * float(radii.max())))
             cones(pl, pos, fixed, 2.0 * radius)
 
-        if axes:
-            pl.renderer.show_grid()
-
-        if camera is not None:
-            pl.camera_position = camera
-
-        if plotter is None:
-            from .plot_utils import show_html
-
-            show_html(pl)
+        show_plotter(pl, plotter, axes, camera)

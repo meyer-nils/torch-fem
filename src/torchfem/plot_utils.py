@@ -30,9 +30,28 @@ THEMES = (
 )
 
 
-def show_html(plotter):
-    """Display a plotter in a notebook, redrawing it while the scene loads."""
-    viewer = plotter.show(jupyter_backend="html", return_viewer=True)
+def new_plotter(plotter: pyvista.Plotter | None) -> pyvista.Plotter:
+    """A themed, anti-aliased plotter: the caller's if given, otherwise a new one."""
+    pyvista.set_plot_theme("document")
+    pl = pyvista.Plotter() if plotter is None else plotter
+    pl.enable_anti_aliasing("ssaa")
+    pl.renderer.add_axes()
+    return pl
+
+
+def show_plotter(pl, plotter=None, axes=False, camera=None):
+    """Add grid and camera, then display `pl` unless `plotter` supplied it.
+
+    Displaying redraws the scene while it loads.
+    """
+    if axes:
+        pl.renderer.show_grid()
+    if camera is not None:
+        pl.camera_position = camera
+    if plotter is not None:
+        return
+
+    viewer = pl.show(jupyter_backend="html", return_viewer=True)
     if viewer is None:
         # Outside a notebook, show() already opened a window.
         return

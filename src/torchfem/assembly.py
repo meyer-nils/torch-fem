@@ -10,6 +10,7 @@ import torch
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 from pyvista import DataSet
+from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import FEM, Heat, near_null_space, skew
@@ -749,6 +750,8 @@ class Assembly:
         u: list[Tensor] | float = 0.0,
         plotter: pyvista.Plotter | None = None,
         bcs: bool = False,
+        axes: bool = False,
+        camera: CameraPositionOptions | None = None,
         **kwargs,
     ):
         """Plot the parts with PyVista, marking the points and couplings.
@@ -764,11 +767,16 @@ class Assembly:
             bcs: If True, renders the boundary conditions of every part and of
                 the reference points, whose moments and rotations are drawn
                 with a doubled head.
+            axes: Show labeled coordinate axes around the assembly. Defaults
+                to False.
+            camera: Camera position, either a plane ("xy", "xz", "yz"), "iso",
+                or an explicit position, focal point and view up. Defaults to
+                None.
             **kwargs: Forwarded to each part's `plot(...)`.
         """
-        from .plot_utils import arrows, cones, dots
+        from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 
-        pl = pyvista.Plotter() if plotter is None else plotter
+        pl = new_plotter(plotter)
         per_part, points, links, size = self._resolve(u, kwargs)
         # Glyphs follow the element size, with a floor so that they stay visible
         # on a fine mesh, whose elements are far smaller than the model
@@ -814,7 +822,4 @@ class Assembly:
             tube = typing.cast(DataSet, link.tube(radius=0.1 * scale))
             pl.add_mesh(tube, color="gray")
 
-        if plotter is None:
-            from .plot_utils import show_html
-
-            show_html(pl)
+        show_plotter(pl, plotter, axes, camera)

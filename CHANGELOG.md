@@ -5,6 +5,8 @@
 ### Changed
 - `Assembly.solve(verbose=True)` warns about single precision, as `FEM.solve(...)` already did. Both reports are built by one `solve_report(...)` in `torchfem.report` now.
 - `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two before. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` used to take from the last.
+- `Assembly.plot3d(...)` takes `axes` and a `camera` position and themes the plotter itself, as a part's `plot(...)` does.
+- `show_html(...)` in `torchfem.plot_utils` is now `show_plotter(pl, plotter=None, axes=False, camera=None)`, which also adds the grid and the camera and skips the display when the caller owns the plotter.
 - `THEMES`, the color schemes the documentation figures are drawn in, moved from `torchfem.elements` to `torchfem.plot_utils`, where the rest of the plotting helpers live.
 
 ### Removed

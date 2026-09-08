@@ -9,7 +9,7 @@ from torch import Tensor
 
 from .base import FEM, Heat, Mechanics
 from .elements import Element, Hexa1, Hexa2, Tetra1, Tetra2
-from .plot_utils import arrows, cones, dots
+from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 
 
 class SolidGeometry(FEM):
@@ -116,10 +116,7 @@ class SolidGeometry(FEM):
                 Additional keyword arguments passed to pyvista.Plotter.add_mesh.
         """
 
-        pyvista.set_plot_theme("document")
-        pl = pyvista.Plotter() if plotter is None else plotter
-        pl.enable_anti_aliasing("ssaa")
-        pl.renderer.add_axes()
+        pl = new_plotter(plotter)
 
         # VTK cell types
         if self.etype is Tetra1:
@@ -233,16 +230,7 @@ class SolidGeometry(FEM):
             dots(pl, (pos if deformed else pos + prescribed)[pulled], 0.3 * height)
             cones(pl, pos, fixed, height)
 
-        if axes:
-            pl.renderer.show_grid()
-
-        if camera is not None:
-            pl.camera_position = camera
-
-        if plotter is None:
-            from .plot_utils import show_html
-
-            show_html(pl)
+        show_plotter(pl, plotter, axes, camera)
 
 
 class Solid(SolidGeometry, Mechanics):
