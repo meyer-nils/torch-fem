@@ -245,33 +245,43 @@ def test_heat_solve_rejects_geometric_nonlinearity():
         _planar_heat().solve(nlgeom=True)
 
 
-class TestMaterialDimension:
-    """A model takes a material of its own spatial dimension alone."""
+class TestMaterialCompatibility:
+    """A model takes a material of its own physics and dimension alone."""
 
     @pytest.mark.parametrize(
         ("build", "message"),
         [
             (
+                lambda: Solid(*cube_hexa(2, 2, 2), IsotropicConductivity3D(400.0)),
+                "Solid needs a 3D MechanicsMaterial, not a 3D IsotropicConductivity3D",
+            ),
+            (
+                lambda: PlanarHeat(
+                    *rect_quad(3, 3), IsotropicElasticityPlaneStress(1e3, 0.3)
+                ),
+                "PlanarHeat needs a 2D HeatMaterial, not a 2D IsotropicElasticity",
+            ),
+            (
                 lambda: Planar(*rect_quad(3, 3), IsotropicElasticity3D(1000.0, 0.3)),
-                "Planar needs a 2D material, but IsotropicElasticity3D is 3D",
+                "Planar needs a 2D MechanicsMaterial, not a 3D IsotropicElasticity3D",
             ),
             (
                 lambda: Solid(
-                    *cube_hexa(2, 2, 2), IsotropicElasticityPlaneStress(1000.0, 0.3)
+                    *cube_hexa(2, 2, 2), IsotropicElasticityPlaneStress(1e3, 0.3)
                 ),
-                "Solid needs a 3D material, but IsotropicElasticityPlaneStress is 2D",
+                "Solid needs a 3D MechanicsMaterial, not a 2D IsotropicElasticity",
             ),
             (
                 lambda: PlanarHeat(*rect_quad(3, 3), IsotropicConductivity1D(400.0)),
-                "PlanarHeat needs a 2D material, but IsotropicConductivity1D is 1D",
+                "PlanarHeat needs a 2D HeatMaterial, not a 1D IsotropicConductivity1D",
             ),
             (
                 lambda: SolidHeat(*cube_hexa(2, 2, 2), IsotropicConductivity2D(400.0)),
-                "SolidHeat needs a 3D material, but IsotropicConductivity2D is 2D",
+                "SolidHeat needs a 3D HeatMaterial, not a 2D IsotropicConductivity2D",
             ),
         ],
     )
-    def test_rejects_a_material_of_another_dimension(self, build, message):
+    def test_rejects_an_incompatible_material(self, build, message):
         with pytest.raises(ValueError, match=message):
             build()
 

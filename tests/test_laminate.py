@@ -3,6 +3,7 @@ import torch
 
 from torchfem import Laminate, Shell
 from torchfem.materials import (
+    IsotropicConductivity2D,
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
     IsotropicPlasticityPlaneStress,
@@ -389,7 +390,12 @@ def test_the_tangent_symmetry_of_a_laminate_follows_its_layers():
     assert lam.symmetric_tangent is False
 
 
-def test_laminate_rejects_a_layer_of_another_dimension():
+@pytest.mark.parametrize(
+    "material",
+    [IsotropicElasticity3D(70000.0, 0.3), IsotropicConductivity2D(400.0)],
+    ids=["wrong dimension", "wrong physics"],
+)
+def test_laminate_rejects_an_incompatible_layer(material):
     """A shell hands its laminate to `Shell.section`, past the check in `FEM`."""
-    with pytest.raises(ValueError, match="laminate layer must be a 2D material"):
-        Laminate([IsotropicElasticity3D(70000.0, 0.3)], [1.0], [0.0])
+    with pytest.raises(ValueError, match="must be a 2D mechanics material"):
+        Laminate([material], [1.0], [0.0])
