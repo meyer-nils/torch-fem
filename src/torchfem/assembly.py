@@ -1,6 +1,7 @@
 import math
 import typing
 from collections.abc import Callable, Iterable, Sequence
+from functools import partial
 from typing import Literal
 
 import matplotlib.pyplot as plt
@@ -486,12 +487,6 @@ class Assembly:
             if isinstance(part, FEM):
                 part.K = torch.empty(0)
 
-        def constrain(dq: Tensor, DU: Tensor) -> Tensor:
-            """Enforce the Dirichlet increment on the retained DOFs."""
-            dq = dq.clone()
-            dq[con] = DU[con]
-            return dq
-
         def integrate(prev, du, step, iteration, tangent=True):
             """Integrate every part over the global increment `du`.
 
@@ -527,17 +522,20 @@ class Assembly:
                 updated.append(tuple(new))
             return blocks, torch.cat(F_int), list(zip(*updated))
 
-        def make_eval_residual(F_ext, DU, step):
-            # Bind this increment's loads at definition time, so the adjoint
-            # backward replays the increment it belongs to.
-            def eval_residual(dq, iteration, prev):
-                du = _mv(T, constrain(dq, DU))
-                blocks, F_int, _ = integrate(prev, du, step, iteration)
-                res = _mv(Tt, F_int - F_ext)
-                res[con] = 0.0
-                return res, assemble_matrix(blocks, con)
+        def residual(F_ext, DU, step, dq, iteration, prev):
+            """Residual and tangent of one Newton iteration under these loads.
 
-            return eval_residual
+            The loads are bound to their increment with `partial(...)`, so the
+            adjoint backward replays that increment rather than the last.
+            """
+            # Enforce the Dirichlet increment on the retained DOFs
+            dq = dq.clone()
+            dq[con] = DU[con]
+            du = _mv(T, dq)
+            blocks, F_int, _ = integrate(prev, du, step, iteration)
+            res = _mv(Tt, F_int - F_ext)
+            res[con] = 0.0
+            return res, assemble_matrix(blocks, con)
 
         # Iterative solvers build their preconditioner from the near-null space.
         # `T` is the identity on the retained rows, so restricting the modes to
@@ -563,7 +561,7 @@ class Assembly:
             prev = tuple(x.clone() if track else x.detach() for x in carry)
 
             dq = newton_solve(
-                make_eval_residual(F_ext, DU, step),
+                partial(residual, F_ext, DU, step),
                 dq.detach(),
                 null_space,
                 max_iter,
@@ -579,7 +577,8 @@ class Assembly:
             )
 
             # Evaluate the converged state, whose tangent is not needed
-            dq = constrain(dq, DU)
+            dq = dq.clone()
+            dq[con] = DU[con]
             du = _mv(T, dq)
             _, F_int, updated = integrate(prev, du, step, max_iter, tangent=False)
 
