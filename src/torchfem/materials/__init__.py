@@ -21,6 +21,8 @@ from .elasticity import (
     OrthotropicElasticityPlaneStrain,
     OrthotropicElasticityPlaneStress,
     TransverseIsotropicElasticity3D,
+    TransverseIsotropicElasticityPlaneStrain,
+    TransverseIsotropicElasticityPlaneStress,
 )
 from .hyperelasticity import (
     Hyperelastic3D,
@@ -44,6 +46,8 @@ __all__ = [
     "IsotropicElasticity1D",
     "OrthotropicElasticity3D",
     "TransverseIsotropicElasticity3D",
+    "TransverseIsotropicElasticityPlaneStress",
+    "TransverseIsotropicElasticityPlaneStrain",
     "OrthotropicElasticityPlaneStress",
     "OrthotropicElasticityPlaneStrain",
     "Hyperelastic3D",

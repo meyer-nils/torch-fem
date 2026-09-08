@@ -35,7 +35,9 @@ nav = [
       { "Orthotropic 3D" = "materials/elasticity/orthotropic_elasticity_3D.md" },
       { "Transverse 3D" = "materials/elasticity/transverse_isotropic_elasticity_3D.md" },
       { "Orthotropic Plane Stress" = "materials/elasticity/orthotropic_elasticity_plane_stress.md" },
+      { "Transverse Plane Stress" = "materials/elasticity/transverse_isotropic_elasticity_plane_stress.md" },
       { "Orthotropic Plane Strain" = "materials/elasticity/orthotropic_elasticity_plane_strain.md" },
+      { "Transverse Plane Strain" = "materials/elasticity/transverse_isotropic_elasticity_plane_strain.md" },
     ] },
     { "Hyperelasticity" = [
       { "3D" = "materials/hyperelasticity/hyperelastic_3D.md" },

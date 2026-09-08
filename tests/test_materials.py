@@ -24,6 +24,8 @@ from torchfem.materials import (
     OrthotropicElasticityPlaneStrain,
     OrthotropicElasticityPlaneStress,
     TransverseIsotropicElasticity3D,
+    TransverseIsotropicElasticityPlaneStrain,
+    TransverseIsotropicElasticityPlaneStress,
 )
 from torchfem.rotations import axis_rotation, planar_rotation
 from torchfem.utils import stiffness2voigt, stress2voigt
@@ -465,6 +467,66 @@ class TestTransverseIsotropicElasticity3D:
             G_L=5e3,
         )
         assert mat.C.shape == (3, 3, 3, 3)
+
+    def test_transverse_plane_is_isotropic(self):
+        mat = TransverseIsotropicElasticity3D(100e3, 10e3, 0.3, 0.3, 5e3)
+        assert torch.allclose(mat.C[1, 1, 1, 1], mat.C[2, 2, 2, 2])
+
+    def test_vectorize_over_a_batch_of_constants(self):
+        mat = TransverseIsotropicElasticity3D(
+            torch.full((3,), 100e3),
+            torch.full((3,), 10e3),
+            torch.full((3,), 0.3),
+            torch.full((3,), 0.3),
+            torch.full((3,), 5e3),
+        )
+        assert mat.C.shape == (3, 3, 3, 3, 3)
+
+    def test_rejects_an_inadmissible_longitudinal_shear(self):
+        with pytest.raises(ValueError, match="G_L must be less than"):
+            TransverseIsotropicElasticity3D(100e3, 10e3, 0.3, 0.3, 1e9)
+
+
+TI = {"E_L": 100e3, "E_T": 10e3, "nu_L": 0.3, "nu_T": 0.25, "G_L": 5e3}
+G_T = TI["E_T"] / (2 * (1 + TI["nu_T"]))
+
+
+class TestTransverseIsotropicElasticityPlaneStress:
+    def test_matches_the_orthotropic_equivalent(self):
+        mat = TransverseIsotropicElasticityPlaneStress(**TI)
+        ref = OrthotropicElasticityPlaneStress(
+            TI["E_L"], TI["E_T"], TI["nu_L"], TI["G_L"], TI["G_L"], G_T
+        )
+        assert mat.C.shape == (2, 2, 2, 2)
+        assert torch.allclose(mat.C, ref.C)
+
+    def test_carries_the_transverse_shear_moduli_a_shell_needs(self):
+        mat = TransverseIsotropicElasticityPlaneStress(**TI)
+        assert torch.allclose(mat.G_13, torch.tensor(TI["G_L"]))
+        assert torch.allclose(mat.G_23, torch.tensor(G_T))
+
+
+class TestTransverseIsotropicElasticityPlaneStrain:
+    def test_matches_the_orthotropic_equivalent(self):
+        mat = TransverseIsotropicElasticityPlaneStrain(**TI)
+        ref = OrthotropicElasticityPlaneStrain(
+            TI["E_L"],
+            TI["E_T"],
+            TI["E_T"],
+            TI["nu_L"],
+            TI["nu_L"],
+            TI["nu_T"],
+            TI["G_L"],
+            TI["G_L"],
+            G_T,
+        )
+        assert mat.C.shape == (2, 2, 2, 2)
+        assert torch.allclose(mat.C, ref.C)
+
+    def test_is_the_in_plane_block_of_the_3d_material(self):
+        mat = TransverseIsotropicElasticityPlaneStrain(**TI)
+        full = TransverseIsotropicElasticity3D(**TI)
+        assert torch.allclose(mat.C, full.C[:2, :2, :2, :2])
 
 
 def _plane_stress():
