@@ -18,6 +18,9 @@ class Material(ABC):
     tensors, so no material may be written into in place.
 
     Attributes:
+        dim (int): Spatial dimension of the tensors `step(...)` operates on,
+            `3` unless a class reduces it. A model takes a material only where
+            it matches its own.
         n_state (int): Number of internal state variables.
         is_vectorized (bool): Indicates if material parameters are batched.
         rho (Tensor): Mass density.
@@ -25,6 +28,7 @@ class Material(ABC):
         symmetric_tangent (bool): Whether the tangent has major symmetry.
     """
 
+    dim: int = 3
     symmetric_tangent: bool = True
 
     def __init__(self):

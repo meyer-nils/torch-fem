@@ -107,6 +107,8 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
     `(..., 1, 2)` and returns an algorithmic tangent of shape `(..., 2, 2)`.
     """
 
+    dim = 2
+
     def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
         """Create a 2D isotropic conductivity material.
 
@@ -127,6 +129,8 @@ class IsotropicConductivity1D(IsotropicConductivity2D):
     The inherited `step` method operates on thermal tensors with shapes
     `(..., 1, 1)` and returns an algorithmic tangent of shape `(..., 1, 1)`.
     """
+
+    dim = 1
 
     def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
         """Create a 1D isotropic conductivity material.

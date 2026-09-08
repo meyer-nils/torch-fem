@@ -173,6 +173,8 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         $$
     """
 
+    dim = 2
+
     def __init__(
         self,
         psi: Callable,
@@ -305,6 +307,8 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
         and the in-plane stress and tangent are extracted from the 3D
         response.
     """
+
+    dim = 2
 
     def step(
         self,

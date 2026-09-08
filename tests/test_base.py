@@ -3,6 +3,7 @@ import torch
 
 from torchfem import Planar, PlanarHeat, Solid, SolidHeat
 from torchfem.materials import (
+    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicDamage3D,
@@ -242,3 +243,42 @@ def test_heat_solve_rejects_geometric_nonlinearity():
     """Heat conduction has no kinematics, so `nlgeom` is not silently ignored."""
     with pytest.raises(NotImplementedError, match="not implemented for PlanarHeat"):
         _planar_heat().solve(nlgeom=True)
+
+
+class TestMaterialDimension:
+    """A model takes a material of its own spatial dimension alone."""
+
+    @pytest.mark.parametrize(
+        ("build", "message"),
+        [
+            (
+                lambda: Planar(*rect_quad(3, 3), IsotropicElasticity3D(1000.0, 0.3)),
+                "Planar needs a 2D material, but IsotropicElasticity3D is 3D",
+            ),
+            (
+                lambda: Solid(
+                    *cube_hexa(2, 2, 2), IsotropicElasticityPlaneStress(1000.0, 0.3)
+                ),
+                "Solid needs a 3D material, but IsotropicElasticityPlaneStress is 2D",
+            ),
+            (
+                lambda: PlanarHeat(*rect_quad(3, 3), IsotropicConductivity1D(400.0)),
+                "PlanarHeat needs a 2D material, but IsotropicConductivity1D is 1D",
+            ),
+            (
+                lambda: SolidHeat(*cube_hexa(2, 2, 2), IsotropicConductivity2D(400.0)),
+                "SolidHeat needs a 3D material, but IsotropicConductivity2D is 2D",
+            ),
+        ],
+    )
+    def test_rejects_a_material_of_another_dimension(self, build, message):
+        with pytest.raises(ValueError, match=message):
+            build()
+
+    def test_a_smaller_conductivity_broadcasts_instead_of_failing(self):
+        """Why the check is needed: a 1x1 conductivity fits a 2D gradient
+        by broadcasting, and returns a wrong flux rather than raising."""
+        kappa = IsotropicConductivity1D(5.0).vectorize(1).KAPPA
+        grad = torch.tensor([[[0.1, 0.7]]])
+        flux = torch.einsum("...ij,...kj->...ki", kappa, grad)
+        assert torch.allclose(flux, torch.tensor([[[4.0, 4.0]]]))

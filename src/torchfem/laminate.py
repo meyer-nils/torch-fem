@@ -78,6 +78,12 @@ class Laminate:
             )
         if len(materials) == 0:
             raise ValueError("A laminate must contain at least one layer.")
+        for material in materials:
+            if material.dim != 2:
+                raise ValueError(
+                    "A laminate layer must be a 2D material, but "
+                    f"{type(material).__name__} is {material.dim}D."
+                )
         if n_simpson % 2 == 0:
             raise ValueError("n_simpson must be an odd integer.")
 

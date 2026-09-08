@@ -146,8 +146,15 @@ class FEM(ABC):
         if self.nodes.is_cuda:
             torch.cuda.empty_cache()
 
-        # Vectorize material
+        # A model takes only a material of its own dimension.
         self.material: Material | None
+        if material is not None and material.dim != self.n_flux[-1]:
+            raise ValueError(
+                f"{type(self).__name__} needs a {self.n_flux[-1]}D material, but "
+                f"{type(material).__name__} is {material.dim}D."
+            )
+
+        # Vectorize material
         if material is None or material.is_vectorized:
             self.material = material
         else:

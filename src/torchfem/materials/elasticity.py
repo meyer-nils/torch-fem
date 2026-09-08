@@ -161,6 +161,8 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         $$
     """
 
+    dim = 2
+
     def __init__(
         self, E: float | Tensor, nu: float | Tensor, rho: float | Tensor = 1.0
     ):
@@ -219,6 +221,8 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         $$
     """
 
+    dim = 2
+
     def __init__(
         self, E: Tensor | float, nu: Tensor | float, rho: Tensor | float = 1.0
     ):
@@ -257,6 +261,8 @@ class IsotropicElasticity1D(Material):
     Info: 1D stiffness tensor
         The 1D stiffness "tensor" is simply $C_{0000} = E$.
     """
+
+    dim = 1
 
     def __init__(self, E: float | Tensor, rho: float | Tensor = 1.0):
         # Convert float inputs to tensors
@@ -604,6 +610,8 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         $C_{1212} = G_{12}$.
     """
 
+    dim = 2
+
     def __init__(
         self,
         E_1: float | Tensor,
@@ -706,6 +714,8 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         $F = (1 - \\nu_{12}\\nu_{21} - \\nu_{13}\\nu_{31}
         - \\nu_{23}\\nu_{32} - 2\\nu_{21}\\nu_{32}\\nu_{13})^{-1}$.
     """
+
+    dim = 2
 
     def __init__(
         self,
