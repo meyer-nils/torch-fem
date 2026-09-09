@@ -24,25 +24,13 @@ The model type follows from the geometry and the element type:
 | Triangles or quadrilaterals that leave the `z = 0` plane | `Shell` |
 | Tetrahedra or hexahedra | `Solid` |
 
-::: torchfem.io.import_planar
-    options:
-        show_root_heading: true
-        heading_level: 2
-        docstring_section_style: list
-
 ::: torchfem.io.import_shell
     options:
         show_root_heading: true
         heading_level: 2
         docstring_section_style: list
 
-::: torchfem.io.import_solid
-    options:
-        show_root_heading: true
-        heading_level: 2
-        docstring_section_style: list
-
-These three check the type that `import_mesh(...)` picked rather than overriding it, so a flat triangle mesh imports as `Planar` and `import_shell(...)` raises a `TypeError` on it. Read such a mesh with `meshio` and pass its points and cells to `Shell` directly.
+A flat surface mesh reads as `Planar` in the table above, so `import_shell(...)` is how a flat shell is requested explicitly. 
 
 ::: torchfem.io.export_mesh
     options:

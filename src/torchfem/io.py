@@ -1,6 +1,6 @@
 from os import PathLike
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 import numpy as np
 import torch
@@ -9,10 +9,10 @@ from torch import Tensor
 
 from torchfem import Planar, PlanarHeat, Shell, Solid, SolidHeat
 
-from .base import FEM
+from .base import FEM, Heat, Mechanics
 from .elements import ELEMENT_REGISTRY
 from .laminate import Laminate
-from .materials import HeatMaterial, Material
+from .materials import HeatMaterial, Material, MechanicsMaterial
 
 
 @torch.no_grad()
@@ -65,6 +65,40 @@ def export_mesh(
     msh.write(filename, **write_kwargs)
 
 
+def _read_mesh(filename: PathLike) -> tuple[np.ndarray, Tensor, str]:
+    """Nodal coordinates, connectivity and element type of a single-block mesh.
+
+    Line blocks and unsupported cell blocks are skipped, so a mesh carrying
+    boundary edges beside its faces reads as expected.
+
+    Raises:
+        ValueError: If the file holds more than one element type.
+    """
+    mesh = read(filename)
+    elems = []
+    etypes = []
+    allowed = {e.meshio_type for e in ELEMENT_REGISTRY} - {"line"}
+    for cell_block in mesh.cells:
+        if cell_block.type in allowed:
+            etypes.append(cell_block.type)
+            elems += cell_block.data.tolist()
+    if len(etypes) > 1:
+        raise ValueError("Currently, only single element types are supported.")
+    return mesh.points.astype(np.float64), torch.tensor(elems), etypes[0]
+
+
+@overload
+def import_mesh(
+    filename: PathLike, material: MechanicsMaterial | Laminate, thickness: float = 1.0
+) -> Mechanics: ...
+
+
+@overload
+def import_mesh(
+    filename: PathLike, material: HeatMaterial, thickness: float = 1.0
+) -> Heat: ...
+
+
 def import_mesh(
     filename: PathLike, material: Material | Laminate, thickness: float = 1.0
 ) -> FEM:
@@ -72,15 +106,11 @@ def import_mesh(
 
     The model type follows from the geometry and the element type: a mesh whose nodes
     all lie in the z=0 plane becomes a `Planar` model, a non-planar triangle mesh a
-    `Shell`, and a tetrahedral or hexahedral mesh a `Solid`. Use `import_planar(...)`,
-    `import_shell(...)`, or `import_solid(...)` to require one specific type.
+    `Shell`, and a tetrahedral or hexahedral mesh a `Solid`. Use `import_shell(...)`
+    to require a shell.
 
     A `HeatMaterial` gives the heat model of that geometry, and a `Laminate`
     section needs a surface mesh, as only a `Shell` takes one.
-
-    Cell blocks that do not correspond to a supported element are skipped, as are line
-    blocks, so a mesh storing boundary edges or vertices next to its faces imports as
-    expected (`plate_hole.vtk` is one such mesh).
 
     Args:
         filename (PathLike): Path to a mesh file in any format meshio can read.
@@ -94,25 +124,9 @@ def import_mesh(
         Exception: If the file holds more than one element type, or if its element
             type has no corresponding model.
     """
-    mesh = read(filename)
-    elems = []
-    etypes = []
-    allowed_meshio_types = {e.meshio_type for e in ELEMENT_REGISTRY}
-    forbidden_meshio_types = {"line"}
-    for cell_block in mesh.cells:
-        if cell_block.type in allowed_meshio_types.difference(forbidden_meshio_types):
-            etypes.append(cell_block.type)
-            elems += cell_block.data.tolist()
-    if len(etypes) > 1:
-        raise ValueError("Currently, only single element types are supported.")
-    etype = etypes[0]
-
-    elements = torch.tensor(elems)
-
+    points, elements, etype = _read_mesh(filename)
     device = torch.get_default_device()
     dtype = torch.get_default_dtype()
-
-    points = mesh.points.astype(np.float64)
     heat = isinstance(material, HeatMaterial)
     planar = np.allclose(points[:, 2], np.zeros_like(points[:, 2]))
 
@@ -138,28 +152,19 @@ def import_mesh(
 
 
 def import_shell(
-    filename: PathLike, material: Material | Laminate, thickness: float = 1.0
+    filename: PathLike, material: MechanicsMaterial | Laminate, thickness: float = 1.0
 ) -> Shell:
-    """Import a mesh as a `Shell`. Raises `TypeError` for other mesh types."""
-    mesh = import_mesh(filename, material, thickness)
-    if not isinstance(mesh, Shell):
-        raise TypeError(f"{filename} is not a shell mesh, but {type(mesh).__name__}.")
-    return mesh
+    """Import a triangle or quadrilateral mesh as a `Shell`, flat or not.
 
+    `import_mesh(...)` reads a flat surface mesh as `Planar` instead.
 
-def import_planar(
-    filename: PathLike, material: Material, thickness: float = 1.0
-) -> Planar | PlanarHeat:
-    """Import a mesh as a planar model. Raises `TypeError` for other mesh types."""
-    mesh = import_mesh(filename, material, thickness)
-    if not isinstance(mesh, Planar | PlanarHeat):
-        raise TypeError(f"{filename} is not a planar mesh, but {type(mesh).__name__}.")
-    return mesh
-
-
-def import_solid(filename: PathLike, material: Material) -> Solid | SolidHeat:
-    """Import a mesh as a solid model. Raises `TypeError` for other mesh types."""
-    mesh = import_mesh(filename, material)
-    if not isinstance(mesh, Solid | SolidHeat):
-        raise TypeError(f"{filename} is not a solid mesh, but {type(mesh).__name__}.")
-    return mesh
+    Raises:
+        TypeError: If the mesh is not a surface mesh.
+    """
+    points, elements, etype = _read_mesh(filename)
+    if etype not in ("triangle", "quad"):
+        raise TypeError(f"{filename} is not a surface mesh, but {etype}.")
+    nodes = torch.tensor(
+        points, dtype=torch.get_default_dtype(), device=torch.get_default_device()
+    )
+    return Shell(nodes, elements, material, thickness=thickness)

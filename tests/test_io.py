@@ -11,9 +11,7 @@ from torchfem.elements import Quad1
 from torchfem.io import (
     export_mesh,
     import_mesh,
-    import_planar,
     import_shell,
-    import_solid,
 )
 from torchfem.materials import (
     IsotropicConductivity2D,
@@ -100,30 +98,8 @@ class TestImportMesh:
 
 
 class TestTypedImport:
-    def test_import_planar_narrows(self):
-        """The planar wrapper returns a `Planar` for a 2D mesh."""
-        nodes_2d, elements = rect_quad(3, 3)
-        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        model = Planar(nodes_2d, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path))
-            assert isinstance(import_planar(path, mat), Planar)
-
-    def test_import_solid_narrows(self):
-        """The solid wrapper returns a `Solid` for a 3D mesh."""
-        nodes, elements = cube_hexa(3, 3, 3)
-        mat = IsotropicElasticity3D(1000.0, 0.3)
-        model = Solid(nodes, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path))
-            assert isinstance(import_solid(path, mat), Solid)
-
     def test_type_mismatch_raises(self):
-        """A wrapper raises `TypeError` when the mesh is of another type."""
+        """`import_shell` raises `TypeError` when the mesh is of another type."""
         nodes, elements = cube_hexa(3, 3, 3)
         mat = IsotropicElasticity3D(1000.0, 0.3)
         model = Solid(nodes, elements, mat)
@@ -133,19 +109,6 @@ class TestTypedImport:
             export_mesh(model, str(path))
             with pytest.raises(TypeError):
                 import_shell(path, mat)
-            with pytest.raises(TypeError):
-                import_planar(path, mat)
-
-    def test_import_solid_rejects_planar_mesh(self):
-        nodes, elements = rect_quad(3, 3)
-        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        model = Planar(nodes, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path))
-            with pytest.raises(TypeError, match="not a solid mesh"):
-                import_solid(path, mat)
 
 
 class TestImportNonPlanarMesh:
@@ -238,15 +201,23 @@ class TestImportMeshPhysics:
             with pytest.raises(ValueError, match="laminate section needs a surface"):
                 import_mesh(path, layup)
 
-    def test_typed_imports_narrow_to_the_heat_model(self):
+    def test_a_flat_surface_mesh_imports_as_a_shell(self):
+        """A flat shell is requested through `import_shell`, not `import_mesh`."""
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        flat = np.array([[0.0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]])
         with tempfile.TemporaryDirectory() as tmpdir:
-            planar = Path(tmpdir) / "planar.vtu"
-            write_mesh(planar, [("quad", np.array([[0, 1, 2, 3]]))], PLANAR_POINTS)
-            assert isinstance(
-                import_planar(planar, IsotropicConductivity2D(400.0)), PlanarHeat
-            )
-            solid = Path(tmpdir) / "solid.vtu"
-            write_mesh(solid, [("tetra", np.array([[0, 1, 2, 3]]))])
-            assert isinstance(
-                import_solid(solid, IsotropicConductivity3D(400.0)), SolidHeat
-            )
+            path = Path(tmpdir) / "flat.vtu"
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 2, 3]]))], flat)
+            assert isinstance(import_mesh(path, mat), Planar)
+            shell = import_shell(path, mat, thickness=0.5)
+            assert isinstance(shell, Shell)
+            assert shell.nodes.shape == (4, 3)
+            assert torch.allclose(shell.thickness, torch.full((2,), 0.5))
+
+    def test_a_solid_mesh_is_not_a_surface(self):
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "solid.vtu"
+            write_mesh(path, [("tetra", np.array([[0, 1, 2, 3]]))])
+            with pytest.raises(TypeError, match="not a surface mesh, but tetra"):
+                import_shell(path, mat)
