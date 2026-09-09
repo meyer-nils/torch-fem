@@ -12,6 +12,7 @@
 
 ### Changed
 - **Breaking:** `Material` no longer defines `step(...)`. Materials derive from `MechanicsMaterial` or `HeatMaterial`, each carrying the `step(...)` of its own physics, and declare their spatial dimension through `Material.dim`. A model and a laminate layer take only a material matching both, and `import_mesh(...)` and the typed imports return the model matching the material's physics.
+- `import_shell(...)` reads a flat surface mesh as a `Shell`, which `import_mesh(...)` reads as `Planar`.
 - `Assembly.solve(verbose=True)` warns about single precision, as `FEM.solve(...)` already did. Both reports are built by one `solve_report(...)` in `torchfem.report` now.
 - `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two before. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` used to take from the last.
 - `Assembly.plot3d(...)` takes `axes` and a `camera` position and themes the plotter itself, as a part's `plot(...)` does.
