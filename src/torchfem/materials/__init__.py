@@ -11,7 +11,11 @@ from .conductivity import (
     OrthotropicConductivity2D,
     OrthotropicConductivity3D,
 )
-from .damage import IsotropicDamage3D
+from .damage import (
+    IsotropicDamage3D,
+    IsotropicDamagePlaneStrain,
+    IsotropicDamagePlaneStress,
+)
 from .elasticity import (
     IsotropicElasticity1D,
     IsotropicElasticity3D,
@@ -58,6 +62,8 @@ __all__ = [
     "IsotropicPlasticityPlaneStrain",
     "IsotropicPlasticity1D",
     "IsotropicDamage3D",
+    "IsotropicDamagePlaneStrain",
+    "IsotropicDamagePlaneStress",
     "IsotropicConductivity3D",
     "IsotropicConductivity2D",
     "OrthotropicConductivity3D",

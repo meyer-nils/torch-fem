@@ -9,6 +9,8 @@ from torchfem.materials import (
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicDamage3D,
+    IsotropicDamagePlaneStrain,
+    IsotropicDamagePlaneStress,
     IsotropicElasticity1D,
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStrain,
@@ -882,3 +884,175 @@ class TestMaterialBases:
     def test_heat_materials(self, material):
         assert isinstance(material, HeatMaterial)
         assert not isinstance(material, MechanicsMaterial)
+
+
+def _damage_law(eps_0=8.0e-4, d_max=0.3):
+    """A bounded, Lipschitz damage law, free of the characteristic length."""
+
+    def d(kappa, cl):
+        return d_max * torch.clamp((kappa - eps_0) / eps_0, 0.0, 1.0)
+
+    def d_prime(kappa, cl):
+        inside = (kappa > eps_0) & (kappa < 2 * eps_0)
+        return torch.where(inside, torch.full_like(kappa, d_max / eps_0), 0.0 * kappa)
+
+    return d, d_prime
+
+
+class TestIsotropicDamagePlaneStrain:
+    """Plane strain damage is the 3D model with a vanishing out-of-plane strain."""
+
+    def _step(self, mat, eps, dim, n=3):
+        F = torch.eye(dim).expand(n, dim, dim).contiguous()
+        return mat.step(
+            eps,
+            F,
+            torch.zeros(n, dim, dim),
+            torch.zeros(n, 2),
+            torch.zeros(n, dim, dim),
+            torch.full((n,), 5.0),
+            1,
+        )
+
+    @pytest.mark.parametrize("nu", [0.05, 0.3, 0.49])
+    def test_matches_the_3d_model_over_random_strains(self, nu):
+        """Unconditionally, for any strain state: the vanishing out-of-plane
+        principal never wins the magnitude comparison and adds no tangent term."""
+        d, d_prime = _damage_law()
+        n = 200
+        m2 = IsotropicDamagePlaneStrain(6000.0, nu, d, d_prime, "rankine").vectorize(n)
+        m3 = IsotropicDamage3D(6000.0, nu, d, d_prime, "rankine").vectorize(n)
+        torch.manual_seed(0)
+        e = (torch.rand(n, 2, 2) - 0.5) * 8.0e-3  # tension, compression and shear
+        e2 = 0.5 * (e + e.transpose(-1, -2))
+        e3 = torch.zeros(n, 3, 3)
+        e3[:, :2, :2] = e2
+        s2, st2, t2 = self._step(m2, e2, 2, n=n)
+        s3, st3, t3 = self._step(m3, e3, 3, n=n)
+        driving = torch.linalg.eigvalsh(e2).abs().argmax(-1)
+        assert (driving == 0).any() and (driving == 1).any()  # both signs represented
+        assert (st2[:, 1] > 0).any()
+        assert torch.equal(st2[:, 0], st3[:, 0])  # equivalent strain, bit for bit
+        assert torch.allclose(s2, s3[:, :2, :2])
+        assert torch.allclose(t2, t3[:, :2, :2, :2, :2])
+
+    def test_matches_the_3d_model_restricted_to_the_plane(self):
+        d, d_prime = _damage_law()
+        n = 3
+        m2 = IsotropicDamagePlaneStrain(6000.0, 0.3, d, d_prime, "rankine").vectorize(n)
+        m3 = IsotropicDamage3D(6000.0, 0.3, d, d_prime, "rankine").vectorize(n)
+        e2 = torch.zeros(n, 2, 2)
+        e2[:, 0, 0], e2[:, 1, 1] = 2.0e-3, 6.0e-4
+        e2[:, 0, 1] = e2[:, 1, 0] = 4.0e-4
+        e3 = torch.zeros(n, 3, 3)
+        e3[:, :2, :2] = e2  # eps_zz = 0
+        s2, st2, t2 = self._step(m2, e2, 2)
+        s3, st3, t3 = self._step(m3, e3, 3)
+        assert (st2[:, 1] > 0).all()  # damage is actually active
+        assert torch.allclose(st2, st3)
+        assert torch.allclose(s2, s3[:, :2, :2])
+        assert torch.allclose(t2, t3[:, :2, :2, :2, :2])
+
+    def test_tangent_matches_a_numerical_jacobian(self):
+        """The rank-one softening term is what this pins down."""
+        d, d_prime = _damage_law()
+        mat = IsotropicDamagePlaneStrain(6000.0, 0.3, d, d_prime, "rankine").vectorize(
+            1
+        )
+        eps = torch.zeros(1, 2, 2)
+        eps[:, 0, 0], eps[:, 1, 1] = 2.0e-3, 6.0e-4
+        eps[:, 0, 1] = eps[:, 1, 0] = 4.0e-4
+        _, state, tangent = self._step(mat, eps, 2, n=1)
+        assert state[0, 1] > 0
+
+        def stress_of(e):
+            return self._step(mat, e, 2, n=1)[0]
+
+        numerical = torch.autograd.functional.jacobian(stress_of, eps).reshape(
+            2, 2, 2, 2
+        )
+        assert torch.allclose(tangent[0], numerical, rtol=1e-6, atol=1e-8)
+
+
+class TestIsotropicDamagePlaneStress:
+    """The out-of-plane strain follows the in-plane one, so it both drives the
+    damage and contributes to the tangent."""
+
+    def _step(self, mat, eps, n=1):
+        return mat.step(
+            eps,
+            torch.eye(2).expand(n, 2, 2).contiguous(),
+            torch.zeros(n, 2, 2),
+            torch.zeros(n, 2),
+            torch.zeros(n, 2, 2),
+            torch.full((n,), 5.0),
+            1,
+        )
+
+    def _material(self, nu):
+        d, d_prime = _damage_law()
+        return IsotropicDamagePlaneStress(6000.0, nu, d, d_prime, "rankine").vectorize(
+            1
+        )
+
+    @staticmethod
+    def _strain(e11, e22, e12=0.0):
+        eps = torch.zeros(1, 2, 2)
+        eps[:, 0, 0], eps[:, 1, 1] = e11, e22
+        eps[:, 0, 1] = eps[:, 1, 0] = e12
+        return eps
+
+    @pytest.mark.parametrize(
+        ("nu", "e11", "e22", "out_of_plane"),
+        [
+            (0.30, 1.2e-3, 0.0, False),  # in-plane drives, n_3 = 0
+            (0.30, 1.0e-3, 4.0e-4, False),
+            (0.40, -1.0e-3, -1.0e-3, True),  # out-of-plane drives, n_3 = 1
+            (0.45, -8.0e-4, -8.0e-4, True),
+        ],
+    )
+    def test_tangent_matches_a_numerical_jacobian(self, nu, e11, e22, out_of_plane):
+        mat = self._material(nu)
+        eps = self._strain(e11, e22)
+        _, state, tangent = self._step(mat, eps)
+        kappa = state[0, 0]
+        assert mat.d_prime(state[:, 0], None)[0] > 0  # softening term is active
+        eps_33 = -nu / (1 - nu) * (e11 + e22)
+        assert torch.isclose(kappa, torch.tensor(eps_33)) == out_of_plane
+
+        numerical = torch.autograd.functional.jacobian(
+            lambda x: self._step(mat, x)[0], eps
+        ).reshape(2, 2, 2, 2)
+        assert torch.allclose(tangent[0], numerical, rtol=1e-7, atol=1e-10)
+
+    def test_equivalent_strain_and_stress_match_the_3d_model(self):
+        """Fed the same out-of-plane strain, the 3D model must agree."""
+        d, d_prime = _damage_law()
+        nu = 0.3
+        m2 = IsotropicDamagePlaneStress(6000.0, nu, d, d_prime, "rankine").vectorize(1)
+        m3 = IsotropicDamage3D(6000.0, nu, d, d_prime, "rankine").vectorize(1)
+        e2 = self._strain(2.0e-3, 5.0e-4)
+        e3 = torch.zeros(1, 3, 3)
+        e3[:, :2, :2] = e2
+        e3[:, 2, 2] = -nu / (1 - nu) * (e2[0, 0, 0] + e2[0, 1, 1])
+        s2, st2, _ = self._step(m2, e2)
+        s3, st3, _ = m3.step(
+            e3,
+            torch.eye(3).expand(1, 3, 3).contiguous(),
+            torch.zeros(1, 3, 3),
+            torch.zeros(1, 2),
+            torch.zeros(1, 3, 3),
+            torch.full((1,), 5.0),
+            1,
+        )
+        assert st2[0, 1] > 0
+        assert torch.equal(st2[:, 0], st3[:, 0])
+        assert torch.allclose(s2, s3[:, :2, :2])
+
+    def test_out_of_plane_strain_can_drive_the_damage(self):
+        """Inheriting the 3D step alone would miss this and silently mis-drive."""
+        mat = self._material(0.45)
+        eps = self._strain(-8.0e-4, -8.0e-4)
+        _, state, _ = self._step(mat, eps)
+        in_plane_max = torch.linalg.eigvalsh(eps[0]).abs().max()
+        assert state[0, 0] > in_plane_max

@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `IsotropicDamagePlaneStrain` and `IsotropicDamagePlaneStress`, the plane counterparts of `IsotropicDamage3D`, so a `Planar` model can carry damage. Under plane stress the out-of-plane strain follows the in-plane one, so it drives the damage where it dominates and contributes to the tangent.
 - `TransverseIsotropicElasticityPlaneStress` and `TransverseIsotropicElasticityPlaneStrain`, the plane counterparts of `TransverseIsotropicElasticity3D`. A unidirectional ply in a shell or laminate no longer needs its transverse shear moduli typed out by hand.
 
 ### Fixed

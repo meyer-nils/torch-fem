@@ -46,6 +46,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Plasticity in a plate with hole](images/examples/basic/planar/plasticity.png)](examples/basic/planar/plasticity.html)
 
+-   **Damage in a plate with hole**
+
+    [![Damage in a plate with hole](images/examples/basic/planar/damage.png)](examples/basic/planar/damage.html)
+
 -   **Fillet**
 
     [![Fillet](images/examples/basic/planar/fillet.png)](examples/basic/planar/fillet.html)

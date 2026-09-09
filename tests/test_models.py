@@ -8,6 +8,9 @@ import torch
 from torchfem import Planar, Shell, Solid, Truss
 from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
+    IsotropicDamage3D,
+    IsotropicDamagePlaneStrain,
+    IsotropicDamagePlaneStress,
     IsotropicElasticity1D,
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
@@ -51,6 +54,106 @@ def _on_boundary(nodes: torch.Tensor) -> torch.Tensor:
         coord = nodes[:, dim]
         mask |= torch.isclose(coord, coord.min()) | torch.isclose(coord, coord.max())
     return mask
+
+
+class TestPlanarDamageAgainstSolid:
+    """One layer of hexes with a vanishing out-of-plane strain is plane strain."""
+
+    EPS_0, D_MAX, U_TOP = 8.0e-4, 0.3, 0.05
+
+    def _law(self):
+        def d(kappa, cl):
+            return self.D_MAX * torch.clamp((kappa - self.EPS_0) / self.EPS_0, 0.0, 1.0)
+
+        def d_prime(kappa, cl):
+            inside = (kappa > self.EPS_0) & (kappa < 2 * self.EPS_0)
+            return torch.where(
+                inside, torch.full_like(kappa, self.D_MAX / self.EPS_0), 0.0 * kappa
+            )
+
+        return d, d_prime
+
+    def test_planar_plane_stress_approximates_the_free_surface_solid(self):
+        """A free out-of-plane face enforces sigma_33 = 0 only weakly across one
+        linear element, so the agreement is close rather than exact."""
+        d, d_prime = self._law()
+        t = 0.1  # thin, since plane stress is the thin-plate limit
+        nodes, elements = cube_hexa(7, 7, 2, 10.0, 10.0, t)
+
+        solid = Solid(
+            nodes, elements, IsotropicDamage3D(6000.0, 0.3, d, d_prime, "rankine")
+        )
+        n = solid.nodes
+        solid.constraints[n[:, 1] <= 1e-9, 1] = True
+        solid.constraints[n[:, 0] <= 1e-9, 0] = True
+        solid.constraints[n[:, 2] <= 1e-9, 2] = True  # z = 0 held, far face free
+        top = (n[:, 1] >= 10.0 - 1e-9) & (n[:, 0] <= 5.0)
+        solid.constraints[top, 1] = True
+        solid.displacements[top, 1] = self.U_TOP
+
+        keep = nodes[:, 2] <= 1e-9
+        remap = torch.full((len(nodes),), -1, dtype=torch.int64)
+        remap[keep] = torch.arange(int(keep.sum()))
+        planar = Planar(
+            nodes[keep][:, :2],
+            remap[elements[:, :4]],
+            IsotropicDamagePlaneStress(6000.0, 0.3, d, d_prime, "rankine"),
+            thickness=t,
+        )
+        m = planar.nodes
+        planar.constraints[m[:, 1] <= 1e-9, 1] = True
+        planar.constraints[m[:, 0] <= 1e-9, 0] = True
+        top2 = (m[:, 1] >= 10.0 - 1e-9) & (m[:, 0] <= 5.0)
+        planar.constraints[top2, 1] = True
+        planar.displacements[top2, 1] = self.U_TOP
+
+        increments = torch.linspace(0.0, 1.0, 10)
+        us, _, _, _, state_s = solid.solve(increments=increments)
+        up, _, _, _, state_p = planar.solve(increments=increments)
+
+        assert state_p[..., 1].max() > 0.0
+        rel = (us[keep][:, :2] - up).abs().max() / up.abs().max()
+        assert rel < 3e-3, rel
+        assert abs(state_s[..., 1].max() - state_p[..., 1].max()) < 1e-3
+
+    def test_planar_reproduces_the_solid_solution(self):
+        d, d_prime = self._law()
+        nodes, elements = cube_hexa(7, 7, 2, 10.0, 10.0, 1.0)
+
+        solid = Solid(
+            nodes, elements, IsotropicDamage3D(6000.0, 0.3, d, d_prime, "rankine")
+        )
+        n = solid.nodes
+        solid.constraints[n[:, 1] <= 1e-9, 1] = True
+        solid.constraints[n[:, 0] <= 1e-9, 0] = True
+        solid.constraints[:, 2] = True  # eps_zz = 0 makes this exactly plane strain
+        top = (n[:, 1] >= 10.0 - 1e-9) & (n[:, 0] <= 5.0)  # partial, for a gradient
+        solid.constraints[top, 1] = True
+        solid.displacements[top, 1] = self.U_TOP
+
+        keep = nodes[:, 2] <= 1e-9
+        assert torch.allclose(nodes[elements][:, :4, 2], torch.zeros(1))  # bottom face
+        remap = torch.full((len(nodes),), -1, dtype=torch.int64)
+        remap[keep] = torch.arange(int(keep.sum()))
+        planar = Planar(
+            nodes[keep][:, :2],
+            remap[elements[:, :4]],
+            IsotropicDamagePlaneStrain(6000.0, 0.3, d, d_prime, "rankine"),
+        )
+        m = planar.nodes
+        planar.constraints[m[:, 1] <= 1e-9, 1] = True
+        planar.constraints[m[:, 0] <= 1e-9, 0] = True
+        top2 = (m[:, 1] >= 10.0 - 1e-9) & (m[:, 0] <= 5.0)
+        planar.constraints[top2, 1] = True
+        planar.displacements[top2, 1] = self.U_TOP
+
+        increments = torch.linspace(0.0, 1.0, 10)
+        us, _, _, _, state_s = solid.solve(increments=increments)
+        up, _, _, _, state_p = planar.solve(increments=increments)
+
+        assert state_p[..., 1].max() > 0.0  # damage is actually active
+        assert torch.allclose(us[keep][:, :2], up, atol=1e-10)
+        assert torch.allclose(state_s[..., 1], state_p[..., 1], atol=1e-10)
 
 
 class TestPatch:

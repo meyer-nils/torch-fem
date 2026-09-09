@@ -21,6 +21,27 @@ $$
 for convergence speed of the underlying incremental Newton-Raphson solver.
 In `torch-fem`, this logic is encapsulated in the `step()` method of each material. `Material` holds what every material has -- `vectorize()`, `rotate()`, the density, the state width and the spatial dimension -- and one of two bases adds the balance law.
 
+## Which material for which model
+
+A model takes only a material of its own physics and spatial dimension, and rejects
+anything else when it is constructed. `PS` is plane stress and `PE` plane strain.
+
+| Material | Truss | Planar | Solid | Shell | Laminate | PlanarHeat | SolidHeat |
+|:---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Isotropic elasticity | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — |
+| Orthotropic elasticity | — | PS · PE | 3D | PS · PE | PS · PE | — | — |
+| Transverse isotropic elasticity | — | PS · PE | 3D | PS · PE | PS · PE | — | — |
+| Isotropic plasticity | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — |
+| Hyperelasticity | — | PS · PE | 3D | — | — | — | — |
+| Isotropic damage | — | PS · PE | 3D | PS · PE | PS · PE | — | — |
+| Isotropic conductivity | — | — | — | — | — | 2D | 3D |
+| Orthotropic conductivity | — | — | — | — | — | 2D | 3D |
+
+A hyperelastic material needs geometric nonlinearity, which `Shell` and `Truss` do not
+support, so those cells stay empty whatever material is added.
+
+## The step
+
 A `Mechanics` model takes a `MechanicsMaterial`, whose step maps a displacement gradient increment to a stress:
 
 ::: torchfem.materials.MechanicsMaterial.step
