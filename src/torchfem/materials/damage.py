@@ -7,6 +7,7 @@ import torch
 from torch import Tensor
 
 from .elasticity import (
+    IsotropicElasticity1D,
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStrain,
     IsotropicElasticityPlaneStress,
@@ -329,3 +330,47 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
                 "...ij,...kl->...ijkl", sigma_trial[active], dkappa[active]
             )
         return stress_new, state_new, ddsdde
+
+
+class IsotropicDamage1D(IsotropicDamage3D, IsotropicElasticity1D):
+    """Isotropic damage material model in 1D.
+
+    Args:
+        E (Tensor | float): Young's modulus.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        d (Callable): Damage evolution function $D(\\kappa, l_c)$.
+        d_prime (Callable): Derivative of the damage evolution
+            $D'(\\kappa, l_c)$.
+        eq_strain (Literal["rankine", "mises"]): Type of equivalent strain
+            measure used for damage driving.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Small-strain assumption.
+        - Two internal state variables (``n_state = 2``):
+          $\\kappa$ (damage driving variable) and $D$ (damage variable).
+        - Supports batched/vectorized material parameters.
+        - $\\kappa$ never decreases, so a bar damages in tension alone.
+
+    Info: Uniaxial damage
+        The single strain is the only principal strain, so the model of
+        `IsotropicDamage3D` reduces to $\\sigma = (1 - D) E \\varepsilon$ with
+        $\\kappa = \\max(\\kappa_n, \\varepsilon)$ and the tangent
+        $(1 - D) E - D' \\sigma^{\\text{trial}}$.
+    """
+
+    dim = 1
+
+    def __init__(
+        self,
+        E: float | Tensor,
+        d: Callable,
+        d_prime: Callable,
+        eq_strain: Literal["rankine", "mises"],
+        rho: float | Tensor = 1.0,
+    ):
+        IsotropicElasticity1D.__init__(self, E, rho)
+        self.d = d
+        self.d_prime = d_prime
+        self.n_state = 2
+        self.eq_strain: Literal["rankine", "mises"] = eq_strain

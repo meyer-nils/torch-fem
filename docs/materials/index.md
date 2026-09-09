@@ -33,7 +33,7 @@ anything else when it is constructed. `PS` is plane stress and `PE` plane strain
 | Transverse isotropic elasticity | — | PS · PE | 3D | PS · PE | PS · PE | — | — |
 | Isotropic plasticity | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — |
 | Hyperelasticity | — | PS · PE | 3D | — | — | — | — |
-| Isotropic damage | — | PS · PE | 3D | PS · PE | PS · PE | — | — |
+| Isotropic damage | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — |
 | Isotropic conductivity | — | — | — | — | — | 2D | 3D |
 | Orthotropic conductivity | — | — | — | — | — | 2D | 3D |
 

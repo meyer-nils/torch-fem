@@ -12,6 +12,7 @@ from .conductivity import (
     OrthotropicConductivity3D,
 )
 from .damage import (
+    IsotropicDamage1D,
     IsotropicDamage3D,
     IsotropicDamagePlaneStrain,
     IsotropicDamagePlaneStress,
@@ -64,6 +65,7 @@ __all__ = [
     "IsotropicDamage3D",
     "IsotropicDamagePlaneStrain",
     "IsotropicDamagePlaneStress",
+    "IsotropicDamage1D",
     "IsotropicConductivity3D",
     "IsotropicConductivity2D",
     "OrthotropicConductivity3D",

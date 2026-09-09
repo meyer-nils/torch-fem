@@ -54,6 +54,7 @@ nav = [
       { "Isotropic 3D" = "materials/damage/isotropic_damage_3D.md" },
       { "Isotropic Plane Strain" = "materials/damage/isotropic_damage_plane_strain.md" },
       { "Isotropic Plane Stress" = "materials/damage/isotropic_damage_plane_stress.md" },
+      { "Isotropic 1D" = "materials/damage/isotropic_damage_1D.md" },
     ] },
     { "Conductivity" = [
       { "Isotropic 3D" = "materials/conductivity/isotropic_conductivity_3D.md" },

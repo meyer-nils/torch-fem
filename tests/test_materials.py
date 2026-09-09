@@ -8,6 +8,7 @@ from torchfem.materials import (
     HyperelasticPlaneStress,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
+    IsotropicDamage1D,
     IsotropicDamage3D,
     IsotropicDamagePlaneStrain,
     IsotropicDamagePlaneStress,
@@ -1056,3 +1057,43 @@ class TestIsotropicDamagePlaneStress:
         _, state, _ = self._step(mat, eps)
         in_plane_max = torch.linalg.eigvalsh(eps[0]).abs().max()
         assert state[0, 0] > in_plane_max
+
+
+class TestIsotropicDamage1D:
+    """The single strain is the only principal strain, so it always drives."""
+
+    def _step(self, mat, eps, n):
+        return mat.step(
+            eps,
+            torch.eye(1).expand(n, 1, 1).contiguous(),
+            torch.zeros(n, 1, 1),
+            torch.zeros(n, 2),
+            torch.zeros(n, 1, 1),
+            torch.full((n,), 5.0),
+            1,
+        )
+
+    def test_builds_the_1d_stiffness_not_the_3d_one(self):
+        """`IsotropicElasticity1D` is a sibling of the 3D class, so the
+        constructor cannot go through `super()`."""
+        d, d_prime = _damage_law()
+        mat = IsotropicDamage1D(1000.0, d, d_prime, "rankine").vectorize(3)
+        assert mat.dim == 1
+        assert mat.C.shape == (3, 1, 1, 1, 1)
+        assert torch.allclose(mat.C, torch.full((3, 1, 1, 1, 1), 1000.0))
+
+    def test_degrades_the_stress_and_matches_a_numerical_jacobian(self):
+        d, d_prime = _damage_law()
+        E, n = 1000.0, 4
+        mat = IsotropicDamage1D(E, d, d_prime, "rankine").vectorize(n)
+        eps = torch.zeros(n, 1, 1)
+        eps[:, 0, 0] = torch.tensor([5.0e-4, 1.2e-3, -1.2e-3, 2.0e-3])
+        stress, state, tangent = self._step(mat, eps, n)
+        assert torch.allclose(stress[:, 0, 0], (1 - state[:, 1]) * E * eps[:, 0, 0])
+        assert state[1, 1] > 0 and state[3, 1] > 0  # damage is active
+        assert state[2, 1] == 0  # a bar in compression never damages
+        numerical = torch.autograd.functional.jacobian(
+            lambda x: self._step(mat, x, n)[0], eps
+        )
+        diagonal = torch.stack([numerical[i, 0, 0, i, 0, 0] for i in range(n)])
+        assert torch.allclose(tangent[:, 0, 0, 0, 0], diagonal)
