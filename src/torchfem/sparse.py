@@ -33,6 +33,14 @@ ERR_AMGX_MISSING = (
     "> export AMGX_DLL=/path/to/libamgxsh.so # amgxsh.dll on Windows"
 )
 
+
+class ConvergenceError(RuntimeError):
+    """A Newton or linear solve stalled short of its tolerance.
+
+    Its own type, so an increment cutback retries this and nothing else.
+    """
+
+
 available_backends = ["scipy"]
 
 try:
@@ -196,7 +204,7 @@ def _krylov(
     the cost of overshooting the tolerance by up to `_CHECK - 1` iterations.
 
     Raises:
-        RuntimeError: If the iteration limit is reached before `stol`.
+        ConvergenceError: If the iteration limit is reached before `stol`.
     """
     M = 1.0 / _diagonal(A) if preconditioner == "jacobi" else None
     x = torch.zeros_like(b)
@@ -243,7 +251,7 @@ def _krylov(
             if i % _CHECK == _CHECK - 1 and torch.dot(r, r) <= threshold:
                 return x
 
-    raise RuntimeError(f"{method} did not reach {stol:g} within the iteration limit.")
+    raise ConvergenceError(f"{method} did not reach {stol:g} within iteration limit.")
 
 
 class Solve(Function):
@@ -512,7 +520,7 @@ def _solve_scipy(
     solve = scipy_cg if method == "cg" else scipy_bicgstab
     x_xp, exit_code = solve(A_np, b_np, M=M, rtol=stol)
     if exit_code != 0:
-        raise RuntimeError(f"{method} failed with exit code {exit_code}")
+        raise ConvergenceError(f"{method} failed with exit code {exit_code}")
 
     return x_xp, M
 
@@ -566,7 +574,7 @@ class NewtonRaphsonAdjoint(Function):
         arguments.
 
         Raises:
-            RuntimeError: If the residual becomes NaN or infinite, or the
+            ConvergenceError: If the residual becomes NaN or infinite, or the
                 iteration limit is reached.
         """
         M = None
@@ -612,7 +620,7 @@ class NewtonRaphsonAdjoint(Function):
 
         # Final convergence check, which a residual that is not finite fails
         if not (res_norm < rtol * res_norm0 or res_norm < atol):
-            raise RuntimeError("Newton-Raphson iteration did not converge.")
+            raise ConvergenceError("Newton-Raphson iteration did not converge.")
 
         ctx.save_for_backward(
             K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters

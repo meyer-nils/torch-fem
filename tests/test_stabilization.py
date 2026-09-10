@@ -8,6 +8,7 @@ from torchfem.materials import (
     IsotropicElasticityPlaneStress,
 )
 from torchfem.mesh import cube_hexa, rect_quad
+from torchfem.sparse import ConvergenceError
 
 # Uniform increments: a linear model assembles K once and reuses it, so the
 # stabilization coefficient alpha/dt must stay constant over the load path.
@@ -206,7 +207,7 @@ def test_a_recovered_substep_spans_the_next_increment(monkeypatch, capsys):
     def failing_once(*args, **kwargs):
         calls.append(1)
         if len(calls) == 1:
-            raise RuntimeError("forced cutback")
+            raise ConvergenceError("forced cutback")
         return original(*args, **kwargs)
 
     monkeypatch.setattr(base, "newton_solve", failing_once)
@@ -224,7 +225,7 @@ def test_max_cutbacks_bounds_the_retries(monkeypatch):
     """Forbidding cutbacks must surface the underlying convergence failure."""
     increments = torch.tensor([0.0, 1.0])
 
-    with pytest.raises(RuntimeError, match="after 0 cutbacks"):
+    with pytest.raises(ConvergenceError, match="after 0 cutbacks"):
         _build_bent_cantilever().solve(
             increments=increments, nlgeom=True, max_cutbacks=0
         )
@@ -235,6 +236,22 @@ def test_max_cutbacks_bounds_the_retries(monkeypatch):
         increments=increments, nlgeom=True, cutback_factor=0.8, growth_factor=1.05
     )
     assert len(calls) > 1
+
+
+def test_only_non_convergence_is_cut_back(monkeypatch):
+    """An error that is not a convergence failure propagates as itself."""
+    calls = []
+
+    def broken(*args, **kwargs):
+        calls.append(1)
+        raise ValueError("bug inside the residual")
+
+    monkeypatch.setattr(base, "newton_solve", broken)
+    with pytest.raises(ValueError, match="bug inside the residual"):
+        _build_cantilever().solve()
+
+    # A cutback would have retried it up to max_cutbacks times.
+    assert len(calls) == 1
 
 
 def test_growing_increments_are_each_attempted_whole(capsys):
@@ -258,7 +275,7 @@ def test_cutback_returns_results_at_the_requested_increments(monkeypatch):
     def failing_once(*args, **kwargs):
         calls.append(1)
         if len(calls) == 1:
-            raise RuntimeError("forced cutback")
+            raise ConvergenceError("forced cutback")
         return original(*args, **kwargs)
 
     monkeypatch.setattr(base, "newton_solve", failing_once)

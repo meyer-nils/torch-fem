@@ -12,6 +12,7 @@ from .elements import Element
 from .materials import HeatMaterial, Material, MechanicsMaterial
 from .report import solve_report
 from .sparse import (
+    ConvergenceError,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     newton_solve,
@@ -798,11 +799,11 @@ class FEM(ABC):
                         *prev,
                         *differentiable_parameters,
                     )
-                except RuntimeError as err:
+                except ConvergenceError as err:
                     # Cut the substep back and retry from the same state
                     step_size = cutback_factor * abs(step)
                     if step_size < min_step:
-                        raise RuntimeError(
+                        raise ConvergenceError(
                             f"Newton-Raphson did not converge in increment {n} "
                             f"after {max_cutbacks} cutbacks."
                         ) from err
