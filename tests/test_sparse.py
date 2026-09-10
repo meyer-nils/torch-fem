@@ -342,7 +342,7 @@ class TestResolvePreconditioner:
             assert resolve_preconditioner("cg", "cuda", "amg") == "amg"
         else:
             assert resolve_preconditioner("cg", "cuda", None) == "jacobi"
-            with pytest.raises(RuntimeError, match="AmgX is not available"):
+            with pytest.raises(ImportError, match="AmgX is not available"):
                 resolve_preconditioner("cg", "cuda", "amg")
 
 

@@ -1258,7 +1258,7 @@ class Heat(FEM, ABC):
 
         Raises:
             ValueError: If `t_output` is empty, negative, or not increasing.
-            RuntimeError: If Newton iterations do not converge for a time step.
+            ConvergenceError: If Newton iterations do not converge for a time step.
         """
 
         # Validate before self.constraints is modified below.
@@ -1423,7 +1423,7 @@ class Heat(FEM, ABC):
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))
 
             if res_norm > rtol * res_norm0 and res_norm > atol:
-                raise RuntimeError("Newton-Raphson iteration did not converge.")
+                raise ConvergenceError("Newton-Raphson iteration did not converge.")
 
             u[n] = u_guess
             f[n] = f_int.reshape((-1, self.n_dof_per_node))

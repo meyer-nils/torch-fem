@@ -346,7 +346,9 @@ class AmgXSolver:
             # goes here rather than leaving one behind at every cutback.
             iterations = self.iterations
             self.close()
-            raise RuntimeError(
+            from .sparse import ConvergenceError
+
+            raise ConvergenceError(
                 f"AmgX solve did not converge ({name}) in {iterations} "
                 "iterations. Try preconditioner='jacobi' instead, or tune "
                 "_DEFAULT_CONFIG for this problem."

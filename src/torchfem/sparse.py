@@ -20,12 +20,6 @@ if TYPE_CHECKING:
     from .amgx import AmgXSolver
     from .report import SolveReport
 
-ERR_PYPARDISO_MISSING = (
-    "PyPardiso is not available.\n\n"
-    "Please install Pypardiso separately:\n"
-    "> pip install pypardiso"
-)
-
 ERR_AMGX_MISSING = (
     "AmgX is not available.\n\n"
     "AmgX ships no wheels, so build it from source and point AMGX_DLL at the "
@@ -80,7 +74,7 @@ def resolve_preconditioner(method: str, device: str, preconditioner: str | None)
 
     Raises:
         ValueError: If a preconditioner is requested for a direct solve.
-        RuntimeError: If AMG is requested on CUDA without AmgX installed.
+        ImportError: If AMG is requested on CUDA without AmgX installed.
     """
     if method == "direct":
         if preconditioner not in (None, "none"):
@@ -90,7 +84,7 @@ def resolve_preconditioner(method: str, device: str, preconditioner: str | None)
         return "amg" if device == "cpu" or "amgx" in available_backends else "jacobi"
     if preconditioner == "amg" and device == "cuda":
         if "amgx" not in available_backends:
-            raise RuntimeError(ERR_AMGX_MISSING)
+            raise ImportError(ERR_AMGX_MISSING)
     return preconditioner
 
 
@@ -473,7 +467,7 @@ def _solve_amgx(
     reads torch's arrays where they lie.
     """
     if "amgx" not in available_backends:
-        raise RuntimeError(ERR_AMGX_MISSING)
+        raise ImportError(ERR_AMGX_MISSING)
 
     # AmgX allocates its hierarchy from what torch is not holding.
     torch.cuda.empty_cache()
