@@ -7,14 +7,14 @@ section response (the ABD equivalent) over the stations during the analysis, so
 it stays valid for nonlinear, state-bearing layers.
 
 Following classical lamination theory, layers stack from ``z = -h/2`` to
-``z = +h/2`` (before any `offset`) and angles are measured from the element's
-first local axis, counter-clockwise as in `planar_rotation`.
+``z = +h/2`` about the mid-plane and angles are measured from the element's
+first local axis, counter-clockwise as in `planar_rotation`. `Shell` places the
+reference surface within that stack through its `offset`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import ClassVar
 
 import torch
 from torch import Tensor
@@ -35,10 +35,6 @@ class Laminate:
             of shape `(n_elem,)`.
         n_simpson: Number of Simpson integration points used *per layer* through
             the thickness. Must be an odd integer (default `3`).
-        offset: Reference-surface position within the laminate, as a fraction of
-            thickness from the mid-plane (`0.0` mid, `+0.5` top, `-0.5` bottom;
-            the strings `"mid"`/`"top"`/`"bottom"` also work). Matches ABAQUS
-            `*Shell Section, OFFSET`.
         symmetric: If `True`, the given layers are the half-stack (outer surface
             to mid-plane) and are mirrored to form the full laminate.
 
@@ -48,15 +44,9 @@ class Laminate:
           the analysis, so nonlinear, state-bearing layers need no ABD matrices.
         - The laminate behaves like a `Material` (`is_vectorized`, `vectorize`,
           `n_state`), so it can be passed straight to `Shell`.
-        - A nonzero `offset` shifts the stations, adding the membrane-bending
-          coupling the offset implies (so an offset symmetric stack couples).
+        - The stack is centered on its mid-plane. `Shell(offset=...)` moves the
+          reference surface, adding the membrane-bending coupling it implies.
     """
-
-    _OFFSET_ALIASES: ClassVar[dict[str, float]] = {
-        "mid": 0.0,
-        "top": 0.5,
-        "bottom": -0.5,
-    }
 
     @property
     def symmetric_tangent(self) -> bool:
@@ -69,7 +59,6 @@ class Laminate:
         thicknesses: Sequence[float] | Sequence[Tensor] | Tensor,
         angles: Sequence[float] | Sequence[Tensor] | Tensor,
         n_simpson: int = 3,
-        offset: float | str = 0.0,
         symmetric: bool = False,
     ):
         if not (len(materials) == len(thicknesses) == len(angles)):
@@ -86,14 +75,6 @@ class Laminate:
                 )
         if n_simpson % 2 == 0:
             raise ValueError("n_simpson must be an odd integer.")
-
-        if isinstance(offset, str):
-            if offset not in self._OFFSET_ALIASES:
-                raise ValueError(
-                    f"offset string must be one of {list(self._OFFSET_ALIASES)}."
-                )
-            offset = self._OFFSET_ALIASES[offset]
-        self._offset = float(offset)
 
         dtype = torch.get_default_dtype()
         self.materials = list(materials)
@@ -127,12 +108,12 @@ class Laminate:
             f"{self.n_z} integration points)>"
         )
 
-    def vectorize(self, n_elem: int) -> Laminate:
+    def vectorize(self, n_elem: int, offset: Tensor) -> Laminate:
         """Return a vectorized copy for `n_elem` elements.
 
         Each layer material is vectorized and rotated into the element frame, and
         the stations, transverse shear stiffness, and mass integrals are
-        precomputed.
+        precomputed about the reference surface given by `offset`.
         """
         if self.is_vectorized:
             return self
@@ -143,7 +124,6 @@ class Laminate:
         new.n_z = self.n_z
         new.n_state = self.n_state
         new.angles = self.angles
-        new._offset = self._offset
         new.is_vectorized = True
 
         new.materials = []
@@ -153,10 +133,10 @@ class Laminate:
             new.materials.append(m)
             new.thicknesses.append(t.expand(n_elem) if t.dim() == 0 else t)
 
-        new._build(n_elem)
+        new._build(n_elem, offset)
         return new
 
-    def _build(self, n_elem: int) -> None:
+    def _build(self, n_elem: int, offset: Tensor) -> None:
         """Precompute stations, transverse shear, and mass integrals."""
         self.n_elem = n_elem
 
@@ -166,7 +146,7 @@ class Laminate:
 
         # Interface coordinates from the reference surface (z = 0); the offset
         # shifts the stack so the reference sits at the requested fraction.
-        z_bot = -(0.5 + self._offset) * self.thickness
+        z_bot = -(0.5 + offset) * self.thickness
         layer_top = z_bot[None, :] + torch.cumsum(t, dim=0)
         layer_bot = layer_top - t
         self._layer_top = layer_top
@@ -259,12 +239,8 @@ class Laminate:
         t = torch.stack(self.thicknesses)
         angles = torch.rad2deg(torch.stack(self.angles))
         width = t.sum().item()
-        # Interfaces relative to the reference surface (z = 0), offset-shifted.
-        z = (
-            torch.concatenate([torch.tensor([0.0]), torch.cumsum(t, 0)])
-            - t.sum() / 2
-            - self._offset * t.sum()
-        )
+        # Interfaces relative to the mid-plane (z = 0).
+        z = torch.concatenate([torch.tensor([0.0]), torch.cumsum(t, 0)]) - t.sum() / 2
 
         # One color per material class and orientation
         layer_keys = [

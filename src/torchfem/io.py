@@ -152,11 +152,17 @@ def import_mesh(
 
 
 def import_shell(
-    filename: PathLike, material: MechanicsMaterial | Laminate, thickness: float = 1.0
+    filename: PathLike,
+    material: MechanicsMaterial | Laminate,
+    thickness: float = 1.0,
+    offset: float = 0.0,
 ) -> Shell:
     """Import a triangle or quadrilateral mesh as a `Shell`, flat or not.
 
-    `import_mesh(...)` reads a flat surface mesh as `Planar` instead.
+    `import_mesh(...)` reads a flat surface mesh as `Planar` instead. `offset`
+    places the reference surface within the section, as a fraction of thickness
+    from the mid-plane along the element normal, so `+0.5` puts it on the top
+    face and the section hangs below the mesh.
 
     Raises:
         TypeError: If the mesh is not a surface mesh.
@@ -167,4 +173,4 @@ def import_shell(
     nodes = torch.tensor(
         points, dtype=torch.get_default_dtype(), device=torch.get_default_device()
     )
-    return Shell(nodes, elements, material, thickness=thickness)
+    return Shell(nodes, elements, material, thickness=thickness, offset=offset)

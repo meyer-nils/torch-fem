@@ -51,6 +51,8 @@ class Shell(Mechanics):
         material: Vectorized plane-stress material (None for laminate shells).
         section: Laminate section (None for homogeneous shells).
         thickness: Element thicknesses with shape [n_elem].
+        offset: Reference surface position per element with shape [n_elem], as a
+            fraction of thickness from the mid-plane.
         orientation: Per-element material reference direction with shape
             [n_elem, 3].
         forces: Applied nodal forces and moments with shape [n_nod, 6].
@@ -67,6 +69,7 @@ class Shell(Mechanics):
         elements: Tensor,
         material: Material | Laminate,
         thickness: Tensor | float = 1.0,
+        offset: Tensor | float = 0.0,
         transverse_nu: float = 0.5,
         transverse_kappa: float = 5.0 / 6.0,
         transverse_G: list[float] | list[Tensor] | None = None,
@@ -87,6 +90,9 @@ class Shell(Mechanics):
                 ignored.
             thickness: Shell thickness. A float is expanded to all elements, a
                 tensor assigns one thickness per element.
+            offset: Reference surface position within the section, as a
+                fraction of thickness from the mid-plane along the element
+                normal. `+0.5` puts it on the top face.
             transverse_nu: Poisson's ratio used for the shear relaxation of a
                 homogeneous triangle. A quadrilateral needs none.
             transverse_kappa: Shear correction factor, 5/6 for a homogeneous
@@ -110,12 +116,17 @@ class Shell(Mechanics):
         # in self.section and give the base no material.
         if isinstance(material, Laminate):
             super().__init__(nodes, elements, None)
-            self.section: Laminate | None = (
-                material if material.is_vectorized else material.vectorize(self.n_elem)
-            )
         else:
             super().__init__(nodes, elements, material)
-            self.section = None
+
+        # Reference surface within the section, as a fraction of thickness
+        self.offset = torch.as_tensor(offset, dtype=nodes.dtype).expand(self.n_elem)
+
+        self.section: Laminate | None = (
+            material.vectorize(self.n_elem, self.offset)
+            if isinstance(material, Laminate)
+            else None
+        )
 
         # Material reference orientation
         if orientation is None:
@@ -230,7 +241,7 @@ class Shell(Mechanics):
             return self.section.materials_per_station, self.section.z, self.section.w
         else:
             assert isinstance(self.material, MechanicsMaterial)
-            z = self.z_simpson[:, None] * self.thickness[None, :]
+            z = (self.z_simpson[:, None] - self.offset[None, :]) * self.thickness
             w = self.w_simpson[:, None] * self.thickness[None, :]
             return [self.material] * self.n_simpson, z, w
 
@@ -503,7 +514,7 @@ class Shell(Mechanics):
         else:
             assert self.material is not None
             rho_trans = self.material.rho * self.thickness
-            rho_rot = self.material.rho * self.thickness**3 / 12
+            rho_rot = self.material.rho * self.thickness**3 * (1 / 12 + self.offset**2)
         D = torch.diag_embed(torch.stack([rho_trans] * 3 + [rho_rot] * 3, dim=-1))
         N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
         for i, w in enumerate(self.etype.iweights):
@@ -691,7 +702,7 @@ class Shell(Mechanics):
         node_property: Tensor | dict[str, Tensor] | None = None,
         element_property: Tensor | dict[str, Tensor] | None = None,
         orientations: Tensor | None = None,
-        thickness: bool = False,
+        thickness: bool = True,
         mirror: tuple[bool, bool, bool] = (False, False, False),
         show_undeformed: bool = False,
         axes: bool = False,
@@ -760,27 +771,40 @@ class Shell(Mechanics):
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()
 
-        # Plot as separate top and bottom surface
+        # Plot as solid elements spanning the thickness
         kwargs.setdefault("show_edges", True)
         base_meshes = []
         if thickness:
-            nodal_thickness = np.zeros(len(self.nodes))
-            count = np.zeros(len(self.nodes))
-            for i, face in enumerate(mesh.faces.reshape(-1, self.etype.nodes + 1)):
-                idx = face[1::]
-                nodal_thickness[idx] += self.thickness[i].cpu().item()
-                count[idx] += 1
-            nodal_thickness /= count
+            # Bottom and top surface of the section, averaged onto the nodes.
+            # The stations span the full section, so their extremes are the
+            # surfaces, offset included.
+            z = self._thickness_stations()[1]
+            surfaces = torch.stack([z.min(dim=0).values, z.max(dim=0).values], dim=1)
+            nodal = np.zeros((len(self.nodes), 2))
+            count = np.zeros((len(self.nodes), 1))
+            for element, surface in zip(
+                self.elements.cpu().numpy(), surfaces.cpu().numpy()
+            ):
+                nodal[element] += surface
+                count[element] += 1
+            nodal /= count
 
+            # Triangle windings are flipped, as VTK winds the base of a wedge
+            # away from its top face.
             normals = np.asarray(mesh.point_normals)
-            top = mesh.copy()
-            top.points += 0.5 * nodal_thickness[:, None] * normals
-            bottom = mesh.copy()
-            bottom.points -= 0.5 * nodal_thickness[:, None] * normals
+            tria = self.etype is Tria1
+            conn = self.elements.cpu().numpy()[:, :: -1 if tria else 1]
+            ctype = pyvista.CellType.WEDGE if tria else pyvista.CellType.HEXAHEDRON
+            solid = pyvista.UnstructuredGrid(
+                {ctype: np.hstack([conn, conn + self.n_nod])},
+                np.vstack([pos + nodal[:, :1] * normals, pos + nodal[:, 1:] * normals]),
+            )
+            solid.cell_data.update(mesh.cell_data)
+            for key, val in mesh.point_data.items():
+                solid.point_data[key] = np.concatenate([val, val])
 
-            pl.add_mesh(top, **kwargs)
-            pl.add_mesh(bottom, **kwargs)
-            base_meshes.extend([top, bottom])
+            pl.add_mesh(solid, **kwargs)
+            base_meshes.append(solid)
         else:
             pl.add_mesh(mesh, **kwargs)
             base_meshes.append(mesh)
@@ -790,8 +814,10 @@ class Shell(Mechanics):
         if orientations is not None:
             centers = (self.nodes + u)[self.elements].mean(dim=1).cpu().numpy()
             if thickness:
-                offset = 0.5 * self.thickness[:, None].cpu().numpy()
-                centers = centers + offset * np.asarray(mesh.cell_normals)
+                z_top = self._thickness_stations()[1].max(dim=0).values
+                centers = centers + z_top[:, None].cpu().numpy() * np.asarray(
+                    mesh.cell_normals
+                )
             mag = float(self.char_lengths.mean())
             for j, color in zip(range(orientations.shape[1]), ["red", "green", "blue"]):
                 directions = torch.nn.functional.normalize(orientations[:, j], dim=-1)

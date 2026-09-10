@@ -297,10 +297,10 @@ def _gfrp():
     )
 
 
-def _uz_under_inplane_stretch(layup):
+def _uz_under_inplane_stretch(layup, offset: torch.Tensor | float = 0.0, **kwargs):
     """Tip out-of-plane deflection of a clamped plate under in-plane stretch."""
     nodes, elements = square_plate()
-    plate = Shell(nodes, elements, layup)
+    plate = Shell(nodes, elements, layup, offset=offset, **kwargs)
     plate.constraints[[0, 3]] = True  # clamp x = 0 edge (all 6 dofs)
     plate.constraints[[1, 2], 0] = True  # prescribe in-plane u_x on x = 1 edge
     plate.displacements[[1, 2], 0] = 0.01
@@ -315,25 +315,34 @@ def test_offset_induces_membrane_bending_coupling():
     offsetting the reference surface to the top vs. the bottom produces
     out-of-plane deflections of equal magnitude and opposite sign.
     """
-    uz0 = _uz_under_inplane_stretch(Laminate([_gfrp()], [1.0], [0.0], offset=0.0))
-    uz_top = _uz_under_inplane_stretch(Laminate([_gfrp()], [1.0], [0.0], offset=0.5))
-    uz_bot = _uz_under_inplane_stretch(Laminate([_gfrp()], [1.0], [0.0], offset=-0.5))
+    layup = Laminate([_gfrp()], [1.0], [0.0])
+    uz0 = _uz_under_inplane_stretch(layup, offset=0.0)
+    uz_top = _uz_under_inplane_stretch(layup, offset=0.5)
+    uz_bot = _uz_under_inplane_stretch(layup, offset=-0.5)
 
     assert uz0.abs().max() < 1e-9
     assert uz_top.abs().max() > 1e-5
     assert torch.allclose(uz_top, -uz_bot, atol=1e-9)
 
+    # `+0.5` puts the reference surface on the top face, so the section hangs
+    # below it and stretching the reference plane arches the plate downwards.
+    assert uz_top.max() <= 0.0
 
-def test_offset_string_aliases_match_floats():
-    """The "mid"/"top"/"bottom" aliases match their fractional equivalents."""
-    for name, frac in [("mid", 0.0), ("top", 0.5), ("bottom", -0.5)]:
-        u_name = _uz_under_inplane_stretch(
-            Laminate([_gfrp()], [1.0], [0.0], offset=name)
-        )
-        u_frac = _uz_under_inplane_stretch(
-            Laminate([_gfrp()], [1.0], [0.0], offset=frac)
-        )
-        assert torch.allclose(u_name, u_frac, atol=1e-12)
+
+def test_offset_couples_a_homogeneous_shell():
+    """The offset lives on the shell, so a homogeneous section couples too."""
+    material = IsotropicElasticityPlaneStress(E=70000.0, nu=0.3)
+    uz0 = _uz_under_inplane_stretch(material, 0.0, thickness=1.0)
+    uz_top = _uz_under_inplane_stretch(material, 0.5, thickness=1.0)
+    uz_bot = _uz_under_inplane_stretch(material, -0.5, thickness=1.0)
+
+    assert uz0.abs().max() < 1e-9
+    assert uz_top.abs().max() > 1e-5
+    assert torch.allclose(uz_top, -uz_bot, atol=1e-9)
+
+    # `+0.5` puts the reference surface on the top face, so the section hangs
+    # below it and stretching the reference plane arches the plate downwards.
+    assert uz_top.max() <= 0.0
 
 
 def test_symmetric_expands_to_full_stack():
@@ -366,13 +375,10 @@ def test_symmetric_accepts_tensor_inputs():
 def test_symmetric_offset_recouples():
     """A symmetric stack is decoupled; offsetting it restores the coupling."""
     gfrp = _gfrp()
-    centered = Laminate([gfrp, gfrp], [0.25, 0.25], [0.0, torch.pi / 2], symmetric=True)
-    offset = Laminate(
-        [gfrp, gfrp], [0.25, 0.25], [0.0, torch.pi / 2], symmetric=True, offset=0.3
-    )
+    stack = Laminate([gfrp, gfrp], [0.25, 0.25], [0.0, torch.pi / 2], symmetric=True)
 
-    assert _uz_under_inplane_stretch(centered).abs().max() < 1e-9
-    assert _uz_under_inplane_stretch(offset).abs().max() > 1e-5
+    assert _uz_under_inplane_stretch(stack).abs().max() < 1e-9
+    assert _uz_under_inplane_stretch(stack, offset=0.3).abs().max() > 1e-5
 
 
 def test_the_tangent_symmetry_of_a_laminate_follows_its_layers():

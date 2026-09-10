@@ -199,10 +199,11 @@ class TestImportMeshPhysics:
             path = Path(tmpdir) / "flat.vtu"
             write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 2, 3]]))], flat)
             assert isinstance(import_mesh(path, mat), Planar)
-            shell = import_shell(path, mat, thickness=0.5)
+            shell = import_shell(path, mat, thickness=0.5, offset=0.5)
             assert isinstance(shell, Shell)
             assert shell.nodes.shape == (4, 3)
             assert torch.allclose(shell.thickness, torch.full((2,), 0.5))
+            assert torch.allclose(shell.offset, torch.full((2,), 0.5))
 
     def test_a_solid_mesh_is_not_a_surface(self):
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)

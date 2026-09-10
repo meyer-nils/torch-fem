@@ -18,6 +18,8 @@
 - `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two before. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` used to take from the last.
 - `Assembly.plot3d(...)` takes `axes` and a `camera` position and themes the plotter itself, as a part's `plot(...)` does.
 - `show_html(...)` in `torchfem.plot_utils` is now `show_plotter(pl, plotter=None, axes=False, camera=None)`, which also adds the grid and the camera and skips the display when the caller owns the plotter.
+- `Shell.plot(thickness=True)` extrudes the shell into solid wedges or hexahedra, where it drew an offset top and bottom surface before.
+- **Breaking:** The reference surface `offset` moved from `Laminate` to `Shell` and `import_shell(...)`, where it applies to a homogeneous section too, takes one value per element, and is a fraction only (the `"mid"`/`"top"`/`"bottom"` strings are gone). `Laminate` is now a plain stack about its mid-plane, and `Shell.plot(thickness=True)` extrudes between the true section surfaces, so an offset section no longer renders centered.
 - `THEMES`, the color schemes the documentation figures are drawn in, moved from `torchfem.elements` to `torchfem.plot_utils`, where the rest of the plotting helpers live.
 
 ### Removed
