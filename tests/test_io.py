@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-from meshio import Mesh
+from meshio import Mesh, read
 
 from torchfem import Laminate, Planar, PlanarHeat, Shell, Solid, SolidHeat
 from torchfem.elements import Quad1
@@ -36,37 +36,27 @@ def write_mesh(path, cells, points=NON_PLANAR_POINTS):
 
 
 class TestExportMesh:
-    def test_export_vtu(self):
+    @pytest.mark.parametrize("compress", [True, False])
+    def test_written_fields_read_back(self, compress):
+        """The payload has to survive the round trip, not just reach the disk."""
         nodes, elements = cube_hexa(3, 3, 3)
-        mat = IsotropicElasticity3D(1000.0, 0.3)
-        model = Solid(nodes, elements, mat)
+        model = Solid(nodes, elements, IsotropicElasticity3D(1000.0, 0.3))
+        u = torch.randn(len(nodes), 3)
+        rho = torch.rand(len(elements))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path))
-            assert path.exists()
-            assert path.stat().st_size > 0
+            export_mesh(
+                model,
+                str(path),
+                nodal_data={"displacement": u},
+                elem_data={"rho": [rho]},
+                compress=compress,
+            )
+            written = read(path)
 
-    def test_export_with_nodal_data(self):
-        nodes, elements = cube_hexa(3, 3, 3)
-        mat = IsotropicElasticity3D(1000.0, 0.3)
-        model = Solid(nodes, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            u = torch.randn(len(nodes), 3)
-            export_mesh(model, str(path), nodal_data={"displacement": u})
-            assert path.exists()
-
-    def test_export_uncompressed(self):
-        nodes, elements = cube_hexa(2, 2, 2)
-        mat = IsotropicElasticity3D(1000.0, 0.3)
-        model = Solid(nodes, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path), compress=False)
-            assert path.exists()
+        assert np.allclose(written.point_data["displacement"], u.numpy())
+        assert np.allclose(written.cell_data["rho"][0], rho.numpy())
 
 
 class TestImportMesh:

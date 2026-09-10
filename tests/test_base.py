@@ -283,11 +283,3 @@ class TestMaterialCompatibility:
     def test_rejects_an_incompatible_material(self, build, message):
         with pytest.raises(ValueError, match=message):
             build()
-
-    def test_a_smaller_conductivity_broadcasts_instead_of_failing(self):
-        """Why the check is needed: a 1x1 conductivity fits a 2D gradient
-        by broadcasting, and returns a wrong flux rather than raising."""
-        kappa = torch.full((1, 1, 1), 5.0)
-        grad = torch.tensor([[[0.1, 0.7]]])
-        flux = torch.einsum("...ij,...kj->...ki", kappa, grad)
-        assert torch.allclose(flux, torch.tensor([[[4.0, 4.0]]]))

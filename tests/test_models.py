@@ -422,25 +422,32 @@ class TestShellDrilling:
         assert v @ k @ v / (v @ v) < 1e-9 * torch.linalg.eigvalsh(k).max()
 
 
-class TestRepr:
-    """`__repr__` names the element type, not the metaclass of its class."""
-
-    @pytest.mark.parametrize("etype", ETYPES)
-    def test_planar_and_solid_name_the_element_type(self, etype):
-        assert etype in repr(_build(etype))
-
-    def test_truss_names_the_element_type(self):
-        nodes = torch.tensor([[0.0, 0.0], [1.0, 0.0]])
-        truss = Truss(nodes, torch.tensor([[0, 1]]), IsotropicElasticity1D(1000.0))
-        assert "Bar1" in repr(truss)
-
-    @pytest.mark.parametrize(
-        "etype, elements", [("Tria1", [[0, 1, 2]]), ("Quad1", [[0, 1, 2, 3]])]
+def _shell(elements):
+    nodes = torch.tensor(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
     )
-    def test_shell_names_the_element_type(self, etype, elements):
-        nodes = torch.tensor(
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
-        )
-        material = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        shell = Shell(nodes, torch.tensor(elements), material, thickness=0.1)
-        assert etype in repr(shell)
+    material = IsotropicElasticityPlaneStress(1000.0, 0.3)
+    return Shell(nodes, torch.tensor(elements), material, thickness=0.1)
+
+
+# One model per `__repr__`, since each looks the element type up the same way and
+# the metaclass shows through whatever element it holds.
+@pytest.mark.parametrize(
+    "build, etype",
+    [
+        (lambda: _build("Quad1"), "Quad1"),
+        (lambda: _build("Hexa1"), "Hexa1"),
+        (lambda: _shell([[0, 1, 2]]), "Tria1"),
+        (
+            lambda: Truss(
+                torch.tensor([[0.0, 0.0], [1.0, 0.0]]),
+                torch.tensor([[0, 1]]),
+                IsotropicElasticity1D(1000.0),
+            ),
+            "Bar1",
+        ),
+    ],
+    ids=["planar", "solid", "shell", "truss"],
+)
+def test_repr_names_the_element_type_not_its_metaclass(build, etype):
+    assert etype in repr(build())

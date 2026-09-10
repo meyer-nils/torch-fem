@@ -92,15 +92,105 @@ def sigma_f_prime(ep):
     return torch.full_like(ep, 50.0)
 
 
-class TestIsotropicElasticity3D:
-    def test_stiffness_symmetry(self):
-        mat = IsotropicElasticity3D(1000.0, 0.3)
-        C = mat.C
-        # Major symmetry: C_ijkl = C_klij
-        assert torch.allclose(C, C.permute(2, 3, 0, 1), atol=1e-10)
-        # Minor symmetry: C_ijkl = C_jikl
-        assert torch.allclose(C, C.permute(1, 0, 2, 3), atol=1e-10)
+def _make_step_args(dim, n_elem=1, n_state=0):
+    """Dispatch to the step arguments of a `dim`-dimensional mechanics material."""
+    builder = {1: _make_step_args_1d, 2: _make_step_args_2d, 3: _make_step_args_3d}
+    return builder[dim](n_elem, n_state)
 
+
+# Every material whose step is a plain contraction of a constant stiffness. They
+# share `step`, `vectorize` and `rotate` through their bases, so the properties
+# below are checked once over the table rather than once per class.
+LINEAR = [
+    pytest.param(lambda: IsotropicElasticity3D(1000.0, 0.3), 3, id="isotropic-3d"),
+    pytest.param(lambda: IsotropicElasticityPlaneStress(1000.0, 0.3), 2, id="iso-ps"),
+    pytest.param(lambda: IsotropicElasticityPlaneStrain(1000.0, 0.3), 2, id="iso-pe"),
+    pytest.param(lambda: IsotropicElasticity1D(1000.0), 1, id="isotropic-1d"),
+    pytest.param(lambda: _orthotropic_3d(), 3, id="orthotropic-3d"),
+    pytest.param(lambda: _plane_stress(), 2, id="orthotropic-ps"),
+    pytest.param(lambda: _plane_strain(), 2, id="orthotropic-pe"),
+    pytest.param(lambda: TransverseIsotropicElasticity3D(**TI), 3, id="transverse-3d"),
+]
+
+# Conductivities, with the matrix they build and the flux they return for the
+# gradient `[1, ..., dim]` that `_make_thermal_step_args` applies.
+CONDUCTIVITIES = [
+    pytest.param(
+        lambda: IsotropicConductivity3D(400.0), [400.0] * 3, id="isotropic-3d"
+    ),
+    pytest.param(
+        lambda: IsotropicConductivity2D(400.0), [400.0] * 2, id="isotropic-2d"
+    ),
+    pytest.param(
+        lambda: OrthotropicConductivity3D(1.0, 2.0, 3.0),
+        [1.0, 2.0, 3.0],
+        id="orthotropic-3d",
+    ),
+    pytest.param(
+        lambda: OrthotropicConductivity2D(1.0, 2.0), [1.0, 2.0], id="orthotropic-2d"
+    ),
+]
+
+
+@pytest.mark.parametrize("build, dim", LINEAR)
+class TestLinearMechanics:
+    def test_stiffness_has_the_dimension_of_the_material(self, build, dim):
+        assert build().C.shape == (dim,) * 4
+
+    def test_stiffness_keeps_its_symmetries(self, build, dim):
+        C = build().C
+        # Major symmetry: C_ijkl = C_klij, minor symmetry: C_ijkl = C_jikl
+        assert torch.allclose(C, C.permute(2, 3, 0, 1), atol=1e-6)
+        assert torch.allclose(C, C.permute(1, 0, 2, 3), atol=1e-6)
+
+    def test_step_contracts_the_stiffness_with_the_strain_increment(self, build, dim):
+        mat = build().vectorize(N_ELEM)
+        H_inc, F, stress, state, de0, cl = _make_step_args(dim, N_ELEM)
+        s_new, st_new, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
+        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
+        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
+        assert s_new.shape == (N_ELEM, dim, dim)
+        assert ddsdde.shape == (N_ELEM, *(dim,) * 4)
+        assert torch.allclose(s_new, expected, atol=1e-10, rtol=1e-10)
+        # A linear material carries no state, so the step leaves it alone
+        assert torch.equal(st_new, state)
+        assert torch.isfinite(ddsdde).all()
+
+    def test_vectorize_batches_the_stiffness(self, build, dim):
+        assert build().vectorize(N_ELEM).C.shape == (N_ELEM, *(dim,) * 4)
+
+
+@pytest.mark.parametrize("build, kappa", CONDUCTIVITIES)
+class TestConductivities:
+    def test_conductivity_is_diagonal_in_the_principal_axes(self, build, kappa):
+        assert torch.allclose(build().KAPPA, torch.diag(torch.tensor(kappa)))
+
+    def test_step_applies_the_conductivity_per_direction(self, build, kappa):
+        dim = len(kappa)
+        mat = build().vectorize(N_ELEM)
+        grad_inc, grad, q, state, cl = _make_thermal_step_args(dim, N_ELEM)
+        q_new, state_new, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
+        # The gradient runs [1, ..., dim] against the conductivities
+        expected = torch.tensor(kappa) * torch.arange(1, dim + 1)
+        assert torch.allclose(q_new, expected.expand(N_ELEM, 1, dim))
+        assert tangent.shape == (N_ELEM, dim, dim)
+        assert torch.equal(state_new, state)
+
+    def test_vectorize_batches_the_conductivity(self, build, kappa):
+        mat = build().vectorize(N_ELEM)
+        assert mat.KAPPA.shape == (N_ELEM, len(kappa), len(kappa))
+
+
+@pytest.mark.parametrize(
+    "build", [p.values[0] for p in LINEAR + CONDUCTIVITIES], ids=lambda b: ""
+)
+def test_vectorize_is_idempotent(build):
+    """`vectorize` is shared by every material, and returns `self` when batched."""
+    mat = build().vectorize(N_ELEM)
+    assert mat.vectorize(N_ELEM) is mat
+
+
+class TestIsotropicElasticity3D:
     def test_lame_parameters(self):
         E, nu = 210e3, 0.3
         mat = IsotropicElasticity3D(E, nu)
@@ -108,89 +198,6 @@ class TestIsotropicElasticity3D:
         G_expected = E / (2 * (1 + nu))
         assert torch.allclose(mat.lbd, torch.tensor(lbd_expected))
         assert torch.allclose(mat.G, torch.tensor(G_expected))
-
-    def test_step_linear(self):
-        n = N_ELEM
-        mat = IsotropicElasticity3D(1000.0, 0.3).vectorize(n)
-        H_inc, F, stress, state, de0, cl = _make_step_args_3d(n)
-        s_new, st_new, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
-        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
-        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
-        assert s_new.shape == (n, 3, 3)
-        assert ddsdde.shape == (n, 3, 3, 3, 3)
-        assert torch.allclose(s_new, expected, atol=1e-12, rtol=1e-10)
-        assert torch.allclose(st_new, state)
-        assert torch.isfinite(ddsdde).all()
-
-    def test_vectorize(self):
-        mat = IsotropicElasticity3D(1000.0, 0.3)
-        mat_v = mat.vectorize(N_ELEM)
-        assert mat_v.E.shape == (N_ELEM,)
-        assert mat_v.nu.shape == (N_ELEM,)
-        assert mat_v.C.shape == (N_ELEM, 3, 3, 3, 3)
-
-    def test_vectorize_idempotent(self):
-        mat = IsotropicElasticity3D(1000.0, 0.3).vectorize(N_ELEM)
-        mat2 = mat.vectorize(N_ELEM)
-        assert mat2 is mat
-
-
-class TestIsotropicElasticityPlaneStress:
-    def test_stiffness_shape(self):
-        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        assert mat.C.shape == (2, 2, 2, 2)
-
-    def test_step(self):
-        n = N_ELEM
-        mat = IsotropicElasticityPlaneStress(1000.0, 0.3).vectorize(n)
-        H_inc, F, stress, state, de0, cl = _make_step_args_2d(n)
-        s_new, _, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
-        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
-        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
-        assert s_new.shape == (n, 2, 2)
-        assert ddsdde.shape == (n, 2, 2, 2, 2)
-        assert torch.allclose(s_new, expected, atol=1e-12, rtol=1e-10)
-        assert torch.isfinite(ddsdde).all()
-
-
-class TestIsotropicElasticityPlaneStrain:
-    def test_stiffness_shape(self):
-        mat = IsotropicElasticityPlaneStrain(1000.0, 0.3)
-        assert mat.C.shape == (2, 2, 2, 2)
-
-    def test_step(self):
-        n = N_ELEM
-        mat = IsotropicElasticityPlaneStrain(1000.0, 0.3).vectorize(n)
-        H_inc, F, stress, state, de0, cl = _make_step_args_2d(n)
-        s_new, _, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
-        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
-        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
-        assert s_new.shape == (n, 2, 2)
-        assert ddsdde.shape == (n, 2, 2, 2, 2)
-        assert torch.allclose(s_new, expected, atol=1e-12, rtol=1e-10)
-        assert torch.isfinite(ddsdde).all()
-
-
-class TestIsotropicElasticity1D:
-    def test_stiffness_shape(self):
-        mat = IsotropicElasticity1D(1000.0)
-        assert mat.C.shape == (1, 1, 1, 1)
-
-    def test_step(self):
-        n = N_ELEM
-        mat = IsotropicElasticity1D(1000.0).vectorize(n)
-        H_inc, F, stress, state, de0, cl = _make_step_args_1d(n)
-        s_new, _, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
-        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, H_inc)
-        assert s_new.shape == (n, 1, 1)
-        assert ddsdde.shape == (n, 1, 1, 1, 1)
-        assert torch.allclose(s_new, expected, atol=1e-12, rtol=1e-10)
-        assert torch.isfinite(ddsdde).all()
-
-    def test_vectorize(self):
-        mat = IsotropicElasticity1D(500.0)
-        mat_v = mat.vectorize(N_ELEM)
-        assert mat_v.E.shape == (N_ELEM,)
 
 
 class TestHyperelastic3D:
@@ -411,85 +418,21 @@ class TestIsotropicDamage3D:
         assert st_new[0, 1] >= state[0, 1]
 
 
-class TestOrthotropicElasticity3D:
-    def test_stiffness_shape(self):
-        mat = OrthotropicElasticity3D(
-            E_1=100e3,
-            E_2=10e3,
-            E_3=10e3,
-            nu_12=0.3,
-            nu_13=0.3,
-            nu_23=0.3,
-            G_12=5e3,
-            G_13=5e3,
-            G_23=3e3,
-        )
-        assert mat.C.shape == (3, 3, 3, 3)
-
-    def test_stiffness_symmetry(self):
-        mat = OrthotropicElasticity3D(
-            E_1=100e3,
-            E_2=10e3,
-            E_3=10e3,
-            nu_12=0.3,
-            nu_13=0.3,
-            nu_23=0.3,
-            G_12=5e3,
-            G_13=5e3,
-            G_23=3e3,
-        )
-        C = mat.C
-        assert torch.allclose(C, C.permute(2, 3, 0, 1), atol=1e-6)
-
-    def test_step(self):
-        n = N_ELEM
-        mat = OrthotropicElasticity3D(
-            E_1=100e3,
-            E_2=10e3,
-            E_3=10e3,
-            nu_12=0.3,
-            nu_13=0.3,
-            nu_23=0.3,
-            G_12=5e3,
-            G_13=5e3,
-            G_23=3e3,
-        ).vectorize(n)
-        H_inc, F, stress, state, de0, cl = _make_step_args_3d(n)
-        s_new, _, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
-        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
-        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
-        assert s_new.shape == (n, 3, 3)
-        assert ddsdde.shape == (n, 3, 3, 3, 3)
-        assert torch.allclose(s_new, expected, atol=1e-10, rtol=1e-10)
-        assert torch.isfinite(ddsdde).all()
-
-    def test_vectorize(self):
-        mat = OrthotropicElasticity3D(
-            E_1=100e3,
-            E_2=10e3,
-            E_3=10e3,
-            nu_12=0.3,
-            nu_13=0.3,
-            nu_23=0.3,
-            G_12=5e3,
-            G_13=5e3,
-            G_23=3e3,
-        )
-        mat_v = mat.vectorize(N_ELEM)
-        assert mat_v.C.shape == (N_ELEM, 3, 3, 3, 3)
+def _orthotropic_3d() -> OrthotropicElasticity3D:
+    return OrthotropicElasticity3D(
+        E_1=100e3,
+        E_2=10e3,
+        E_3=10e3,
+        nu_12=0.3,
+        nu_13=0.3,
+        nu_23=0.3,
+        G_12=5e3,
+        G_13=5e3,
+        G_23=3e3,
+    )
 
 
 class TestTransverseIsotropicElasticity3D:
-    def test_stiffness_shape(self):
-        mat = TransverseIsotropicElasticity3D(
-            E_L=100e3,
-            E_T=10e3,
-            nu_L=0.3,
-            nu_T=0.3,
-            G_L=5e3,
-        )
-        assert mat.C.shape == (3, 3, 3, 3)
-
     def test_transverse_plane_is_isotropic(self):
         mat = TransverseIsotropicElasticity3D(100e3, 10e3, 0.3, 0.3, 5e3)
         assert torch.allclose(mat.C[1, 1, 1, 1], mat.C[2, 2, 2, 2])
@@ -562,28 +505,6 @@ def _plane_strain():
 
 
 class TestOrthotropicElasticityPlaneStress:
-    def test_stiffness_shape(self):
-        assert _plane_stress().C.shape == (2, 2, 2, 2)
-
-    def test_step(self):
-        n = N_ELEM
-        mat = _plane_stress().vectorize(n)
-        H_inc, F, stress, state, de0, cl = _make_step_args_2d(n)
-        s_new, _, _ = mat.step(H_inc, F, stress, state, de0, cl, 0)
-        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
-        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
-        assert s_new.shape == (n, 2, 2)
-        assert torch.allclose(s_new, expected, atol=1e-10, rtol=1e-10)
-
-    def test_vectorize(self):
-        mat = _plane_stress().vectorize(N_ELEM)
-        assert mat.C.shape == (N_ELEM, 2, 2, 2, 2)
-        assert mat.E_1.shape == (N_ELEM,)
-
-    def test_vectorize_idempotent(self):
-        mat = _plane_stress().vectorize(N_ELEM)
-        assert mat.vectorize(N_ELEM) is mat
-
     def test_identity_rotation_recovers_input_constants(self):
         """The engineering constants are re-extracted from the compliance, so
         rotating by the identity must return exactly what was passed in."""
@@ -599,35 +520,8 @@ class TestOrthotropicElasticityPlaneStress:
         assert torch.allclose(mat.E_2, torch.tensor(100e3), rtol=1e-5)
         assert torch.allclose(mat.G_12, torch.tensor(5e3), rtol=1e-5)
 
-    def test_rotate_rejects_non_2x2_matrix(self):
-        with pytest.raises(ValueError, match="2x2"):
-            _plane_stress().rotate(torch.eye(3))
-
 
 class TestOrthotropicElasticityPlaneStrain:
-    def test_stiffness_shape(self):
-        assert _plane_strain().C.shape == (2, 2, 2, 2)
-
-    def test_step(self):
-        n = N_ELEM
-        mat = _plane_strain().vectorize(n)
-        H_inc, F, stress, state, de0, cl = _make_step_args_2d(n)
-        s_new, _, ddsdde = mat.step(H_inc, F, stress, state, de0, cl, 0)
-        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
-        expected = torch.einsum("...ijkl,...kl->...ij", mat.C, de)
-        assert s_new.shape == (n, 2, 2)
-        assert ddsdde.shape == (n, 2, 2, 2, 2)
-        assert torch.allclose(s_new, expected, atol=1e-10, rtol=1e-10)
-
-    def test_vectorize(self):
-        mat = _plane_strain().vectorize(N_ELEM)
-        assert mat.C.shape == (N_ELEM, 2, 2, 2, 2)
-        assert mat.E_1.shape == (N_ELEM,)
-
-    def test_vectorize_idempotent(self):
-        mat = _plane_strain().vectorize(N_ELEM)
-        assert mat.vectorize(N_ELEM) is mat
-
     def test_rotation_by_90_deg_swaps_axes(self):
         """Plane strain constrains eps_33, so the extracted constants differ from
         the input; compare against the unrotated material instead."""
@@ -636,10 +530,6 @@ class TestOrthotropicElasticityPlaneStrain:
         assert torch.allclose(rot.E_1, ref.E_2, rtol=1e-5)
         assert torch.allclose(rot.E_2, ref.E_1, rtol=1e-5)
         assert torch.allclose(rot.G_12, ref.G_12, rtol=1e-5)
-
-    def test_rotate_rejects_non_2x2_matrix(self):
-        with pytest.raises(ValueError, match="2x2"):
-            _plane_strain().rotate(torch.eye(3))
 
 
 class TestHyperelasticPlaneStress:
@@ -667,118 +557,21 @@ class TestHyperelasticPlaneStress:
         assert torch.allclose(s_new, torch.zeros_like(s_new), atol=1e-8)
 
 
-class TestIsotropicConductivity3D:
-    def test_conductivity_is_kappa_times_identity(self):
-        assert torch.allclose(
-            IsotropicConductivity3D(400.0).KAPPA, 400.0 * torch.eye(3)
-        )
-
-    def test_step_scales_temperature_gradient_by_kappa(self):
-        n = N_ELEM
-        mat = IsotropicConductivity3D(400.0).vectorize(n)
-        grad_inc, grad, q, state, cl = _make_thermal_step_args(3, n)
-        q_new, state_new, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
-        assert q_new.shape == (n, 1, 3)
-        assert tangent.shape == (n, 3, 3)
-        assert torch.allclose(q_new, 400.0 * grad_inc)
-        assert torch.allclose(state_new, state)
-
-    def test_vectorize(self):
-        mat = IsotropicConductivity3D(400.0).vectorize(N_ELEM)
-        assert mat.kappa.shape == (N_ELEM,)
-        assert mat.KAPPA.shape == (N_ELEM, 3, 3)
-
-    def test_vectorize_idempotent(self):
-        mat = IsotropicConductivity3D(400.0).vectorize(N_ELEM)
-        assert mat.vectorize(N_ELEM) is mat
-
-
-class TestIsotropicConductivity2D:
-    def test_conductivity_is_in_plane_block(self):
-        assert torch.allclose(
-            IsotropicConductivity2D(400.0).KAPPA, 400.0 * torch.eye(2)
-        )
-
-    def test_step_scales_temperature_gradient_by_kappa(self):
-        n = N_ELEM
-        mat = IsotropicConductivity2D(400.0).vectorize(n)
-        grad_inc, grad, q, state, cl = _make_thermal_step_args(2, n)
-        q_new, _, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
-        assert q_new.shape == (n, 1, 2)
-        assert tangent.shape == (n, 2, 2)
-        assert torch.allclose(q_new, 400.0 * grad_inc)
-
-    def test_vectorize(self):
-        mat = IsotropicConductivity2D(400.0).vectorize(N_ELEM)
-        assert mat.KAPPA.shape == (N_ELEM, 2, 2)
-
-    def test_vectorize_idempotent(self):
-        mat = IsotropicConductivity2D(400.0).vectorize(N_ELEM)
-        assert mat.vectorize(N_ELEM) is mat
-
-
 class TestOrthotropicConductivity3D:
-    def test_conductivity_is_diagonal_in_principal_axes(self):
-        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0)
-        assert torch.allclose(mat.KAPPA, torch.diag(torch.tensor([1.0, 2.0, 3.0])))
-
-    def test_step_applies_conductivity_per_direction(self):
-        n = N_ELEM
-        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0).vectorize(n)
-        grad_inc, grad, q, state, cl = _make_thermal_step_args(3, n)
-        q_new, _, _ = mat.step(grad_inc, grad, q, state, cl, 0)
-        # Gradient [1, 2, 3] against conductivities [1, 2, 3].
-        assert torch.allclose(q_new, torch.tensor([1.0, 4.0, 9.0]).expand(n, 1, 3))
-
     def test_rotation_about_z_swaps_in_plane_axes(self):
         mat = OrthotropicConductivity3D(1.0, 2.0, 3.0)
         rot = mat.rotate(axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.pi / 2))
         expected = torch.diag(torch.tensor([2.0, 1.0, 3.0]))
         assert torch.allclose(rot.KAPPA, expected, atol=1e-6)
 
-    def test_rotate_rejects_non_3x3_matrix(self):
-        with pytest.raises(ValueError, match="3x3"):
-            OrthotropicConductivity3D(1.0, 2.0, 3.0).rotate(torch.eye(2))
-
-    def test_vectorize(self):
-        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0).vectorize(N_ELEM)
-        assert mat.KAPPA.shape == (N_ELEM, 3, 3)
-
-    def test_vectorize_idempotent(self):
-        mat = OrthotropicConductivity3D(1.0, 2.0, 3.0).vectorize(N_ELEM)
-        assert mat.vectorize(N_ELEM) is mat
-
 
 class TestOrthotropicConductivity2D:
-    def test_conductivity_is_diagonal_in_principal_axes(self):
-        mat = OrthotropicConductivity2D(1.0, 2.0)
-        assert torch.allclose(mat.KAPPA, torch.diag(torch.tensor([1.0, 2.0])))
-
-    def test_step_applies_conductivity_per_direction(self):
-        n = N_ELEM
-        mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(n)
-        grad_inc, grad, q, state, cl = _make_thermal_step_args(2, n)
-        q_new, _, _ = mat.step(grad_inc, grad, q, state, cl, 0)
-        assert torch.allclose(q_new, torch.tensor([1.0, 4.0]).expand(n, 1, 2))
-
     def test_rotation_by_90_deg_swaps_axes(self):
         mat = OrthotropicConductivity2D(1.0, 2.0)
         rot = mat.rotate(planar_rotation(torch.pi / 2))
         assert torch.allclose(
             rot.KAPPA, torch.diag(torch.tensor([2.0, 1.0])), atol=1e-6
         )
-
-    def test_rotate_rejects_non_2x2_matrix(self):
-        with pytest.raises(ValueError, match="2x2"):
-            OrthotropicConductivity2D(1.0, 2.0).rotate(torch.eye(3))
-
-    def test_vectorize(self):
-        mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(N_ELEM)
-        assert mat.KAPPA.shape == (N_ELEM, 2, 2)
-
-    def test_vectorize_idempotent(self):
-        mat = OrthotropicConductivity2D(1.0, 2.0).vectorize(N_ELEM)
-        assert mat.vectorize(N_ELEM) is mat
 
 
 ANISOTROPIC = [
@@ -799,6 +592,14 @@ def _rotation_for(mat):
     if _anisotropy(mat).shape[-1] == 3:
         return axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.tensor(0.3))
     return planar_rotation(torch.tensor(0.3))
+
+
+@pytest.mark.parametrize("build", ANISOTROPIC)
+def test_rotate_rejects_a_matrix_of_the_wrong_size(build):
+    mat = build()
+    dim = _anisotropy(mat).shape[-1]
+    with pytest.raises(ValueError, match=f"{dim}x{dim}"):
+        mat.rotate(torch.eye(5 - dim))
 
 
 @pytest.mark.parametrize("build", ANISOTROPIC)

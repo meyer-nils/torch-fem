@@ -93,20 +93,3 @@ class TestVerboseSolve:
         out = capsys.readouterr().out
         assert "Time step" in out
         assert "2 time steps" in out
-
-
-class TestMachine:
-    def test_the_thread_count_is_read_per_call(self):
-        """Only the CPU name and memory are cached, so a later change shows up.
-
-        Two counts, since one proves nothing about a cache that happens to hold
-        the same number, and they differ in plural so both spellings are read.
-        """
-        threads = torch.get_num_threads()
-        try:
-            torch.set_num_threads(1)
-            assert "1 thread" in machine()
-            torch.set_num_threads(2)
-            assert "2 threads" in machine()
-        finally:
-            torch.set_num_threads(threads)

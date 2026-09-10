@@ -12,136 +12,73 @@ from torchfem.mesh import (
     rect_tri,
 )
 
+# One coarse and one refined grid per generator, with the node count and the
+# element table they must produce.
+GRIDS = [
+    pytest.param(rect_quad, (2, 2), 4, (1, 4), id="quad-single"),
+    pytest.param(rect_quad, (4, 3), 12, (6, 4), id="quad"),
+    pytest.param(cube_hexa, (2, 2, 2), 8, (1, 8), id="hexa-single"),
+    pytest.param(cube_hexa, (4, 3, 5), 60, (24, 8), id="hexa"),
+    # Five tetrahedra per hexahedron
+    pytest.param(cube_tetra, (2, 2, 2), 8, (5, 4), id="tetra-single"),
+    pytest.param(cube_tetra, (3, 3, 3), 27, (40, 4), id="tetra"),
+]
 
-class TestRectQuad:
-    def test_basic_shape(self):
-        nodes, elements = rect_quad(3, 3)
-        assert nodes.shape == (9, 2)
-        assert elements.shape == (4, 4)
+BOXES = [
+    pytest.param(rect_quad, (10, 8), (5.0, 3.0), id="quad"),
+    pytest.param(cube_hexa, (4, 3, 2), (2.0, 3.0, 4.0), id="hexa"),
+    pytest.param(cube_tetra, (3, 3, 3), (5.0, 2.0, 3.0), id="tetra"),
+]
 
-    def test_custom_dimensions(self):
-        nodes, elements = rect_quad(4, 3, Lx=2.0, Ly=3.0)
-        assert nodes.shape == (12, 2)
-        assert elements.shape == (6, 4)
-        assert torch.allclose(nodes[:, 0].max(), torch.tensor(2.0))
-        assert torch.allclose(nodes[:, 1].max(), torch.tensor(3.0))
+MESHES = [
+    pytest.param(rect_quad(5, 5), id="quad"),
+    pytest.param(rect_tri(5, 5), id="tria"),
+    pytest.param(cube_hexa(5, 5, 5), id="hexa"),
+    pytest.param(cube_tetra(4, 4, 4), id="tetra"),
+]
 
-    def test_single_element(self):
-        nodes, elements = rect_quad(2, 2)
-        assert elements.shape == (1, 4)
-        assert nodes.shape == (4, 2)
+# Two triangles per quad, except for "center", which adds a node and makes four.
+TRI_VARIANTS = [("up", 8), ("down", 8), ("zigzag", 8), ("center", 16)]
 
-    def test_node_bounds(self):
-        Lx, Ly = 5.0, 3.0
-        nodes, _ = rect_quad(10, 8, Lx=Lx, Ly=Ly)
-        assert torch.allclose(nodes[:, 0].min(), torch.tensor(0.0))
-        assert torch.allclose(nodes[:, 1].min(), torch.tensor(0.0))
-        assert torch.allclose(nodes[:, 0].max(), torch.tensor(Lx))
-        assert torch.allclose(nodes[:, 1].max(), torch.tensor(Ly))
 
-    def test_connectivity_valid(self):
-        nodes, elements = rect_quad(5, 5)
-        assert elements.min() >= 0
-        assert elements.max() < len(nodes)
+@pytest.mark.parametrize("gen, grid, n_nodes, element_shape", GRIDS)
+def test_grid_has_the_expected_nodes_and_elements(gen, grid, n_nodes, element_shape):
+    nodes, elements = gen(*grid)
+    assert nodes.shape == (n_nodes, len(grid))
+    assert elements.shape == element_shape
+
+
+@pytest.mark.parametrize("gen, grid, lengths", BOXES)
+def test_nodes_span_the_requested_box(gen, grid, lengths):
+    nodes, _ = gen(*grid, *lengths)
+    for axis, length in enumerate(lengths):
+        assert torch.allclose(nodes[:, axis].min(), torch.tensor(0.0))
+        assert torch.allclose(nodes[:, axis].max(), torch.tensor(length))
+
+
+@pytest.mark.parametrize("mesh", MESHES)
+def test_connectivity_stays_within_the_nodes(mesh):
+    nodes, elements = mesh
+    assert elements.min() >= 0
+    assert elements.max() < len(nodes)
 
 
 class TestRectTri:
-    @pytest.mark.parametrize("variant", ["up", "down", "zigzag", "center"])
-    def test_variant_shapes(self, variant):
+    @pytest.mark.parametrize("variant, n_elem", TRI_VARIANTS)
+    def test_variant_splits_every_quad(self, variant, n_elem):
         nodes, elements = rect_tri(3, 3, variant=variant)
-        assert elements.shape[1] == 3  # triangles have 3 nodes
-        assert nodes.ndim == 2
         assert nodes.shape[1] == 2
+        assert elements.shape == (n_elem, 3)
 
-    def test_up_element_count(self):
-        nodes, elements = rect_tri(3, 3, variant="up")
-        # 2x2 quads = 4 quads, each split into 2 triangles = 8
-        assert elements.shape[0] == 8
-
-    def test_down_element_count(self):
-        nodes, elements = rect_tri(3, 3, variant="down")
-        assert elements.shape[0] == 8
-
-    def test_zigzag_element_count(self):
-        nodes, elements = rect_tri(3, 3, variant="zigzag")
-        assert elements.shape[0] == 8
-
-    def test_center_element_count(self):
-        nodes, elements = rect_tri(3, 3, variant="center")
-        # 4 quads, each split into 4 triangles = 16
-        assert elements.shape[0] == 16
-
-    def test_center_adds_nodes(self):
+    def test_center_adds_one_node_per_quad(self):
         nodes_quad, _ = rect_quad(3, 3)
         nodes_tri, _ = rect_tri(3, 3, variant="center")
-        # center variant adds one node per quad
         assert len(nodes_tri) == len(nodes_quad) + 4
 
     def test_invalid_variant(self):
         variant: Any = "invalid"
         with pytest.raises(ValueError, match="Unknown variant"):
             rect_tri(3, 3, variant=variant)
-
-    def test_connectivity_valid(self):
-        nodes, elements = rect_tri(5, 5, variant="zigzag")
-        assert elements.min() >= 0
-        assert elements.max() < len(nodes)
-
-
-class TestCubeHexa:
-    def test_basic_shape(self):
-        nodes, elements = cube_hexa(3, 3, 3)
-        assert nodes.shape == (27, 3)
-        assert elements.shape == (8, 8)
-
-    def test_custom_dimensions(self):
-        Lx, Ly, Lz = 2.0, 3.0, 4.0
-        nodes, elements = cube_hexa(4, 3, 2, Lx=Lx, Ly=Ly, Lz=Lz)
-        assert torch.allclose(nodes[:, 0].max(), torch.tensor(Lx))
-        assert torch.allclose(nodes[:, 1].max(), torch.tensor(Ly))
-        assert torch.allclose(nodes[:, 2].max(), torch.tensor(Lz))
-
-    def test_single_element(self):
-        nodes, elements = cube_hexa(2, 2, 2)
-        assert elements.shape == (1, 8)
-
-    def test_element_count(self):
-        nodes, elements = cube_hexa(4, 3, 5)
-        assert elements.shape == (3 * 2 * 4, 8)
-
-    def test_connectivity_valid(self):
-        nodes, elements = cube_hexa(5, 5, 5)
-        assert elements.min() >= 0
-        assert elements.max() < len(nodes)
-
-
-class TestCubeTetra:
-    def test_basic_shape(self):
-        nodes, elements = cube_tetra(3, 3, 3)
-        assert nodes.shape == (27, 3)
-        assert elements.shape[1] == 4  # tetrahedral
-
-    def test_five_tets_per_hex(self):
-        nodes, elements = cube_tetra(2, 2, 2)
-        # 1 hex → 5 tets
-        assert elements.shape == (5, 4)
-
-    def test_element_count(self):
-        nodes, elements = cube_tetra(3, 3, 3)
-        # 8 hexes → 5*8 = 40 tets
-        assert elements.shape[0] == 40
-
-    def test_custom_dimensions(self):
-        Lx, Ly, Lz = 5.0, 2.0, 3.0
-        nodes, _ = cube_tetra(3, 3, 3, Lx=Lx, Ly=Ly, Lz=Lz)
-        assert torch.allclose(nodes[:, 0].max(), torch.tensor(Lx))
-        assert torch.allclose(nodes[:, 1].max(), torch.tensor(Ly))
-        assert torch.allclose(nodes[:, 2].max(), torch.tensor(Lz))
-
-    def test_connectivity_valid(self):
-        nodes, elements = cube_tetra(4, 4, 4)
-        assert elements.min() >= 0
-        assert elements.max() < len(nodes)
 
 
 class TestMeshToLattice:
