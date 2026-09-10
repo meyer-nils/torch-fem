@@ -45,6 +45,22 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         - One internal state variable (``n_state = 1``): equivalent plastic
           strain $q$.
         - Supports batched/vectorized material parameters.
+
+    Info: Von Mises plasticity
+        The elastic domain is bounded by the yield surface
+        $$
+            f(\\pmb{\\sigma}, q) = \\|\\pmb{\\sigma}'\\|
+                - \\sqrt{\\tfrac{2}{3}} \\, \\sigma_f(q) = 0
+        $$
+        with the deviatoric stress $\\pmb{\\sigma}'$ and the yield stress
+        $\\sigma_f(q)$, given as a function of the equivalent plastic strain
+        $q$. Linear hardening is $\\sigma_f(q) = \\sigma_y + k q$ with the
+        initial yield stress $\\sigma_y$ and the hardening modulus $k$.
+
+        A state with $f > 0$ is returned to the surface along the associative
+        flow direction $\\mathbf{n} = \\pmb{\\sigma}' /
+        \\|\\pmb{\\sigma}'\\|$, which is the radial return `step(...)`
+        carries out.
     """
 
     def __init__(
@@ -94,7 +110,10 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
         **Elastic step** ($f \\le 0$): The trial stress is accepted.
 
-        **Plastic step** ($f > 0$): The flow direction is
+        **Plastic step** ($f > 0$): The plastic multiplier $\\Delta\\gamma$
+        that restores $f = 0$ solves a nonlinear equation, found by a local
+        Newton iteration bounded by `tolerance` and `max_iter`, and reached in
+        one step for linear hardening. The flow direction is
         $\\mathbf{n} = \\pmb{\\sigma}'_{\\text{trial}}
         / \\|\\pmb{\\sigma}'_{\\text{trial}}\\|$
         and the updates are
@@ -237,10 +256,31 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         - Small-strain assumption with plane stress condition.
         - One internal state variable (``n_state = 1``): equivalent plastic
           strain $q$.
-        - Implementation follows de Souza Neto et al. , Box 9.3-9.6.
+        - Implementation follows de Souza Neto et al., Box 9.3-9.6.
+
+    Info: Plane stress von Mises plasticity
+        The elastic domain is bounded by the von Mises yield surface written
+        directly in the plane stress subspace
+        $$
+            f(\\pmb{\\sigma}, q) = \\tfrac{1}{2} \\pmb{\\sigma}^\\top
+                \\mathbf{P} \\, \\pmb{\\sigma}
+                - \\tfrac{1}{3} \\sigma_f(q)^2 = 0
+        $$
+        with the Voigt stress $\\pmb{\\sigma} = [\\sigma_{11}, \\sigma_{22},
+        \\sigma_{12}]^\\top$, the projection matrix
+        $$
+            \\mathbf{P} = \\frac{1}{3}
+                \\begin{bmatrix} 2 & -1 & 0 \\cr -1 & 2 & 0 \\cr 0 & 0 & 6
+                \\end{bmatrix}
+        $$
+        and the yield stress $\\sigma_f(q)$, given as a function of the
+        equivalent plastic strain $q$. Enforcing $\\sigma_{33} = 0$ on the yield
+        surface itself condenses the out-of-plane plastic strain out, so $q$
+        remains the only state variable. A state with $f > 0$ is returned to the
+        surface by the projected return mapping `step(...)` carries out.
 
     References:
-        de Souza Neto, E. A., Peri, D., Owen, D. R. J.
+        de Souza Neto, E. A., Perić, D., Owen, D. R. J.
         *Computational Methods for Plasticity*, Chapter 9,
         https://doi.org/10.1002/9780470694626.ch9, 2008.
     """
@@ -291,11 +331,15 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
 
         $$
             \\mathbf{P} = \\frac{1}{3}
-                \\begin{bmatrix} 2 & -1 & 0 \\\\ -1 & 2 & 0 \\\\ 0 & 0 & 6
+                \\begin{bmatrix} 2 & -1 & 0 \\cr -1 & 2 & 0 \\cr 0 & 0 & 6
                 \\end{bmatrix}.
         $$
 
-        If $\\Psi > 0$, the stress is updated via
+        If $\\Psi > 0$, the plastic multiplier $\\Delta\\gamma$ that restores
+        $\\Psi = 0$ is found by a local Newton iteration bounded by `tolerance`
+        and `max_iter`, in which the trial stress components are scaled by
+        $1 + E \\Delta\\gamma / (3 (1 - \\nu))$ and $1 + 2 G \\Delta\\gamma$.
+        The stress is then updated via
 
         $$
             \\pmb{\\sigma}_{n+1}
@@ -450,6 +494,24 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         - Two internal state variables (``n_state = 2``): equivalent plastic
           strain $q$ and out-of-plane plastic strain $\\varepsilon_z^p$.
         - Supports batched/vectorized material parameters.
+
+    Info: Plane strain von Mises plasticity
+        The elastic domain is bounded by the same yield surface as in 3D,
+        $$
+            f(\\pmb{\\sigma}, q) = \\|\\pmb{\\sigma}'\\|
+                - \\sqrt{\\tfrac{2}{3}} \\, \\sigma_f(q) = 0
+        $$
+        with the deviatoric stress $\\pmb{\\sigma}'$ and the yield stress
+        $\\sigma_f(q)$, given as a function of the equivalent plastic strain
+        $q$, but it is evaluated on the full 3D stress. Plane strain constrains
+        only the total out-of-plane strain, $\\varepsilon_{33} = 0$, while its
+        plastic part does not vanish. Hence $\\varepsilon_z^p$ is carried as a
+        second state variable and the out-of-plane stress
+        $$
+            \\sigma_{33} = \\nu (\\sigma_{11} + \\sigma_{22})
+                - E \\, \\varepsilon_z^p
+        $$
+        is reconstructed before each yield check in `step(...)`.
     """
 
     def __init__(
@@ -606,8 +668,23 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         rho (Tensor | float): Mass density. Default is `1.0`.
 
     Notes:
+        - Small-strain assumption.
         - One internal state variable (``n_state = 1``): equivalent plastic
           strain $q$.
+        - Supports batched/vectorized material parameters.
+
+    Info: 1D plasticity
+        With a single stress component the deviatoric norm collapses and the
+        yield surface reduces to
+        $$
+            f(\\sigma, q) = |\\sigma| - \\sigma_f(q) = 0
+        $$
+        with the yield stress $\\sigma_f(q)$, given as a function of the
+        accumulated plastic strain $q$. Linear hardening is
+        $\\sigma_f(q) = \\sigma_y + k q$ with the initial yield stress
+        $\\sigma_y$ and the hardening modulus $k$. A state with $f > 0$ is
+        returned to the surface along $\\text{sign}(\\sigma)$, which is the
+        return mapping `step(...)` carries out.
     """
 
     def __init__(
@@ -721,11 +798,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         state_new[..., 0] = q
 
         # Update algorithmic tangent
-        if fm.sum() > 0:
-            ddsdde[fm] = (
-                E[:, None, None, None, None]
-                * self.sigma_f_prime(q[fm])
-                / (E[:, None, None, None, None] + self.sigma_f_prime(q[fm]))
-            )
+        H = self.sigma_f_prime(q[fm])
+        ddsdde[fm] = (E * H / (E + H))[:, None, None, None, None]
 
         return stress_new, state_new, ddsdde

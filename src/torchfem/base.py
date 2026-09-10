@@ -9,7 +9,7 @@ import torch
 from torch import Tensor
 
 from .elements import Element
-from .materials import Material
+from .materials import HeatMaterial, Material, MechanicsMaterial
 from .report import solve_report
 from .sparse import (
     differentiable_modal_eigsolve,
@@ -146,8 +146,19 @@ class FEM(ABC):
         if self.nodes.is_cuda:
             torch.cuda.empty_cache()
 
-        # Vectorize material
+        # A model takes only a material of its own physics and dimension.
         self.material: Material | None
+        base = HeatMaterial if isinstance(self, Heat) else MechanicsMaterial
+        dim = self.n_flux[-1]
+        if material is not None and (
+            not isinstance(material, base) or material.dim != dim
+        ):
+            raise ValueError(
+                f"{type(self).__name__} needs a {dim}D {base.__name__}, not a "
+                f"{material.dim}D {type(material).__name__}."
+            )
+
+        # Vectorize material
         if material is None or material.is_vectorized:
             self.material = material
         else:
@@ -974,7 +985,7 @@ class Mechanics(FEM, ABC):
         flux_new = torch.zeros_like(flux_prev)
         state_new = torch.zeros_like(state_prev)
 
-        assert self.material is not None
+        assert isinstance(self.material, MechanicsMaterial)
 
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
@@ -1152,7 +1163,7 @@ class Heat(FEM, ABC):
         f = torch.zeros(self.n_elem, n_dof, device=du.device)
         k = torch.zeros(self.n_elem, n_dof, n_dof, device=du.device) if need_k else None
 
-        assert self.material is not None
+        assert isinstance(self.material, HeatMaterial)
 
         grad_new = []
         flux_new = []
@@ -1173,7 +1184,6 @@ class Heat(FEM, ABC):
                 grad_prev[i],
                 flux_prev[i],
                 state_prev[i],
-                de0,
                 self.char_lengths,
                 iter,
             )

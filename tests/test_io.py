@@ -6,22 +6,33 @@ import pytest
 import torch
 from meshio import Mesh
 
-from torchfem import Planar, Shell, Solid
+from torchfem import Laminate, Planar, PlanarHeat, Shell, Solid, SolidHeat
 from torchfem.elements import Quad1
 from torchfem.io import (
     export_mesh,
     import_mesh,
-    import_planar,
     import_shell,
-    import_solid,
 )
-from torchfem.materials import IsotropicElasticity3D, IsotropicElasticityPlaneStress
+from torchfem.materials import (
+    IsotropicConductivity2D,
+    IsotropicConductivity3D,
+    IsotropicElasticity3D,
+    IsotropicElasticityPlaneStress,
+)
 from torchfem.mesh import cube_hexa, rect_quad
 
 # Corners of a tetrahedron, so no cell built from them lies in the z=0 plane.
 NON_PLANAR_POINTS = np.array(
     [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 )
+PLANAR_POINTS = np.array(
+    [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
+)
+
+
+def write_mesh(path, cells, points=NON_PLANAR_POINTS):
+    """Write a mesh torch-fem cannot export itself."""
+    Mesh(points, cells).write(path)
 
 
 class TestExportMesh:
@@ -87,30 +98,8 @@ class TestImportMesh:
 
 
 class TestTypedImport:
-    def test_import_planar_narrows(self):
-        """The planar wrapper returns a `Planar` for a 2D mesh."""
-        nodes_2d, elements = rect_quad(3, 3)
-        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        model = Planar(nodes_2d, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path))
-            assert isinstance(import_planar(path, mat), Planar)
-
-    def test_import_solid_narrows(self):
-        """The solid wrapper returns a `Solid` for a 3D mesh."""
-        nodes, elements = cube_hexa(3, 3, 3)
-        mat = IsotropicElasticity3D(1000.0, 0.3)
-        model = Solid(nodes, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path))
-            assert isinstance(import_solid(path, mat), Solid)
-
     def test_type_mismatch_raises(self):
-        """A wrapper raises `TypeError` when the mesh is of another type."""
+        """`import_shell` raises `TypeError` when the mesh is of another type."""
         nodes, elements = cube_hexa(3, 3, 3)
         mat = IsotropicElasticity3D(1000.0, 0.3)
         model = Solid(nodes, elements, mat)
@@ -120,32 +109,16 @@ class TestTypedImport:
             export_mesh(model, str(path))
             with pytest.raises(TypeError):
                 import_shell(path, mat)
-            with pytest.raises(TypeError):
-                import_planar(path, mat)
-
-    def test_import_solid_rejects_planar_mesh(self):
-        nodes, elements = rect_quad(3, 3)
-        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        model = Planar(nodes, elements, mat)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "test.vtu"
-            export_mesh(model, str(path))
-            with pytest.raises(TypeError, match="not a solid mesh"):
-                import_solid(path, mat)
 
 
 class TestImportNonPlanarMesh:
     """Meshes torch-fem cannot export itself, written directly with meshio."""
 
-    def _write(self, path, cells, points=NON_PLANAR_POINTS):
-        Mesh(points, cells).write(path)
-
     def test_non_planar_triangle_mesh_returns_shell(self):
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "shell.vtu"
-            self._write(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
             model = import_mesh(path, mat, thickness=0.1)
             assert isinstance(model, Shell)
             assert model.n_elem == 2
@@ -155,7 +128,7 @@ class TestImportNonPlanarMesh:
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "mixed.vtu"
-            self._write(
+            write_mesh(
                 path,
                 [
                     ("triangle", np.array([[0, 1, 2]])),
@@ -169,7 +142,7 @@ class TestImportNonPlanarMesh:
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "shell.vtu"
-            self._write(path, [("quad", np.array([[0, 1, 2, 3]]))])
+            write_mesh(path, [("quad", np.array([[0, 1, 2, 3]]))])
             model = import_mesh(path, mat, thickness=0.1)
             assert isinstance(model, Shell)
             assert model.etype is Quad1
@@ -181,6 +154,70 @@ class TestImportNonPlanarMesh:
         points = np.vstack([NON_PLANAR_POINTS, [[0.5, 0.0, 0.5], [0.0, 0.5, 0.5]]])
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "tria6_3d.vtu"
-            self._write(path, [("triangle6", np.array([[0, 1, 3, 4, 5, 2]]))], points)
+            write_mesh(path, [("triangle6", np.array([[0, 1, 3, 4, 5, 2]]))], points)
             with pytest.raises(ValueError, match="Cannot interpret element type"):
                 import_mesh(path, mat)
+
+
+class TestImportMeshPhysics:
+    """The material decides the physics of the imported model."""
+
+    def test_planar_mesh_with_a_conductivity_gives_planar_heat(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "planar.vtu"
+            write_mesh(path, [("quad", np.array([[0, 1, 2, 3]]))], PLANAR_POINTS)
+            model = import_mesh(path, IsotropicConductivity2D(400.0), thickness=0.1)
+            assert isinstance(model, PlanarHeat)
+            assert torch.allclose(model.thickness, torch.full((1,), 0.1))
+
+    def test_solid_mesh_with_a_conductivity_gives_solid_heat(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "solid.vtu"
+            write_mesh(path, [("tetra", np.array([[0, 1, 2, 3]]))])
+            assert isinstance(
+                import_mesh(path, IsotropicConductivity3D(400.0)), SolidHeat
+            )
+
+    def test_surface_mesh_has_no_heat_model(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "shell.vtu"
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
+            with pytest.raises(ValueError, match="no heat model"):
+                import_mesh(path, IsotropicConductivity2D(400.0))
+
+    def test_a_laminate_section_imports_as_a_shell(self):
+        """A `Laminate` stands in for a material without subclassing one."""
+        layup = Laminate([IsotropicElasticityPlaneStress(1000.0, 0.3)], [1.0], [0.0])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "shell.vtu"
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
+            assert isinstance(import_mesh(path, layup), Shell)
+
+    def test_a_laminate_needs_a_surface_mesh(self):
+        layup = Laminate([IsotropicElasticityPlaneStress(1000.0, 0.3)], [1.0], [0.0])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "solid.vtu"
+            write_mesh(path, [("tetra", np.array([[0, 1, 2, 3]]))])
+            with pytest.raises(ValueError, match="laminate section needs a surface"):
+                import_mesh(path, layup)
+
+    def test_a_flat_surface_mesh_imports_as_a_shell(self):
+        """A flat shell is requested through `import_shell`, not `import_mesh`."""
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        flat = np.array([[0.0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "flat.vtu"
+            write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 2, 3]]))], flat)
+            assert isinstance(import_mesh(path, mat), Planar)
+            shell = import_shell(path, mat, thickness=0.5)
+            assert isinstance(shell, Shell)
+            assert shell.nodes.shape == (4, 3)
+            assert torch.allclose(shell.thickness, torch.full((2,), 0.5))
+
+    def test_a_solid_mesh_is_not_a_surface(self):
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "solid.vtu"
+            write_mesh(path, [("tetra", np.array([[0, 1, 2, 3]]))])
+            with pytest.raises(TypeError, match="not a surface mesh, but tetra"):
+                import_shell(path, mat)

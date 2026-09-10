@@ -24,6 +24,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Truss plasticity in 2D](images/examples/basic/truss/plasticity_2D.png)](examples/basic/truss/plasticity_2D.html)
 
+-   **Truss damage in 2D**
+
+    [![Truss damage in 2D](images/examples/basic/truss/damage_2D.png)](examples/basic/truss/damage_2D.html)
+
 -   **Truss modal analysis**
 
     [![Truss modal analysis](images/examples/basic/truss/modal.png)](examples/basic/truss/modal.html)
@@ -45,6 +49,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 -   **Plasticity in a plate with hole**
 
     [![Plasticity in a plate with hole](images/examples/basic/planar/plasticity.png)](examples/basic/planar/plasticity.html)
+
+-   **Damage in a plate with hole**
+
+    [![Damage in a plate with hole](images/examples/basic/planar/damage.png)](examples/basic/planar/damage.html)
 
 -   **Fillet**
 

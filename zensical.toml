@@ -35,7 +35,9 @@ nav = [
       { "Orthotropic 3D" = "materials/elasticity/orthotropic_elasticity_3D.md" },
       { "Transverse 3D" = "materials/elasticity/transverse_isotropic_elasticity_3D.md" },
       { "Orthotropic Plane Stress" = "materials/elasticity/orthotropic_elasticity_plane_stress.md" },
+      { "Transverse Plane Stress" = "materials/elasticity/transverse_isotropic_elasticity_plane_stress.md" },
       { "Orthotropic Plane Strain" = "materials/elasticity/orthotropic_elasticity_plane_strain.md" },
+      { "Transverse Plane Strain" = "materials/elasticity/transverse_isotropic_elasticity_plane_strain.md" },
     ] },
     { "Hyperelasticity" = [
       { "3D" = "materials/hyperelasticity/hyperelastic_3D.md" },
@@ -50,11 +52,13 @@ nav = [
     ] },
     { "Damage" = [
       { "Isotropic 3D" = "materials/damage/isotropic_damage_3D.md" },
+      { "Isotropic Plane Strain" = "materials/damage/isotropic_damage_plane_strain.md" },
+      { "Isotropic Plane Stress" = "materials/damage/isotropic_damage_plane_stress.md" },
+      { "Isotropic 1D" = "materials/damage/isotropic_damage_1D.md" },
     ] },
     { "Conductivity" = [
       { "Isotropic 3D" = "materials/conductivity/isotropic_conductivity_3D.md" },
       { "Isotropic 2D" = "materials/conductivity/isotropic_conductivity_2D.md" },
-      { "Isotropic 1D" = "materials/conductivity/isotropic_conductivity_1D.md" },
       { "Orthotropic 3D" = "materials/conductivity/orthotropic_conductivity_3D.md" },
       { "Orthotropic 2D" = "materials/conductivity/orthotropic_conductivity_2D.md" },
     ] },

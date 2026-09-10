@@ -5,15 +5,11 @@ import copy
 import torch
 from torch import Tensor
 
-from .base import Material
+from .base import HeatMaterial
 
 
-class IsotropicConductivity3D(Material):
+class IsotropicConductivity3D(HeatMaterial):
     """Isotropic heat conductivity material in 3D.
-
-    This class represents a 3D isotropic heat conductivity material, defined by the
-    thermal conductivity $\\kappa$. The constructor derives the conductivity tensor
-    $\\pmb{\\kappa} = \\kappa \\mathbf{I}$.
 
     Args:
         kappa (Tensor | float): Thermal conductivity. If a float is provided, it is
@@ -25,6 +21,16 @@ class IsotropicConductivity3D(Material):
     Notes:
         - No internal state variables (``n_state = 0``).
         - Supports batched/vectorized material parameters.
+
+    Info: Definition of conductivity tensor
+        This class represents a 3D isotropic heat conductivity material, defined by
+        the (batched) thermal conductivity $\\kappa$. The constructor derives the
+        (batched) conductivity tensor
+        $$
+            \\pmb{\\kappa} = \\kappa \\mathbf{I}
+        $$
+        which relates the heat flux to the temperature gradient via Fourier's law
+        $\\mathbf{q} = \\pmb{\\kappa} \\cdot \\nabla T$.
     """
 
     def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
@@ -46,104 +52,108 @@ class IsotropicConductivity3D(Material):
 
     def step(
         self,
-        H_inc: Tensor,
-        F: Tensor,
-        stress: Tensor,
+        grad_inc: Tensor,
+        grad: Tensor,
+        flux: Tensor,
         state: Tensor,
-        de0: Tensor,
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the isotropic heat conduction model.
 
-        This function updates the heat flux from the temperature gradient increment
-        via Fourier's law. The arguments follow the generic `Material.step(...)`
-        signature, so the mechanical names carry thermal meaning here.
+        Fourier's law, $\\Delta \\mathbf{q} = \\pmb{\\kappa} \\cdot
+        \\Delta \\nabla T$, with a constant conductivity.
 
         Args:
-            H_inc (Tensor): Incremental temperature gradient increment.
+            grad_inc (Tensor): Incremental temperature gradient.
                 *Shape:* `(..., 1, 3)`, where `...` represents batch dimensions.
-            F (Tensor): Current temperature gradient.
-                *Shape:* `(..., 1, 3)`, same as `H_inc`.
-            stress (Tensor): Current heat flux.
+            grad (Tensor): Current temperature gradient. Unused.
+                *Shape:* `(..., 1, 3)`, same as `grad_inc`.
+            flux (Tensor): Current heat flux.
                 *Shape:* `(..., 1, 3)`.
             state (Tensor): Internal state variables (unused in heat conductivity).
                 *Shape:* Arbitrary, remains unchanged.
-            de0 (Tensor): Unused. A heat model imposes no external gradient.
             cl (Tensor): Characteristic lengths.
                 *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
-            heat_flux_new (Tensor): Updated heat flux.
+            flux_new (Tensor): Updated heat flux.
                 *Shape:* `(..., 1, 3)`.
             state_new (Tensor): Updated internal state (unchanged).
                 *Shape:* same as `state`.
-            ddheat_flux_ddtemp_grad (Tensor): Algorithmic tangent tensor.
+            dqdg (Tensor): Algorithmic tangent conductivity.
                 *Shape:* `(..., 3, 3)`.
         """
-        # Interpretation of inputs
-        temp_grad_inc = H_inc
-        heat_flux = stress
-
         # Compute new heat flux
-        heat_flux_new = heat_flux + torch.einsum(
-            "...ij,...kj->...ki", self.KAPPA, temp_grad_inc
-        )
+        flux_new = flux + torch.einsum("...ij,...kj->...ki", self.KAPPA, grad_inc)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
-        ddheat_flux_ddtemp_grad = self.KAPPA
-        return heat_flux_new, state_new, ddheat_flux_ddtemp_grad
+        dqdg = self.KAPPA
+        return flux_new, state_new, dqdg
 
 
 class IsotropicConductivity2D(IsotropicConductivity3D):
     """Isotropic heat conductivity material in 2D.
 
-    Uses the same constitutive law as the 3D class with the conductivity tensor
-    reduced to the in-plane 2x2 block.
+    Args:
+        kappa (Tensor | float): In-plane thermal conductivity. If a float is
+            provided, it is converted.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
 
-    The inherited `step` method operates on thermal tensors with shapes
-    `(..., 1, 2)` and returns an algorithmic tangent of shape `(..., 2, 2)`.
+    Notes:
+        - No internal state variables (``n_state = 0``).
+        - Supports batched/vectorized material parameters.
+        - The inherited `step` method operates on thermal tensors with shapes
+          `(..., 1, 2)` and returns an algorithmic tangent of shape `(..., 2, 2)`.
+
+    Info: Definition of plane conductivity tensor
+        Same constitutive law as `IsotropicConductivity3D`, with the conductivity
+        tensor restricted to the in-plane components
+        $$
+            \\kappa_{ij} = \\kappa \\delta_{ij}, \\quad i, j \\in \\{1, 2\\}.
+        $$
+        Heat conduction out of the plane is not modelled.
     """
 
-    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
-        """Create a 2D isotropic conductivity material.
+    dim = 2
 
-        Args:
-            kappa (Tensor | float): In-plane thermal conductivity.
-            rho (Tensor | float): Mass density.
-        """
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
         super().__init__(kappa, rho)
         self.KAPPA = self.KAPPA[..., :2, :2]
-
-
-class IsotropicConductivity1D(IsotropicConductivity2D):
-    """Isotropic heat conductivity material in 1D.
-
-    Uses the same constitutive law as the higher-dimensional classes with a
-    scalar 1x1 conductivity tensor.
-
-    The inherited `step` method operates on thermal tensors with shapes
-    `(..., 1, 1)` and returns an algorithmic tangent of shape `(..., 1, 1)`.
-    """
-
-    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
-        """Create a 1D isotropic conductivity material.
-
-        Args:
-            kappa (Tensor | float): Thermal conductivity.
-            rho (Tensor | float): Mass density.
-        """
-        super().__init__(kappa, rho)
-        self.KAPPA = self.KAPPA[..., :1, :1]
 
 
 class OrthotropicConductivity3D(IsotropicConductivity3D):
     """Orthotropic heat conductivity material in 3D.
 
-    The principal conductivities are aligned with the material axes and can be
-    rotated into the global frame with `rotate`.
+    Args:
+        kappa_1 (Tensor | float): Conductivity along local axis 1.
+        kappa_2 (Tensor | float): Conductivity along local axis 2.
+        kappa_3 (Tensor | float): Conductivity along local axis 3.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - No internal state variables (``n_state = 0``).
+        - Supports batched/vectorized material parameters.
+        - Supports rotation of the material coordinate system via `rotate()`.
+
+    Info: Orthotropic conductivity tensor
+        The principal conductivities are aligned with the material axes, so the
+        conductivity tensor is diagonal in the material frame
+        $$
+            \\pmb{\\kappa} =
+            \\begin{bmatrix}
+                \\kappa_1 & 0 & 0 \\cr
+                0 & \\kappa_2 & 0 \\cr
+                0 & 0 & \\kappa_3
+            \\end{bmatrix}
+            = \\sum_{i=1}^{3} \\kappa_i \\, \\mathbf{e}_i \\otimes \\mathbf{e}_i
+        $$
+        with the material axes $\\mathbf{e}_i$. `rotate()` maps it into the global
+        frame as $\\kappa_{ij} \\mapsto R_{ik} R_{jl} \\kappa_{kl}$.
     """
 
     def __init__(
@@ -153,14 +163,6 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
         kappa_3: Tensor | float,
         rho: Tensor | float = 1.0,
     ):
-        """Create a 3D orthotropic conductivity material.
-
-        Args:
-            kappa_1 (Tensor | float): Conductivity along local axis 1.
-            kappa_2 (Tensor | float): Conductivity along local axis 2.
-            kappa_3 (Tensor | float): Conductivity along local axis 3.
-            rho (Tensor | float): Mass density.
-        """
         self.kappa_1 = torch.as_tensor(kappa_1)
         self.kappa_2 = torch.as_tensor(kappa_2)
         self.kappa_3 = torch.as_tensor(kappa_3)
@@ -196,8 +198,29 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
 class OrthotropicConductivity2D(IsotropicConductivity2D):
     """Orthotropic heat conductivity material in 2D.
 
-    The two principal in-plane conductivities are aligned with local axes and
-    can be rotated into the global frame with `rotate`.
+    Args:
+        kappa_1 (Tensor | float): Conductivity along local axis 1.
+        kappa_2 (Tensor | float): Conductivity along local axis 2.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - No internal state variables (``n_state = 0``).
+        - Supports batched/vectorized material parameters.
+        - Supports rotation of the material coordinate system via `rotate()`.
+
+    Info: Orthotropic plane conductivity tensor
+        The two principal in-plane conductivities are aligned with the material
+        axes, so the conductivity tensor is diagonal in the material frame
+        $$
+            \\pmb{\\kappa} =
+            \\begin{bmatrix}
+                \\kappa_1 & 0 \\cr
+                0 & \\kappa_2
+            \\end{bmatrix}
+            = \\sum_{i=1}^{2} \\kappa_i \\, \\mathbf{e}_i \\otimes \\mathbf{e}_i
+        $$
+        with the material axes $\\mathbf{e}_i$. `rotate()` maps it into the global
+        frame as $\\kappa_{ij} \\mapsto R_{ik} R_{jl} \\kappa_{kl}$.
     """
 
     def __init__(
@@ -206,13 +229,6 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
         kappa_2: Tensor | float,
         rho: Tensor | float = 1.0,
     ):
-        """Create a 2D orthotropic conductivity material.
-
-        Args:
-            kappa_1 (Tensor | float): Conductivity along local axis 1.
-            kappa_2 (Tensor | float): Conductivity along local axis 2.
-            rho (Tensor | float): Mass density.
-        """
         self.kappa_1 = torch.as_tensor(kappa_1)
         self.kappa_2 = torch.as_tensor(kappa_2)
         self.rho = torch.as_tensor(rho)

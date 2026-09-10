@@ -22,13 +22,11 @@
   - 3D: Hexa1, Hexa2, Tetra1, Tetra2
   - Shell: Flat-facet Quad1, Tria1
 - Material models
-  - Isotropic linear elasticity 
-  - Orthotropic linear elasticity
+  - Linear elasticity (isotropic, transverse isotropic, orthotropic) 
   - Isotropic small strain plasticity
   - Isotropic small strain damage
   - Hyperelasticity (via automatic differentiation of their energy function)
-  - Isotropic thermal conductivity
-  - Orthotropic thermal conductivity
+  - Thermal conductivity (isotropic, orthotropic)
   - Custom user material interface
 
 - Utilities

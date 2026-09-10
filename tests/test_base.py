@@ -242,3 +242,52 @@ def test_heat_solve_rejects_geometric_nonlinearity():
     """Heat conduction has no kinematics, so `nlgeom` is not silently ignored."""
     with pytest.raises(NotImplementedError, match="not implemented for PlanarHeat"):
         _planar_heat().solve(nlgeom=True)
+
+
+class TestMaterialCompatibility:
+    """A model takes a material of its own physics and dimension alone."""
+
+    @pytest.mark.parametrize(
+        ("build", "message"),
+        [
+            (
+                lambda: Solid(*cube_hexa(2, 2, 2), IsotropicConductivity3D(400.0)),
+                "Solid needs a 3D MechanicsMaterial, not a 3D IsotropicConductivity3D",
+            ),
+            (
+                lambda: PlanarHeat(
+                    *rect_quad(3, 3), IsotropicElasticityPlaneStress(1e3, 0.3)
+                ),
+                "PlanarHeat needs a 2D HeatMaterial, not a 2D IsotropicElasticity",
+            ),
+            (
+                lambda: Planar(*rect_quad(3, 3), IsotropicElasticity3D(1000.0, 0.3)),
+                "Planar needs a 2D MechanicsMaterial, not a 3D IsotropicElasticity3D",
+            ),
+            (
+                lambda: Solid(
+                    *cube_hexa(2, 2, 2), IsotropicElasticityPlaneStress(1e3, 0.3)
+                ),
+                "Solid needs a 3D MechanicsMaterial, not a 2D IsotropicElasticity",
+            ),
+            (
+                lambda: PlanarHeat(*rect_quad(3, 3), IsotropicConductivity3D(400.0)),
+                "PlanarHeat needs a 2D HeatMaterial, not a 3D IsotropicConductivity3D",
+            ),
+            (
+                lambda: SolidHeat(*cube_hexa(2, 2, 2), IsotropicConductivity2D(400.0)),
+                "SolidHeat needs a 3D HeatMaterial, not a 2D IsotropicConductivity2D",
+            ),
+        ],
+    )
+    def test_rejects_an_incompatible_material(self, build, message):
+        with pytest.raises(ValueError, match=message):
+            build()
+
+    def test_a_smaller_conductivity_broadcasts_instead_of_failing(self):
+        """Why the check is needed: a 1x1 conductivity fits a 2D gradient
+        by broadcasting, and returns a wrong flux rather than raising."""
+        kappa = torch.full((1, 1, 1), 5.0)
+        grad = torch.tensor([[[0.1, 0.7]]])
+        flux = torch.einsum("...ij,...kj->...ki", kappa, grad)
+        assert torch.allclose(flux, torch.tensor([[[4.0, 4.0]]]))

@@ -6,10 +6,10 @@ import torch
 from torch import Tensor
 from torch.func import jacrev, vmap
 
-from .base import Material
+from .base import MechanicsMaterial
 
 
-class Hyperelastic3D(Material):
+class Hyperelastic3D(MechanicsMaterial):
     """Hyperelastic material in 3D.
 
     This class implements a hyperelastic material model for large deformations
@@ -173,6 +173,8 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         $$
     """
 
+    dim = 2
+
     def __init__(
         self,
         psi: Callable,
@@ -305,6 +307,8 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
         and the in-plane stress and tangent are extracted from the 3D
         response.
     """
+
+    dim = 2
 
     def step(
         self,

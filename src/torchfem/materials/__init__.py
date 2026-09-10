@@ -4,15 +4,19 @@ Classes are organized into submodules but re-exported here, so
 ``from torchfem.materials import <Class>`` keeps working.
 """
 
-from .base import Material
+from .base import HeatMaterial, Material, MechanicsMaterial
 from .conductivity import (
-    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     OrthotropicConductivity2D,
     OrthotropicConductivity3D,
 )
-from .damage import IsotropicDamage3D
+from .damage import (
+    IsotropicDamage1D,
+    IsotropicDamage3D,
+    IsotropicDamagePlaneStrain,
+    IsotropicDamagePlaneStress,
+)
 from .elasticity import (
     IsotropicElasticity1D,
     IsotropicElasticity3D,
@@ -22,6 +26,8 @@ from .elasticity import (
     OrthotropicElasticityPlaneStrain,
     OrthotropicElasticityPlaneStress,
     TransverseIsotropicElasticity3D,
+    TransverseIsotropicElasticityPlaneStrain,
+    TransverseIsotropicElasticityPlaneStress,
 )
 from .hyperelasticity import (
     Hyperelastic3D,
@@ -37,12 +43,16 @@ from .plasticity import (
 
 __all__ = [
     "Material",
+    "MechanicsMaterial",
+    "HeatMaterial",
     "IsotropicElasticity3D",
     "IsotropicElasticityPlaneStress",
     "IsotropicElasticityPlaneStrain",
     "IsotropicElasticity1D",
     "OrthotropicElasticity3D",
     "TransverseIsotropicElasticity3D",
+    "TransverseIsotropicElasticityPlaneStress",
+    "TransverseIsotropicElasticityPlaneStrain",
     "OrthotropicElasticityPlaneStress",
     "OrthotropicElasticityPlaneStrain",
     "Hyperelastic3D",
@@ -53,9 +63,11 @@ __all__ = [
     "IsotropicPlasticityPlaneStrain",
     "IsotropicPlasticity1D",
     "IsotropicDamage3D",
+    "IsotropicDamagePlaneStrain",
+    "IsotropicDamagePlaneStress",
+    "IsotropicDamage1D",
     "IsotropicConductivity3D",
     "IsotropicConductivity2D",
-    "IsotropicConductivity1D",
     "OrthotropicConductivity3D",
     "OrthotropicConductivity2D",
 ]

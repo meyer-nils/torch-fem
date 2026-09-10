@@ -6,10 +6,10 @@ import torch
 from torch import Tensor
 
 from ..utils import stiffness2voigt
-from .base import Material
+from .base import MechanicsMaterial
 
 
-class IsotropicElasticity3D(Material):
+class IsotropicElasticity3D(MechanicsMaterial):
     """Isotropic elastic material in 3D.
 
     Args:
@@ -161,6 +161,8 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
         $$
     """
 
+    dim = 2
+
     def __init__(
         self, E: float | Tensor, nu: float | Tensor, rho: float | Tensor = 1.0
     ):
@@ -219,6 +221,8 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         $$
     """
 
+    dim = 2
+
     def __init__(
         self, E: Tensor | float, nu: Tensor | float, rho: Tensor | float = 1.0
     ):
@@ -241,7 +245,7 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         self.C[..., 1, 0, 1, 0] = G
 
 
-class IsotropicElasticity1D(Material):
+class IsotropicElasticity1D(MechanicsMaterial):
     """Isotropic elastic material in 1D.
 
     Args:
@@ -252,11 +256,13 @@ class IsotropicElasticity1D(Material):
     Notes:
         - Small-strain assumption.
         - No internal state variables (``n_state = 0``).
-        - The stiffness "tensor" is simply $C_{0000} = E$.
+        - Supports batched/vectorized material parameters.
 
     Info: 1D stiffness tensor
         The 1D stiffness "tensor" is simply $C_{0000} = E$.
     """
+
+    dim = 1
 
     def __init__(self, E: float | Tensor, rho: float | Tensor = 1.0):
         # Convert float inputs to tensors
@@ -321,7 +327,7 @@ class IsotropicElasticity1D(Material):
         return stress_new, state_new, ddsdde
 
 
-class OrthotropicElasticity3D(Material):
+class OrthotropicElasticity3D(MechanicsMaterial):
     """Orthotropic elastic material in 3D.
 
     Args:
@@ -543,6 +549,23 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         - The transverse shear modulus is derived as
           $G_T = E_T / (2(1 + \\nu_T))$.
         - Raises `ValueError` if $G_L > E_L / (2(1 + \\nu_L))$.
+
+    Info: Transverse isotropy as a special case
+        Isotropy in the transverse plane (2-3) reduces the nine independent
+        constants of `OrthotropicElasticity3D` to five,
+        $$
+            E_1 = E_L, \\quad E_2 = E_3 = E_T
+        $$
+        $$
+            \\nu_{12} = \\nu_{13} = \\nu_L, \\quad \\nu_{23} = \\nu_T
+        $$
+        $$
+            G_{12} = G_{13} = G_L, \\quad
+            G_{23} = G_T = \\frac{E_T}{2 (1 + \\nu_T)}
+        $$
+        where the transverse shear modulus $G_T$ follows from isotropy in the
+        2-3 plane. These nine values are handed to `OrthotropicElasticity3D`,
+        which assembles the stiffness tensor $C_{ijkl}$.
     """
 
     def __init__(
@@ -554,21 +577,10 @@ class TransverseIsotropicElasticity3D(OrthotropicElasticity3D):
         G_L: float | Tensor,
         rho: float | Tensor = 1.0,
     ):
-        # https://webpages.tuni.fi/rakmek/jmm/slides/jmm_lect_06.pdf
-        if G_L > E_L / (2 * (1 + nu_L)):
-            raise ValueError("G must be less than E_L/(2*(1+nu_L))")
-
-        E_1 = E_L
-        E_2 = E_T
-        E_3 = E_T
-        nu_12 = nu_L
-        nu_13 = nu_L
-        nu_23 = nu_T
-        G_12 = G_L
-        G_13 = G_L
-        G_23 = E_2 / (2 * (1 + nu_23))
-
-        super().__init__(E_1, E_2, E_3, nu_12, nu_13, nu_23, G_12, G_13, G_23, rho)
+        if torch.as_tensor(G_L > E_L / (2 * (1 + nu_L))).any():
+            raise ValueError("G_L must be less than E_L/(2*(1+nu_L)).")
+        G_T = E_T / (2 * (1 + nu_T))
+        super().__init__(E_L, E_T, E_T, nu_L, nu_L, nu_T, G_L, G_L, G_T, rho)
 
 
 class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
@@ -603,6 +615,8 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         with $\\nu_{21} = \\nu_{12} E_2 / E_1$ and
         $C_{1212} = G_{12}$.
     """
+
+    dim = 2
 
     def __init__(
         self,
@@ -676,6 +690,59 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         return new
 
 
+class TransverseIsotropicElasticityPlaneStress(OrthotropicElasticityPlaneStress):
+    """Transversely isotropic elastic material for plane stress problems.
+
+    A special case of `OrthotropicElasticityPlaneStress` where the in-plane
+    direction 1 is the axis of symmetry and the transverse plane (2-3) is
+    isotropic, as a unidirectional ply in a shell or laminate is.
+
+    Args:
+        E_L (Tensor | float): Longitudinal Young's modulus.
+        E_T (Tensor | float): Transverse Young's modulus.
+        nu_L (Tensor | float): Longitudinal Poisson's ratio
+            $\\nu_L = \\nu_{12} = \\nu_{13}$.
+        nu_T (Tensor | float): Transverse Poisson's ratio $\\nu_T = \\nu_{23}$.
+        G_L (Tensor | float): Longitudinal shear modulus $G_L = G_{12} = G_{13}$.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Only five independent constants: $E_L, E_T, \\nu_L, \\nu_T, G_L$.
+        - The transverse shear modulus is derived as
+          $G_T = E_T / (2(1 + \\nu_T))$.
+        - Raises `ValueError` if $G_L > E_L / (2(1 + \\nu_L))$.
+
+    Info: Transverse isotropy as a special case
+        Isotropy in the transverse plane (2-3) reduces the constants of
+        `OrthotropicElasticityPlaneStress` to five,
+        $$
+            E_1 = E_L, \\quad E_2 = E_T, \\quad \\nu_{12} = \\nu_L
+        $$
+        $$
+            G_{12} = G_{13} = G_L, \\quad
+            G_{23} = G_T = \\frac{E_T}{2 (1 + \\nu_T)}
+        $$
+        where the transverse shear modulus $G_T$ follows from isotropy in the
+        2-3 plane. Only $E_L$, $E_T$, $\\nu_L$ and $G_L$ enter the plane stress
+        stiffness; $G_L$ and $G_T$ are the transverse shear moduli read by
+        `Shell` and `Laminate`.
+    """
+
+    def __init__(
+        self,
+        E_L: float | Tensor,
+        E_T: float | Tensor,
+        nu_L: float | Tensor,
+        nu_T: float | Tensor,
+        G_L: float | Tensor,
+        rho: float | Tensor = 1.0,
+    ):
+        if torch.as_tensor(G_L > E_L / (2 * (1 + nu_L))).any():
+            raise ValueError("G_L must be less than E_L/(2*(1+nu_L)).")
+        G_T = E_T / (2 * (1 + nu_T))
+        super().__init__(E_L, E_T, nu_L, G_L, G_L, G_T, rho)
+
+
 class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
     """Orthotropic elastic material for plane strain problems.
 
@@ -706,6 +773,8 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         $F = (1 - \\nu_{12}\\nu_{21} - \\nu_{13}\\nu_{31}
         - \\nu_{23}\\nu_{32} - 2\\nu_{21}\\nu_{32}\\nu_{13})^{-1}$.
     """
+
+    dim = 2
 
     def __init__(
         self,
@@ -791,3 +860,58 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         new.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
         new.G_12 = 1 / S[..., 2, 2]
         return new
+
+
+class TransverseIsotropicElasticityPlaneStrain(OrthotropicElasticityPlaneStrain):
+    """Transversely isotropic elastic material for plane strain problems.
+
+    A special case of `OrthotropicElasticityPlaneStrain` where the in-plane
+    direction 1 is the axis of symmetry and the transverse plane (2-3) is
+    isotropic.
+
+    Args:
+        E_L (Tensor | float): Longitudinal Young's modulus.
+        E_T (Tensor | float): Transverse Young's modulus.
+        nu_L (Tensor | float): Longitudinal Poisson's ratio
+            $\\nu_L = \\nu_{12} = \\nu_{13}$.
+        nu_T (Tensor | float): Transverse Poisson's ratio $\\nu_T = \\nu_{23}$.
+        G_L (Tensor | float): Longitudinal shear modulus $G_L = G_{12} = G_{13}$.
+        rho (Tensor | float): Mass density. Default is `1.0`.
+
+    Notes:
+        - Only five independent constants: $E_L, E_T, \\nu_L, \\nu_T, G_L$.
+        - The transverse shear modulus is derived as
+          $G_T = E_T / (2(1 + \\nu_T))$.
+        - Raises `ValueError` if $G_L > E_L / (2(1 + \\nu_L))$.
+
+    Info: Transverse isotropy as a special case
+        Isotropy in the transverse plane (2-3) reduces the nine independent
+        constants of `OrthotropicElasticityPlaneStrain` to five,
+        $$
+            E_1 = E_L, \\quad E_2 = E_3 = E_T
+        $$
+        $$
+            \\nu_{12} = \\nu_{13} = \\nu_L, \\quad \\nu_{23} = \\nu_T
+        $$
+        $$
+            G_{12} = G_{13} = G_L, \\quad
+            G_{23} = G_T = \\frac{E_T}{2 (1 + \\nu_T)}
+        $$
+        where the transverse shear modulus $G_T$ follows from isotropy in the
+        2-3 plane. The plane strain condition $\\varepsilon_{33} = 0$ is then
+        enforced by `OrthotropicElasticityPlaneStrain`.
+    """
+
+    def __init__(
+        self,
+        E_L: float | Tensor,
+        E_T: float | Tensor,
+        nu_L: float | Tensor,
+        nu_T: float | Tensor,
+        G_L: float | Tensor,
+        rho: float | Tensor = 1.0,
+    ):
+        if torch.as_tensor(G_L > E_L / (2 * (1 + nu_L))).any():
+            raise ValueError("G_L must be less than E_L/(2*(1+nu_L)).")
+        G_T = E_T / (2 * (1 + nu_T))
+        super().__init__(E_L, E_T, E_T, nu_L, nu_L, nu_T, G_L, G_L, G_T, rho)

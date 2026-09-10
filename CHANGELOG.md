@@ -2,7 +2,17 @@
 
 ## Unreleased
 
+### Added
+- `IsotropicDamage1D`, `IsotropicDamagePlaneStrain` and `IsotropicDamagePlaneStress`, the remaining kinematics of `IsotropicDamage3D`, so a `Truss` and a `Planar` model can carry damage. Under plane stress the out-of-plane strain follows the in-plane one, so it drives the damage where it dominates and contributes to the tangent.
+- `TransverseIsotropicElasticityPlaneStress` and `TransverseIsotropicElasticityPlaneStrain`, the plane counterparts of `TransverseIsotropicElasticity3D`. A unidirectional ply in a shell or laminate no longer needs its transverse shear moduli typed out by hand.
+
+### Fixed
+- `IsotropicPlasticity1D` computes its elastoplastic tangent per element. The hardening derivative broadcast against the wrong axis, so a `sigma_f_prime` returning one value per element raised a shape error as soon as more than one element yielded.
+- `TransverseIsotropicElasticity3D` accepts batched constants. Its admissibility check compared tensors with `>` and raised `Boolean value of Tensor with more than one value is ambiguous`.
+
 ### Changed
+- **Breaking:** `Material` no longer defines `step(...)`. Materials derive from `MechanicsMaterial` or `HeatMaterial`, each carrying the `step(...)` of its own physics, and declare their spatial dimension through `Material.dim`. A model and a laminate layer take only a material matching both, and `import_mesh(...)` and the typed imports return the model matching the material's physics.
+- `import_shell(...)` reads a flat surface mesh as a `Shell`, which `import_mesh(...)` reads as `Planar`.
 - `Assembly.solve(verbose=True)` warns about single precision, as `FEM.solve(...)` already did. Both reports are built by one `solve_report(...)` in `torchfem.report` now.
 - `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two before. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` used to take from the last.
 - `Assembly.plot3d(...)` takes `axes` and a `camera` position and themes the plotter itself, as a part's `plot(...)` does.
@@ -10,6 +20,8 @@
 - `THEMES`, the color schemes the documentation figures are drawn in, moved from `torchfem.elements` to `torchfem.plot_utils`, where the rest of the plotting helpers live.
 
 ### Removed
+- **Breaking:** `import_planar(...)` and `import_solid(...)`. `import_mesh(...)` returns the model matching the material. `import_shell(...)` stays, since a shell is the one type `import_mesh(...)` cannot infer from its arguments.
+- `IsotropicConductivity1D`. No model consumes a 1D thermal material.
 - `Element.plot(...)` drew the shape function figures of the documentation and nothing else, defaulting to a `docs/` path that an installed package does not carry. `docs/images/shape_functions/plot_elements.py` now draws them, like every other documentation figure.
 
 ## Version 0.11.0 - September 7 2026
