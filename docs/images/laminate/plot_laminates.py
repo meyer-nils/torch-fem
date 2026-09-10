@@ -60,7 +60,6 @@ def main():
         [
             ("[0, 90, 90, 0]", laminate([0, 90, 90, 0])),
             ("[0, 45] symmetric", laminate([0, 45], symmetric=True)),
-            ("[0, 45] offset='top'", laminate([0, 45], offset="top")),
         ],
     )
 
