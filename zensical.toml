@@ -99,6 +99,7 @@ extra_javascript = [
 [project.theme]
 language = "en"
 logo = "images/logo.png"
+favicon = "images/favicon.png"
 
 
 features = [
