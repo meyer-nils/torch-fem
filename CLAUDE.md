@@ -13,7 +13,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 - Default to one line. Write a second only if the first cannot carry the meaning.
 
 ## Commands
-- **Environment:** `conda activate torchfem`
+Run tools with `uv run` (set up with `uv sync --all-extras`).
+
 - **Lint:** `ruff format . && ruff check --fix .`
 - **Types:** `basedpyright`
 - **Test:** `pytest`

@@ -46,3 +46,8 @@ docs/images/laminate/*.png
 .coverage.*
 coverage.xml
 htmlcov
+
+# uv environment
+.venv
+.python-version
+uv.lock
