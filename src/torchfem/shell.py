@@ -22,7 +22,7 @@ import torch
 from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
-from .base import FEM, Mechanics
+from .base import FEM, Heat, Mechanics
 from .elements import Element, Quad1, Tria1
 from .laminate import Laminate
 from .materials import Material, MechanicsMaterial
@@ -58,7 +58,7 @@ class ShellGeometry(FEM):
         offset: Tensor | float = 0.0,
         orientation: Tensor | None = None,
     ):
-        """Initialize the shell geometry.
+        """Initialize the shell FEM problem.
 
         Args:
             nodes: Nodal coordinates with shape [n_nod, 3].
@@ -127,7 +127,8 @@ class ShellGeometry(FEM):
                 coordinates.
 
         Returns:
-            Nodal loads with shape [n_nod, 3], to be added to `forces[:, 0:3]`.
+            Nodal loads with shape [n_nod, k], to be added to `forces[:, 0:3]`
+            or `heat_flux`.
         """
         conn = self.elements[mask[self.elements].all(dim=1)]
         return self._integrate_facet_load(
@@ -390,6 +391,11 @@ class Shell(ShellGeometry, Mechanics):
     a tuning parameter on a coarse doubly-curved mesh, and a folded or branched
     shell, whose nodes carry no unique normal, is not supported.
 
+    `solve` reports the stress of each through-thickness station in the local
+    material frame of its element, not in global coordinates. It leaves the
+    gradient at the identity, as the formulation integrates strain increments
+    directly and never forms a deformation gradient.
+
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 3].
         elements: Triangle or quadrilateral connectivity with shape [n_elem, 3]
@@ -596,7 +602,7 @@ class Shell(ShellGeometry, Mechanics):
 
     @property
     def n_flux(self) -> list[int]:
-        """Shape of the stress tensor."""
+        """Shape of the local stress tensor."""
         return [2, 2]
 
     def _Dm(self, B):
@@ -951,3 +957,44 @@ class Shell(ShellGeometry, Mechanics):
             )
 
         return k, f, grad_new, flux_new, state_new
+
+
+class ShellHeat(ShellGeometry, Heat):
+    """Heat conduction model for thin-walled structures.
+
+    Uses the same flat facets, local frames and plotting as `Shell`, with a
+    single temperature degree of freedom per node. The temperature is constant
+    through the thickness, so the section conducts in-plane only.
+
+    `solve` reports the heat flux and the temperature gradient in the local
+    material frame of each element, as `Shell` reports its stress.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 3].
+        elements: Triangle or quadrilateral connectivity with shape [n_elem, 3]
+            or [n_elem, 4].
+        material: Vectorized plane thermal material.
+        thickness: Element thicknesses with shape [n_elem].
+        orientation: Per-element material reference direction with shape
+            [n_elem, 3].
+        heat_flux: Applied nodal heat sources with shape [n_nod, 1].
+        temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
+    """
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the local heat flux tensor."""
+        return [1, 2]
+
+    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
+        """Element conductivity matrix contribution."""
+        return BCB.mul_((self.thickness * detJ)[..., None, None])
+
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
+        """Element internal heat flux vector."""
+        return torch.einsum("...,...,...iI,...Ai->...IA", self.thickness, detJ, B, S)
+
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Element capacity matrix contribution."""
+        return rho * self.thickness * detJ

@@ -5,6 +5,7 @@
 ### Added
 - `IsotropicDamage1D`, `IsotropicDamagePlaneStrain` and `IsotropicDamagePlaneStress`, the remaining kinematics of `IsotropicDamage3D`, so a `Truss` and a `Planar` model can carry damage. Under plane stress the out-of-plane strain follows the in-plane one, so it drives the damage where it dominates and contributes to the tangent.
 - `TransverseIsotropicElasticityPlaneStress` and `TransverseIsotropicElasticityPlaneStrain`, the plane counterparts of `TransverseIsotropicElasticity3D`. A unidirectional ply in a shell or laminate no longer needs its transverse shear moduli typed out by hand.
+- `ShellHeat`, an in-plane heat conduction model on the elements, local frames and plotting of `Shell`, which it shares through the new `ShellGeometry` base.
 
 ### Fixed
 - A Newton or linear solve that misses its tolerance raises the new `ConvergenceError` in `torchfem.sparse`, and the increment cutback in `FEM.solve(...)` catches only that.

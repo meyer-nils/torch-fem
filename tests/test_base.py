@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from torchfem import Planar, PlanarHeat, Solid, SolidHeat
+from torchfem import Planar, PlanarHeat, ShellHeat, Solid, SolidHeat
 from torchfem.materials import (
     IsotropicConductivity2D,
     IsotropicConductivity3D,
@@ -18,6 +18,12 @@ def _planar() -> Planar:
 
 def _planar_heat() -> PlanarHeat:
     return PlanarHeat(*rect_quad(3, 3), IsotropicConductivity2D(kappa=400.0))
+
+
+def _flat_quad() -> tuple[torch.Tensor, torch.Tensor]:
+    """A single quadrilateral facet in the z = 0 plane, for the shell models."""
+    nodes, elements = rect_quad(2, 2)
+    return torch.hstack([nodes, torch.zeros(len(nodes), 1)]), elements
 
 
 class TestMechanicsBoundaryConditions:
@@ -277,6 +283,16 @@ class TestMaterialCompatibility:
             (
                 lambda: SolidHeat(*cube_hexa(2, 2, 2), IsotropicConductivity2D(400.0)),
                 "SolidHeat needs a 3D HeatMaterial, not a 2D IsotropicConductivity2D",
+            ),
+            (
+                lambda: ShellHeat(*_flat_quad(), IsotropicConductivity3D(400.0)),
+                "ShellHeat needs a 2D HeatMaterial, not a 3D IsotropicConductivity3D",
+            ),
+            (
+                lambda: ShellHeat(
+                    *_flat_quad(), IsotropicElasticityPlaneStress(1e3, 0.3)
+                ),
+                "ShellHeat needs a 2D HeatMaterial, not a 2D IsotropicElasticity",
             ),
         ],
     )
