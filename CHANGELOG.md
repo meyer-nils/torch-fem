@@ -8,6 +8,7 @@
 - `ShellHeat`, an in-plane heat conduction model on the elements, local frames and plotting of `Shell`, which it shares through the new `ShellGeometry` base.
 
 ### Fixed
+- `ext_strain` takes a tensor of the model's flux shape. It demanded one nodal DOF per spatial dimension, which a `Shell` and a `Truss` do not have, so an external strain could not be imposed on either.
 - A Newton or linear solve that misses its tolerance raises the new `ConvergenceError` in `torchfem.sparse`, and the increment cutback in `FEM.solve(...)` catches only that.
 - `IsotropicPlasticity1D` computes its elastoplastic tangent per element. The hardening derivative broadcast against the wrong axis, so a `sigma_f_prime` returning one value per element raised a shape error as soon as more than one element yielded.
 - `TransverseIsotropicElasticity3D` accepts batched constants. Its admissibility check compared tensors with `>` and raised `Boolean value of Tensor with more than one value is ambiguous`.

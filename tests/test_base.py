@@ -1,11 +1,12 @@
 import pytest
 import torch
 
-from torchfem import Planar, PlanarHeat, ShellHeat, Solid, SolidHeat
+from torchfem import Planar, PlanarHeat, Shell, ShellHeat, Solid, SolidHeat, Truss
 from torchfem.materials import (
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicDamage3D,
+    IsotropicElasticity1D,
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
 )
@@ -24,6 +25,22 @@ def _flat_quad() -> tuple[torch.Tensor, torch.Tensor]:
     """A single quadrilateral facet in the z = 0 plane, for the shell models."""
     nodes, elements = rect_quad(2, 2)
     return torch.hstack([nodes, torch.zeros(len(nodes), 1)]), elements
+
+
+def _solid() -> Solid:
+    return Solid(*cube_hexa(3, 3, 3), IsotropicElasticity3D(1000.0, 0.3))
+
+
+def _shell() -> Shell:
+    nodes, elements = rect_quad(3, 3)
+    nodes = torch.hstack([nodes, torch.zeros(len(nodes), 1)])
+    material = IsotropicElasticityPlaneStress(1000.0, 0.3)
+    return Shell(nodes, elements, material, thickness=0.1)
+
+
+def _truss() -> Truss:
+    nodes = torch.tensor([[0.0, 0.0], [1.0, 0.0]])
+    return Truss(nodes, torch.tensor([[0, 1]]), IsotropicElasticity1D(1000.0))
 
 
 class TestMechanicsBoundaryConditions:
@@ -48,9 +65,41 @@ class TestMechanicsBoundaryConditions:
 
     def test_ext_strain_round_trips(self):
         model = _planar()
-        value = torch.randn(model.n_elem, model.n_dof_per_node, model.n_dim)
+        value = torch.randn(model.n_elem, *model.n_flux)
         model.ext_strain = value
         assert torch.equal(model.ext_strain, value)
+
+    # A shell and a truss carry fewer strain components than they have nodal
+    # DOFs, where a planar model and a solid carry the same number.
+    @pytest.mark.parametrize("build", [_shell, _truss], ids=["shell", "truss"])
+    def test_ext_strain_takes_the_flux_shape(self, build):
+        model = build()
+        value = torch.randn(model.n_elem, *model.n_flux)
+        model.ext_strain = value
+        assert torch.equal(model.ext_strain, value)
+        with pytest.raises(ValueError, match="same shape as strains"):
+            model.ext_strain = torch.zeros(
+                model.n_elem, model.n_dof_per_node, model.n_dim
+            )
+
+    @pytest.mark.parametrize(
+        ("build", "factor"),
+        [
+            (_planar, 1 / (1 - 0.3)),
+            (_shell, 1 / (1 - 0.3)),
+            (_solid, 1 / (1 - 2 * 0.3)),
+        ],
+        ids=["planar", "shell", "solid"],
+    )
+    def test_ext_strain_drives_a_restrained_thermal_stress(self, build, factor):
+        model = build()
+        strain = 1.2e-3
+        model.ext_strain = strain * torch.eye(model.n_flux[0]).expand(
+            model.n_elem, *model.n_flux
+        )
+        model.constraints[:] = True
+        flux = model.solve(method="direct")[2]
+        assert float(flux[:, 0, 0].mean()) == pytest.approx(-1000.0 * strain * factor)
 
     def test_ext_strain_rejects_wrong_shape(self):
         model = _planar()
