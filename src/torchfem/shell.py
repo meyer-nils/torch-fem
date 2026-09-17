@@ -309,8 +309,7 @@ class ShellGeometry(FEM):
                 )
 
         # Symmetry constraints expected on each mirrored plane: the normal
-        # translation and the two rotations about the in-plane axes. A
-        # temperature needs none, as a mirror plane carries no flux.
+        # translation and the two in-plane rotations. A temperature needs none.
         symmetry = torch.zeros_like(self.constraints)
         tol = 1e-6 * float(self.char_lengths.mean())
         for axis, mirrored_axis in enumerate(mirror):
@@ -391,10 +390,10 @@ class Shell(ShellGeometry, Mechanics):
     a tuning parameter on a coarse doubly-curved mesh, and a folded or branched
     shell, whose nodes carry no unique normal, is not supported.
 
-    `solve` reports the stress of each through-thickness station in the local
-    material frame of its element, not in global coordinates. It leaves the
-    gradient at the identity, as the formulation integrates strain increments
-    directly and never forms a deformation gradient.
+    `solve` reports stress in the local material frame of each element, and
+    leaves the gradient at the identity, as the formulation never forms one. Its
+    default aggregation averages the through-thickness stations, where a bending
+    stress cancels: pass `aggregate_integration_points=False` to read one.
 
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 3].
@@ -962,12 +961,11 @@ class Shell(ShellGeometry, Mechanics):
 class ShellHeat(ShellGeometry, Heat):
     """Heat conduction model for thin-walled structures.
 
-    Uses the same flat facets, local frames and plotting as `Shell`, with a
-    single temperature degree of freedom per node. The temperature is constant
-    through the thickness, so the section conducts in-plane only.
+    Uses the same flat facets, local frames and plotting as `Shell`, with one
+    temperature per node, so the section conducts in-plane only.
 
-    `solve` reports the heat flux and the temperature gradient in the local
-    material frame of each element, as `Shell` reports its stress.
+    `solve` reports flux and gradient in the local material frame, as `Shell`
+    reports its stress.
 
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 3].
