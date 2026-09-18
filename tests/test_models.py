@@ -5,9 +5,10 @@ import math
 import pytest
 import torch
 
-from torchfem import Planar, Shell, ShellHeat, Solid, Truss
+from torchfem import Planar, Shell, ShellHeat, Solid, Truss, TrussHeat
 from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
+    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicDamage3D,
     IsotropicDamagePlaneStrain,
@@ -565,3 +566,84 @@ class TestShellHeat:
         )[0]
         steady = self.dT * axis / self.L
         assert torch.allclose(temperature[-1, :, 0], steady, atol=1e-4)
+
+
+class TestTrussHeat:
+    """A bar conducts along its axis alone, with a conductance `kappa * A / L`."""
+
+    L, A, kappa, dT = 3.0, 0.25, 45.0, 100.0
+
+    def _chain(self, n: int = 6, area: float | None = None):
+        """A straight chain of bars, held cold at one end and hot at the other."""
+        x = torch.linspace(0.0, self.L, n)
+        nodes = torch.stack([x, torch.zeros(n)], dim=1)
+        elements = torch.tensor([[i, i + 1] for i in range(n - 1)])
+        chain = TrussHeat(nodes, elements, IsotropicConductivity1D(kappa=self.kappa))
+        chain.areas = torch.full((n - 1,), self.A if area is None else area)
+        chain.constraints[[0, n - 1]] = True
+        chain.temperatures[n - 1, 0] = self.dT
+        return chain, x
+
+    def test_temperature_is_linear_along_the_chain(self):
+        chain, x = self._chain()
+        temperature = chain.solve(method="direct")[0]
+        assert torch.allclose(temperature[:, 0], self.dT * x / self.L)
+
+    def test_heat_flow_matches_the_one_dimensional_solution(self):
+        chain, _ = self._chain()
+        flux = chain.solve(method="direct")[1]
+        expected = self.kappa * self.A * self.dT / self.L
+        assert float(flux[-1]) == pytest.approx(expected)
+
+    @pytest.mark.parametrize("area", [0.125, 0.25, 0.5])
+    def test_area_scales_the_conductance(self, area):
+        chain, _ = self._chain(area=area)
+        flux = chain.solve(method="direct")[1]
+        expected = self.kappa * area * self.dT / self.L
+        assert float(flux[-1]) == pytest.approx(expected)
+
+    def test_a_bar_conducts_along_its_axis_in_three_dimensions(self):
+        # The joint temperature splits by the two bar lengths alone, whatever
+        # direction they point in.
+        nodes = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0], [2.0, 0.0, 0.5]])
+        elements = torch.tensor([[0, 1], [1, 2]])
+        bars = TrussHeat(nodes, elements, IsotropicConductivity1D(kappa=self.kappa))
+        bars.constraints[[0, 2]] = True
+        bars.temperatures[2, 0] = self.dT
+        temperature = bars.solve(method="direct")[0]
+
+        first = float((nodes[1] - nodes[0]).norm())
+        second = float((nodes[2] - nodes[1]).norm())
+        assert float(temperature[1, 0]) == pytest.approx(
+            self.dT * first / (first + second)
+        )
+
+    def test_parallel_bars_carry_heat_in_proportion_to_their_area(self):
+        nodes = torch.tensor([[0.0, 0.0], [1.0, 1.0], [1.0, -1.0], [2.0, 0.0]])
+        elements = torch.tensor([[0, 1], [1, 3], [0, 2], [2, 3]])
+        paths = TrussHeat(nodes, elements, IsotropicConductivity1D(kappa=self.kappa))
+        paths.areas = torch.tensor([1.0, 1.0, 3.0, 3.0])
+        paths.constraints[[0, 3]] = True
+        paths.temperatures[3, 0] = self.dT
+        temperature, reaction, flux, _, _ = paths.solve(method="direct")
+
+        # Equal length and conductivity, so the flux matches and the power, which
+        # carries the area, splits three to one
+        assert float(flux[2]) == pytest.approx(float(flux[0]))
+        assert float(temperature[1, 0]) == pytest.approx(0.5 * self.dT)
+        assert float(reaction[3]) == pytest.approx(
+            4.0 * self.kappa * self.dT / (2.0 * float(2.0**0.5))
+        )
+
+    def test_transient_relaxes_to_the_steady_solution(self):
+        x = torch.linspace(0.0, self.L, 6)
+        nodes = torch.stack([x, torch.zeros(6)], dim=1)
+        elements = torch.tensor([[i, i + 1] for i in range(5)])
+        material = IsotropicConductivity1D(kappa=self.kappa, rho=2.0)
+        chain = TrussHeat(nodes, elements, material)
+        chain.constraints[[0, 5]] = True
+        chain.temperatures[5, 0] = self.dT
+        temperature = chain.time_integration(
+            t_output=torch.tensor([0.0, 20.0]), delta_t=0.05
+        )[0]
+        assert torch.allclose(temperature[-1, :, 0], self.dT * x / self.L, atol=1e-5)

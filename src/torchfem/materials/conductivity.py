@@ -126,6 +126,38 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
         self.KAPPA = self.KAPPA[..., :2, :2]
 
 
+class IsotropicConductivity1D(IsotropicConductivity3D):
+    """Isotropic heat conductivity material in 1D.
+
+    Args:
+        kappa (Tensor | float): Thermal conductivity along the bar. If a float is
+            provided, it is converted.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+            *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
+
+    Notes:
+        - No internal state variables (``n_state = 0``).
+        - Supports batched/vectorized material parameters.
+        - The inherited `step` method operates on thermal tensors with shapes
+          `(..., 1, 1)` and returns an algorithmic tangent of shape `(..., 1, 1)`.
+
+    Info: Definition of axial conductivity
+        Same constitutive law as `IsotropicConductivity3D`, reduced to the single
+        component along the bar,
+        $$
+            q = \\kappa \\frac{\\partial T}{\\partial s}.
+        $$
+        Heat conduction transverse to the bar is not modelled.
+    """
+
+    dim = 1
+
+    def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
+        super().__init__(kappa, rho)
+        self.KAPPA = self.KAPPA[..., :1, :1]
+
+
 class OrthotropicConductivity3D(IsotropicConductivity3D):
     """Orthotropic heat conductivity material in 3D.
 

@@ -1,8 +1,18 @@
 import pytest
 import torch
 
-from torchfem import Planar, PlanarHeat, Shell, ShellHeat, Solid, SolidHeat, Truss
+from torchfem import (
+    Planar,
+    PlanarHeat,
+    Shell,
+    ShellHeat,
+    Solid,
+    SolidHeat,
+    Truss,
+    TrussHeat,
+)
 from torchfem.materials import (
+    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicDamage3D,
@@ -19,6 +29,11 @@ def _planar() -> Planar:
 
 def _planar_heat() -> PlanarHeat:
     return PlanarHeat(*rect_quad(3, 3), IsotropicConductivity2D(kappa=400.0))
+
+
+def _bar() -> tuple[torch.Tensor, torch.Tensor]:
+    """A single bar element, for the truss models."""
+    return torch.tensor([[0.0, 0.0], [1.0, 0.0]]), torch.tensor([[0, 1]])
 
 
 def _flat_quad() -> tuple[torch.Tensor, torch.Tensor]:
@@ -342,6 +357,14 @@ class TestMaterialCompatibility:
                     *_flat_quad(), IsotropicElasticityPlaneStress(1e3, 0.3)
                 ),
                 "ShellHeat needs a 2D HeatMaterial, not a 2D IsotropicElasticity",
+            ),
+            (
+                lambda: TrussHeat(*_bar(), IsotropicConductivity2D(400.0)),
+                "TrussHeat needs a 1D HeatMaterial, not a 2D IsotropicConductivity2D",
+            ),
+            (
+                lambda: Truss(*_bar(), IsotropicConductivity1D(400.0)),
+                "Truss needs a 1D MechanicsMaterial, not a 1D IsotropicConductivity1D",
             ),
         ],
     )
