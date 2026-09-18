@@ -26,16 +26,16 @@ In `torch-fem`, this logic is encapsulated in the `step()` method of each materi
 A model takes only a material of its own physics and spatial dimension, and rejects
 anything else when it is constructed. `PS` is plane stress and `PE` plane strain.
 
-| Material | Truss | Planar | Solid | Shell | Laminate | PlanarHeat | SolidHeat |
-|:---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Isotropic elasticity | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — |
-| Orthotropic elasticity | — | PS · PE | 3D | PS · PE | PS · PE | — | — |
-| Transverse isotropic elasticity | — | PS · PE | 3D | PS · PE | PS · PE | — | — |
-| Isotropic plasticity | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — |
-| Hyperelasticity | — | PS · PE | 3D | — | — | — | — |
-| Isotropic damage | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — |
-| Isotropic conductivity | — | — | — | — | — | 2D | 3D |
-| Orthotropic conductivity | — | — | — | — | — | 2D | 3D |
+| Material | Truss | Planar | Solid | Shell | Laminate | TrussHeat | PlanarHeat | SolidHeat | ShellHeat |
+|:---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Isotropic elasticity | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — | — | — |
+| Orthotropic elasticity | — | PS · PE | 3D | PS · PE | PS · PE | — | — | — | — |
+| Transverse isotropic elasticity | — | PS · PE | 3D | PS · PE | PS · PE | — | — | — | — |
+| Isotropic plasticity | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — | — | — |
+| Hyperelasticity | — | PS · PE | 3D | — | — | — | — | — | — |
+| Isotropic damage | 1D | PS · PE | 3D | PS · PE | PS · PE | — | — | — | — |
+| Isotropic conductivity | — | — | — | — | — | 1D | 2D | 3D | 2D |
+| Orthotropic conductivity | — | — | — | — | — | — | 2D | 3D | 2D |
 
 A hyperelastic material needs geometric nonlinearity, which `Shell` and `Truss` do not
 support, so those cells stay empty whatever material is added.
