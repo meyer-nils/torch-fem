@@ -32,6 +32,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Truss modal analysis](images/examples/basic/truss/modal.png)](examples/basic/truss/modal.html)
 
+-   **Static heat conduction**
+
+    [![Static heat conduction](images/examples/basic/truss/thermal_static.png)](examples/basic/truss/thermal_static.html)
+
 </div>
 
 ### Planar
