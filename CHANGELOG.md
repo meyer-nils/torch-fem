@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.12.0 - September 18 2026
 
 ### Added
 - `IsotropicDamage1D`, `IsotropicDamagePlaneStrain` and `IsotropicDamagePlaneStress`, so a `Truss` and a `Planar` model can carry damage. Under plane stress the out-of-plane strain follows the in-plane one and contributes to the tangent.
