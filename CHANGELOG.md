@@ -3,34 +3,32 @@
 ## Unreleased
 
 ### Added
-- `IsotropicDamage1D`, `IsotropicDamagePlaneStrain` and `IsotropicDamagePlaneStress`, the remaining kinematics of `IsotropicDamage3D`, so a `Truss` and a `Planar` model can carry damage. Under plane stress the out-of-plane strain follows the in-plane one, so it drives the damage where it dominates and contributes to the tangent.
-- `TransverseIsotropicElasticityPlaneStress` and `TransverseIsotropicElasticityPlaneStrain`, the plane counterparts of `TransverseIsotropicElasticity3D`. A unidirectional ply in a shell or laminate no longer needs its transverse shear moduli typed out by hand.
-- `TrussHeat` and `IsotropicConductivity1D`, an axial heat conduction model on the bars, integration and plotting of `Truss`, which it shares through the new `TrussGeometry` base. A bar conducts along its axis alone.
-- `ShellHeat`, an in-plane heat conduction model on the elements, local frames and plotting of `Shell`, which it shares through the new `ShellGeometry` base.
-
-### Fixed
-- `integrate_line_load(...)` takes a scalar on a thermal model in 3D. A scalar was refused as an ambiguous direction, which a temperature does not have, so a `ShellHeat` could not be loaded along an edge.
-- `import_mesh(...)` and `import_shell(...)` read a surface mesh with a `HeatMaterial` as a `ShellHeat`. The former raised "A surface mesh has no heat model", which stopped being true with `ShellHeat`.
-- `ext_strain` takes a tensor of the model's flux shape. It demanded one nodal DOF per spatial dimension, which a `Shell` and a `Truss` do not have, so an external strain could not be imposed on either.
-- A Newton or linear solve that misses its tolerance raises the new `ConvergenceError` in `torchfem.sparse`, and the increment cutback in `FEM.solve(...)` catches only that.
-- `IsotropicPlasticity1D` computes its elastoplastic tangent per element. The hardening derivative broadcast against the wrong axis, so a `sigma_f_prime` returning one value per element raised a shape error as soon as more than one element yielded.
-- `TransverseIsotropicElasticity3D` accepts batched constants. Its admissibility check compared tensors with `>` and raised `Boolean value of Tensor with more than one value is ambiguous`.
+- `IsotropicDamage1D`, `IsotropicDamagePlaneStrain` and `IsotropicDamagePlaneStress`, so a `Truss` and a `Planar` model can carry damage. Under plane stress the out-of-plane strain follows the in-plane one and contributes to the tangent.
+- `TransverseIsotropicElasticityPlaneStress` and `TransverseIsotropicElasticityPlaneStrain`, so a unidirectional ply no longer needs its transverse shear moduli typed out by hand.
+- `TrussHeat` and `ShellHeat`, axial and in-plane heat conduction models sharing the elements, integration and plotting of `Truss` and `Shell` through the new `TrussGeometry` and `ShellGeometry` bases. A bar conducts along its axis alone.
 
 ### Changed
-- **Breaking:** `Material` no longer defines `step(...)`. Materials derive from `MechanicsMaterial` or `HeatMaterial`, each carrying the `step(...)` of its own physics, and declare their spatial dimension through `Material.dim`. A model and a laminate layer take only a material matching both, and `import_mesh(...)` and the typed imports return the model matching the material's physics.
+- **Breaking:** `Material` no longer defines `step(...)`. Materials derive from `MechanicsMaterial` or `HeatMaterial`, each carrying the `step(...)` of its own physics, and declare their spatial dimension through `Material.dim`. `HeatMaterial.step(...)` takes `(grad_inc, grad, flux, state, cl, iter)`, dropping the external strain increment a temperature has no use for. A model and a laminate layer take only a matching material, and `import_mesh(...)` and the typed imports return the model matching the material's physics.
+- **Breaking:** The reference surface `offset` moved from `Laminate` to `Shell` and `import_shell(...)`, where it applies to a homogeneous section too, takes one value per element, and is a fraction only (the `"mid"`/`"top"`/`"bottom"` strings are gone). `Laminate` is now a plain stack about its mid-plane.
 - `import_shell(...)` reads a flat surface mesh as a `Shell`, which `import_mesh(...)` reads as `Planar`.
-- `Assembly.solve(verbose=True)` warns about single precision, as `FEM.solve(...)` already did. Both reports are built by one `solve_report(...)` in `torchfem.report` now.
-- `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two before. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` used to take from the last.
+- `Shell.plot(thickness=True)` extrudes the shell into solid wedges or hexahedra between the true section surfaces, so an offset section no longer renders centered.
+- `node_property` and `element_property` accept a bare tensor or tensors keyed by their color bar title in every `plot(...)`, where each model took only one of the two. Where several are keyed, the first colors the plot, which `Truss.plot3d(...)` took from the last.
 - `Assembly.plot3d(...)` takes `axes` and a `camera` position and themes the plotter itself, as a part's `plot(...)` does.
 - `show_html(...)` in `torchfem.plot_utils` is now `show_plotter(pl, plotter=None, axes=False, camera=None)`, which also adds the grid and the camera and skips the display when the caller owns the plotter.
-- `Shell.plot(thickness=True)` extrudes the shell into solid wedges or hexahedra, where it drew an offset top and bottom surface before.
-- **Breaking:** The reference surface `offset` moved from `Laminate` to `Shell` and `import_shell(...)`, where it applies to a homogeneous section too, takes one value per element, and is a fraction only (the `"mid"`/`"top"`/`"bottom"` strings are gone). `Laminate` is now a plain stack about its mid-plane, and `Shell.plot(thickness=True)` extrudes between the true section surfaces, so an offset section no longer renders centered.
-- `THEMES`, the color schemes the documentation figures are drawn in, moved from `torchfem.elements` to `torchfem.plot_utils`, where the rest of the plotting helpers live.
+- `THEMES` moved from `torchfem.elements` to `torchfem.plot_utils`, where the rest of the plotting helpers live.
+- `Assembly.solve(verbose=True)` warns about single precision, as `FEM.solve(...)` already did. One `solve_report(...)` in `torchfem.report` builds both reports now.
 
 ### Removed
-- **Breaking:** `import_planar(...)` and `import_solid(...)`. `import_mesh(...)` returns the model matching the material. `import_shell(...)` stays, since a shell is the one type `import_mesh(...)` cannot infer from its arguments.
-- `IsotropicConductivity1D`. No model consumes a 1D thermal material.
-- `Element.plot(...)` drew the shape function figures of the documentation and nothing else, defaulting to a `docs/` path that an installed package does not carry. `docs/images/shape_functions/plot_elements.py` now draws them, like every other documentation figure.
+- **Breaking:** `import_planar(...)` and `import_solid(...)`. `import_mesh(...)` returns the model matching the material; `import_shell(...)` stays, since a shell is the one type it cannot infer.
+- `Element.plot(...)`, which drew the documentation's shape function figures and nothing else, defaulting to a `docs/` path an installed package does not carry. `docs/images/shape_functions/plot_elements.py` draws them now.
+
+### Fixed
+- A Newton or linear solve that misses its tolerance raises the new `ConvergenceError` in `torchfem.sparse`, and the increment cutback in `FEM.solve(...)` catches only that.
+- `integrate_line_load(...)` takes a scalar on a thermal model in 3D, which was refused as an ambiguous direction, so a `ShellHeat` could not be loaded along an edge.
+- `import_mesh(...)` and `import_shell(...)` read a surface mesh with a `HeatMaterial` as a `ShellHeat`, where the former raised "A surface mesh has no heat model".
+- `ext_strain` takes a tensor of the model's flux shape, rather than one nodal degree of freedom per spatial dimension, which a `Shell` and a `Truss` do not have.
+- `IsotropicPlasticity1D` computes its elastoplastic tangent per element. The hardening derivative broadcast against the wrong axis, so a `sigma_f_prime` returning one value per element raised a shape error once more than one element yielded.
+- `TransverseIsotropicElasticity3D` accepts batched constants. Its admissibility check compared tensors with `>` and raised `Boolean value of Tensor with more than one value is ambiguous`.
 
 ## Version 0.11.0 - September 7 2026
 
