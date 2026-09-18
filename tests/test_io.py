@@ -6,7 +6,15 @@ import pytest
 import torch
 from meshio import Mesh, read
 
-from torchfem import Laminate, Planar, PlanarHeat, Shell, Solid, SolidHeat
+from torchfem import (
+    Laminate,
+    Planar,
+    PlanarHeat,
+    Shell,
+    ShellHeat,
+    Solid,
+    SolidHeat,
+)
 from torchfem.elements import Quad1
 from torchfem.io import (
     export_mesh,
@@ -168,12 +176,15 @@ class TestImportMeshPhysics:
                 import_mesh(path, IsotropicConductivity3D(400.0)), SolidHeat
             )
 
-    def test_surface_mesh_has_no_heat_model(self):
+    def test_surface_mesh_with_a_conductivity_gives_shell_heat(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "shell.vtu"
             write_mesh(path, [("triangle", np.array([[0, 1, 2], [0, 1, 3]]))])
-            with pytest.raises(ValueError, match="no heat model"):
-                import_mesh(path, IsotropicConductivity2D(400.0))
+            material = IsotropicConductivity2D(400.0)
+            model = import_mesh(path, material, thickness=0.1)
+            assert isinstance(model, ShellHeat)
+            assert torch.allclose(model.thickness, torch.full((2,), 0.1))
+            assert isinstance(import_shell(path, material), ShellHeat)
 
     def test_a_laminate_section_imports_as_a_shell(self):
         """A `Laminate` stands in for a material without subclassing one."""
