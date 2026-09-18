@@ -104,6 +104,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Composite overwrapped pressure vessel](images/examples/basic/shell/copv.png)](examples/basic/shell/copv.html)
 
+-   **Static heat conduction**
+
+    [![Static heat conduction](images/examples/basic/shell/thermal_static.png)](examples/basic/shell/thermal_static.html)
+
 -   **Plate bending**
 
     [![Plate bending](images/examples/basic/shell/plate.png)](examples/basic/shell/plate.html)
