@@ -9,6 +9,7 @@
 - `ShellHeat`, an in-plane heat conduction model on the elements, local frames and plotting of `Shell`, which it shares through the new `ShellGeometry` base.
 
 ### Fixed
+- `integrate_line_load(...)` takes a scalar on a thermal model in 3D. A scalar was refused as an ambiguous direction, which a temperature does not have, so a `ShellHeat` could not be loaded along an edge.
 - `import_mesh(...)` and `import_shell(...)` read a surface mesh with a `HeatMaterial` as a `ShellHeat`. The former raised "A surface mesh has no heat model", which stopped being true with `ShellHeat`.
 - `ext_strain` takes a tensor of the model's flux shape. It demanded one nodal DOF per spatial dimension, which a `Shell` and a `Truss` do not have, so an external strain could not be imposed on either.
 - A Newton or linear solve that misses its tolerance raises the new `ConvergenceError` in `torchfem.sparse`, and the increment cutback in `FEM.solve(...)` catches only that.

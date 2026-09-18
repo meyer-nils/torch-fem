@@ -568,7 +568,7 @@ class FEM(ABC):
                 "integrate_surface_load(...) or integrate_body_load(...) instead."
             )
         load = torch.as_tensor(load, dtype=self.nodes.dtype)
-        if load.dim() == 0 and self.n_dim == 3:
+        if load.dim() == 0 and self.n_dim == 3 and self.n_dof_per_node > 1:
             raise ValueError(
                 "A line in 3D has no unique normal, so a scalar load is ambiguous. "
                 "Pass a load vector instead."
