@@ -22,7 +22,7 @@ import torch
 from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
-from .base import Mechanics
+from .base import FEM, Heat, Mechanics
 from .elements import Element, Quad1, Tria1
 from .laminate import Laminate
 from .materials import Material, MechanicsMaterial
@@ -30,7 +30,353 @@ from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 from .utils import stiffness2voigt, stress2voigt
 
 
-class Shell(Mechanics):
+class ShellGeometry(FEM):
+    """The elements, local frames and plotting shared by the shell models.
+
+    It carries the discretization of a thin-walled structure by flat facets,
+    which `Shell` combines with the physics it solves.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 3].
+        elements: Triangle or quadrilateral connectivity with shape [n_elem, 3]
+            or [n_elem, 4].
+        material: Vectorized material model (None for a shell with a section).
+        thickness: Element thicknesses with shape [n_elem].
+        offset: Reference surface position per element with shape [n_elem], as a
+            fraction of thickness from the mid-plane.
+        orientation: Per-element material reference direction with shape
+            [n_elem, 3].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
+    """
+
+    def __init__(
+        self,
+        nodes: Tensor,
+        elements: Tensor,
+        material: Material | None,
+        thickness: Tensor | float = 1.0,
+        offset: Tensor | float = 0.0,
+        orientation: Tensor | None = None,
+    ):
+        """Initialize the shell FEM problem.
+
+        Args:
+            nodes: Nodal coordinates with shape [n_nod, 3].
+            elements: Triangle or quadrilateral connectivity with shape
+                [n_elem, 3] or [n_elem, 4].
+            material: Pointwise material model, or None for a shell whose
+                section carries the materials.
+            thickness: Shell thickness. A float is expanded to all elements, a
+                tensor assigns one thickness per element.
+            offset: Reference surface position within the section, as a
+                fraction of thickness from the mid-plane along the element
+                normal. `+0.5` puts it on the top face.
+            orientation: Global reference direction from which material/ply
+                angles are measured. It is projected onto each element's surface
+                to define the element's local material 0°-axis. Accepts
+                a single `(3,)` vector (shared by all elements) or a per-element
+                `(n_elem, 3)` tensor. Defaults to the global x-direction.
+        """
+
+        super().__init__(nodes, elements, material)
+
+        if isinstance(thickness, float):
+            self.thickness = torch.full((self.n_elem,), thickness)
+        else:
+            self.thickness = torch.as_tensor(thickness)
+
+        # Reference surface within the section, as a fraction of thickness
+        self.offset = torch.as_tensor(offset, dtype=nodes.dtype).expand(self.n_elem)
+
+        # Material reference orientation
+        if orientation is None:
+            orientation = torch.tensor([1.0, 0.0, 0.0])
+        orientation = torch.as_tensor(orientation, dtype=self.nodes.dtype)
+        if orientation.dim() == 1:
+            orientation = orientation.unsqueeze(0).expand(self.n_elem, 3)
+        self.orientation = orientation
+
+    def __repr__(self) -> str:
+        etype = self.etype.__name__
+        return f"<torch-fem shell ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
+
+    @property
+    def etype(self) -> type[Element]:
+        """Set element type depending on number of nodes per element."""
+        if len(self.elements[0]) == 3:
+            return Tria1
+        elif len(self.elements[0]) == 4:
+            return Quad1
+        else:
+            raise ValueError("Element type not supported.")
+
+    @property
+    def volume_scale(self) -> Tensor:
+        return self.thickness
+
+    def integrate_surface_load(self, mask: Tensor, load: float | Tensor) -> Tensor:
+        """Consistent nodal loads from a load per unit area, e.g. a pressure.
+
+        A shell element is its own surface, so the loaded surface is made up of the
+        elements whose nodes all lie in `mask`.
+
+        Args:
+            mask: Boolean nodal mask with shape [n_nod] selecting the surface.
+            load: Load per unit area. A float is a pressure acting along the element
+                normal, while shape [3] or [n_elem, 3] is a traction in global
+                coordinates.
+
+        Returns:
+            Nodal loads with shape [n_nod, k], to be added to `forces[:, 0:3]`
+            or `heat_flux`.
+        """
+        conn = self.elements[mask[self.elements].all(dim=1)]
+        return self._integrate_facet_load(
+            conn, self.etype, torch.as_tensor(load, dtype=self.nodes.dtype)
+        )
+
+    @cached_property
+    def char_lengths(self) -> Tensor:
+        """Characteristic lengths of the elements."""
+        areas = self.integrate_field()
+        return areas ** (1 / 2)
+
+    def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Gradient operator at integration points xi."""
+        # Local element frame, rotating global coordinates into element ones
+        nodes = self.nodes[self.elements, :]
+        edge1 = nodes[:, 1] - nodes[:, 0]
+        # Mean plane normal (Newell's formula), which averages the warp of a quad
+        rel = nodes - nodes.mean(dim=1, keepdim=True)
+        area = torch.linalg.cross(rel, rel.roll(-1, dims=1), dim=-1).sum(dim=1)
+        normal = torch.nn.functional.normalize(area, dim=-1)
+        # Material x-axis: the global reference orientation projected onto the
+        # element surface. Fall back to the first edge where the orientation is
+        # (nearly) normal to the element and the projection vanishes.
+        o = self.orientation
+        proj = o - (o * normal).sum(dim=-1, keepdim=True) * normal
+        degen = (proj.norm(dim=-1) < 1e-8).unsqueeze(-1)
+        dir1 = torch.nn.functional.normalize(torch.where(degen, edge1, proj), dim=-1)
+        dir2 = torch.nn.functional.normalize(torch.linalg.cross(normal, dir1), dim=-1)
+        self.t = torch.stack([dir1, dir2, normal], dim=1)
+
+        # Compute Jacobian and its determinant
+        b = self.etype.B(xi)
+        dx = (nodes - nodes[:, 0, None]).transpose(2, 1)
+        self.loc_nodes = (self.t[:, 0:2, :] @ dx).transpose(2, 1)
+        J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
+        detJ = torch.linalg.det(J)
+        if torch.any(detJ <= 0.0):
+            raise ValueError("Negative Jacobian. Check element numbering.")
+
+        # Compute B
+        B = torch.linalg.inv(J) @ b[:, None]
+
+        return self.etype.N(xi), B, detJ
+
+    @torch.no_grad()
+    def plot(
+        self,
+        u: float | Tensor = 0.0,
+        node_property: Tensor | dict[str, Tensor] | None = None,
+        element_property: Tensor | dict[str, Tensor] | None = None,
+        orientations: Tensor | None = None,
+        thickness: bool = True,
+        mirror: tuple[bool, bool, bool] = (False, False, False),
+        show_undeformed: bool = False,
+        axes: bool = False,
+        bcs: bool = False,
+        plotter: pyvista.Plotter | None = None,
+        camera: CameraPositionOptions | None = None,
+        **kwargs,
+    ):
+        """Plot the shell mesh with PyVista, optionally with results.
+
+        Args:
+            u: Nodal displacements added to the positions, e.g. to plot the
+                deformed configuration. Defaults to 0.0 (undeformed).
+            node_property: Nodal field, optionally keyed by its color bar
+                title, e.g. `{"u": u[:, :3]}`.
+            element_property: Element field, keyed like `node_property`.
+            orientations: Per-element direction vectors with shape
+                [n_elem, k, 3] with k <= 3, e.g. the local frames `self.t`,
+                drawn on the unmirrored mesh as red, green, and blue arrows of
+                the mean element size.
+            thickness: If True, extrudes elements by their thickness.
+            mirror: Mirrors the mesh about the (x, y, z) planes, e.g. to
+                visualize symmetric halves. Warns if the nodes on a mirrored
+                plane are not constrained to enforce that symmetry.
+            show_undeformed: If True, draws the undeformed mesh as a grey
+                wireframe.
+            axes: If True, shows labeled coordinate axes around the mesh.
+            bcs: If True, renders boundary conditions on the unmirrored mesh:
+                arrows for forces and prescribed displacements, spheres at
+                displacement tips, and a cone per constrained DOF. Rotational
+                DOFs use doubled heads, the usual convention for moments.
+                Constraints enforcing the symmetry of a mirrored plane are
+                skipped, since the mirrored copy shows that symmetry already.
+            plotter: PyVista plotter. Defaults to None.
+            camera: Camera position, either a plane ("xy", "xz", "yz"), "iso",
+                or an explicit position, focal point and view up. Defaults to
+                None.
+            **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
+        """
+        pl = new_plotter(plotter)
+
+        # VTK element list
+        elements = []
+        for element in self.elements.cpu().numpy():
+            elements += [len(element), *element]
+
+        # Deformed node positions
+        pos = (self.nodes + u).cpu().numpy()
+
+        # Create unstructured mesh
+        mesh = pyvista.PolyData(pos.tolist(), elements)
+
+        # A bare field is titled by its argument, a named one by its key
+        if isinstance(node_property, Tensor):
+            node_property = {"node_property": node_property}
+        if isinstance(element_property, Tensor):
+            element_property = {"element_property": element_property}
+
+        # Plot node properties
+        if node_property:
+            for key, val in node_property.items():
+                mesh.point_data[key] = val.cpu().numpy()
+
+        # Plot cell properties
+        if element_property:
+            for key, val in element_property.items():
+                mesh.cell_data[key] = val.cpu().numpy()
+
+        # Bottom and top of the section along the element normal
+        z = torch.stack([-0.5 - self.offset, 0.5 - self.offset], dim=1)
+        surfaces = z * self.thickness[:, None]
+
+        # Plot as solid elements spanning the thickness
+        kwargs.setdefault("show_edges", True)
+        base_meshes = []
+        if thickness:
+            # Averaged onto the nodes, so the extrusion stays continuous
+            nodal = np.zeros((len(self.nodes), 2))
+            count = np.zeros((len(self.nodes), 1))
+            for element, surface in zip(
+                self.elements.cpu().numpy(), surfaces.cpu().numpy()
+            ):
+                nodal[element] += surface
+                count[element] += 1
+            nodal /= count
+
+            # Triangle windings are flipped, as VTK winds the base of a wedge
+            # away from its top face.
+            normals = np.asarray(mesh.point_normals)
+            tria = self.etype is Tria1
+            conn = self.elements.cpu().numpy()[:, :: -1 if tria else 1]
+            ctype = pyvista.CellType.WEDGE if tria else pyvista.CellType.HEXAHEDRON
+            solid = pyvista.UnstructuredGrid(
+                {ctype: np.hstack([conn, conn + self.n_nod])},
+                np.vstack([pos + nodal[:, :1] * normals, pos + nodal[:, 1:] * normals]),
+            )
+            solid.cell_data.update(mesh.cell_data)
+            for key, val in mesh.point_data.items():
+                solid.point_data[key] = np.concatenate([val, val])
+
+            pl.add_mesh(solid, **kwargs)
+            base_meshes.append(solid)
+        else:
+            pl.add_mesh(mesh, **kwargs)
+            base_meshes.append(mesh)
+
+        # Plot orientations, lifted onto the top surface of a thick shell so
+        # that they do not disappear inside it
+        if orientations is not None:
+            centers = (self.nodes + u)[self.elements].mean(dim=1).cpu().numpy()
+            if thickness:
+                z_top = surfaces[:, 1]
+                centers = centers + z_top[:, None].cpu().numpy() * np.asarray(
+                    mesh.cell_normals
+                )
+            mag = float(self.char_lengths.mean())
+            for j, color in zip(range(orientations.shape[1]), ["red", "green", "blue"]):
+                directions = torch.nn.functional.normalize(orientations[:, j], dim=-1)
+                pl.add_arrows(
+                    centers,
+                    directions.cpu().numpy(),
+                    mag=mag,
+                    color=color,
+                    show_scalar_bar=False,
+                )
+
+        # Symmetry constraints expected on each mirrored plane: the normal
+        # translation and the two in-plane rotations. A temperature needs none.
+        symmetry = torch.zeros_like(self.constraints)
+        tol = 1e-6 * float(self.char_lengths.mean())
+        for axis, mirrored_axis in enumerate(mirror):
+            if not mirrored_axis or self.n_dof_per_node == 1:
+                continue
+            on_plane = self.nodes[:, axis].abs() < tol
+            dofs = sorted([axis, 3 + (axis + 1) % 3, 3 + (axis + 2) % 3])
+            for dof in dofs:
+                symmetry[on_plane, dof] = True
+            if not (on_plane.any() and self.constraints[on_plane][:, dofs].all()):
+                print(
+                    f"Mirroring about {'xyz'[axis]} = 0, but its nodes are not "
+                    f"constrained in DOFs {dofs} to enforce that symmetry."
+                )
+
+        # Mirror meshes across specified planes
+        sx_values = [1.0, -1.0] if mirror[0] else [1.0]
+        sy_values = [1.0, -1.0] if mirror[1] else [1.0]
+        sz_values = [1.0, -1.0] if mirror[2] else [1.0]
+        for sx in sx_values:
+            for sy in sy_values:
+                for sz in sz_values:
+                    if sx == 1.0 and sy == 1.0 and sz == 1.0:
+                        continue
+                    for msh in base_meshes:
+                        mirrored = msh.copy()
+                        mirrored.points[:, 0] *= sx
+                        mirrored.points[:, 1] *= sy
+                        mirrored.points[:, 2] *= sz
+                        pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
+
+        if show_undeformed:
+            undefo = pyvista.PolyData(self.nodes.cpu().numpy(), elements)
+            edges = cast(pyvista.DataSet, undefo.extract_all_edges())
+            pl.add_mesh(edges, style="wireframe", color="grey")
+
+        if bcs and self.n_dof_per_node != 1:
+            points = self.nodes + u
+            deformed = isinstance(u, Tensor)
+            prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
+            size = torch.linalg.norm(
+                points.max(dim=0).values - points.min(dim=0).values
+            )
+            height = 0.5 * float(self.char_lengths.mean())
+
+            # Forces and moments scaled linearly, each normalized on its own
+            # because they carry different units
+            span = 0.1 * float(size)
+            arrows(pl, points, self._neumann[:, :3], span=span)
+            arrows(pl, points, self._neumann[:, 3:], span=span, doubled=True)
+
+            # Prescribed translations to scale, with a sphere marking the tip. A
+            # prescribed rotation cannot be drawn to scale, so it keeps its cone.
+            fixed = self.constraints & ~symmetry
+            if not deformed:
+                fixed[:, :3] = fixed[:, :3] & (prescribed[:, :3] == 0.0)
+                arrows(pl, points, prescribed[:, :3])
+            pulled = torch.linalg.norm(prescribed[:, :3], dim=1) > 0.0
+            ends = points if deformed else points + prescribed[:, :3]
+            dots(pl, ends[pulled], 0.3 * height)
+            cones(pl, points, fixed[:, :3], height)
+            cones(pl, points, fixed[:, 3:], height, doubled=True)
+
+        show_plotter(pl, plotter, axes, camera)
+
+
+class Shell(ShellGeometry, Mechanics):
     """Flat-facet shell model for thin-walled structures.
 
     Triangles follow Krysl, quadrilaterals the MITC4 shear interpolation of Dvorkin
@@ -43,6 +389,11 @@ class Shell(Mechanics):
     rather than transformed out as in section 3 of Krysl, so `drill_penalty` remains
     a tuning parameter on a coarse doubly-curved mesh, and a folded or branched
     shell, whose nodes carry no unique normal, is not supported.
+
+    `solve` reports stress in the local material frame of each element, and
+    leaves the gradient at the identity, as the formulation never forms one. Its
+    default aggregation averages the through-thickness stations, where a bending
+    stress cancels: pass `aggregate_integration_points=False` to read one.
 
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, 3].
@@ -114,27 +465,14 @@ class Shell(Mechanics):
 
         # A Laminate is the shell's section, not a pointwise material: keep it
         # in self.section and give the base no material.
-        if isinstance(material, Laminate):
-            super().__init__(nodes, elements, None)
-        else:
-            super().__init__(nodes, elements, material)
-
-        # Reference surface within the section, as a fraction of thickness
-        self.offset = torch.as_tensor(offset, dtype=nodes.dtype).expand(self.n_elem)
+        pointwise = None if isinstance(material, Laminate) else material
+        super().__init__(nodes, elements, pointwise, thickness, offset, orientation)
 
         self.section: Laminate | None = (
             material.vectorize(self.n_elem, self.offset)
             if isinstance(material, Laminate)
             else None
         )
-
-        # Material reference orientation
-        if orientation is None:
-            orientation = torch.tensor([1.0, 0.0, 0.0])
-        orientation = torch.as_tensor(orientation, dtype=self.nodes.dtype)
-        if orientation.dim() == 1:
-            orientation = orientation.unsqueeze(0).expand(self.n_elem, 3)
-        self.orientation = orientation
 
         # Drill penalty
         self.drill_penalty = drill_penalty
@@ -155,10 +493,6 @@ class Shell(Mechanics):
         else:
             # Homogeneous shell (unchanged behavior).
             assert self.material is not None
-            if isinstance(thickness, float):
-                self.thickness = torch.full((self.n_elem,), thickness)
-            else:
-                self.thickness = torch.as_tensor(thickness)
 
             # Thickness integration points
             if n_simpson % 2 == 0:
@@ -245,10 +579,6 @@ class Shell(Mechanics):
             w = self.w_simpson[:, None] * self.thickness[None, :]
             return [self.material] * self.n_simpson, z, w
 
-    def __repr__(self) -> str:
-        etype = self.etype.__name__
-        return f"<torch-fem shell ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-
     @property
     def n_state(self) -> int:
         """Number of internal state variables per through-thickness station."""
@@ -271,48 +601,8 @@ class Shell(Mechanics):
 
     @property
     def n_flux(self) -> list[int]:
-        """Shape of the stress tensor."""
+        """Shape of the local stress tensor."""
         return [2, 2]
-
-    @property
-    def etype(self) -> type[Element]:
-        """Set element type depending on number of nodes per element."""
-        if len(self.elements[0]) == 3:
-            return Tria1
-        elif len(self.elements[0]) == 4:
-            return Quad1
-        else:
-            raise ValueError("Element type not supported.")
-
-    @property
-    def volume_scale(self) -> Tensor:
-        return self.thickness
-
-    def integrate_surface_load(self, mask: Tensor, load: float | Tensor) -> Tensor:
-        """Consistent nodal loads from a load per unit area, e.g. a pressure.
-
-        A shell element is its own surface, so the loaded surface is made up of the
-        elements whose nodes all lie in `mask`.
-
-        Args:
-            mask: Boolean nodal mask with shape [n_nod] selecting the surface.
-            load: Load per unit area. A float is a pressure acting along the element
-                normal, while shape [3] or [n_elem, 3] is a traction in global
-                coordinates.
-
-        Returns:
-            Nodal loads with shape [n_nod, 3], to be added to `forces[:, 0:3]`.
-        """
-        conn = self.elements[mask[self.elements].all(dim=1)]
-        return self._integrate_facet_load(
-            conn, self.etype, torch.as_tensor(load, dtype=self.nodes.dtype)
-        )
-
-    @cached_property
-    def char_lengths(self) -> Tensor:
-        """Characteristic lengths of the elements."""
-        areas = self.integrate_field()
-        return areas ** (1 / 2)
 
     def _Dm(self, B):
         """Aggregate strain-displacement matrices
@@ -463,40 +753,12 @@ class Shell(Mechanics):
             return self.transverse_kappa * t2 / (t2 + alpha * h**2)
 
     def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Gradient operator at integration points xi."""
-        # Compute transformation matrix x = T X with element coords x and
-        # global coords X
-        nodes = self.nodes[self.elements, :]
-        edge1 = nodes[:, 1] - nodes[:, 0]
-        # Mean plane normal (Newell's formula), which averages the warp of a quad
-        rel = nodes - nodes.mean(dim=1, keepdim=True)
-        area = torch.linalg.cross(rel, rel.roll(-1, dims=1), dim=-1).sum(dim=1)
-        normal = torch.nn.functional.normalize(area, dim=-1)
-        # Material x-axis: the global reference orientation projected onto the
-        # element surface. Fall back to the first edge where the orientation is
-        # (nearly) normal to the element and the projection vanishes.
-        o = self.orientation
-        proj = o - (o * normal).sum(dim=-1, keepdim=True) * normal
-        degen = (proj.norm(dim=-1) < 1e-8).unsqueeze(-1)
-        dir1 = torch.nn.functional.normalize(torch.where(degen, edge1, proj), dim=-1)
-        dir2 = torch.nn.functional.normalize(torch.linalg.cross(normal, dir1), dim=-1)
-        self.t = torch.stack([dir1, dir2, normal], dim=1)
+        """Gradient operator at `xi`, with the frame expanded to the nodal DOFs."""
+        N, B, detJ = super().eval_shape_functions(xi)
+        # Transformation x = T X with element coords x and global coords X
         triples = self.etype.nodes * self.n_dof_per_node // 3
         self.T = torch.func.vmap(torch.block_diag)(*(triples * [self.t]))
-
-        # Compute Jacobian and its determinant
-        b = self.etype.B(xi)
-        dx = (nodes - nodes[:, 0, None]).transpose(2, 1)
-        self.loc_nodes = (self.t[:, 0:2, :] @ dx).transpose(2, 1)
-        J = torch.einsum("...iN, ANj -> ...Aij", b, self.loc_nodes)
-        detJ = torch.linalg.det(J)
-        if torch.any(detJ <= 0.0):
-            raise ValueError("Negative Jacobian. Check element numbering.")
-
-        # Compute B
-        B = torch.linalg.inv(J) @ b[:, None]
-
-        return self.etype.N(xi), B, detJ
+        return N, B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
         return BCB.mul_(detJ[:, None, None])
@@ -695,203 +957,42 @@ class Shell(Mechanics):
 
         return k, f, grad_new, flux_new, state_new
 
-    @torch.no_grad()
-    def plot(
-        self,
-        u: float | Tensor = 0.0,
-        node_property: Tensor | dict[str, Tensor] | None = None,
-        element_property: Tensor | dict[str, Tensor] | None = None,
-        orientations: Tensor | None = None,
-        thickness: bool = True,
-        mirror: tuple[bool, bool, bool] = (False, False, False),
-        show_undeformed: bool = False,
-        axes: bool = False,
-        bcs: bool = False,
-        plotter: pyvista.Plotter | None = None,
-        camera: CameraPositionOptions | None = None,
-        **kwargs,
-    ):
-        """Plot the shell mesh with PyVista, optionally with results.
 
-        Args:
-            u: Nodal displacements added to the positions, e.g. to plot the
-                deformed configuration. Defaults to 0.0 (undeformed).
-            node_property: Nodal field, optionally keyed by its color bar
-                title, e.g. `{"u": u[:, :3]}`.
-            element_property: Element field, keyed like `node_property`.
-            orientations: Per-element direction vectors with shape
-                [n_elem, k, 3] with k <= 3, e.g. the local frames `self.t`,
-                drawn on the unmirrored mesh as red, green, and blue arrows of
-                the mean element size.
-            thickness: If True, extrudes elements by their thickness.
-            mirror: Mirrors the mesh about the (x, y, z) planes, e.g. to
-                visualize symmetric halves. Warns if the nodes on a mirrored
-                plane are not constrained to enforce that symmetry.
-            show_undeformed: If True, draws the undeformed mesh as a grey
-                wireframe.
-            axes: If True, shows labeled coordinate axes around the mesh.
-            bcs: If True, renders boundary conditions on the unmirrored mesh:
-                arrows for forces and prescribed displacements, spheres at
-                displacement tips, and a cone per constrained DOF. Rotational
-                DOFs use doubled heads, the usual convention for moments.
-                Constraints enforcing the symmetry of a mirrored plane are
-                skipped, since the mirrored copy shows that symmetry already.
-            plotter: PyVista plotter. Defaults to None.
-            camera: Camera position, either a plane ("xy", "xz", "yz"), "iso",
-                or an explicit position, focal point and view up. Defaults to
-                None.
-            **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
-        """
-        pl = new_plotter(plotter)
+class ShellHeat(ShellGeometry, Heat):
+    """Heat conduction model for thin-walled structures.
 
-        # VTK element list
-        elements = []
-        for element in self.elements.cpu().numpy():
-            elements += [len(element), *element]
+    Uses the same flat facets, local frames and plotting as `Shell`, with one
+    temperature per node, so the section conducts in-plane only.
 
-        # Deformed node positions
-        pos = (self.nodes + u).cpu().numpy()
+    `solve` reports flux and gradient in the local material frame, as `Shell`
+    reports its stress.
 
-        # Create unstructured mesh
-        mesh = pyvista.PolyData(pos.tolist(), elements)
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, 3].
+        elements: Triangle or quadrilateral connectivity with shape [n_elem, 3]
+            or [n_elem, 4].
+        material: Vectorized plane thermal material.
+        thickness: Element thicknesses with shape [n_elem].
+        orientation: Per-element material reference direction with shape
+            [n_elem, 3].
+        heat_flux: Applied nodal heat sources with shape [n_nod, 1].
+        temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
+    """
 
-        # A bare field is titled by its argument, a named one by its key
-        if isinstance(node_property, Tensor):
-            node_property = {"node_property": node_property}
-        if isinstance(element_property, Tensor):
-            element_property = {"element_property": element_property}
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the local heat flux tensor."""
+        return [1, 2]
 
-        # Plot node properties
-        if node_property:
-            for key, val in node_property.items():
-                mesh.point_data[key] = val.cpu().numpy()
+    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
+        """Element conductivity matrix contribution."""
+        return BCB.mul_((self.thickness * detJ)[..., None, None])
 
-        # Plot cell properties
-        if element_property:
-            for key, val in element_property.items():
-                mesh.cell_data[key] = val.cpu().numpy()
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
+        """Element internal heat flux vector."""
+        return torch.einsum("...,...,...iI,...Ai->...IA", self.thickness, detJ, B, S)
 
-        # Plot as solid elements spanning the thickness
-        kwargs.setdefault("show_edges", True)
-        base_meshes = []
-        if thickness:
-            # Bottom and top surface of the section, averaged onto the nodes.
-            # The stations span the full section, so their extremes are the
-            # surfaces, offset included.
-            z = self._thickness_stations()[1]
-            surfaces = torch.stack([z.min(dim=0).values, z.max(dim=0).values], dim=1)
-            nodal = np.zeros((len(self.nodes), 2))
-            count = np.zeros((len(self.nodes), 1))
-            for element, surface in zip(
-                self.elements.cpu().numpy(), surfaces.cpu().numpy()
-            ):
-                nodal[element] += surface
-                count[element] += 1
-            nodal /= count
-
-            # Triangle windings are flipped, as VTK winds the base of a wedge
-            # away from its top face.
-            normals = np.asarray(mesh.point_normals)
-            tria = self.etype is Tria1
-            conn = self.elements.cpu().numpy()[:, :: -1 if tria else 1]
-            ctype = pyvista.CellType.WEDGE if tria else pyvista.CellType.HEXAHEDRON
-            solid = pyvista.UnstructuredGrid(
-                {ctype: np.hstack([conn, conn + self.n_nod])},
-                np.vstack([pos + nodal[:, :1] * normals, pos + nodal[:, 1:] * normals]),
-            )
-            solid.cell_data.update(mesh.cell_data)
-            for key, val in mesh.point_data.items():
-                solid.point_data[key] = np.concatenate([val, val])
-
-            pl.add_mesh(solid, **kwargs)
-            base_meshes.append(solid)
-        else:
-            pl.add_mesh(mesh, **kwargs)
-            base_meshes.append(mesh)
-
-        # Plot orientations, lifted onto the top surface of a thick shell so
-        # that they do not disappear inside it
-        if orientations is not None:
-            centers = (self.nodes + u)[self.elements].mean(dim=1).cpu().numpy()
-            if thickness:
-                z_top = self._thickness_stations()[1].max(dim=0).values
-                centers = centers + z_top[:, None].cpu().numpy() * np.asarray(
-                    mesh.cell_normals
-                )
-            mag = float(self.char_lengths.mean())
-            for j, color in zip(range(orientations.shape[1]), ["red", "green", "blue"]):
-                directions = torch.nn.functional.normalize(orientations[:, j], dim=-1)
-                pl.add_arrows(
-                    centers,
-                    directions.cpu().numpy(),
-                    mag=mag,
-                    color=color,
-                    show_scalar_bar=False,
-                )
-
-        # Symmetry constraints expected on each mirrored plane: the normal
-        # translation and the two rotations about the in-plane axes
-        symmetry = torch.zeros_like(self.constraints)
-        tol = 1e-6 * float(self.char_lengths.mean())
-        for axis, mirrored_axis in enumerate(mirror):
-            if not mirrored_axis:
-                continue
-            on_plane = self.nodes[:, axis].abs() < tol
-            dofs = sorted([axis, 3 + (axis + 1) % 3, 3 + (axis + 2) % 3])
-            for dof in dofs:
-                symmetry[on_plane, dof] = True
-            if not (on_plane.any() and self.constraints[on_plane][:, dofs].all()):
-                print(
-                    f"Mirroring about {'xyz'[axis]} = 0, but its nodes are not "
-                    f"constrained in DOFs {dofs} to enforce that symmetry."
-                )
-
-        # Mirror meshes across specified planes
-        sx_values = [1.0, -1.0] if mirror[0] else [1.0]
-        sy_values = [1.0, -1.0] if mirror[1] else [1.0]
-        sz_values = [1.0, -1.0] if mirror[2] else [1.0]
-        for sx in sx_values:
-            for sy in sy_values:
-                for sz in sz_values:
-                    if sx == 1.0 and sy == 1.0 and sz == 1.0:
-                        continue
-                    for msh in base_meshes:
-                        mirrored = msh.copy()
-                        mirrored.points[:, 0] *= sx
-                        mirrored.points[:, 1] *= sy
-                        mirrored.points[:, 2] *= sz
-                        pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
-
-        if show_undeformed:
-            undefo = pyvista.PolyData(self.nodes.cpu().numpy(), elements)
-            edges = cast(pyvista.DataSet, undefo.extract_all_edges())
-            pl.add_mesh(edges, style="wireframe", color="grey")
-
-        if bcs:
-            points = self.nodes + u
-            deformed = isinstance(u, Tensor)
-            prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
-            size = torch.linalg.norm(
-                points.max(dim=0).values - points.min(dim=0).values
-            )
-            height = 0.5 * float(self.char_lengths.mean())
-
-            # Forces and moments scaled linearly, each normalized on its own
-            # because they carry different units
-            span = 0.1 * float(size)
-            arrows(pl, points, self._neumann[:, :3], span=span)
-            arrows(pl, points, self._neumann[:, 3:], span=span, doubled=True)
-
-            # Prescribed translations to scale, with a sphere marking the tip. A
-            # prescribed rotation cannot be drawn to scale, so it keeps its cone.
-            fixed = self.constraints & ~symmetry
-            if not deformed:
-                fixed[:, :3] = fixed[:, :3] & (prescribed[:, :3] == 0.0)
-                arrows(pl, points, prescribed[:, :3])
-            pulled = torch.linalg.norm(prescribed[:, :3], dim=1) > 0.0
-            ends = points if deformed else points + prescribed[:, :3]
-            dots(pl, ends[pulled], 0.3 * height)
-            cones(pl, points, fixed[:, :3], height)
-            cones(pl, points, fixed[:, 3:], height, doubled=True)
-
-        show_plotter(pl, plotter, axes, camera)
+    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
+        """Element capacity matrix contribution."""
+        return rho * self.thickness * detJ

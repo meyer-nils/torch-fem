@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from torchfem import Planar, Shell, Solid, SolidHeat, Truss
+from torchfem import Planar, Shell, ShellHeat, Solid, SolidHeat, Truss
 from torchfem.elements import (
     Hexa1,
     Hexa2,
@@ -14,6 +14,7 @@ from torchfem.elements import (
     linear_to_quadratic,
 )
 from torchfem.materials import (
+    IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicElasticity1D,
     IsotropicElasticity3D,
@@ -40,6 +41,14 @@ def _planar(gen, quadratic: bool, nx: int = 5, ny: int = 4) -> Planar:
     if quadratic:
         nodes, elements = linear_to_quadratic(nodes, elements)
     return Planar(nodes, elements, PLANE)
+
+
+def _shell_heat() -> ShellHeat:
+    nodes = torch.tensor(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
+    )
+    elements = torch.tensor([[0, 1, 2], [0, 2, 3]])
+    return ShellHeat(nodes, elements, IsotropicConductivity2D(400.0), thickness=0.02)
 
 
 def _shell(thickness: float = 0.02) -> Shell:
@@ -299,6 +308,24 @@ class TestScalarLoadsAcceptFloats:
         mask = torch.ones(model.n_nod, dtype=torch.bool)
         with pytest.raises(ValueError, match="no unique normal"):
             model.integrate_line_load(mask, 1.0)
+
+
+class TestScalarLineLoadDirection:
+    """A scalar line load is ambiguous only where a node carries a direction."""
+
+    def test_a_temperature_takes_a_scalar_along_an_edge(self):
+        model = _shell_heat()
+        edge = model.nodes[:, 0] < 1e-9
+        loaded = model.integrate_line_load(edge, 1.0)
+        # One unit of flux per unit length, over an edge of length one
+        assert loaded.shape == (model.n_nod, 1)
+        assert float(loaded.sum()) == pytest.approx(1.0)
+
+    def test_a_shell_still_refuses_a_scalar_along_an_edge(self):
+        model = _shell()
+        edge = model.nodes[:, 0] < 1e-9
+        with pytest.raises(ValueError, match="no unique normal"):
+            model.integrate_line_load(edge, 1.0)
 
 
 class TestUnsupportedLoads:

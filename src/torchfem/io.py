@@ -7,7 +7,7 @@ import torch
 from meshio import Mesh, read
 from torch import Tensor
 
-from torchfem import Planar, PlanarHeat, Shell, Solid, SolidHeat
+from torchfem import Planar, PlanarHeat, Shell, ShellHeat, Solid, SolidHeat
 
 from .base import FEM, Heat, Mechanics
 from .elements import ELEMENT_REGISTRY
@@ -131,9 +131,9 @@ def import_mesh(
     planar = np.allclose(points[:, 2], np.zeros_like(points[:, 2]))
 
     if not planar and etype in ["triangle", "quad"]:
-        if heat:
-            raise ValueError("A surface mesh has no heat model.")
         nodes = torch.tensor(points, dtype=dtype, device=device)
+        if isinstance(material, HeatMaterial):
+            return ShellHeat(nodes, elements, material, thickness=thickness)
         return Shell(nodes, elements, material, thickness=thickness)
 
     if isinstance(material, Laminate):
@@ -151,14 +151,33 @@ def import_mesh(
     raise ValueError(f"Cannot interpret element type {etype}.")
 
 
+@overload
 def import_shell(
     filename: PathLike,
     material: MechanicsMaterial | Laminate,
     thickness: float = 1.0,
     offset: float = 0.0,
-) -> Shell:
-    """Import a triangle or quadrilateral mesh as a `Shell`, flat or not.
+) -> Shell: ...
 
+
+@overload
+def import_shell(
+    filename: PathLike,
+    material: HeatMaterial,
+    thickness: float = 1.0,
+    offset: float = 0.0,
+) -> ShellHeat: ...
+
+
+def import_shell(
+    filename: PathLike,
+    material: Material | Laminate,
+    thickness: float = 1.0,
+    offset: float = 0.0,
+) -> Shell | ShellHeat:
+    """Import a triangle or quadrilateral mesh as a shell model, flat or not.
+
+    A `HeatMaterial` gives a `ShellHeat`, anything else a `Shell`.
     `import_mesh(...)` reads a flat surface mesh as `Planar` instead. `offset`
     places the reference surface within the section, as a fraction of thickness
     from the mid-plane along the element normal, so `+0.5` puts it on the top
@@ -173,4 +192,6 @@ def import_shell(
     nodes = torch.tensor(
         points, dtype=torch.get_default_dtype(), device=torch.get_default_device()
     )
+    if isinstance(material, HeatMaterial):
+        return ShellHeat(nodes, elements, material, thickness=thickness, offset=offset)
     return Shell(nodes, elements, material, thickness=thickness, offset=offset)

@@ -32,6 +32,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Truss modal analysis](images/examples/basic/truss/modal.png)](examples/basic/truss/modal.html)
 
+-   **Static heat conduction**
+
+    [![Static heat conduction](images/examples/basic/truss/thermal_static.png)](examples/basic/truss/thermal_static.html)
+
 </div>
 
 ### Planar
@@ -103,6 +107,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 -   **Composite overwrapped pressure vessel**
 
     [![Composite overwrapped pressure vessel](images/examples/basic/shell/copv.png)](examples/basic/shell/copv.html)
+
+-   **Static heat conduction**
+
+    [![Static heat conduction](images/examples/basic/shell/thermal_static.png)](examples/basic/shell/thermal_static.html)
 
 -   **Plate bending**
 

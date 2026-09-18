@@ -5,8 +5,13 @@
 ### Added
 - `IsotropicDamage1D`, `IsotropicDamagePlaneStrain` and `IsotropicDamagePlaneStress`, the remaining kinematics of `IsotropicDamage3D`, so a `Truss` and a `Planar` model can carry damage. Under plane stress the out-of-plane strain follows the in-plane one, so it drives the damage where it dominates and contributes to the tangent.
 - `TransverseIsotropicElasticityPlaneStress` and `TransverseIsotropicElasticityPlaneStrain`, the plane counterparts of `TransverseIsotropicElasticity3D`. A unidirectional ply in a shell or laminate no longer needs its transverse shear moduli typed out by hand.
+- `TrussHeat` and `IsotropicConductivity1D`, an axial heat conduction model on the bars, integration and plotting of `Truss`, which it shares through the new `TrussGeometry` base. A bar conducts along its axis alone.
+- `ShellHeat`, an in-plane heat conduction model on the elements, local frames and plotting of `Shell`, which it shares through the new `ShellGeometry` base.
 
 ### Fixed
+- `integrate_line_load(...)` takes a scalar on a thermal model in 3D. A scalar was refused as an ambiguous direction, which a temperature does not have, so a `ShellHeat` could not be loaded along an edge.
+- `import_mesh(...)` and `import_shell(...)` read a surface mesh with a `HeatMaterial` as a `ShellHeat`. The former raised "A surface mesh has no heat model", which stopped being true with `ShellHeat`.
+- `ext_strain` takes a tensor of the model's flux shape. It demanded one nodal DOF per spatial dimension, which a `Shell` and a `Truss` do not have, so an external strain could not be imposed on either.
 - A Newton or linear solve that misses its tolerance raises the new `ConvergenceError` in `torchfem.sparse`, and the increment cutback in `FEM.solve(...)` catches only that.
 - `IsotropicPlasticity1D` computes its elastoplastic tangent per element. The hardening derivative broadcast against the wrong axis, so a `sigma_f_prime` returning one value per element raised a shape error as soon as more than one element yielded.
 - `TransverseIsotropicElasticity3D` accepts batched constants. Its admissibility check compared tensors with `>` and raised `Boolean value of Tensor with more than one value is ambiguous`.

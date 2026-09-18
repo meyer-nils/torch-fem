@@ -10,7 +10,7 @@ from pyvista import PolyData
 from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
-from .base import Mechanics
+from .base import FEM, Heat, Mechanics
 from .elements import Bar1, Bar2, Element
 from .materials import Material
 from .plot_utils import LABEL_OFFSET, arrows, arrows2d, cones, dots, dots2d, markers2d
@@ -19,25 +19,19 @@ from .plot_utils import LABEL_OFFSET, arrows, arrows2d, cones, dots, dots2d, mar
 from .plot_utils import new_plotter, show_plotter
 
 
-class Truss(Mechanics):
-    """Truss model built from bar elements in 2D or 3D space.
+class TrussGeometry(FEM):
+    """The elements, integration and plotting shared by the truss models.
 
-    The element type (Bar1, Bar2) is inferred from the number of nodes per
-    element in the connectivity, and the spatial dimension from the nodes.
+    It carries the discretization of a pin-jointed frame of bars, which `Truss`
+    and `TrussHeat` combine with the physics they solve.
 
     Attributes:
         nodes: Nodal coordinates with shape [n_nod, n_dim].
         elements: Element connectivity with shape [n_elem, nodes_per_element].
         material: Vectorized 1D material model.
         areas: Cross-sectional areas with shape [n_elem]. Defaults to ones.
-        forces: Applied nodal forces with shape [n_nod, n_dim].
-        displacements: Prescribed nodal displacements with shape
-            [n_nod, n_dim].
-        constraints: Boolean mask of constrained DOFs with shape
-            [n_nod, n_dim].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
-
-    supports_nlgeom = False
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem.
@@ -55,11 +49,6 @@ class Truss(Mechanics):
     def __repr__(self) -> str:
         etype = self.etype.__name__
         return f"<torch-fem truss ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-
-    @property
-    def n_flux(self) -> list[int]:
-        """Shape of the stress tensor."""
-        return [1, 1]
 
     @property
     def etype(self) -> type[Element]:
@@ -83,14 +72,11 @@ class Truss(Mechanics):
         return self.areas
 
     def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Gradient operator at integration points xi."""
-
-        # Compute transformation matrix x = T X with element coords x and
-        # global coords X
+        """Gradient operator along the bar at integration points xi."""
         nodes = self.nodes[self.elements, :]
         dx = nodes[:, 1] - nodes[:, 0]
         l0 = torch.linalg.norm(dx, dim=-1)
-        T = dx[:, None, :] / l0[:, None, None]
+        self.t = dx / l0[:, None]
 
         # Compute Jacobian and its determinant
         J = 0.5 * l0[:, None, None]
@@ -100,9 +86,6 @@ class Truss(Mechanics):
 
         b = self.etype.B(xi)
         B = torch.einsum("...jkl,...lm->...jkm", torch.linalg.inv(J), b)
-        B = torch.einsum("...ijk,ijl->...ijkl", B, T).reshape(
-            xi.shape[0], self.n_elem, 1, -1
-        )
         return self.etype.N(xi), B, detJ
 
     def compute_k(self, detJ: Tensor, BCB: Tensor):
@@ -228,7 +211,7 @@ class Truss(Mechanics):
 
         # Boundary conditions
         tips = [pos]
-        if bcs:
+        if bcs and self.n_dof_per_node != 1:
             deformed = isinstance(u, Tensor)
             prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
             fixed = self.constraints & (deformed | (prescribed == 0.0))
@@ -331,7 +314,7 @@ class Truss(Mechanics):
         pl.add_mesh(tubes + spheres, scalars=scalars, cmap=cmap)
 
         # Boundary conditions
-        if bcs:
+        if bcs and self.n_dof_per_node != 1:
             deformed = isinstance(u, Tensor)
             prescribed = torch.where(self.constraints, self._dirichlet, 0.0)
             radius = 0.1 * float(self.char_lengths.mean())
@@ -346,3 +329,55 @@ class Truss(Mechanics):
             cones(pl, pos, fixed, 2.0 * radius)
 
         show_plotter(pl, plotter, axes, camera)
+
+
+class Truss(TrussGeometry, Mechanics):
+    """Truss model built from bar elements in 2D or 3D space.
+
+    The element type (Bar1, Bar2) is inferred from the number of nodes per
+    element in the connectivity, and the spatial dimension from the nodes.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, n_dim].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized 1D material model.
+        areas: Cross-sectional areas with shape [n_elem]. Defaults to ones.
+        forces: Applied nodal forces with shape [n_nod, n_dim].
+        displacements: Prescribed nodal displacements with shape [n_nod, n_dim].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dim].
+    """
+
+    supports_nlgeom = False
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the stress tensor."""
+        return [1, 1]
+
+    def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Gradient operator at `xi`, rotated onto the nodal displacements."""
+        N, B, detJ = super().eval_shape_functions(xi)
+        B = torch.einsum("...ijk,il->...ijkl", B, self.t)
+        return N, B.reshape(xi.shape[0], self.n_elem, 1, -1), detJ
+
+
+class TrussHeat(TrussGeometry, Heat):
+    """Truss heat conduction model.
+
+    Uses the same bars and plotting as `Truss`, with a single temperature
+    degree of freedom per node. A bar conducts along its axis alone.
+
+    Attributes:
+        nodes: Nodal coordinates with shape [n_nod, n_dim].
+        elements: Element connectivity with shape [n_elem, nodes_per_element].
+        material: Vectorized 1D thermal material model.
+        areas: Cross-sectional areas with shape [n_elem]. Defaults to ones.
+        heat_flux: Applied nodal heat sources with shape [n_nod, 1].
+        temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
+        constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
+    """
+
+    @property
+    def n_flux(self) -> list[int]:
+        """Shape of the axial heat flux."""
+        return [1, 1]

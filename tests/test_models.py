@@ -5,18 +5,22 @@ import math
 import pytest
 import torch
 
-from torchfem import Planar, Shell, Solid, Truss
+from torchfem import Planar, Shell, ShellHeat, Solid, Truss, TrussHeat
 from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
+    IsotropicConductivity1D,
+    IsotropicConductivity2D,
     IsotropicDamage3D,
     IsotropicDamagePlaneStrain,
     IsotropicDamagePlaneStress,
     IsotropicElasticity1D,
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
+    OrthotropicConductivity2D,
     OrthotropicElasticityPlaneStress,
 )
 from torchfem.mesh import cube_hexa, cube_tetra, rect_quad, rect_tri
+from torchfem.rotations import axis_rotation
 
 ETYPES = ["Tria1", "Tria2", "Quad1", "Quad2", "Tetra1", "Tetra2", "Hexa1", "Hexa2"]
 
@@ -451,3 +455,195 @@ def _shell(elements):
 )
 def test_repr_names_the_element_type_not_its_metaclass(build, etype):
     assert etype in repr(build())
+
+
+class TestShellHeat:
+    """In-plane conduction through a strip, where the section of thickness `t`
+    carries a conductance `kappa * W * t / L` that a 1D solution reproduces."""
+
+    L, W, t, kappa, dT = 4.0, 1.0, 0.3, 5.0, 100.0
+
+    def _strip(self, material=None, thickness=None, orientation=None, rotation=None):
+        """A strip along x, held cold at x = 0 and hot at x = L."""
+        nodes, elements = rect_quad(9, 3, self.L, self.W)
+        nodes = torch.hstack([nodes, torch.zeros(len(nodes), 1)])
+        axis = nodes[:, 0].clone()
+        direction = (
+            torch.tensor([1.0, 0.0, 0.0]) if orientation is None else orientation
+        )
+        if rotation is not None:
+            nodes, direction = nodes @ rotation.T, direction @ rotation.T
+        strip = ShellHeat(
+            nodes,
+            elements,
+            IsotropicConductivity2D(kappa=self.kappa) if material is None else material,
+            thickness=self.t if thickness is None else thickness,
+            orientation=direction,
+        )
+        hot, cold = axis > self.L - 1e-9, axis < 1e-9
+        strip.constraints[hot | cold] = True
+        strip.temperatures[hot] = self.dT
+        return strip, axis, hot
+
+    def test_temperature_is_linear_along_the_strip(self):
+        strip, axis, _ = self._strip()
+        temperature = strip.solve(method="direct")[0]
+        assert torch.allclose(temperature[:, 0], self.dT * axis / self.L, atol=1e-9)
+
+    def test_heat_flow_matches_the_one_dimensional_solution(self):
+        strip, _, hot = self._strip()
+        flux = strip.solve(method="direct")[1]
+        expected = self.kappa * self.W * self.t * self.dT / self.L
+        assert float(flux[hot, 0].sum()) == pytest.approx(expected)
+
+    @pytest.mark.parametrize("thickness", [0.15, 0.3, 0.6])
+    def test_thickness_scales_the_conductance(self, thickness):
+        strip, _, hot = self._strip(thickness=thickness)
+        flux = strip.solve(method="direct")[1]
+        expected = self.kappa * self.W * thickness * self.dT / self.L
+        assert float(flux[hot, 0].sum()) == pytest.approx(expected)
+
+    @pytest.mark.parametrize(
+        ("direction", "conductivity"),
+        [([1.0, 0.0, 0.0], 50.0), ([0.0, 1.0, 0.0], 2.0)],
+        ids=["along", "across"],
+    )
+    def test_orthotropic_conductivity_follows_the_orientation(
+        self, direction, conductivity
+    ):
+        material = OrthotropicConductivity2D(kappa_1=50.0, kappa_2=2.0)
+        strip, _, hot = self._strip(material, orientation=torch.tensor(direction))
+        flux = strip.solve(method="direct")[1]
+        expected = conductivity * self.W * self.t * self.dT / self.L
+        assert float(flux[hot, 0].sum()) == pytest.approx(expected)
+
+    def test_a_rigid_rotation_leaves_the_local_solution_unchanged(self):
+        # The flux comes back in the local material frame, so it is invariant
+        # while the frame itself rotates with the model.
+        rotation = axis_rotation(torch.tensor([0.3, -0.7, 0.5]), torch.tensor(1.1))
+        flat, _, _ = self._strip()
+        turned, _, _ = self._strip(rotation=rotation)
+        for plane, rotated in zip(
+            flat.solve(method="direct"), turned.solve(method="direct")
+        ):
+            assert torch.allclose(plane, rotated, atol=1e-9)
+
+    def test_conduction_follows_a_curved_surface(self):
+        # Flat facets conduct along the polygon through the nodes, not the chord
+        # between its ends.
+        n, radius, width = 17, 2.0, 1.0
+        angle = torch.linspace(0.0, math.pi / 2, n)
+        arc = radius * torch.stack([torch.cos(angle), torch.sin(angle)], dim=1)
+        nodes = torch.cat(
+            [torch.hstack([arc, torch.full((n, 1), z)]) for z in (0.0, width)]
+        )
+        elements = torch.tensor([[i, i + 1, n + i + 1, n + i] for i in range(n - 1)])
+        shell = ShellHeat(
+            nodes, elements, IsotropicConductivity2D(kappa=self.kappa), thickness=self.t
+        )
+        ends = torch.zeros(2 * n, dtype=torch.bool)
+        ends[[0, n - 1, n, 2 * n - 1]] = True
+        shell.constraints[ends] = True
+        shell.temperatures[[n - 1, 2 * n - 1]] = self.dT
+        flux = shell.solve(method="direct")[1]
+
+        path = float((arc[1:] - arc[:-1]).norm(dim=1).sum())
+        expected = self.kappa * width * self.t * self.dT / path
+        assert float(flux[[n - 1, 2 * n - 1], 0].sum()) == pytest.approx(expected)
+
+    def test_capacity_matrix_integrates_density_over_the_section(self):
+        density = 2.0
+        strip, _, _ = self._strip(
+            IsotropicConductivity2D(kappa=self.kappa, rho=density)
+        )
+        total = density * self.L * self.W * self.t
+        assert float(strip.integrate_mass().sum()) == pytest.approx(total)
+
+    def test_transient_relaxes_to_the_steady_solution(self):
+        strip, axis, _ = self._strip(IsotropicConductivity2D(kappa=self.kappa, rho=2.0))
+        temperature = strip.time_integration(
+            t_output=torch.tensor([0.0, 100.0]), delta_t=0.5
+        )[0]
+        steady = self.dT * axis / self.L
+        assert torch.allclose(temperature[-1, :, 0], steady, atol=1e-4)
+
+
+class TestTrussHeat:
+    """A bar conducts along its axis alone, with a conductance `kappa * A / L`."""
+
+    L, A, kappa, dT = 3.0, 0.25, 45.0, 100.0
+
+    def _chain(self, n: int = 6, area: float | None = None):
+        """A straight chain of bars, held cold at one end and hot at the other."""
+        x = torch.linspace(0.0, self.L, n)
+        nodes = torch.stack([x, torch.zeros(n)], dim=1)
+        elements = torch.tensor([[i, i + 1] for i in range(n - 1)])
+        chain = TrussHeat(nodes, elements, IsotropicConductivity1D(kappa=self.kappa))
+        chain.areas = torch.full((n - 1,), self.A if area is None else area)
+        chain.constraints[[0, n - 1]] = True
+        chain.temperatures[n - 1, 0] = self.dT
+        return chain, x
+
+    def test_temperature_is_linear_along_the_chain(self):
+        chain, x = self._chain()
+        temperature = chain.solve(method="direct")[0]
+        assert torch.allclose(temperature[:, 0], self.dT * x / self.L)
+
+    def test_heat_flow_matches_the_one_dimensional_solution(self):
+        chain, _ = self._chain()
+        flux = chain.solve(method="direct")[1]
+        expected = self.kappa * self.A * self.dT / self.L
+        assert float(flux[-1]) == pytest.approx(expected)
+
+    @pytest.mark.parametrize("area", [0.125, 0.25, 0.5])
+    def test_area_scales_the_conductance(self, area):
+        chain, _ = self._chain(area=area)
+        flux = chain.solve(method="direct")[1]
+        expected = self.kappa * area * self.dT / self.L
+        assert float(flux[-1]) == pytest.approx(expected)
+
+    def test_a_bar_conducts_along_its_axis_in_three_dimensions(self):
+        # The joint temperature splits by the two bar lengths alone, whatever
+        # direction they point in.
+        nodes = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0], [2.0, 0.0, 0.5]])
+        elements = torch.tensor([[0, 1], [1, 2]])
+        bars = TrussHeat(nodes, elements, IsotropicConductivity1D(kappa=self.kappa))
+        bars.constraints[[0, 2]] = True
+        bars.temperatures[2, 0] = self.dT
+        temperature = bars.solve(method="direct")[0]
+
+        first = float((nodes[1] - nodes[0]).norm())
+        second = float((nodes[2] - nodes[1]).norm())
+        assert float(temperature[1, 0]) == pytest.approx(
+            self.dT * first / (first + second)
+        )
+
+    def test_parallel_bars_carry_heat_in_proportion_to_their_area(self):
+        nodes = torch.tensor([[0.0, 0.0], [1.0, 1.0], [1.0, -1.0], [2.0, 0.0]])
+        elements = torch.tensor([[0, 1], [1, 3], [0, 2], [2, 3]])
+        paths = TrussHeat(nodes, elements, IsotropicConductivity1D(kappa=self.kappa))
+        paths.areas = torch.tensor([1.0, 1.0, 3.0, 3.0])
+        paths.constraints[[0, 3]] = True
+        paths.temperatures[3, 0] = self.dT
+        temperature, reaction, flux, _, _ = paths.solve(method="direct")
+
+        # Equal length and conductivity, so the flux matches and the power, which
+        # carries the area, splits three to one
+        assert float(flux[2]) == pytest.approx(float(flux[0]))
+        assert float(temperature[1, 0]) == pytest.approx(0.5 * self.dT)
+        assert float(reaction[3]) == pytest.approx(
+            4.0 * self.kappa * self.dT / (2.0 * float(2.0**0.5))
+        )
+
+    def test_transient_relaxes_to_the_steady_solution(self):
+        x = torch.linspace(0.0, self.L, 6)
+        nodes = torch.stack([x, torch.zeros(6)], dim=1)
+        elements = torch.tensor([[i, i + 1] for i in range(5)])
+        material = IsotropicConductivity1D(kappa=self.kappa, rho=2.0)
+        chain = TrussHeat(nodes, elements, material)
+        chain.constraints[[0, 5]] = True
+        chain.temperatures[5, 0] = self.dT
+        temperature = chain.time_integration(
+            t_output=torch.tensor([0.0, 20.0]), delta_t=0.05
+        )[0]
+        assert torch.allclose(temperature[-1, :, 0], self.dT * x / self.L, atol=1e-5)
