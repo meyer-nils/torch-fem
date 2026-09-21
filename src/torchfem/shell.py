@@ -828,9 +828,7 @@ class Shell(ShellGeometry, Mechanics):
         N_nod = self.etype.nodes
         n_dof = self.n_dof_per_node * N_nod
         f = torch.zeros(self.n_elem, n_dof)
-        need_k = compute_stiffness and (
-            self.K.numel() == 0 or self.n_state != 0 or nlgeom
-        )
+        need_k = compute_stiffness and (self.K.numel() == 0 or self.n_state != 0)
         k = torch.zeros(self.n_elem, n_dof, n_dof) if need_k else None
 
         # Compute gradient operators

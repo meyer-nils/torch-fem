@@ -356,6 +356,11 @@ class FEM(ABC):
         """Whether the material tangent has major symmetry."""
         return self.material is None or self.material.symmetric_tangent
 
+    @property
+    def finite_strain(self) -> bool:
+        """Whether the material is formulated for finite strain."""
+        return self.material is not None and self.material.finite_strain
+
     def integrate_shape_functions(self) -> Tensor:
         """Integrate each shape function over its element.
 
@@ -666,7 +671,8 @@ class FEM(ABC):
             return_intermediate: If True, returns values for all increments.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            nlgeom: If True, includes geometric nonlinearity.
+            nlgeom: If True, includes geometric nonlinearity. Needs a finite
+                strain material.
             alpha: Damping factor for viscous stabilization. Dissipated
                 energy is accumulated in `self.stabilization_energy`.
             differentiable_parameters: Explicit parameter(s) to differentiate
@@ -681,6 +687,11 @@ class FEM(ABC):
         if nlgeom and not self.supports_nlgeom:
             raise NotImplementedError(
                 f"Geometric nonlinearity is not implemented for {type(self).__name__}."
+            )
+        if nlgeom and not self.finite_strain:
+            raise NotImplementedError(
+                "Geometric nonlinearity is not implemented for "
+                f"{type(self.material).__name__}, a small strain material."
             )
 
         increments = torch.tensor([0.0, 1.0]) if increments is None else increments
@@ -976,7 +987,7 @@ class Mechanics(FEM, ABC):
         # Initialize nodal force and stiffness
         n_dof = self.n_dof_per_node * self.etype.nodes
         need_k = compute_stiffness and (
-            self.K.numel() == 0 or self.n_state != 0 or nlgeom
+            self.K.numel() == 0 or self.n_state != 0 or self.finite_strain
         )
         f = torch.zeros(self.n_elem, n_dof, device=du.device)
         k = torch.zeros(self.n_elem, n_dof, n_dof, device=du.device) if need_k else None

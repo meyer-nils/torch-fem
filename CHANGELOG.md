@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- `Material.finite_strain` declares whether `step(...)` stays objective under rotation, as `symmetric_tangent` declares its tangent symmetry. Only the hyperelastic materials set it.
+
+### Changed
+- `solve(nlgeom=True)` raises for a small strain material. The combination was never valid, since an incremental small strain update is not objective under rotation.
 
 ### Fixed
 - `solve(nlgeom=True)` reports the Cauchy stress as `J^-1 P F^T`. It was the transpose of that, which a symmetric deformation gradient cannot tell apart, so a deformation carrying a rotation reported an unsymmetric stress.

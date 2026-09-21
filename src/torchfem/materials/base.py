@@ -26,10 +26,12 @@ class Material:
         rho (Tensor): Mass density.
             *Shape:* `(..., 1)` or scalar.
         symmetric_tangent (bool): Whether the tangent has major symmetry.
+        finite_strain (bool): Whether `step(...)` stays objective under rotation.
     """
 
     dim: int = 3
     symmetric_tangent: bool = True
+    finite_strain: bool = False
 
     def __init__(self):
         self.n_state: int = 0

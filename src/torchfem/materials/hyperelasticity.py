@@ -63,6 +63,8 @@ class Hyperelastic3D(MechanicsMaterial):
         (\\mathbb{C} - \\mathbb{I})$.
     """
 
+    finite_strain = True
+
     def __init__(self, psi: Callable, params: list | Tensor, rho: Tensor | float = 1.0):
         # Store the strain energy density function
         self.psi = psi

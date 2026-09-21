@@ -316,6 +316,13 @@ def test_heat_solve_rejects_geometric_nonlinearity():
         _planar_heat().solve(nlgeom=True)
 
 
+def test_solve_rejects_geometric_nonlinearity_for_a_small_strain_material():
+    """A small strain stress update is not objective, so `nlgeom` is refused."""
+    model = _single_element(Solid, IsotropicElasticity3D(1000.0, 0.3), 3)
+    with pytest.raises(NotImplementedError, match="IsotropicElasticity3D"):
+        model.solve(nlgeom=True)
+
+
 def _prescribed_gradient(F):
     """A single hexahedron with every node driven to the deformation gradient `F`."""
 
