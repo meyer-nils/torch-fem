@@ -12,6 +12,7 @@
 ### Fixed
 - `solve(nlgeom=True)` reports the Cauchy stress as `J^-1 P F^T`. It was the transpose of that, which a symmetric deformation gradient cannot tell apart, so a deformation carrying a rotation reported an unsymmetric stress.
 - The damage materials integrate their stress incrementally, so `ext_strain` no longer scales it with the number of increments.
+- A `Shell` reports its in-plane strain, where it returned the identity at every station, so a damage layer read only the current increment as its total strain.
 
 ## Version 0.12.0 - September 18 2026
 

@@ -884,6 +884,7 @@ class Shell(ShellGeometry, Mechanics):
 
                 # Compute in-plane displacement gradient increment
                 H_inc = dudxi[..., 0:2] + z * dkappa
+                grad_new[ip] = grad_prev[ip] + H_inc
 
                 # Evaluate material response
                 flux_new[ip], state_new[ip], ddsdde = material.step(
@@ -905,9 +906,6 @@ class Shell(ShellGeometry, Mechanics):
                 A_matrix += C * wz
                 B_matrix += C * wz * z
                 D_matrix += C * wz * z**2
-
-            # Copy grad from grad_prev (shells don't update deformation gradient)
-            grad_new[:] = grad_prev
 
             # Element membrane stiffness
             Dm = self._Dm(B[i])
