@@ -1015,7 +1015,7 @@ class Mechanics(FEM, ABC):
             # Compute new Cauchy stress
             if nlgeom:
                 J = torch.det(F_new)[:, None, None]
-                flux_new[i] = (F_new @ P) / J
+                flux_new[i] = (P @ F_new.transpose(-1, -2)) / J
             else:
                 flux_new[i] = P
 

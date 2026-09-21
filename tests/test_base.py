@@ -12,6 +12,7 @@ from torchfem import (
     TrussHeat,
 )
 from torchfem.materials import (
+    Hyperelastic3D,
     IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
@@ -21,6 +22,7 @@ from torchfem.materials import (
     IsotropicElasticityPlaneStress,
 )
 from torchfem.mesh import cube_hexa, rect_quad
+from torchfem.rotations import axis_rotation
 
 
 def _planar() -> Planar:
@@ -312,6 +314,38 @@ def test_heat_solve_rejects_geometric_nonlinearity():
     """Heat conduction has no kinematics, so `nlgeom` is not silently ignored."""
     with pytest.raises(NotImplementedError, match="not implemented for PlanarHeat"):
         _planar_heat().solve(nlgeom=True)
+
+
+def _prescribed_gradient(F):
+    """A single hexahedron with every node driven to the deformation gradient `F`."""
+
+    def psi(F, params):
+        C = F.transpose(-1, -2) @ F
+        logJ = 0.5 * torch.logdet(C)
+        return params[0] / 2 * (torch.trace(C) - 3.0) - params[0] * logJ + logJ**2
+
+    nodes, elements = cube_hexa(2, 2, 2)
+    model = Solid(nodes, elements, Hyperelastic3D(psi, params=[100.0, 150.0]))
+    model.constraints[:] = True
+    model.displacements = nodes @ F.T - nodes
+    return model
+
+
+def test_nlgeom_reports_an_objective_cauchy_stress():
+    """The Cauchy stress is symmetric, and a superposed rotation rotates it.
+
+    `J^-1 P F^T` satisfies both. Its transpose, which a stretch alone cannot
+    tell apart, satisfies neither.
+    """
+    R = axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.tensor(0.7))
+    U = torch.tensor([[1.2, 0.1, 0.0], [0.1, 0.9, 0.0], [0.0, 0.0, 1.0]])
+
+    straight = _prescribed_gradient(U).solve(nlgeom=True)[2]
+    turned = _prescribed_gradient(R @ U).solve(nlgeom=True)[2]
+
+    assert torch.allclose(straight, straight.transpose(-1, -2), atol=1e-10)
+    assert torch.allclose(turned, turned.transpose(-1, -2), atol=1e-10)
+    assert torch.allclose(turned, R @ straight @ R.T, atol=1e-8)
 
 
 class TestMaterialCompatibility:

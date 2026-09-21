@@ -1,5 +1,11 @@
 # Changelog 
 
+## Unreleased
+
+
+### Fixed
+- `solve(nlgeom=True)` reports the Cauchy stress as `J^-1 P F^T`. It was the transpose of that, which a symmetric deformation gradient cannot tell apart, so a deformation carrying a rotation reported an unsymmetric stress.
+
 ## Version 0.12.0 - September 18 2026
 
 ### Added
