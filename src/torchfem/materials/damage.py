@@ -155,8 +155,12 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         D_new = self.d(kappa_new, cl)
         D_prime = self.d_prime(kappa_new, cl)
 
-        # Update stress
-        sigma_trial = torch.einsum("...ijkl,...kl->...ij", self.C, eps_new - de0)
+        # Update stress, recovering the undamaged stress the last step degraded.
+        # A fully damaged point stores none, so the clamped division returns zero.
+        intact = (1.0 - D)[..., None, None].clamp(min=torch.finfo(stress.dtype).tiny)
+        sigma_trial = stress / intact + torch.einsum(
+            "...ijkl,...kl->...ij", self.C, H_inc - de0
+        )
         stress_new = (1 - D_new)[:, None, None] * sigma_trial
 
         # Update state variables
@@ -311,8 +315,12 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
         D_new = self.d(kappa_new, cl)
         D_prime = self.d_prime(kappa_new, cl)
 
-        # Update stress
-        sigma_trial = torch.einsum("...ijkl,...kl->...ij", self.C, eps - de0)
+        # Update stress, recovering the undamaged stress the last step degraded.
+        # A fully damaged point stores none, so the clamped division returns zero.
+        intact = (1.0 - D)[..., None, None].clamp(min=torch.finfo(stress.dtype).tiny)
+        sigma_trial = stress / intact + torch.einsum(
+            "...ijkl,...kl->...ij", self.C, H_inc - de0
+        )
         stress_new = (1 - D_new)[..., None, None] * sigma_trial
 
         # Update state variables
