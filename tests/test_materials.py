@@ -170,8 +170,9 @@ class TestConductivities:
         mat = build().vectorize(N_ELEM)
         grad_inc, grad, q, state, cl = _make_thermal_step_args(dim, N_ELEM)
         q_new, state_new, tangent = mat.step(grad_inc, grad, q, state, cl, 0)
-        # The gradient runs [1, ..., dim] against the conductivities
-        expected = torch.tensor(kappa) * torch.arange(1, dim + 1)
+        # The gradient runs [1, ..., dim] against the conductivities, and the
+        # flux opposes it
+        expected = -torch.tensor(kappa) * torch.arange(1, dim + 1)
         assert torch.allclose(q_new, expected.expand(N_ELEM, 1, dim))
         assert tangent.shape == (N_ELEM, dim, dim)
         assert torch.equal(state_new, state)

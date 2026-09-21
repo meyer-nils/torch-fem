@@ -30,7 +30,7 @@ class IsotropicConductivity3D(HeatMaterial):
             \\pmb{\\kappa} = \\kappa \\mathbf{I}
         $$
         which relates the heat flux to the temperature gradient via Fourier's law
-        $\\mathbf{q} = \\pmb{\\kappa} \\cdot \\nabla T$.
+        $\\mathbf{q} = -\\pmb{\\kappa} \\cdot \\nabla T$.
     """
 
     def __init__(self, kappa: Tensor | float, rho: Tensor | float = 1.0):
@@ -61,7 +61,7 @@ class IsotropicConductivity3D(HeatMaterial):
     ) -> tuple[Tensor, Tensor, Tensor]:
         """Performs an incremental step in the isotropic heat conduction model.
 
-        Fourier's law, $\\Delta \\mathbf{q} = \\pmb{\\kappa} \\cdot
+        Fourier's law, $\\Delta \\mathbf{q} = -\\pmb{\\kappa} \\cdot
         \\Delta \\nabla T$, with a constant conductivity.
 
         Args:
@@ -86,11 +86,11 @@ class IsotropicConductivity3D(HeatMaterial):
                 *Shape:* `(..., 3, 3)`.
         """
         # Compute new heat flux
-        flux_new = flux + torch.einsum("...ij,...kj->...ki", self.KAPPA, grad_inc)
+        flux_new = flux - torch.einsum("...ij,...kj->...ki", self.KAPPA, grad_inc)
         # Update internal state (this material does not change state)
         state_new = state
         # Algorithmic tangent
-        dqdg = self.KAPPA
+        dqdg = -self.KAPPA
         return flux_new, state_new, dqdg
 
 
@@ -146,7 +146,7 @@ class IsotropicConductivity1D(IsotropicConductivity3D):
         Same constitutive law as `IsotropicConductivity3D`, reduced to the single
         component along the bar,
         $$
-            q = \\kappa \\frac{\\partial T}{\\partial s}.
+            q = -\\kappa \\frac{\\partial T}{\\partial s}.
         $$
         Heat conduction transverse to the bar is not modelled.
     """

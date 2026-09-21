@@ -7,6 +7,7 @@
 
 ### Changed
 - `solve(nlgeom=True)` raises for a small strain material. The combination was never valid, since an incremental small strain update is not objective under rotation.
+- A thermal model reports the heat flux as `-kappa grad(T)`, where it reported `+kappa grad(T)` under that name and the examples negated it again.
 
 ### Fixed
 - `solve(nlgeom=True)` reports the Cauchy stress as `J^-1 P F^T`. It was the transpose of that, which a symmetric deformation gradient cannot tell apart, so a deformation carrying a rotation reported an unsymmetric stress.

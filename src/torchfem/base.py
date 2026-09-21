@@ -1204,13 +1204,13 @@ class Heat(FEM, ABC):
 
             # Compute element internal forces
             force_contrib = self.compute_f(detJ[i], B[i], flux_i)
-            f += w * force_contrib.reshape(-1, n_dof)
+            f -= w * force_contrib.reshape(-1, n_dof)
 
             # Compute element stiffness matrix
             if need_k:
                 assert k is not None
                 BCB = torch.einsum("...ij,...iN,...jM->...NM", ddfddg, B[i], B[i])
-                k += self.compute_k(detJ[i], BCB.reshape(-1, n_dof, n_dof)).mul_(w)
+                k -= self.compute_k(detJ[i], BCB.reshape(-1, n_dof, n_dof)).mul_(w)
 
         return (
             k,
