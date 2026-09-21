@@ -29,6 +29,8 @@ class Hyperelastic3D(MechanicsMaterial):
         - Finite-strain (large deformation) framework.
         - No internal state variables (``n_state = 0``).
         - Stress and tangent are computed via automatic differentiation of $\\psi$.
+        - Compute $\\ln J$ as ``0.5 * torch.logdet(C)``. The second derivative of
+          ``torch.det`` is not finite at $\\mathbf{F} = \\mathbf{I}$.
 
     Info: Hyperelastic constitutive law
         A hyperelastic material is defined by a strain energy density function
