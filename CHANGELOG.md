@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.12.1 - September 21 2026
 
 ### Added
 - `Material.finite_strain` declares whether `step(...)` stays objective under rotation, as `symmetric_tangent` declares its tangent symmetry. Only the hyperelastic materials set it.
