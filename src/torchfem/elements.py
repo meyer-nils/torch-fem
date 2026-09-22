@@ -433,7 +433,7 @@ class Quad1(Element):
 
     @classproperty
     def iweights(cls) -> Tensor:
-        return torch.tensor([1, 1, 1, 1])
+        return torch.tensor([1.0, 1.0, 1.0, 1.0])
 
     @classproperty
     def ipoints(cls) -> Tensor:
@@ -532,7 +532,7 @@ class Quad2(Quad1):
 
     @classproperty
     def iweights(cls) -> Tensor:
-        return torch.tensor([1, 1, 1, 1])
+        return torch.tensor([1.0, 1.0, 1.0, 1.0])
 
     @classproperty
     def ipoints(cls) -> Tensor:

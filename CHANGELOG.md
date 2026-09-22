@@ -10,6 +10,7 @@
 
 ### Fixed
 - `MechanicsMaterial.step(...)` receives the first Piola stress its signature names, where `nlgeom=True` fed back the Cauchy stress. No finite strain material reads it, so no result changes.
+- `Quad1.iweights` and `Quad2.iweights` are floating-point tensors like those of every other element.
 
 ## Version 0.12.1 - September 21 2026
 
