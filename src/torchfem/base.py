@@ -159,6 +159,12 @@ class FEM(ABC):
                 f"{material.dim}D {type(material).__name__}."
             )
 
+        # Only a model formulated for it can integrate a finite strain stress.
+        if material is not None and material.finite_strain and not self.supports_nlgeom:
+            raise NotImplementedError(
+                f"Geometric nonlinearity is not implemented for {type(self).__name__}."
+            )
+
         # Vectorize material
         if material is None or material.is_vectorized:
             self.material = material
@@ -274,7 +280,7 @@ class FEM(ABC):
         du = torch.zeros(self.n_nod, self.n_dof_per_node)
         de0 = torch.zeros(self.n_elem, *self.n_flux)
         self.K = torch.empty(0)
-        k, _, _, _, _ = self.integrate_material(u, grad, flux, state, du, de0, 0, False)
+        k, _, _, _, _ = self.integrate_material(u, grad, flux, state, du, de0, 0)
         assert k is not None
         return k
 
@@ -288,7 +294,6 @@ class FEM(ABC):
         du: Tensor,
         de0: Tensor,
         iter: int,
-        nlgeom: bool,
         compute_stiffness: bool = True,
     ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Integrate constitutive response over all integration points.
@@ -301,7 +306,6 @@ class FEM(ABC):
             du: Incremental nodal unknown for the current Newton evaluation.
             de0: Incremental external gradient-like loading term.
             iter: Newton iteration index.
-            nlgeom: If True, evaluate with geometric nonlinearity.
             compute_stiffness: If True, compute and return stiffness.
 
         Returns:
@@ -588,7 +592,6 @@ class FEM(ABC):
         DU: Tensor,
         de0: Tensor,
         k_visc: Tensor | None,
-        nlgeom: bool,
         con: Tensor,
         du: Tensor,
         i: int,
@@ -606,7 +609,7 @@ class FEM(ABC):
         du = du.clone()
         du[con] = DU[con]
 
-        k, f_i, _, _, _ = self.integrate_material(*prev, du, de0, i, nlgeom)
+        k, f_i, _, _, _ = self.integrate_material(*prev, du, de0, i)
 
         # Viscous stabilization (k is None when self.K is reused as-is)
         if k_visc is not None:
@@ -638,7 +641,6 @@ class FEM(ABC):
         device: str | None = None,
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
-        nlgeom: bool = False,
         alpha: float = 0.0,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -671,8 +673,6 @@ class FEM(ABC):
             return_intermediate: If True, returns values for all increments.
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
-            nlgeom: If True, includes geometric nonlinearity. Needs a finite
-                strain material.
             alpha: Damping factor for viscous stabilization. Dissipated
                 energy is accumulated in `self.stabilization_energy`.
             differentiable_parameters: Explicit parameter(s) to differentiate
@@ -684,16 +684,6 @@ class FEM(ABC):
                 state. If return_intermediate is True, each tensor includes an
                 increment dimension as the leading axis.
         """
-        if nlgeom and not self.supports_nlgeom:
-            raise NotImplementedError(
-                f"Geometric nonlinearity is not implemented for {type(self).__name__}."
-            )
-        if nlgeom and not self.finite_strain:
-            raise NotImplementedError(
-                "Geometric nonlinearity is not implemented for "
-                f"{type(self.material).__name__}, a small strain material."
-            )
-
         increments = torch.tensor([0.0, 1.0]) if increments is None else increments
 
         # Number of increments
@@ -734,7 +724,7 @@ class FEM(ABC):
 
         newton = (
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
-            + (" | nlgeom" if nlgeom else "")
+            + (" | nlgeom" if self.finite_strain else "")
             + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
         )
         # Resolved once here, from what the model knows about its own tangent.
@@ -796,7 +786,7 @@ class FEM(ABC):
                 # Solve for increment using Newton-Raphson method
                 try:
                     du = newton_solve(
-                        partial(self._residual, F_ext, DU, de0, k_visc, nlgeom, con),
+                        partial(self._residual, F_ext, DU, de0, k_visc, con),
                         du.detach(),
                         null_space,
                         max_iter,
@@ -832,7 +822,6 @@ class FEM(ABC):
                     du_eval,
                     de0,
                     max_iter,
-                    nlgeom,
                     compute_stiffness=False,
                 )
                 F_int = self.assemble_rhs(f_i)
@@ -871,6 +860,11 @@ class FEM(ABC):
             report.end()
 
         report.close()
+
+        # The material works in the first Piola stress, converted before averaging.
+        if self.finite_strain:
+            J = torch.linalg.det(grad)[..., None, None]
+            flux = flux @ grad.transpose(-1, -2) / J
 
         # Rebinding rather than mutating, so what eval_residual captured still holds
         if aggregate_integration_points:
@@ -948,7 +942,6 @@ class Mechanics(FEM, ABC):
         du: Tensor,
         de0: Tensor,
         iter: int,
-        nlgeom: bool,
         compute_stiffness: bool = True,
     ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """
@@ -964,7 +957,6 @@ class Mechanics(FEM, ABC):
             du: Displacement increment used for the current Newton evaluation.
             de0: External strain-like increment per element.
             iter: Newton iteration index.
-            nlgeom: If True, computes Cauchy stress from first Piola stress.
             compute_stiffness: If True, compute and return element stiffness k.
                 When only forces are needed, pass False to avoid allocating the
                 large k tensor.
@@ -1023,12 +1015,8 @@ class Mechanics(FEM, ABC):
             # Store updated deformation gradient
             grad_new[i] = F_new
 
-            # Compute new Cauchy stress
-            if nlgeom:
-                J = torch.det(F_new)[:, None, None]
-                flux_new[i] = (P @ F_new.transpose(-1, -2)) / J
-            else:
-                flux_new[i] = P
+            # Store the stress the material works in, converted on reporting
+            flux_new[i] = P
 
             # Store new state
             state_new[i] = alpha
@@ -1139,7 +1127,6 @@ class Heat(FEM, ABC):
         du: Tensor,
         de0: Tensor,
         iter: int,
-        nlgeom: bool,
         compute_stiffness: bool = True,
     ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Integrate thermal constitutive response over all integration points.
@@ -1154,7 +1141,6 @@ class Heat(FEM, ABC):
             du: Temperature increment for the current Newton evaluation.
             de0: Always zero. A heat model imposes no external gradient.
             iter: Newton iteration index.
-            nlgeom: Unused for heat, kept for API compatibility.
 
         Returns:
             k: Element conductivity contributions.
@@ -1390,7 +1376,6 @@ class Heat(FEM, ABC):
                     du,
                     self._external_gradient,
                     it,
-                    False,
                 )
                 f_int = self.assemble_rhs(f_int)
                 f_ext = self._neumann.ravel()

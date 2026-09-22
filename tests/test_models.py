@@ -5,9 +5,10 @@ import math
 import pytest
 import torch
 
-from torchfem import Planar, Shell, ShellHeat, Solid, Truss, TrussHeat
+from torchfem import Laminate, Planar, Shell, ShellHeat, Solid, Truss, TrussHeat
 from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
+    HyperelasticPlaneStress,
     IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicDamage3D,
@@ -227,13 +228,11 @@ class TestShellValidation:
         with pytest.raises(ValueError, match="shear modulus"):
             Shell(self.nodes, self.elements, material)
 
-    def test_solve_rejects_geometric_nonlinearity(self):
-        material = IsotropicElasticityPlaneStress(1000.0, 0.3)
-        shell = Shell(self.nodes, self.elements, material)
-        shell.constraints[0] = True
-        shell.forces[2, 2] = 1.0
-        with pytest.raises(NotImplementedError, match="not implemented for Shell"):
-            shell.solve(nlgeom=True)
+    def test_rejects_a_finite_strain_material(self):
+        ply = HyperelasticPlaneStress(lambda F, p: p[0] * torch.trace(F), [1.0])
+        for material in (ply, Laminate([ply], [1.0], [0.0])):
+            with pytest.raises(NotImplementedError, match="not implemented for Shell"):
+                Shell(self.nodes, self.elements, material)
 
     def test_integrates_the_transverse_moduli_of_an_orthotropic_material(self):
         material = OrthotropicElasticityPlaneStress(

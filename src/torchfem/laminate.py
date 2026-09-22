@@ -53,6 +53,11 @@ class Laminate:
         """Whether every layer has a symmetric tangent. See `Material`."""
         return all(material.symmetric_tangent for material in self.materials)
 
+    @property
+    def finite_strain(self) -> bool:
+        """Whether any layer is formulated for finite strain. See `Material`."""
+        return any(material.finite_strain for material in self.materials)
+
     def __init__(
         self,
         materials: Sequence[MechanicsMaterial],

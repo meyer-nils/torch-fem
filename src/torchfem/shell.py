@@ -463,9 +463,13 @@ class Shell(ShellGeometry, Mechanics):
                 `(n_elem, 3)` tensor. Defaults to the global x-direction.
         """
 
-        # A Laminate is the shell's section, not a pointwise material: keep it
-        # in self.section and give the base no material.
+        # A Laminate is the shell's section, not a pointwise material: keep it in
+        # self.section and give the base no material, so check its layers here.
         pointwise = None if isinstance(material, Laminate) else material
+        if isinstance(material, Laminate) and material.finite_strain:
+            raise NotImplementedError(
+                f"Geometric nonlinearity is not implemented for {type(self).__name__}."
+            )
         super().__init__(nodes, elements, pointwise, thickness, offset, orientation)
 
         self.section: Laminate | None = (
@@ -796,7 +800,6 @@ class Shell(ShellGeometry, Mechanics):
         du: Tensor,
         de0: Tensor,
         iter: int,
-        nlgeom: bool,
         compute_stiffness: bool = True,
     ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor]:
         """Perform numerical integrations for element stiffness matrix.

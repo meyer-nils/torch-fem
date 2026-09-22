@@ -62,7 +62,6 @@ def setup(N, method=None):
     def forward():
         _, result["f"], *_ = box.solve(
             increments=increments,
-            nlgeom=True,
             differentiable_parameters=params,
             method=method,
         )

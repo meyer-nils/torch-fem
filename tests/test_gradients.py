@@ -107,7 +107,7 @@ def test_gradients_incremental_nonlinear_matches_analytical():
     # Geometric stretch increments and reaction force sensitivity
     lam_pts = torch.logspace(0, math.log10(1.0 + U), 8)
     u, f, _, _, _ = box.solve(
-        increments=(lam_pts - 1.0) / U, nlgeom=True, differentiable_parameters=params
+        increments=(lam_pts - 1.0) / U, differentiable_parameters=params
     )
     reaction = f[right, 0].sum()
     grad = torch.autograd.grad(reaction, params)[0]

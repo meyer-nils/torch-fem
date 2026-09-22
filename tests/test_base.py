@@ -310,19 +310,6 @@ def test_solve_keeps_the_integration_point_axis():
     assert flux.shape == (model.n_int, 1, 2, 2)
 
 
-def test_heat_solve_rejects_geometric_nonlinearity():
-    """Heat conduction has no kinematics, so `nlgeom` is not silently ignored."""
-    with pytest.raises(NotImplementedError, match="not implemented for PlanarHeat"):
-        _planar_heat().solve(nlgeom=True)
-
-
-def test_solve_rejects_geometric_nonlinearity_for_a_small_strain_material():
-    """A small strain stress update is not objective, so `nlgeom` is refused."""
-    model = _single_element(Solid, IsotropicElasticity3D(1000.0, 0.3), 3)
-    with pytest.raises(NotImplementedError, match="IsotropicElasticity3D"):
-        model.solve(nlgeom=True)
-
-
 def _prescribed_gradient(F):
     """A single hexahedron with every node driven to the deformation gradient `F`."""
 
@@ -338,7 +325,7 @@ def _prescribed_gradient(F):
     return model
 
 
-def test_nlgeom_reports_an_objective_cauchy_stress():
+def test_finite_strain_reports_an_objective_cauchy_stress():
     """The Cauchy stress is symmetric, and a superposed rotation rotates it.
 
     `J^-1 P F^T` satisfies both. Its transpose, which a stretch alone cannot
@@ -347,8 +334,8 @@ def test_nlgeom_reports_an_objective_cauchy_stress():
     R = axis_rotation(torch.tensor([0.0, 0.0, 1.0]), torch.tensor(0.7))
     U = torch.tensor([[1.2, 0.1, 0.0], [0.1, 0.9, 0.0], [0.0, 0.0, 1.0]])
 
-    straight = _prescribed_gradient(U).solve(nlgeom=True)[2]
-    turned = _prescribed_gradient(R @ U).solve(nlgeom=True)[2]
+    straight = _prescribed_gradient(U).solve()[2]
+    turned = _prescribed_gradient(R @ U).solve()[2]
 
     assert torch.allclose(straight, straight.transpose(-1, -2), atol=1e-10)
     assert torch.allclose(turned, turned.transpose(-1, -2), atol=1e-10)

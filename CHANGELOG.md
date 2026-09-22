@@ -1,5 +1,15 @@
 # Changelog 
 
+## Unreleased
+
+### Changed
+- **Breaking:** `solve(...)` no longer takes `nlgeom`. A finite strain material already carries the geometric nonlinearity in its stress measure and tangent, so the argument only chose which stress was reported.
+- A model that does not implement geometric nonlinearity rejects a finite strain material when it is constructed, where `solve(nlgeom=True)` rejected it. A `Shell` checks its laminate layers too, which reached no check at all.
+- `Assembly.solve(...)` reports the Cauchy stress of a finite strain part, where it reported the first Piola stress.
+
+### Fixed
+- `MechanicsMaterial.step(...)` receives the first Piola stress its signature names, where `nlgeom=True` fed back the Cauchy stress. No finite strain material reads it, so no result changes.
+
 ## Version 0.12.1 - September 21 2026
 
 ### Added

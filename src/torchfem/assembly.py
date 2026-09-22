@@ -126,9 +126,7 @@ class Assembly:
     the solved system stays symmetric and positive definite and needs no penalty
     parameter. The parts must share one physics and one spatial dimension.
 
-    Assemblies solve on the reference configuration: `nlgeom` is not supported,
-    since shells do not implement it and the rotation of a coupling is
-    linearized.
+    A coupling is linearized about the reference configuration, so it never rotates.
 
     Attributes:
         parts: The coupled models, in global degree-of-freedom order.
@@ -513,7 +511,6 @@ class Assembly:
                     du[offset : offset + part.n_dofs],
                     step * part._external_gradient,
                     iteration,
-                    False,  # nlgeom, see the note in the class docstring
                     compute_stiffness=tangent,
                 )
                 if k is not None:
@@ -601,6 +598,12 @@ class Assembly:
             report.end()
 
         report.close()
+
+        # A part works in the first Piola stress, converted before averaging.
+        for j, part in enumerate(self.parts):
+            if isinstance(part, FEM) and part.finite_strain:
+                J = torch.linalg.det(grad[j])[..., None, None]
+                flux[j] = flux[j] @ grad[j].transpose(-1, -2) / J
 
         if aggregate_integration_points:
             # A reference point has no integration points to average over

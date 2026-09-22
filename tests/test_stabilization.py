@@ -179,14 +179,10 @@ def _count_newton_solves(monkeypatch) -> list:
 def test_cutback_recovers_a_diverging_increment(monkeypatch):
     """A single increment Newton cannot take must be subdivided, not abandoned."""
     # Reference along a path fine enough that no increment is ever in trouble.
-    reference = _build_bent_cantilever().solve(
-        increments=torch.linspace(0, 1, 21), nlgeom=True
-    )
+    reference = _build_bent_cantilever().solve(increments=torch.linspace(0, 1, 21))
 
     calls = _count_newton_solves(monkeypatch)
-    cut_back = _build_bent_cantilever().solve(
-        increments=torch.tensor([0.0, 1.0]), nlgeom=True
-    )
+    cut_back = _build_bent_cantilever().solve(increments=torch.tensor([0.0, 1.0]))
 
     # One requested increment, so any solve beyond the first is a cutback.
     assert len(calls) > 1
@@ -226,14 +222,12 @@ def test_max_cutbacks_bounds_the_retries(monkeypatch):
     increments = torch.tensor([0.0, 1.0])
 
     with pytest.raises(ConvergenceError, match="after 0 cutbacks"):
-        _build_bent_cantilever().solve(
-            increments=increments, nlgeom=True, max_cutbacks=0
-        )
+        _build_bent_cantilever().solve(increments=increments, max_cutbacks=0)
 
     # A gentler cutback needs more substeps than the default to get there.
     calls = _count_newton_solves(monkeypatch)
     _build_bent_cantilever().solve(
-        increments=increments, nlgeom=True, cutback_factor=0.8, growth_factor=1.05
+        increments=increments, cutback_factor=0.8, growth_factor=1.05
     )
     assert len(calls) > 1
 
@@ -280,7 +274,7 @@ def test_cutback_returns_results_at_the_requested_increments(monkeypatch):
 
     monkeypatch.setattr(base, "newton_solve", failing_once)
     u, f, _, _, _ = _build_bent_cantilever().solve(
-        increments=requested, nlgeom=True, return_intermediate=True
+        increments=requested, return_intermediate=True
     )
 
     assert len(calls) > len(requested) - 1
@@ -290,7 +284,7 @@ def test_cutback_returns_results_at_the_requested_increments(monkeypatch):
     for n, factor in enumerate(requested):
         model = _build_bent_cantilever()
         model.forces *= float(factor)
-        u_n, _, _, _, _ = model.solve(increments=torch.linspace(0, 1, 21), nlgeom=True)
+        u_n, _, _, _, _ = model.solve(increments=torch.linspace(0, 1, 21))
         assert torch.allclose(u[n], u_n, rtol=1e-6, atol=1e-9)
 
 
