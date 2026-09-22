@@ -347,7 +347,7 @@ class Truss(TrussGeometry, Mechanics):
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dim].
     """
 
-    supports_nlgeom = False
+    supports_finite_strain = False
 
     @property
     def n_flux(self) -> list[int]:

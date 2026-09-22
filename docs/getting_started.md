@@ -117,10 +117,10 @@ The solver returns five quantities:
   Internal nodal forces balancing the applied loads.
 
 - **Stress tensor** `σ` $\in \mathbb{R}^{M \times d \times d}$  
-  Element-wise stress tensors. 
+  Element-wise Cauchy stress tensors. 
 
 - **Deformation gradient** `F` $\in \mathbb{R}^{M \times d \times d}$   
-  Element-wise deformation gradients.
+  Element-wise deformation gradients $\mathbf{I} + \nabla \mathbf{u}$.
 
 - **State variables** `α` $\in \mathbb{R}^{M \times \dots}$    
   Internal variables for path-dependent material models (e.g., plasticity, damage).  

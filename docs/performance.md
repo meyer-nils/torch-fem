@@ -64,7 +64,7 @@ A cantilever on $[0,2] \times [0,1] \times [0,1]$ of $2N \times N \times N$ cubi
 ![Neo-Hookean stretch, displacement magnitude at a 2x stretch](images/benchmark/hyperelasticity_model_dark.png#only-dark){ width="420" }
 </figure>
 
-A box of Neo-Hookean material stretched to ten times its length in 10 increments, geometric in the stretch, with full Newton iterations (`nlgeom=True`), mirroring the [large stretch example](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/solid/large_stretch.ipynb). Only $y$ and $z$ are refined, with $N$ nodes each over four cubic elements along the stretch direction ($15N^2$ degrees of freedom), since the solution is homogeneous and a longer stretch drives the tangent indefinite. The forward solution matches the analytical uniaxial response; the backward pass is the adjoint of the total reaction force with respect to the Lamé parameters, as used in material calibration.
+A box of Neo-Hookean material stretched to ten times its length in 10 increments, geometric in the stretch, with full Newton iterations, mirroring the [large stretch example](https://github.com/meyer-nils/torch-fem/blob/main/examples/basic/solid/large_stretch.ipynb). Only $y$ and $z$ are refined, with $N$ nodes each over four cubic elements along the stretch direction ($15N^2$ degrees of freedom), since the solution is homogeneous and a longer stretch drives the tangent indefinite. The forward solution matches the analytical uniaxial response; the backward pass is the adjoint of the total reaction force with respect to the Lamé parameters, as used in material calibration.
 
 ![Total time scaling](images/benchmark/hyperelasticity_timing_light.png#only-light)
 ![Total time scaling](images/benchmark/hyperelasticity_timing_dark.png#only-dark)

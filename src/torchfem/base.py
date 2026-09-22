@@ -74,7 +74,7 @@ class FEM(ABC):
         n_dofs: Total number of degrees of freedom.
     """
 
-    supports_nlgeom = True
+    supports_finite_strain = True
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material | None):
         """Initialize a finite-element model.
@@ -160,7 +160,11 @@ class FEM(ABC):
             )
 
         # Only a model formulated for it can integrate a finite strain stress.
-        if material is not None and material.finite_strain and not self.supports_nlgeom:
+        if (
+            material is not None
+            and material.finite_strain
+            and not self.supports_finite_strain
+        ):
             raise NotImplementedError(
                 f"Geometric nonlinearity is not implemented for {type(self).__name__}."
             )
@@ -724,7 +728,7 @@ class FEM(ABC):
 
         newton = (
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
-            + (" | nlgeom" if self.finite_strain else "")
+            + (" | finite strain" if self.finite_strain else "")
             + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
         )
         # Resolved once here, from what the model knows about its own tangent.
@@ -878,7 +882,13 @@ class FEM(ABC):
 
 
 class Mechanics(FEM, ABC):
-    """Base class for solid and structural mechanics formulations."""
+    """Base class for solid and structural mechanics formulations.
+
+    Total Lagrangian throughout: `grad` is the deformation gradient, forces
+    integrate the first Piola stress over the reference configuration, and
+    `solve(...)` reports the Cauchy stress. Only a `finite_strain` material is
+    geometrically nonlinear.
+    """
 
     @property
     def n_dof_per_node(self) -> int:
@@ -1074,7 +1084,7 @@ class Mechanics(FEM, ABC):
 class Heat(FEM, ABC):
     """Base class for steady and transient heat conduction formulations."""
 
-    supports_nlgeom = False
+    supports_finite_strain = False
 
     @property
     def n_dof_per_node(self) -> int:

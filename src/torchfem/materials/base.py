@@ -27,6 +27,8 @@ class Material:
             *Shape:* `(..., 1)` or scalar.
         symmetric_tangent (bool): Whether the tangent has major symmetry.
         finite_strain (bool): Whether `step(...)` stays objective under rotation.
+            Such a material works in the first Piola stress and alone makes an
+            analysis geometrically nonlinear.
     """
 
     dim: int = 3

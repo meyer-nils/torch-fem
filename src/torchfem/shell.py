@@ -412,7 +412,7 @@ class Shell(ShellGeometry, Mechanics):
         constraints: Boolean mask of constrained DOFs with shape [n_nod, 6].
     """
 
-    supports_nlgeom = False
+    supports_finite_strain = False
 
     def __init__(
         self,

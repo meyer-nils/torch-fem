@@ -24,6 +24,12 @@ $$
 
 with the displacement gradient $\mathbf{H} = \nabla \mathbf{u}$, where the operator $\nabla \mathbf{u} = \frac{\partial u_i}{\partial X_j}$ denotes the gradient w.r.t. the reference configuration.
 
+!!! info
+
+    *torch-fem* is total Lagrangian for every material. Geometric nonlinearity is
+    not a solver setting but a material property, declared by
+    `Material.finite_strain`.
+
 ### Momentum balance
 
 The fundamental equation to solve in static structural problems is the balance of linear momentum. In quasi-static settings (neglecting inertia) and without body forces (neglecting gravity), it reads
