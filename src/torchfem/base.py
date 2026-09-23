@@ -492,14 +492,20 @@ class FEM(ABC):
         )
         return facets[first[count == 1]]
 
+    def facet_measure(self, conn: Tensor, N: Tensor, detJ: Tensor) -> Tensor:
+        """Measure of the facets per unit reference measure at the quadrature points."""
+        return detJ
+
     def _integrate_facet_load(
         self, conn: Tensor, ftype: type[Element], load: Tensor
     ) -> Tensor:
         """Consistent nodal loads from a distributed load on the given facets."""
         xi = ftype.ipoints
+        N = ftype.N(xi)
         # The facet Jacobian is not square, so the measure is sqrt(det(J J^T))
         J = torch.einsum("iaN,eNj->ieaj", ftype.B(xi), self.nodes[conn])
         detJ = torch.sqrt(torch.linalg.det(J @ J.transpose(-1, -2)))
+        detJ = self.facet_measure(conn, N, detJ)
         if load.dim() == 0 and self.n_dof_per_node > 1:
             # A scalar is a pressure acting along the outward normal
             if J.shape[-2] == 2:  # face of a volume element or a shell element
@@ -511,9 +517,7 @@ class FEM(ABC):
             # A uniform load is broadcast to one value per facet
             per_facet = load if load.dim() == 2 else load.reshape(1, -1)
             val = per_facet.expand(len(conn), -1).expand(len(xi), -1, -1)
-        contrib = torch.einsum(
-            "i,in,ie,iek->enk", ftype.iweights, ftype.N(xi), detJ, val
-        )
+        contrib = torch.einsum("i,in,ie,iek->enk", ftype.iweights, N, detJ, val)
         return self._scatter(conn, contrib)
 
     def integrate_body_load(self, load: float | Tensor) -> Tensor:
@@ -943,6 +947,15 @@ class Mechanics(FEM, ABC):
             raise TypeError("External strain must be a floating-point tensor.")
         self._external_gradient = value.to(self.nodes.device)
 
+    def compute_h(self, du: Tensor, B: Tensor) -> Tensor:
+        """Displacement gradient increment from the nodal increment of the elements."""
+        du = du.reshape(self.n_elem, -1, self.n_flux[0]).transpose(-1, -2)
+        return du @ B.transpose(-1, -2)
+
+    def compute_bcb(self, B: Tensor, ddsdde: Tensor) -> Tensor:
+        """Material tangent transformed by the gradient operators."""
+        return torch.einsum("...Jp,...iJkL,...Lq->...piqk", B, ddsdde, B)
+
     def integrate_material(
         self,
         u_prev: Tensor,
@@ -979,12 +992,8 @@ class Mechanics(FEM, ABC):
             state_new: Updated internal material state.
         """
 
-        # Reshape displacement increment
-        du = (
-            du.view(-1, self.n_dof_per_node)[self.elements]
-            .reshape(self.n_elem, -1, self.n_flux[0])
-            .transpose(-1, -2)
-        )
+        # Gather the displacement increment onto the nodes of the elements
+        du = du.view(-1, self.n_dof_per_node)[self.elements]
 
         # Initialize nodal force and stiffness
         n_dof = self.n_dof_per_node * self.etype.nodes
@@ -1006,7 +1015,7 @@ class Mechanics(FEM, ABC):
 
         for i, w in enumerate(self.etype.iweights):
             # Compute displacement gradient increment (Batch, Spatial, Material)
-            H_inc = du @ B[i].transpose(-1, -2)
+            H_inc = self.compute_h(du, B[i])
 
             # Current deformation gradient for this Newton evaluation.
             F_new = grad_prev[i] + H_inc
@@ -1038,7 +1047,7 @@ class Mechanics(FEM, ABC):
             # Compute element stiffness matrix
             if need_k:
                 assert k is not None
-                BCB = torch.einsum("...Jp,...iJkL,...Lq->...piqk", B[i], ddsdde, B[i])
+                BCB = self.compute_bcb(B[i], ddsdde)
                 k += self.compute_k(detJ[i], BCB.reshape(-1, n_dof, n_dof)).mul_(w)
 
         return k, f, grad_new, flux_new, state_new

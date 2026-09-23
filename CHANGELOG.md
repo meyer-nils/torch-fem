@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- `Axisymmetric` and `AxisymmetricHeat` solve a solid of revolution from a cross section meshed in the half plane `r >= 0`, with the hoop strain `u_r / r` and the revolved measure `2 pi r`. They take the same elements as the planar models and a three-dimensional material, whose tensors are ordered `(r, z, hoop)`.
+- `Mechanics.compute_h(...)`, `Mechanics.compute_bcb(...)` and `FEM.facet_measure(...)` are overridable, so a model can define its own gradient operator, tangent contraction and facet measure.
+
 ### Changed
 - **Breaking:** `solve(...)` no longer takes `nlgeom`. A finite strain material already carries the geometric nonlinearity in its stress measure and tangent, so the argument only chose which stress was reported.
 - A model that does not implement geometric nonlinearity rejects a finite strain material when it is constructed, where `solve(nlgeom=True)` rejected it. A `Shell` checks its laminate layers too, which reached no check at all.
