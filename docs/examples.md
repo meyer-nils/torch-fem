@@ -88,6 +88,16 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 </div>
 
+### Axisymmetric
+
+<div class="grid cards" markdown>
+
+-   **Fiber push-out**
+
+    [![Fiber push-out](images/examples/basic/axisymmetric/fiber_push_out.png)](examples/basic/axisymmetric/fiber_push_out.html)
+
+</div>
+
 ### Shell
 
 <div class="grid cards" markdown>
