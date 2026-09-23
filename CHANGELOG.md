@@ -5,6 +5,7 @@
 ### Added
 - `Axisymmetric` and `AxisymmetricHeat` solve a solid of revolution from a cross section meshed in the half plane `r >= 0`, with the hoop strain `u_r / r` and the revolved measure `2 pi r`. They take the same elements as the planar models and a three-dimensional material, whose tensors are ordered `(r, z, hoop)`.
 - `Mechanics.compute_h(...)`, `Mechanics.compute_bcb(...)` and `FEM.facet_measure(...)` are overridable, so a model can define its own gradient operator, tangent contraction and facet measure.
+- `IsotropicDamage3D` accepts `eq_strain="mises"`, a deviatoric equivalent strain that also drives damage in shear and compression, where `"rankine"` leaves `kappa` untouched whenever the largest principal strain is compressive. The plane and one-dimensional variants do not carry the full strain tensor and still reject it.
 
 ### Changed
 - **Breaking:** `solve(...)` no longer takes `nlgeom`. A finite strain material already carries the geometric nonlinearity in its stress measure and tangent, so the argument only chose which stress was reported.
