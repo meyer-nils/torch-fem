@@ -11,6 +11,7 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 # Notebooks that are too slow to execute on every test run.
 SKIP = {
+    "basic/axisymmetric/fiber_push_out.ipynb": "runs for about two minutes",
     "optimization/solid/bracket.ipynb": "runs for more than ten minutes",
     "optimization/solid/topology_thermal.ipynb": "runs for more than two minutes",
     "optimization/planar/fiber_patch_placement.ipynb": "runs for about two minutes",
