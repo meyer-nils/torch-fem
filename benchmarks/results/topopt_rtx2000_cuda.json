@@ -4,58 +4,58 @@
   "python": "3.12.14",
   "libraries": "PyTorch 2.14.0+cu130, CUDA 13.0",
   "dtype": "float64",
-  "commit": "deab6c5",
+  "commit": "eddd8ee",
   "problem": "structural_cantilever_simp",
   "rows": [
     {
       "N": 20,
       "dofs": 54243,
-      "setup_s": 0.0089,
-      "fwd_s": 0.5966,
-      "bwd_s": 0.4947,
+      "setup_s": 0.0111,
+      "fwd_s": 0.4904,
+      "bwd_s": 0.3679,
       "peak_ram_mb": null,
-      "peak_vram_mb": 516.0,
-      "solver": "cg | iterative | jacobi | torch | cuda"
+      "peak_vram_mb": 648.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 30,
       "dofs": 175863,
-      "setup_s": 0.0244,
-      "fwd_s": 2.3964,
-      "bwd_s": 1.9513,
+      "setup_s": 0.0209,
+      "fwd_s": 1.5538,
+      "bwd_s": 1.1351,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1728.4,
-      "solver": "cg | iterative | jacobi | torch | cuda"
+      "peak_vram_mb": 1700.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 40,
       "dofs": 408483,
-      "setup_s": 0.0517,
-      "fwd_s": 6.2727,
-      "bwd_s": 5.0329,
+      "setup_s": 0.038,
+      "fwd_s": 3.4174,
+      "bwd_s": 2.4721,
       "peak_ram_mb": null,
-      "peak_vram_mb": 4043.8,
-      "solver": "cg | iterative | jacobi | torch | cuda"
+      "peak_vram_mb": 4008.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 50,
       "dofs": 788103,
-      "setup_s": 0.0802,
-      "fwd_s": 12.8689,
-      "bwd_s": 10.8398,
+      "setup_s": 0.071,
+      "fwd_s": 8.1928,
+      "bwd_s": 6.3569,
       "peak_ram_mb": null,
-      "peak_vram_mb": 7790.2,
-      "solver": "cg | iterative | jacobi | torch | cuda"
+      "peak_vram_mb": 7770.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
     },
     {
       "N": 60,
       "dofs": 1350723,
-      "setup_s": 0.1231,
-      "fwd_s": 26.076,
-      "bwd_s": 22.6359,
+      "setup_s": 0.1121,
+      "fwd_s": 14.1,
+      "bwd_s": 10.994,
       "peak_ram_mb": null,
-      "peak_vram_mb": 13428.4,
-      "solver": "cg | iterative | jacobi | torch | cuda"
+      "peak_vram_mb": 13407.8,
+      "solver": "cg | iterative | amg | amgx | cuda"
     }
   ]
 }
