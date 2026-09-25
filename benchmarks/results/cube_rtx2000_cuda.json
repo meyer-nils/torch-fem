@@ -1,0 +1,81 @@
+{
+  "hardware": "RTX 2000 Ada",
+  "device": "cuda",
+  "python": "3.12.14",
+  "libraries": "PyTorch 2.14.0+cu130, CUDA 13.0",
+  "dtype": "float64",
+  "commit": "deab6c5",
+  "problem": "cube_hexa_extension",
+  "rows": [
+    {
+      "N": 20,
+      "dofs": 24000,
+      "setup_s": 0.0052,
+      "fwd_s": 0.1777,
+      "bwd_s": 0.0957,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 230.3,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 30,
+      "dofs": 81000,
+      "setup_s": 0.0101,
+      "fwd_s": 0.5051,
+      "bwd_s": 0.3169,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 784.9,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 40,
+      "dofs": 192000,
+      "setup_s": 0.02,
+      "fwd_s": 1.1658,
+      "bwd_s": 0.802,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1838.3,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 50,
+      "dofs": 375000,
+      "setup_s": 0.0376,
+      "fwd_s": 2.3515,
+      "bwd_s": 1.7512,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 3628.3,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 60,
+      "dofs": 648000,
+      "setup_s": 0.0532,
+      "fwd_s": 4.2524,
+      "bwd_s": 3.4269,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 6272.3,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 70,
+      "dofs": 1029000,
+      "setup_s": 0.0816,
+      "fwd_s": 7.1486,
+      "bwd_s": 6.1584,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 10031.7,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 80,
+      "dofs": 1536000,
+      "setup_s": 0.121,
+      "fwd_s": 11.3808,
+      "bwd_s": 10.3033,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 15036.3,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    }
+  ]
+}

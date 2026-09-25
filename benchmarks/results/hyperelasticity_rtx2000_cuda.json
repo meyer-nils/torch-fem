@@ -1,0 +1,51 @@
+{
+  "hardware": "RTX 2000 Ada",
+  "device": "cuda",
+  "python": "3.12.14",
+  "libraries": "PyTorch 2.14.0+cu130, CUDA 13.0",
+  "dtype": "float64",
+  "commit": "deab6c5",
+  "problem": "hyperelasticity_stretch",
+  "rows": [
+    {
+      "N": 35,
+      "dofs": 18375,
+      "setup_s": 0.0038,
+      "fwd_s": 16.1865,
+      "bwd_s": 4.3257,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1126.9,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 45,
+      "dofs": 30375,
+      "setup_s": 0.0042,
+      "fwd_s": 25.7418,
+      "bwd_s": 6.9476,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1874.3,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 55,
+      "dofs": 45375,
+      "setup_s": 0.0055,
+      "fwd_s": 38.4693,
+      "bwd_s": 10.3802,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 2779.6,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 65,
+      "dofs": 63375,
+      "setup_s": 0.0068,
+      "fwd_s": 53.7201,
+      "bwd_s": 14.4921,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 3870.8,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    }
+  ]
+}
