@@ -103,10 +103,6 @@ class Axisymmetric(AxisymmetricGeometry, Mechanics):
         k[..., 0, :, 0] += torch.einsum("...p,...,...q->...pq", h, Chh, h)
         return k
 
-    def near_null_space(self) -> Tensor:
-        """Axial translation alone, since a radial one strains the hoop direction."""
-        return torch.tensor([0.0, 1.0]).repeat(self.n_nod)[:, None]
-
 
 class AxisymmetricHeat(AxisymmetricGeometry, Heat):
     """Axisymmetric heat conduction model.
