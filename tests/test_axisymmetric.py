@@ -85,6 +85,21 @@ class TestLame:
         assert float(f[:, 1].sum()) == pytest.approx(0.0, abs=1e-9)
 
 
+@pytest.mark.parametrize("etype", ETYPES)
+def test_solid_cylinder_on_the_axis(etype):
+    """Axial compression of a solid cylinder, whose mesh touches r = 0."""
+    gen = rect_tri if etype.startswith("Tria") else rect_quad
+    nodes, elements = gen(5, 5, 1.0, 1.0)
+    if etype.endswith("2"):
+        nodes, elements = linear_to_quadratic(nodes, elements)
+    model = Axisymmetric(nodes, elements, IsotropicElasticity3D(E, NU))
+    model.constraints[nodes[:, 0] == 0.0, 0] = True
+    model.constraints[(nodes[:, 1] == 0.0) | (nodes[:, 1] == 1.0), 1] = True
+    model.displacements[nodes[:, 1] == 1.0, 1] = -0.01
+    u, _, _, _, _ = model.solve()
+    assert torch.allclose(u[:, 0], NU * 0.01 * nodes[:, 0], atol=1e-12)
+
+
 class TestMeasure:
     """The revolution enters every integrated measure."""
 

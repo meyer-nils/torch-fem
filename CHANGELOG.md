@@ -12,6 +12,7 @@
 - A model that does not implement geometric nonlinearity rejects a finite strain material when it is constructed, where `solve(nlgeom=True)` rejected it. A `Shell` checks its laminate layers too, which reached no check at all.
 - `Assembly.solve(...)` reports the Cauchy stress of a finite strain part, where it reported the first Piola stress.
 - **Breaking:** `FEM.supports_nlgeom` is `FEM.supports_finite_strain`, and the solve report names the analysis `finite strain`, since `nlgeom` names nothing in the API any more.
+- `Tria2` integrates at three interior points instead of the edge midpoints.
 
 ### Fixed
 - `MechanicsMaterial.step(...)` receives the first Piola stress its signature names, where `nlgeom=True` fed back the Cauchy stress. No finite strain material reads it, so no result changes.
