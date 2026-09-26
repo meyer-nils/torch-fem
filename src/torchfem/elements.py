@@ -364,7 +364,7 @@ class Tria2(Tria1):
 
     @classproperty
     def ipoints(cls) -> Tensor:
-        return torch.tensor([[0.5, 0.5], [0.5, 0.0], [0.0, 0.5]])
+        return torch.tensor([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]])
 
 
 class Quad1(Element):

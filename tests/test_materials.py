@@ -1,3 +1,5 @@
+from typing import Literal
+
 import pytest
 import torch
 
@@ -417,6 +419,107 @@ class TestIsotropicDamage3D:
         assert torch.isfinite(s_new).all()
         assert torch.isfinite(ddsdde).all()
         assert st_new[0, 1] >= state[0, 1]
+
+
+EPS_0 = 1.0e-3
+NU = 0.3
+
+
+def _softening(kappa, cl):
+    return torch.where(kappa < EPS_0, torch.zeros_like(kappa), 1.0 - EPS_0 / kappa)
+
+
+def _softening_prime(kappa, cl):
+    return torch.where(kappa < EPS_0, torch.zeros_like(kappa), EPS_0 / kappa**2)
+
+
+class TestDamageEquivalentStrain:
+    """The equivalent strains that drive the damage of `IsotropicDamage3D`."""
+
+    def _kappa(
+        self, eq_strain: Literal["rankine", "mises"], eps: torch.Tensor
+    ) -> float:
+        """Equivalent strain the material stores for a total strain `eps`."""
+        mat = IsotropicDamage3D(
+            210e3, NU, _softening, _softening_prime, eq_strain
+        ).vectorize(1)
+        _, state, _ = mat.step(
+            eps.unsqueeze(0),
+            torch.eye(3).unsqueeze(0),
+            torch.zeros(1, 3, 3),
+            torch.zeros(1, 2),
+            torch.zeros(1, 3, 3),
+            torch.ones(1),
+            0,
+        )
+        return float(state[0, 0])
+
+    def test_mises_is_the_axial_strain_of_a_uniaxial_tension(self):
+        """The scaling keeps eps_0 the uniaxial initiation strain."""
+        e = 0.01
+        eps = e * torch.diag(torch.tensor([1.0, -NU, -NU]))
+        assert self._kappa("mises", eps) == pytest.approx(e)
+        # Rankine reports the same, as the axial strain is the largest
+        assert self._kappa("rankine", eps) == pytest.approx(e)
+
+    def test_mises_damages_in_compression_but_rankine_does_not(self):
+        e = 0.01
+        eps = -e * torch.diag(torch.tensor([1.0, -NU, -NU]))
+        assert self._kappa("mises", eps) == pytest.approx(e)
+        # The largest principal strain is compressive, so kappa never grows
+        assert self._kappa("rankine", eps) == 0.0
+
+    def test_mises_of_a_pure_shear(self):
+        gamma = 0.01
+        eps = torch.zeros(3, 3)
+        eps[0, 1] = eps[1, 0] = gamma / 2
+        expected = 3**0.5 / 2 * gamma / (1 + NU)
+        assert self._kappa("mises", eps) == pytest.approx(expected)
+
+    def test_mises_ignores_the_hydrostatic_part(self):
+        assert self._kappa("mises", 0.01 * torch.eye(3)) == pytest.approx(0.0)
+
+    @pytest.mark.parametrize("eq_strain", ["rankine", "mises"])
+    def test_tangent_matches_a_directional_derivative(self, eq_strain):
+        """The rank-one term uses the gradient of the equivalent strain."""
+        mat = IsotropicDamage3D(
+            210e3, NU, _softening, _softening_prime, eq_strain
+        ).vectorize(1)
+        args = (
+            torch.eye(3).unsqueeze(0),
+            torch.zeros(1, 3, 3),
+            torch.zeros(1, 2),
+            torch.zeros(1, 3, 3),
+            torch.ones(1),
+            1,
+        )
+        H = torch.zeros(1, 3, 3)
+        H[:, 0, 1] = H[:, 1, 0] = 4.0e-3
+        H[:, 0, 0], H[:, 2, 2] = 2.0e-3, -1.0e-3
+        _, state, ddsdde = mat.step(H, *args)
+        # Well into the softening branch, where the rank-one term is active
+        assert state[0, 1] > 0.5
+
+        torch.manual_seed(0)
+        for _ in range(5):
+            A = torch.randn(1, 3, 3)
+            dE = 0.5 * (A + A.transpose(-1, -2))
+            t = 1.0e-8
+            fd = (mat.step(H + t * dE, *args)[0] - mat.step(H - t * dE, *args)[0]) / (
+                2 * t
+            )
+            analytic = torch.einsum("...ijkl,...kl->...ij", ddsdde, dE)
+            tol = 1e-6 * float(fd.abs().max())
+            assert torch.allclose(analytic, fd, rtol=1e-6, atol=tol)
+
+    @pytest.mark.parametrize(
+        "material, dim",
+        [(IsotropicDamagePlaneStrain, 2), (IsotropicDamagePlaneStress, 2)],
+    )
+    def test_mises_needs_the_full_strain_tensor(self, material, dim):
+        mat = material(210e3, NU, _softening, _softening_prime, "mises").vectorize(1)
+        with pytest.raises(NotImplementedError, match="mises"):
+            mat.step(*_make_step_args(dim, 1, n_state=2), 0)
 
 
 def _orthotropic_3d() -> OrthotropicElasticity3D:

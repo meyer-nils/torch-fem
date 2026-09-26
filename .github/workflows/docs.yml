@@ -50,6 +50,10 @@ jobs:
           jupyter nbconvert --to HTML --execute --output-dir site/examples/basic/planar/ examples/basic/planar/*.ipynb
           jupyter nbconvert --to HTML --output-dir site/examples/optimization/planar/ examples/optimization/planar/*.ipynb
 
+      - name: Convert axisymmetric notebooks to HTML
+        run: |
+          jupyter nbconvert --to HTML --output-dir site/examples/basic/axisymmetric/ examples/basic/axisymmetric/*.ipynb
+
       - name: Convert truss notebooks to HTML
         env:
           DISPLAY: ":99"

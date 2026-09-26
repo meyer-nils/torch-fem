@@ -37,6 +37,8 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         - Two internal state variables (``n_state = 2``):
           $\\kappa$ (damage driving variable) and $D$ (damage variable).
         - Supports batched/vectorized material parameters.
+        - $\\kappa$ never decreases, so ``"rankine"`` damages in tension alone,
+          while ``"mises"`` also damages in shear and compression.
 
     Info: Isotropic damage model
         The stress is degraded by a scalar damage variable $D$ as
@@ -49,8 +51,24 @@ class IsotropicDamage3D(IsotropicElasticity3D):
 
         The damage is driven by an equivalent strain measure
         $\\tilde{\\varepsilon}$. For ``eq_strain="rankine"``, this is the
-        principal strain largest in magnitude. The history variable $\\kappa$
-        tracks the maximum equivalent strain ever reached:
+        principal strain largest in magnitude. For ``eq_strain="mises"``, it is
+        the von Mises strain of the deviatoric part
+        $\\pmb{e} = \\pmb{\\varepsilon} - \\frac{1}{3}
+        \\mathrm{tr}(\\pmb{\\varepsilon}) \\pmb{I}$,
+
+        $$
+            \\tilde{\\varepsilon} = \\frac{1}{1 + \\nu}
+                \\sqrt{\\frac{3}{2} \\pmb{e} : \\pmb{e}},
+        $$
+
+        scaled to coincide with the axial strain of a uniaxial tension. It is
+        never negative and ignores the hydrostatic part, so it drives damage in
+        shear, where ``"rankine"`` may report a compressive principal strain
+        that leaves $\\kappa$ untouched. Only the three-dimensional model
+        offers it, as the plane variants do not carry the full strain tensor.
+
+        The history variable $\\kappa$ tracks the maximum equivalent strain
+        ever reached:
 
         $$
             \\kappa_{n+1} = \\max(\\kappa_n,\\, \\tilde{\\varepsilon}_{n+1})
@@ -97,11 +115,14 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         $$
             C^{\\text{alg}}_{ijkl} = (1 - D)  C_{ijkl}
                 - D'(\\kappa, l_c) \\, \\sigma^{\\text{trial}}_{ij} \\,
-                  n_k \\, n_l
+                  \\frac{\\partial \\tilde{\\varepsilon}}
+                        {\\partial \\varepsilon_{kl}}
         $$
 
-        where $\\mathbf{n}$ is the direction of the damage-driving
-        principal strain.
+        where the gradient of the equivalent strain is $n_k n_l$ over the
+        direction $\\mathbf{n}$ of the damage-driving principal strain for
+        ``"rankine"``, and $\\frac{3}{2} e_{kl} / ((1 + \\nu)
+        \\sqrt{\\frac{3}{2} \\pmb{e} : \\pmb{e}})$ for ``"mises"``.
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
@@ -138,16 +159,28 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         stress_new = stress.clone()
         state_new = state.clone()
 
-        # Calculate equivalent strain
+        # Equivalent strain and its gradient, which directs the tangent term
         if self.eq_strain == "rankine":
             L, Q = torch.linalg.eigh(eps_new)
             # Find largest eigenvalue by magnitude
             idx = L.abs().argmax(dim=-1, keepdim=True)
             eps_eq = torch.take_along_dim(L, idx, dim=-1).squeeze(-1)
             n = torch.take_along_dim(Q, idx.unsqueeze(-2), dim=-1).squeeze(-1)
+            deps_eq = torch.einsum("...i,...j->...ij", n, n)
+        elif self.eq_strain == "mises" and self.dim == 3:
+            trace = eps_new.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+            dev = eps_new - trace[..., None, None] / 3.0 * torch.eye(3)
+            # Scaled so that the equivalent strain is the axial strain of a
+            # uniaxial tension, which keeps eps_0 the uniaxial initiation strain
+            scale = (1.0 + self.nu) / 1.5**0.5
+            tiny = torch.finfo(eps_new.dtype).tiny
+            mag = torch.linalg.matrix_norm(dev).clamp(min=tiny)
+            eps_eq = mag / scale
+            deps_eq = dev / (mag * scale)[..., None, None]
         else:
             raise NotImplementedError(
-                f"Equivalent strain type '{self.eq_strain}' is not implemented."
+                f"Equivalent strain '{self.eq_strain}' is not implemented for "
+                f"{type(self).__name__}."
             )
 
         # Update kappa and damage
@@ -172,7 +205,7 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         if iter > 0:
             active = D_new > D
             ddsdde[active] -= D_prime[active, None, None, None, None] * torch.einsum(
-                "...ij,...k,...l->...ijkl", sigma_trial[active], n[active], n[active]
+                "...ij,...kl->...ijkl", sigma_trial[active], deps_eq[active]
             )
         return stress_new, state_new, ddsdde
 
@@ -194,6 +227,8 @@ class IsotropicDamagePlaneStrain(IsotropicDamage3D, IsotropicElasticityPlaneStra
 
     Notes:
         - Small-strain assumption with plane strain condition.
+        - Only ``eq_strain="rankine"`` is available, as the equivalent strain
+          of ``"mises"`` needs the full three-dimensional strain tensor.
         - Two internal state variables (``n_state = 2``):
           $\\kappa$ (damage driving variable) and $D$ (damage variable).
         - Supports batched/vectorized material parameters.
@@ -222,6 +257,8 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
 
     Notes:
         - Small-strain assumption with plane stress condition.
+        - Only ``eq_strain="rankine"`` is available, as the equivalent strain
+          of ``"mises"`` needs the full three-dimensional strain tensor.
         - Two internal state variables (``n_state = 2``):
           $\\kappa$ (damage driving variable) and $D$ (damage variable).
         - Supports batched/vectorized material parameters.
@@ -359,6 +396,8 @@ class IsotropicDamage1D(IsotropicDamage3D, IsotropicElasticity1D):
           $\\kappa$ (damage driving variable) and $D$ (damage variable).
         - Supports batched/vectorized material parameters.
         - $\\kappa$ never decreases, so a bar damages in tension alone.
+        - Only ``eq_strain="rankine"`` is available, as the equivalent strain
+          of ``"mises"`` needs the full three-dimensional strain tensor.
 
     Info: Uniaxial damage
         The single strain is the only principal strain, so the model of

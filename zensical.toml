@@ -21,6 +21,7 @@ nav = [
     { "Base" = "models/index.md" },
     { "Truss" = "models/truss.md" },
     { "Planar" = "models/planar.md" },
+    { "Axisymmetric" = "models/axisymmetric.md" },
     { "Shell" = "models/shell.md" },
     { "Solid" = "models/solid.md" },
     { "Assembly" = "models/assembly.md" },

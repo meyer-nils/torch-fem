@@ -2,11 +2,17 @@
 
 ## Unreleased
 
+### Added
+- `Axisymmetric` and `AxisymmetricHeat` solve a solid of revolution from a cross section meshed in the half plane `r >= 0`, with the hoop strain `u_r / r` and the revolved measure `2 pi r`. They take the same elements as the planar models and a three-dimensional material, whose tensors are ordered `(r, z, hoop)`.
+- `Mechanics.compute_h(...)`, `Mechanics.compute_bcb(...)` and `FEM.facet_measure(...)` are overridable, so a model can define its own gradient operator, tangent contraction and facet measure.
+- `IsotropicDamage3D` accepts `eq_strain="mises"`, a deviatoric equivalent strain that also drives damage in shear and compression, where `"rankine"` leaves `kappa` untouched whenever the largest principal strain is compressive. The plane and one-dimensional variants do not carry the full strain tensor and still reject it.
+
 ### Changed
 - **Breaking:** `solve(...)` no longer takes `nlgeom`. A finite strain material already carries the geometric nonlinearity in its stress measure and tangent, so the argument only chose which stress was reported.
 - A model that does not implement geometric nonlinearity rejects a finite strain material when it is constructed, where `solve(nlgeom=True)` rejected it. A `Shell` checks its laminate layers too, which reached no check at all.
 - `Assembly.solve(...)` reports the Cauchy stress of a finite strain part, where it reported the first Piola stress.
 - **Breaking:** `FEM.supports_nlgeom` is `FEM.supports_finite_strain`, and the solve report names the analysis `finite strain`, since `nlgeom` names nothing in the API any more.
+- `Tria2` integrates at three interior points instead of the edge midpoints.
 
 ### Fixed
 - `MechanicsMaterial.step(...)` receives the first Piola stress its signature names, where `nlgeom=True` fed back the Cauchy stress. No finite strain material reads it, so no result changes.
