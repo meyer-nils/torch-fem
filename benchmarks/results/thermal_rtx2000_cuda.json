@@ -1,0 +1,51 @@
+{
+  "hardware": "RTX 2000 Ada",
+  "device": "cuda",
+  "python": "3.12.14",
+  "libraries": "PyTorch 2.14.0+cu130, CUDA 13.0",
+  "dtype": "float64",
+  "commit": "eddd8ee",
+  "problem": "thermal_slab_simp",
+  "rows": [
+    {
+      "N": 128,
+      "dofs": 16770,
+      "setup_s": 0.0059,
+      "fwd_s": 0.1765,
+      "bwd_s": 0.1083,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 336.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 256,
+      "dofs": 66306,
+      "setup_s": 0.0081,
+      "fwd_s": 0.2813,
+      "bwd_s": 0.1537,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 504.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 512,
+      "dofs": 263682,
+      "setup_s": 0.0223,
+      "fwd_s": 0.7162,
+      "bwd_s": 0.3354,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1264.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 1024,
+      "dofs": 1051650,
+      "setup_s": 0.0682,
+      "fwd_s": 2.8245,
+      "bwd_s": 1.4796,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 4216.2,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    }
+  ]
+}
