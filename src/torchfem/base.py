@@ -813,6 +813,7 @@ class FEM(ABC):
                             f"after {max_cutbacks} cutbacks."
                         ) from err
                     report.cutback()
+                    du = cutback_factor * du
                     continue
 
                 # Evaluate converged state. Tangent not needed (compute_stiffness=False)

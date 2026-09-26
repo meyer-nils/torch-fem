@@ -190,6 +190,12 @@ def test_cutback_recovers_a_diverging_increment(monkeypatch):
     assert torch.allclose(reference[0], cut_back[0], rtol=1e-6)
 
 
+def test_cutback_scales_the_initial_guess():
+    """A retry must not start from the full increment of the previous substep."""
+    increments = torch.tensor([0.0, 0.05, 1.0])
+    _build_bent_cantilever().solve(increments=increments)
+
+
 def test_a_recovered_substep_spans_the_next_increment(monkeypatch, capsys):
     """After a cutback the substep must grow back to one per increment.
 
