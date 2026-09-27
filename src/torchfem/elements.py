@@ -84,9 +84,8 @@ class Element(ABC):
         pass
 
     @classmethod
-    @abstractmethod
     def B(cls, xi: Tensor) -> Tensor:
-        """Evaluate reference-space derivatives of shape functions.
+        """Evaluate reference-space derivatives of shape functions by autodiff.
 
         Args:
             xi (Tensor): Reference coordinates.
@@ -96,7 +95,10 @@ class Element(ABC):
             Tensor: Derivatives `dN/dxi`.
                 *Shape:* `(iso_dim, nodes)` or `(n_points, iso_dim, nodes)`.
         """
-        pass
+        b = torch.func.jacfwd(cls.N)
+        for _ in range(xi.dim() - 1):
+            b = torch.func.vmap(b)
+        return b(xi).movedim(-2, -1)
 
     @classproperty
     @abstractmethod
@@ -160,14 +162,6 @@ class Bar1(Element):
         N_2 = 1 + xi[..., 0]
         return 1 / 2 * torch.stack([N_1, N_2], dim=-1)
 
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        if xi.dim() == 1:
-            return torch.tensor([[-0.5, 0.5]])
-        else:
-            N = xi.shape[0]
-            return torch.tensor([[-0.5, 0.5]]).repeat(N, 1, 1)
-
     @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([2.0])
@@ -203,22 +197,6 @@ class Bar2(Bar1):
         N_2 = 1 / 2 * xi[..., 0] * (xi[..., 0] + 1)
         N_3 = 1 - xi[..., 0] ** 2
         return torch.stack([N_1, N_2, N_3], dim=-1)
-
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        return torch.stack(
-            [
-                torch.stack(
-                    [
-                        0.5 * (2 * xi[..., 0] - 1),
-                        0.5 * (2 * xi[..., 0] + 1),
-                        -2 * xi[..., 0],
-                    ],
-                    dim=-1,
-                )
-            ],
-            dim=xi.dim() - 1,
-        )
 
     @classproperty
     def iweights(cls) -> Tensor:
@@ -265,14 +243,6 @@ class Tria1(Element):
         N_2 = xi[..., 0]
         N_3 = xi[..., 1]
         return torch.stack([N_1, N_2, N_3], dim=-1)
-
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        if xi.dim() == 1:
-            return torch.tensor([[-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
-        else:
-            N = xi.shape[0]
-            return torch.tensor([[-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]]).repeat(N, 1, 1)
 
     @classproperty
     def iweights(cls) -> Tensor:
@@ -327,37 +297,6 @@ class Tria2(Tria1):
         N_6 = 4 * xi[..., 1] * (1 - xi[..., 0] - xi[..., 1])
         return torch.stack([N_1, N_2, N_3, N_4, N_5, N_6], dim=-1)
 
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        zeros = torch.zeros_like(xi[..., 0])
-        return torch.stack(
-            [
-                torch.stack(
-                    [
-                        4 * xi[..., 0] + 4 * xi[..., 1] - 3,
-                        4 * xi[..., 0] - 1,
-                        zeros,
-                        -4 * (2 * xi[..., 0] + xi[..., 1] - 1),
-                        4 * xi[..., 1],
-                        -4 * xi[..., 1],
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        4 * xi[..., 0] + 4 * xi[..., 1] - 3,
-                        zeros,
-                        4 * xi[..., 1] - 1,
-                        -4 * xi[..., 0],
-                        4 * xi[..., 0],
-                        -4 * (xi[..., 0] + 2 * xi[..., 1] - 1),
-                    ],
-                    dim=-1,
-                ),
-            ],
-            dim=xi.dim() - 1,
-        )
-
     @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([1.0 / 6.0, 1.0 / 6.0, 1.0 / 6.0])
@@ -404,32 +343,6 @@ class Quad1(Element):
         N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1])
         N_4 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1])
         return 0.25 * torch.stack([N_1, N_2, N_3, N_4], dim=-1)
-
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        return 0.25 * torch.stack(
-            [
-                torch.stack(
-                    [
-                        -(1 - xi[..., 1]),
-                        (1 - xi[..., 1]),
-                        (1.0 + xi[..., 1]),
-                        -(1.0 + xi[..., 1]),
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        -(1 - xi[..., 0]),
-                        -(1 + xi[..., 0]),
-                        (1.0 + xi[..., 0]),
-                        (1.0 - xi[..., 0]),
-                    ],
-                    dim=-1,
-                ),
-            ],
-            dim=xi.dim() - 1,
-        )
 
     @classproperty
     def iweights(cls) -> Tensor:
@@ -496,40 +409,6 @@ class Quad2(Quad1):
         N_8 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 1])
         return 0.25 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
 
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        return 0.25 * torch.stack(
-            [
-                torch.stack(
-                    [
-                        -(xi[..., 1] - 1) * (2 * xi[..., 0] + xi[..., 1]),
-                        -(xi[..., 1] - 1) * (2 * xi[..., 0] - xi[..., 1]),
-                        +(xi[..., 1] + 1) * (2 * xi[..., 0] + xi[..., 1]),
-                        +(xi[..., 1] + 1) * (2 * xi[..., 0] - xi[..., 1]),
-                        +4 * xi[..., 0] * (xi[..., 1] - 1),
-                        +2 - 2 * xi[..., 1] ** 2,
-                        -4 * xi[..., 0] * (xi[..., 1] + 1),
-                        -2 + 2 * xi[..., 1] ** 2,
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        -(xi[..., 0] - 1) * (xi[..., 0] + 2 * xi[..., 1]),
-                        -(xi[..., 0] + 1) * (xi[..., 0] - 2 * xi[..., 1]),
-                        +(xi[..., 0] + 1) * (xi[..., 0] + 2 * xi[..., 1]),
-                        +(xi[..., 0] - 1) * (xi[..., 0] - 2 * xi[..., 1]),
-                        -2 + 2 * xi[..., 0] ** 2,
-                        -4 * xi[..., 1] * (xi[..., 0] + 1),
-                        +2 - 2 * xi[..., 0] ** 2,
-                        +4 * (xi[..., 0] - 1) * xi[..., 1],
-                    ],
-                    dim=-1,
-                ),
-            ],
-            dim=xi.dim() - 1,
-        )
-
     @classproperty
     def iweights(cls) -> Tensor:
         return torch.tensor([1.0, 1.0, 1.0, 1.0])
@@ -589,18 +468,6 @@ class Tetra1(Element):
         N_3 = xi[..., 1]
         N_4 = xi[..., 2]
         return torch.stack([N_1, N_2, N_3, N_4], dim=-1)
-
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        if xi.dim() == 1:
-            return torch.tensor(
-                [[-1.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 1.0, 0.0], [-1.0, 0.0, 0.0, 1.0]]
-            )
-        else:
-            N = xi.shape[0]
-            return torch.tensor(
-                [[-1.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 1.0, 0.0], [-1.0, 0.0, 0.0, 1.0]]
-            ).repeat(N, 1, 1)
 
     @classproperty
     def iweights(cls) -> Tensor:
@@ -683,60 +550,6 @@ class Tetra2(Tetra1):
         N_9 = 4 * xi[..., 0] * xi[..., 2]
         N_10 = 4 * xi[..., 1] * xi[..., 2]
         return torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8, N_9, N_10], dim=-1)
-
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        zeros = torch.zeros_like(xi[..., 0])
-        return torch.stack(
-            [
-                torch.stack(
-                    [
-                        4 * (xi[..., 0] + xi[..., 1] + xi[..., 2]) - 3,
-                        4 * xi[..., 0] - 1,
-                        zeros,
-                        zeros,
-                        -4 * (2 * xi[..., 0] + xi[..., 1] + xi[..., 2] - 1),
-                        4 * xi[..., 1],
-                        -4 * xi[..., 1],
-                        -4 * xi[..., 2],
-                        4 * xi[..., 2],
-                        zeros,
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        4 * (xi[..., 0] + xi[..., 1] + xi[..., 2]) - 3,
-                        zeros,
-                        4 * xi[..., 1] - 1,
-                        zeros,
-                        -4 * xi[..., 0],
-                        4 * xi[..., 0],
-                        -4 * (xi[..., 0] + 2 * xi[..., 1] + xi[..., 2] - 1),
-                        -4 * xi[..., 2],
-                        zeros,
-                        4 * xi[..., 2],
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        4 * (xi[..., 0] + xi[..., 1] + xi[..., 2]) - 3,
-                        zeros,
-                        zeros,
-                        4 * xi[..., 2] - 1,
-                        -4 * xi[..., 0],
-                        zeros,
-                        -4 * xi[..., 1],
-                        -4 * (xi[..., 0] + xi[..., 1] + 2 * xi[..., 2] - 1),
-                        4 * xi[..., 0],
-                        4 * xi[..., 1],
-                    ],
-                    dim=-1,
-                ),
-            ],
-            dim=xi.dim() - 1,
-        )
 
     @classproperty
     def iweights(cls) -> Tensor:
@@ -847,53 +660,6 @@ class Hexa1(Element):
         N_7 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
         N_8 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
         return 0.125 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
-
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        return 0.125 * torch.stack(
-            [
-                torch.stack(
-                    [
-                        -(1.0 - xi[..., 1]) * (1.0 - xi[..., 2]),
-                        (1.0 - xi[..., 1]) * (1.0 - xi[..., 2]),
-                        (1.0 + xi[..., 1]) * (1.0 - xi[..., 2]),
-                        -(1.0 + xi[..., 1]) * (1.0 - xi[..., 2]),
-                        -(1.0 - xi[..., 1]) * (1.0 + xi[..., 2]),
-                        (1.0 - xi[..., 1]) * (1.0 + xi[..., 2]),
-                        (1.0 + xi[..., 1]) * (1.0 + xi[..., 2]),
-                        -(1.0 + xi[..., 1]) * (1.0 + xi[..., 2]),
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        -(1.0 - xi[..., 0]) * (1.0 - xi[..., 2]),
-                        -(1.0 + xi[..., 0]) * (1.0 - xi[..., 2]),
-                        (1.0 + xi[..., 0]) * (1.0 - xi[..., 2]),
-                        (1.0 - xi[..., 0]) * (1.0 - xi[..., 2]),
-                        -(1.0 - xi[..., 0]) * (1.0 + xi[..., 2]),
-                        -(1.0 + xi[..., 0]) * (1.0 + xi[..., 2]),
-                        (1.0 + xi[..., 0]) * (1.0 + xi[..., 2]),
-                        (1.0 - xi[..., 0]) * (1.0 + xi[..., 2]),
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        -(1.0 - xi[..., 0]) * (1.0 - xi[..., 1]),
-                        -(1.0 + xi[..., 0]) * (1.0 - xi[..., 1]),
-                        -(1.0 + xi[..., 0]) * (1.0 + xi[..., 1]),
-                        -(1.0 - xi[..., 0]) * (1.0 + xi[..., 1]),
-                        (1.0 - xi[..., 0]) * (1.0 - xi[..., 1]),
-                        (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]),
-                        (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]),
-                        (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]),
-                    ],
-                    dim=-1,
-                ),
-            ],
-            dim=xi.dim() - 1,
-        )
 
 
 class Hexa2(Hexa1):
@@ -1067,137 +833,6 @@ class Hexa2(Hexa1):
                 N_20,
             ],
             dim=-1,
-        )
-
-    @classmethod
-    def B(cls, xi: Tensor) -> Tensor:
-        return 0.125 * torch.stack(
-            [
-                torch.stack(
-                    [
-                        +(xi[..., 1] - 1)
-                        * (xi[..., 2] - 1)
-                        * (+2 * xi[..., 0] + xi[..., 1] + xi[..., 2] + 1),
-                        -(xi[..., 1] - 1)
-                        * (xi[..., 2] - 1)
-                        * (-2 * xi[..., 0] + xi[..., 1] + xi[..., 2] + 1),
-                        -(xi[..., 1] + 1)
-                        * (xi[..., 2] - 1)
-                        * (+2 * xi[..., 0] + xi[..., 1] - xi[..., 2] - 1),
-                        +(xi[..., 1] + 1)
-                        * (xi[..., 2] - 1)
-                        * (-2 * xi[..., 0] + xi[..., 1] - xi[..., 2] - 1),
-                        -(xi[..., 1] - 1)
-                        * (xi[..., 2] + 1)
-                        * (+2 * xi[..., 0] + xi[..., 1] - xi[..., 2] + 1),
-                        +(xi[..., 1] - 1)
-                        * (xi[..., 2] + 1)
-                        * (-2 * xi[..., 0] + xi[..., 1] - xi[..., 2] + 1),
-                        +(xi[..., 1] + 1)
-                        * (xi[..., 2] + 1)
-                        * (+2 * xi[..., 0] + xi[..., 1] + xi[..., 2] - 1),
-                        -(xi[..., 1] + 1)
-                        * (xi[..., 2] + 1)
-                        * (-2 * xi[..., 0] + xi[..., 1] + xi[..., 2] - 1),
-                        -4 * xi[..., 0] * (xi[..., 1] - 1) * (xi[..., 2] - 1),
-                        +2 * (xi[..., 1] ** 2 - 1) * (xi[..., 2] - 1),
-                        +4 * xi[..., 0] * (xi[..., 1] + 1) * (xi[..., 2] - 1),
-                        -2 * (xi[..., 1] ** 2 - 1) * (xi[..., 2] - 1),
-                        +4 * xi[..., 0] * (xi[..., 1] - 1) * (xi[..., 2] + 1),
-                        -2 * (xi[..., 1] ** 2 - 1) * (xi[..., 2] + 1),
-                        -4 * xi[..., 0] * (xi[..., 1] + 1) * (xi[..., 2] + 1),
-                        +2 * (xi[..., 1] ** 2 - 1) * (xi[..., 2] + 1),
-                        -2 * (xi[..., 1] - 1) * (xi[..., 2] ** 2 - 1),
-                        +2 * (xi[..., 1] - 1) * (xi[..., 2] ** 2 - 1),
-                        -2 * (xi[..., 1] + 1) * (xi[..., 2] ** 2 - 1),
-                        +2 * (xi[..., 1] + 1) * (xi[..., 2] ** 2 - 1),
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        +(xi[..., 0] - 1)
-                        * (xi[..., 2] - 1)
-                        * (xi[..., 0] + 2 * xi[..., 1] + xi[..., 2] + 1),
-                        +(xi[..., 0] + 1)
-                        * (xi[..., 2] - 1)
-                        * (xi[..., 0] - 2 * xi[..., 1] - xi[..., 2] - 1),
-                        -(xi[..., 0] + 1)
-                        * (xi[..., 2] - 1)
-                        * (xi[..., 0] + 2 * xi[..., 1] - xi[..., 2] - 1),
-                        -(xi[..., 0] - 1)
-                        * (xi[..., 2] - 1)
-                        * (xi[..., 0] - 2 * xi[..., 1] + xi[..., 2] + 1),
-                        -(xi[..., 0] - 1)
-                        * (xi[..., 2] + 1)
-                        * (xi[..., 0] + 2 * xi[..., 1] - xi[..., 2] + 1),
-                        -(xi[..., 0] + 1)
-                        * (xi[..., 2] + 1)
-                        * (xi[..., 0] - 2 * xi[..., 1] + xi[..., 2] - 1),
-                        +(xi[..., 0] + 1)
-                        * (xi[..., 2] + 1)
-                        * (xi[..., 0] + 2 * xi[..., 1] + xi[..., 2] - 1),
-                        +(xi[..., 0] - 1)
-                        * (xi[..., 2] + 1)
-                        * (xi[..., 0] - 2 * xi[..., 1] - xi[..., 2] + 1),
-                        -2 * (xi[..., 0] ** 2 - 1) * (xi[..., 2] - 1),
-                        +4 * xi[..., 1] * (xi[..., 0] + 1) * (xi[..., 2] - 1),
-                        +2 * (xi[..., 0] ** 2 - 1) * (xi[..., 2] - 1),
-                        -4 * xi[..., 1] * (xi[..., 0] - 1) * (xi[..., 2] - 1),
-                        +2 * (xi[..., 0] ** 2 - 1) * (xi[..., 2] + 1),
-                        -4 * xi[..., 1] * (xi[..., 0] + 1) * (xi[..., 2] + 1),
-                        -2 * (xi[..., 0] ** 2 - 1) * (xi[..., 2] + 1),
-                        +4 * xi[..., 1] * (xi[..., 0] - 1) * (xi[..., 2] + 1),
-                        -2 * (xi[..., 0] - 1) * (xi[..., 2] ** 2 - 1),
-                        +2 * (xi[..., 0] + 1) * (xi[..., 2] ** 2 - 1),
-                        -2 * (xi[..., 0] + 1) * (xi[..., 2] ** 2 - 1),
-                        +2 * (xi[..., 0] - 1) * (xi[..., 2] ** 2 - 1),
-                    ],
-                    dim=-1,
-                ),
-                torch.stack(
-                    [
-                        +(xi[..., 0] - 1)
-                        * (xi[..., 1] - 1)
-                        * (xi[..., 0] + xi[..., 1] + 2 * xi[..., 2] + 1),
-                        +(xi[..., 0] + 1)
-                        * (xi[..., 1] - 1)
-                        * (xi[..., 0] - xi[..., 1] - 2 * xi[..., 2] - 1),
-                        -(xi[..., 0] + 1)
-                        * (xi[..., 1] + 1)
-                        * (xi[..., 0] + xi[..., 1] - 2 * xi[..., 2] - 1),
-                        -(xi[..., 0] - 1)
-                        * (xi[..., 1] + 1)
-                        * (xi[..., 0] - xi[..., 1] + 2 * xi[..., 2] + 1),
-                        -(xi[..., 0] - 1)
-                        * (xi[..., 1] - 1)
-                        * (xi[..., 0] + xi[..., 1] - 2 * xi[..., 2] + 1),
-                        -(xi[..., 0] + 1)
-                        * (xi[..., 1] - 1)
-                        * (xi[..., 0] - xi[..., 1] + 2 * xi[..., 2] - 1),
-                        +(xi[..., 0] + 1)
-                        * (xi[..., 1] + 1)
-                        * (xi[..., 0] + xi[..., 1] + 2 * xi[..., 2] - 1),
-                        +(xi[..., 0] - 1)
-                        * (xi[..., 1] + 1)
-                        * (xi[..., 0] - xi[..., 1] - 2 * xi[..., 2] + 1),
-                        -2 * (xi[..., 0] ** 2 - 1) * (xi[..., 1] - 1),
-                        +2 * (xi[..., 0] + 1) * (xi[..., 1] ** 2 - 1),
-                        +2 * (xi[..., 0] ** 2 - 1) * (xi[..., 1] + 1),
-                        -2 * (xi[..., 0] - 1) * (xi[..., 1] ** 2 - 1),
-                        +2 * (xi[..., 0] ** 2 - 1) * (xi[..., 1] - 1),
-                        -2 * (xi[..., 0] + 1) * (xi[..., 1] ** 2 - 1),
-                        -2 * (xi[..., 0] ** 2 - 1) * (xi[..., 1] + 1),
-                        +2 * (xi[..., 0] - 1) * (xi[..., 1] ** 2 - 1),
-                        -4 * (xi[..., 0] - 1) * (xi[..., 1] - 1) * xi[..., 2],
-                        +4 * (xi[..., 0] + 1) * (xi[..., 1] - 1) * xi[..., 2],
-                        -4 * (xi[..., 0] + 1) * (xi[..., 1] + 1) * xi[..., 2],
-                        +4 * (xi[..., 0] - 1) * (xi[..., 1] + 1) * xi[..., 2],
-                    ],
-                    dim=-1,
-                ),
-            ],
-            dim=xi.dim() - 1,
         )
 
     @classproperty
