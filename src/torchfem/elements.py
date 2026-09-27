@@ -100,6 +100,24 @@ class Element(ABC):
             b = torch.func.vmap(b)
         return b(xi).movedim(-2, -1)
 
+    @classmethod
+    def H(cls, xi: Tensor) -> Tensor:
+        """Evaluate reference-space second derivatives of shape functions by autodiff.
+
+        Args:
+            xi (Tensor): Reference coordinates.
+                *Shape:* `(iso_dim,)` or `(n_points, iso_dim)`.
+
+        Returns:
+            Tensor: Second derivatives `d²N/dxi_i dxi_j`.
+                *Shape:* `(iso_dim, iso_dim, nodes)` or
+                `(n_points, iso_dim, iso_dim, nodes)`.
+        """
+        h = torch.func.jacfwd(torch.func.jacfwd(cls.N))
+        for _ in range(xi.dim() - 1):
+            h = torch.func.vmap(h)
+        return h(xi).movedim(-3, -1)
+
     @classproperty
     @abstractmethod
     def iso_coords(cls) -> Tensor:
