@@ -428,7 +428,14 @@ class FEM(ABC):
 
         Returns:
             Element matrix tensor with shape [n_elem, n_dof_elem, n_dof_elem].
+
+        Raises:
+            NotImplementedError: If the field gradient is not the plain gradient.
         """
+        # The pull-back needs the plain gradient of elements spanning their space
+        if self.n_flux != [self.etype.iso_dim, self.nodes.shape[1]]:
+            raise NotImplementedError(f"{type(self).__name__} is not supported.")
+
         # G pulls the reference Hessian, less the curvature of the isoparametric map,
         # back with ∂ξ/∂X = B · iso_coords, as the shape functions reproduce ξ.
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)

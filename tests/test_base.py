@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from torchfem import (
+    Axisymmetric,
     Planar,
     PlanarHeat,
     Shell,
@@ -461,3 +462,9 @@ def test_hessian_regularization_solve():
     k, u_e = model.integrate_hessian(modulus), u[model.elements].flatten(1)
     f_h = model.assemble_rhs(torch.einsum("eij,ej->ei", k, u_e))
     assert torch.allclose(f - f_0, f_h.view_as(f))
+
+
+def test_hessian_regularization_unsupported():
+    model = Axisymmetric(*rect_quad(3, 3), IsotropicElasticity3D(1.0, 0.3))
+    with pytest.raises(NotImplementedError, match="Axisymmetric"):
+        model.integrate_hessian(1.0)
