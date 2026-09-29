@@ -243,8 +243,6 @@ class Solid(SolidGeometry, Mechanics):
         forces: Applied nodal forces with shape [n_nod, 3].
         displacements: Prescribed nodal displacements with shape [n_nod, 3].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, 3].
-        hessian_modulus: Modulus k_h of the regularization energy ½ k_h ∇∇u ⋮ ∇∇u,
-            a float or with shape [n_elem].
     """
 
     @property

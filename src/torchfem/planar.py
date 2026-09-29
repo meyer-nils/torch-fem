@@ -323,8 +323,6 @@ class Planar(PlanarGeometry, Mechanics):
         forces: Applied nodal forces with shape [n_nod, 2].
         displacements: Prescribed nodal displacements with shape [n_nod, 2].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, 2].
-        hessian_modulus: Modulus k_h of the regularization energy ½ k_h ∇∇u ⋮ ∇∇u,
-            a float or with shape [n_elem].
     """
 
     @property
