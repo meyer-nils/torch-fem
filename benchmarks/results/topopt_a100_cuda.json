@@ -1,0 +1,61 @@
+{
+  "hardware": "A100",
+  "device": "cuda",
+  "python": "3.13.15",
+  "libraries": "PyTorch 2.13.0+cu129, CUDA 12.9",
+  "dtype": "float64",
+  "commit": "5a53977",
+  "problem": "structural_cantilever_simp",
+  "rows": [
+    {
+      "N": 20,
+      "dofs": 54243,
+      "setup_s": 0.0089,
+      "fwd_s": 0.2353,
+      "bwd_s": 0.2076,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 704.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 30,
+      "dofs": 175863,
+      "setup_s": 0.0114,
+      "fwd_s": 0.4281,
+      "bwd_s": 0.368,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1700.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 40,
+      "dofs": 408483,
+      "setup_s": 0.015,
+      "fwd_s": 0.7098,
+      "bwd_s": 0.5989,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 4008.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 50,
+      "dofs": 788103,
+      "setup_s": 0.0229,
+      "fwd_s": 1.5629,
+      "bwd_s": 1.3738,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 7770.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    },
+    {
+      "N": 60,
+      "dofs": 1350723,
+      "setup_s": 0.0326,
+      "fwd_s": 2.5101,
+      "bwd_s": 2.198,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 13408.0,
+      "solver": "cg | iterative | amg | amgx | cuda"
+    }
+  ]
+}

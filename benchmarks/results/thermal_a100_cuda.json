@@ -1,0 +1,61 @@
+{
+  "hardware": "A100",
+  "device": "cuda",
+  "python": "3.13.15",
+  "libraries": "PyTorch 2.13.0+cu129, CUDA 12.9",
+  "dtype": "float64",
+  "commit": "5a53977",
+  "problem": "thermal_slab_simp",
+  "rows": [
+    {
+      "N": 128,
+      "dofs": 16770,
+      "setup_s": 0.006,
+      "fwd_s": 0.0614,
+      "bwd_s": 0.0391,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 72.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 256,
+      "dofs": 66306,
+      "setup_s": 0.0068,
+      "fwd_s": 0.0879,
+      "bwd_s": 0.0568,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 294.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 512,
+      "dofs": 263682,
+      "setup_s": 0.0111,
+      "fwd_s": 0.1846,
+      "bwd_s": 0.1122,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 1062.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 1024,
+      "dofs": 1051650,
+      "setup_s": 0.0161,
+      "fwd_s": 0.5416,
+      "bwd_s": 0.3948,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 4230.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    },
+    {
+      "N": 2048,
+      "dofs": 4200450,
+      "setup_s": 0.049,
+      "fwd_s": 3.1594,
+      "bwd_s": 2.7148,
+      "peak_ram_mb": null,
+      "peak_vram_mb": 16818.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
+    }
+  ]
+}
