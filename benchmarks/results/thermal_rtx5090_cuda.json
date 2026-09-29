@@ -4,58 +4,58 @@
   "python": "3.13.12",
   "libraries": "PyTorch 2.8.0+cu129, CUDA 12.9",
   "dtype": "float64",
-  "commit": "115337d",
+  "commit": "47b2fed",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.0048,
-      "fwd_s": 0.0877,
-      "bwd_s": 0.0623,
+      "setup_s": 0.0049,
+      "fwd_s": 0.0506,
+      "bwd_s": 0.0368,
       "peak_ram_mb": null,
-      "peak_vram_mb": 384.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 74.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 256,
       "dofs": 66306,
-      "setup_s": 0.0056,
-      "fwd_s": 0.1424,
-      "bwd_s": 0.0982,
+      "setup_s": 0.006,
+      "fwd_s": 0.0956,
+      "bwd_s": 0.0667,
       "peak_ram_mb": null,
-      "peak_vram_mb": 556.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 296.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.0105,
-      "fwd_s": 0.2334,
-      "bwd_s": 0.1347,
+      "setup_s": 0.0101,
+      "fwd_s": 0.2198,
+      "bwd_s": 0.1303,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1308.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 1054.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.0265,
-      "fwd_s": 0.6452,
-      "bwd_s": 0.3392,
+      "setup_s": 0.0256,
+      "fwd_s": 0.7088,
+      "bwd_s": 0.4132,
       "peak_ram_mb": null,
       "peak_vram_mb": 4228.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 2048,
       "dofs": 4200450,
-      "setup_s": 0.0935,
-      "fwd_s": 2.5871,
-      "bwd_s": 1.4381,
+      "setup_s": 0.093,
+      "fwd_s": 3.2097,
+      "bwd_s": 2.0938,
       "peak_ram_mb": null,
       "peak_vram_mb": 16808.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "solver": "cg | iterative | jacobi | torch | cuda"
     }
   ]
 }
