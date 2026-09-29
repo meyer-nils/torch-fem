@@ -95,7 +95,7 @@ class Element(ABC):
             Tensor: Derivatives `dN/dxi`.
                 *Shape:* `(iso_dim, nodes)` or `(n_points, iso_dim, nodes)`.
         """
-        b = torch.func.jacfwd(cls.N)
+        b = torch.func.jacrev(cls.N)
         for _ in range(xi.dim() - 1):
             b = torch.func.vmap(b)
         return b(xi).movedim(-2, -1)
@@ -113,7 +113,7 @@ class Element(ABC):
                 *Shape:* `(iso_dim, iso_dim, nodes)` or
                 `(n_points, iso_dim, iso_dim, nodes)`.
         """
-        h = torch.func.jacfwd(torch.func.jacfwd(cls.N))
+        h = torch.func.jacrev(torch.func.jacrev(cls.N))
         for _ in range(xi.dim() - 1):
             h = torch.func.vmap(h)
         return h(xi).movedim(-3, -1)
