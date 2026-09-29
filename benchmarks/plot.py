@@ -47,8 +47,28 @@ def load_results() -> dict[str, list[dict]]:
     return grouped
 
 
+# Display names of the solver parts recorded in a result row.
+SOLVER_NAMES = {
+    "direct": "Direct",
+    "cg": "CG",
+    "bicgstab": "BiCGSTAB",
+    "amg": "AMG",
+    "jacobi": "Jacobi",
+    "none": "no preconditioner",
+}
+
+
+def _solver(solver: str) -> str:
+    """'cg | iterative | amg | amgx | cuda' -> 'CG, AMG'; 'direct | ...' -> 'Direct'."""
+    method, *rest = solver.split(" | ")
+    if method == "direct":
+        return SOLVER_NAMES[method]
+    return f"{SOLVER_NAMES[method]}, {SOLVER_NAMES[rest[1]]}"
+
+
 def _label(ds: dict) -> str:
-    return f"{ds['hardware']} ({ds['device'].upper()})"
+    solvers = dict.fromkeys(_solver(r["solver"]) for r in ds["rows"])
+    return f"{ds['hardware']} ({' / '.join(solvers)})"
 
 
 def plot_timing(
