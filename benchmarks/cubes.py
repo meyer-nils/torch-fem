@@ -24,13 +24,15 @@ def get_cube(N):
     return cube
 
 
-def setup(N, method=None):
+def setup(N, method=None, preconditioner=None):
     cube = get_cube(N)
     result = {}
 
     def forward():
         result["u"], *_ = cube.solve(
-            differentiable_parameters=cube.forces, method=method
+            differentiable_parameters=cube.forces,
+            method=method,
+            preconditioner=preconditioner,
         )
 
     def backward():

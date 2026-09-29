@@ -50,12 +50,14 @@ def get_cantilever(N):
     return model, rho
 
 
-def setup(N, method=None):
+def setup(N, method=None, preconditioner=None):
     model, rho = get_cantilever(N)
     result = {}
 
     def forward():
-        result["u"], *_ = model.solve(differentiable_parameters=rho, method=method)
+        result["u"], *_ = model.solve(
+            differentiable_parameters=rho, method=method, preconditioner=preconditioner
+        )
 
     def backward():
         # Structural compliance w.r.t. SIMP densities

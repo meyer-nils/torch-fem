@@ -4,6 +4,7 @@ Usage:
     python benchmarks/run.py [-problem cube|thermal|topopt|hyperelasticity|all]
                              [-N 10 20 ...]
                              [-device cpu|cuda] [-method NAME]
+                             [-preconditioner amg|jacobi|none]
                              [--label NAME] [--hardware DESC]
 """
 
@@ -35,7 +36,11 @@ PROBLEMS = {
 
 
 def run_problem(
-    name: str, N_values: list[int], device: str, method: str | None = None
+    name: str,
+    N_values: list[int],
+    device: str,
+    method: str | None = None,
+    preconditioner: str | None = None,
 ) -> list[dict]:
     use_cuda = device == "cuda"
     problem = PROBLEMS[name].PROBLEM
@@ -51,6 +56,8 @@ def run_problem(
         cmd = [sys.executable, script, "-N", str(N), "-device", device]
         if method is not None:
             cmd += ["-method", method]
+        if preconditioner is not None:
+            cmd += ["-preconditioner", preconditioner]
         profiler = profile_and_capture_gpu if use_cuda else profile_and_capture_cpu
         mem, tags = profiler(cmd)
         dofs = int(tags["DOFS"])
@@ -72,7 +79,9 @@ def run_problem(
                 "bwd_s": round(bwd_t, 4),
                 "peak_ram_mb": round(peak_mem, 1) if not use_cuda else None,
                 "peak_vram_mb": round(peak_mem, 1) if use_cuda else None,
-                "solver": describe_method(resolve_method(dofs, method), device, None),
+                "solver": describe_method(
+                    resolve_method(dofs, method), device, preconditioner
+                ),
             }
         )
     return rows
@@ -90,6 +99,12 @@ def main():
         type=str,
         default=None,
         help="Linear solver backend, overriding the problem default.",
+    )
+    parser.add_argument(
+        "-preconditioner",
+        type=str,
+        default=None,
+        help="Preconditioner, None to let torchfem pick.",
     )
     parser.add_argument("--label", type=str, default=None)
     parser.add_argument("--hardware", type=str, default=None)
@@ -121,7 +136,9 @@ def main():
         problem = PROBLEMS[name].PROBLEM
         N_values = args.N or problem.default_N
         out_path = results_dir / f"{name}_{label}.json"
-        rows = run_problem(name, N_values, args.device, args.method)
+        rows = run_problem(
+            name, N_values, args.device, args.method, args.preconditioner
+        )
         payload = {
             "hardware": hardware,
             "device": args.device,

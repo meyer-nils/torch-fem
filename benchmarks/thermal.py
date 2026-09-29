@@ -48,12 +48,14 @@ def get_slab(N):
     return model, rho
 
 
-def setup(N, method=None):
+def setup(N, method=None, preconditioner=None):
     model, rho = get_slab(N)
     result = {}
 
     def forward():
-        result["u"], *_ = model.solve(differentiable_parameters=rho, method=method)
+        result["u"], *_ = model.solve(
+            differentiable_parameters=rho, method=method, preconditioner=preconditioner
+        )
 
     def backward():
         # Thermal compliance w.r.t. SIMP densities

@@ -53,7 +53,7 @@ def get_stretch(N):
     return box, params, right
 
 
-def setup(N, method=None):
+def setup(N, method=None, preconditioner=None):
     box, params, right = get_stretch(N)
     lam = torch.logspace(0, math.log10(STRETCH), N_INC)
     increments = (lam - 1.0) / (STRETCH - 1.0)
@@ -64,6 +64,7 @@ def setup(N, method=None):
             increments=increments,
             differentiable_parameters=params,
             method=method,
+            preconditioner=preconditioner,
         )
 
     def backward():

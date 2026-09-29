@@ -47,7 +47,7 @@ class Problem:
     title: str  # plot suite title
     plot_prefix: str  # image filename prefix in docs/images/benchmark
     default_N: list[int]
-    setup: Callable[[int, str | None], Case]
+    setup: Callable[[int, str | None, str | None], Case]
     method: str | None = None  # linear solver, None to let the size decide
 
 
@@ -61,6 +61,9 @@ def run_case(problem: Problem) -> None:
     parser.add_argument(
         "-method", type=str, help="Linear solver backend", default=problem.method
     )
+    parser.add_argument(
+        "-preconditioner", type=str, help="Preconditioner", default=None
+    )
     args = parser.parse_args()
 
     torch.set_default_dtype(torch.float64)
@@ -68,7 +71,7 @@ def run_case(problem: Problem) -> None:
 
     # Warm up on a throwaway case, so torch's first-call cost, the same at every
     # size, falls outside the phases below. `cg` holds it on the iterative path.
-    warmup = problem.setup(WARMUP_N, args.method or "cg")
+    warmup = problem.setup(WARMUP_N, args.method or "cg", args.preconditioner)
     warmup.forward()
     warmup.backward()
     if args.device == "cuda":
@@ -81,7 +84,7 @@ def run_case(problem: Problem) -> None:
 
     print(f"\nSTART:{time.time()}", flush=True)
 
-    case = problem.setup(args.N, args.method)
+    case = problem.setup(args.N, args.method, args.preconditioner)
     print(f"\nDOFS:{case.dofs}", flush=True)
     print(f"\nSETUP_DONE:{time.time()}", flush=True)
 
