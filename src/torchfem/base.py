@@ -895,6 +895,9 @@ class Mechanics(FEM, ABC):
     geometrically nonlinear.
     """
 
+    # Modulus k_h of the regularization energy ½ k_h ∇∇u ⋮ ∇∇u
+    hessian_modulus: Tensor | float | None = None
+
     @property
     def n_dof_per_node(self) -> int:
         return self.nodes.shape[1]
@@ -1050,6 +1053,21 @@ class Mechanics(FEM, ABC):
                 assert k is not None
                 BCB = self.compute_bcb(B[i], ddsdde)
                 k += self.compute_k(detJ[i], BCB.reshape(-1, n_dof, n_dof)).mul_(w)
+
+        # Regularization of the total u. G pulls the reference Hessian, less the map's
+        # curvature, back with ∂ξ/∂X = B · iso_coords, as N reproduces ξ.
+        if self.hessian_modulus is not None:
+            X = self.nodes[self.elements]
+            H = self.etype.H(self.etype.ipoints.to(B))
+            H = H[:, None] - torch.einsum("pijM,EMk,pEkN->pEijN", H, X, B)
+            dxi = B @ self.etype.iso_coords.to(B)
+            G = torch.einsum("pEai,pEbj,pEijN->pEabN", dxi, dxi, H)
+            dV = self.etype.iweights.to(B)[:, None] * self.volume_scale * detJ
+            S = torch.einsum("pE,pEabN,pEabM->ENM", dV * self.hessian_modulus, G, G)
+            f += (S @ (u_prev[self.elements] + du)).reshape(-1, n_dof)
+            if need_k:
+                assert k is not None
+                k += torch.kron(S, torch.eye(self.n_dof_per_node).to(S)[None])
 
         return k, f, grad_new, flux_new, state_new
 

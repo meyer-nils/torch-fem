@@ -11,6 +11,7 @@ from torchfem import (
     Truss,
     TrussHeat,
 )
+from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
     Hyperelastic3D,
     IsotropicConductivity1D,
@@ -21,7 +22,7 @@ from torchfem.materials import (
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
 )
-from torchfem.mesh import cube_hexa, rect_quad
+from torchfem.mesh import cube_hexa, cube_tetra, rect_quad, rect_tri
 from torchfem.rotations import axis_rotation
 
 
@@ -399,3 +400,70 @@ class TestMaterialCompatibility:
     def test_rejects_an_incompatible_material(self, build, message):
         with pytest.raises(ValueError, match=message):
             build()
+
+
+def _hessian_force(model, u_prev, du, compute_stiffness=False):
+    """Element stiffness and forces that `hessian_modulus` adds to the material."""
+    grad = torch.eye(model.n_flux[0]).expand(model.n_int, model.n_elem, *model.n_flux)
+    state = torch.zeros(model.n_int, model.n_elem, model.n_state)
+    de0 = torch.zeros(model.n_elem, *model.n_flux)
+    args = (u_prev, grad, torch.zeros_like(grad), state, du.ravel(), de0, 0)
+    model.K = torch.empty(0)
+    k, f, *_ = model.integrate_material(*args, compute_stiffness)
+    modulus, model.hessian_modulus = model.hessian_modulus, None
+    k_0, f_0, *_ = model.integrate_material(*args, compute_stiffness)
+    model.hessian_modulus = modulus
+    return None if k is None or k_0 is None else k - k_0, f - f_0
+
+
+def _hessian_model(nodes, elements):
+    if nodes.shape[1] == 2:
+        return Planar(nodes, elements, IsotropicElasticityPlaneStress(1.0, 0.3))
+    return Solid(nodes, elements, IsotropicElasticity3D(1.0, 0.3))
+
+
+@pytest.mark.parametrize("mesh", [rect_quad, rect_tri, cube_hexa, cube_tetra])
+def test_hessian_regularization_energy(mesh):
+    planar = mesh in (rect_quad, rect_tri)
+    nodes, elements = linear_to_quadratic(*(mesh(3, 3) if planar else mesh(3, 3, 3)))
+    d = nodes.shape[1]
+    nodes = nodes @ (torch.eye(d) + 0.2 * torch.ones(d, d).triu(1))  # distorted
+    model = _hessian_model(nodes, elements)
+    model.hessian_modulus = 3.0
+
+    # Each component x^T Q x has the Hessian 2Q, and the forces do twice the energy.
+    Q = torch.rand(d, d)
+    Q = Q + Q.T
+    u = torch.einsum("ni,ij,nj->n", nodes, Q, nodes)[:, None].repeat(1, d)
+    _, f = _hessian_force(model, 0.3 * u, 0.7 * u)
+    work = torch.sum(f * u[elements].flatten(1))
+    volume = model.integrate_field().sum()
+    assert torch.isclose(work, 3.0 * d * (2 * Q).square().sum() * volume)
+
+
+@pytest.mark.parametrize("mesh", [rect_quad, cube_hexa])
+def test_hessian_regularization_curved_elements(mesh):
+    nodes, elements = mesh(3, 3) if mesh is rect_quad else mesh(3, 3, 3)
+    n_corner = len(nodes)
+    nodes, elements = linear_to_quadratic(nodes, elements)
+    d = nodes.shape[1]
+    nodes[n_corner:] += 0.05 * torch.randn(len(nodes) - n_corner, d)  # curved edges
+    model = _hessian_model(nodes, elements)
+    model.hessian_modulus = 3.0
+
+    # An affine field has no Hessian, also on curved elements.
+    u = nodes @ torch.rand(d, d) + torch.rand(d)
+    _, f = _hessian_force(model, u, torch.zeros_like(u))
+    assert torch.allclose(f, torch.zeros_like(f), atol=1e-10)
+
+
+def test_hessian_regularization_stiffness():
+    model = _hessian_model(*linear_to_quadratic(*rect_quad(3, 3)))
+    model.hessian_modulus = torch.rand(model.n_elem)
+
+    # The energy is quadratic, so k u = f.
+    u = torch.rand(model.n_nod, 2)
+    k, f = _hessian_force(model, torch.zeros_like(u), u, compute_stiffness=True)
+    assert k is not None
+    u_e = u[model.elements].flatten(1)
+    assert torch.allclose(torch.einsum("eij,ej->ei", k, u_e), f)
