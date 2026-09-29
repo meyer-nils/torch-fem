@@ -778,6 +778,7 @@ class FEM(ABC):
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
             + (" | finite strain" if self.finite_strain else "")
             + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
+            + (" | regularized" if hessian_modulus is not None else "")
         )
         # Resolved once here, from what the model knows about its own tangent.
         solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
