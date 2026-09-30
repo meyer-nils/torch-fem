@@ -4,78 +4,78 @@
   "python": "3.13.12",
   "libraries": "PyTorch 2.11.0+cu128, CUDA 12.8",
   "dtype": "float64",
-  "commit": "ab60607",
+  "commit": "41bba96",
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
       "N": 35,
       "dofs": 18375,
       "setup_s": 0.003,
-      "fwd_s": 7.5111,
-      "bwd_s": 2.0066,
+      "fwd_s": 6.4848,
+      "bwd_s": 1.7367,
       "peak_ram_mb": null,
-      "peak_vram_mb": 1296.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 1108.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.0039,
-      "fwd_s": 10.4831,
-      "bwd_s": 2.8508,
+      "setup_s": 0.0037,
+      "fwd_s": 9.9771,
+      "bwd_s": 2.5913,
       "peak_ram_mb": null,
-      "peak_vram_mb": 2066.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 1854.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.0051,
-      "fwd_s": 15.0291,
-      "bwd_s": 3.9614,
+      "setup_s": 0.0041,
+      "fwd_s": 13.7718,
+      "bwd_s": 3.6791,
       "peak_ram_mb": null,
-      "peak_vram_mb": 3084.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 2766.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.0055,
-      "fwd_s": 19.5726,
-      "bwd_s": 5.1652,
+      "setup_s": 0.005,
+      "fwd_s": 18.6013,
+      "bwd_s": 4.9395,
       "peak_ram_mb": null,
-      "peak_vram_mb": 4248.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 3850.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 75,
       "dofs": 84375,
-      "setup_s": 0.0083,
-      "fwd_s": 25.6658,
-      "bwd_s": 6.3694,
+      "setup_s": 0.0056,
+      "fwd_s": 24.425,
+      "bwd_s": 6.214,
       "peak_ram_mb": null,
-      "peak_vram_mb": 5736.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 5172.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 85,
       "dofs": 108375,
-      "setup_s": 0.0071,
-      "fwd_s": 32.451,
-      "bwd_s": 8.1954,
+      "setup_s": 0.0073,
+      "fwd_s": 30.1029,
+      "bwd_s": 7.8661,
       "peak_ram_mb": null,
-      "peak_vram_mb": 7320.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 6674.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     },
     {
       "N": 95,
       "dofs": 135375,
-      "setup_s": 0.0077,
-      "fwd_s": 39.7402,
-      "bwd_s": 10.08,
+      "setup_s": 0.0072,
+      "fwd_s": 37.0537,
+      "bwd_s": 9.7589,
       "peak_ram_mb": null,
-      "peak_vram_mb": 9088.0,
-      "solver": "cg | iterative | amg | amgx | cuda"
+      "peak_vram_mb": 8252.0,
+      "solver": "cg | iterative | jacobi | torch | cuda"
     }
   ]
 }
