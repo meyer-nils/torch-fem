@@ -420,6 +420,34 @@ class FEM(ABC):
 
         return m
 
+    def integrate_hessian(self, modulus: Tensor | float) -> Tensor:
+        """Integrate the element matrix of the regularization energy ½ k ∇∇u ⋮ ∇∇u.
+
+        Args:
+            modulus: Modulus k, a float or with shape [n_elem].
+
+        Returns:
+            Element matrix tensor with shape [n_elem, n_dof_elem, n_dof_elem].
+
+        Raises:
+            NotImplementedError: If the field gradient is not the plain gradient.
+        """
+        # The pull-back needs the plain gradient of elements spanning their space
+        if self.n_flux != [self.etype.iso_dim, self.nodes.shape[1]]:
+            raise NotImplementedError(f"{type(self).__name__} is not supported.")
+
+        # G pulls the reference Hessian, less the curvature of the isoparametric map,
+        # back with ∂ξ/∂X = B · iso_coords, as the shape functions reproduce ξ.
+        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
+        X = self.nodes[self.elements]
+        H = self.etype.H(self.etype.ipoints.to(B))
+        H = H[:, None] - torch.einsum("pijM,EMk,pEkN->pEijN", H, X, B)
+        dxi = B @ self.etype.iso_coords.to(B)
+        G = torch.einsum("pEai,pEbj,pEijN->pEabN", dxi, dxi, H)
+        dV = self.etype.iweights.to(B)[:, None] * self.volume_scale * detJ
+        S = torch.einsum("pE,pEabN,pEabM->ENM", dV * modulus, G, G)
+        return torch.kron(S, torch.eye(self.n_dof_per_node).to(S)[None])
+
     def assemble_matrix(self, k: Tensor, con: Tensor) -> Tensor:
         """Assemble a global sparse matrix from element contributions.
 
@@ -600,6 +628,7 @@ class FEM(ABC):
         DU: Tensor,
         de0: Tensor,
         k_visc: Tensor | None,
+        k_hess: Tensor | None,
         con: Tensor,
         du: Tensor,
         i: int,
@@ -626,6 +655,13 @@ class FEM(ABC):
             if k is not None:
                 k = k + k_visc
 
+        # Second gradient regularization of the total field
+        if k_hess is not None:
+            u_e = (prev[0].ravel() + du).view(-1, self.n_dof_per_node)[self.elements]
+            f_i = f_i + torch.einsum("...ij,...j->...i", k_hess, u_e.flatten(1))
+            if k is not None:
+                k = k + k_hess
+
         if k is not None:
             self.K = self.assemble_matrix(k, con)
 
@@ -650,6 +686,7 @@ class FEM(ABC):
         return_intermediate: bool = False,
         aggregate_integration_points: bool = True,
         alpha: float = 0.0,
+        hessian_modulus: Tensor | float | None = None,
         differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Solve the quasi-static finite-element problem by load increments.
@@ -683,6 +720,8 @@ class FEM(ABC):
                 state over integration points.
             alpha: Damping factor for viscous stabilization. Dissipated
                 energy is accumulated in `self.stabilization_energy`.
+            hessian_modulus: Modulus k of the regularization energy ½ k ∇∇u ⋮ ∇∇u,
+                a float or with shape [n_elem].
             differentiable_parameters: Explicit parameter(s) to differentiate
                 through implicit Newton/sparse solves. Accepts either a single
                 tensor or an iterable of tensors.
@@ -703,6 +742,11 @@ class FEM(ABC):
         k_step = 0.0
         energy = torch.zeros(())
         self.stabilization_energy = torch.zeros(N)
+
+        # Second gradient regularization, constant for a given mesh
+        k_hess = (
+            None if hessian_modulus is None else self.integrate_hessian(hessian_modulus)
+        )
 
         # Determine differentiable dependencies for this solve call.
         if differentiable_parameters is None:
@@ -734,6 +778,7 @@ class FEM(ABC):
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
             + (" | finite strain" if self.finite_strain else "")
             + (f" | stabilized alpha={alpha:g}" if alpha > 0.0 else "")
+            + (" | regularized" if hessian_modulus is not None else "")
         )
         # Resolved once here, from what the model knows about its own tangent.
         solve_method = resolve_method(self.n_dofs, method, self.symmetric_tangent)
@@ -794,7 +839,7 @@ class FEM(ABC):
                 # Solve for increment using Newton-Raphson method
                 try:
                     du = newton_solve(
-                        partial(self._residual, F_ext, DU, de0, k_visc, con),
+                        partial(self._residual, F_ext, DU, de0, k_visc, k_hess, con),
                         du.detach(),
                         null_space,
                         max_iter,
@@ -845,6 +890,12 @@ class FEM(ABC):
 
                 f_cur = F_int.reshape((-1, self.n_dof_per_node))
                 u_cur = u_cur + du_eval.reshape((-1, self.n_dof_per_node))
+
+                # Regularization forces of the total field
+                if k_hess is not None:
+                    u_e = u_cur[self.elements].flatten(1)
+                    f_h = self.assemble_rhs(torch.einsum("eij,ej->ei", k_hess, u_e))
+                    f_cur = f_cur + f_h.view_as(f_cur)
                 du = du_eval
 
                 # Accept the substep and grow the next one. Growth applies to

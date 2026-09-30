@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from torchfem import (
+    Axisymmetric,
     Planar,
     PlanarHeat,
     Shell,
@@ -11,6 +12,7 @@ from torchfem import (
     Truss,
     TrussHeat,
 )
+from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
     Hyperelastic3D,
     IsotropicConductivity1D,
@@ -21,7 +23,7 @@ from torchfem.materials import (
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
 )
-from torchfem.mesh import cube_hexa, rect_quad
+from torchfem.mesh import cube_hexa, cube_tetra, rect_quad, rect_tri
 from torchfem.rotations import axis_rotation
 
 
@@ -399,3 +401,70 @@ class TestMaterialCompatibility:
     def test_rejects_an_incompatible_material(self, build, message):
         with pytest.raises(ValueError, match=message):
             build()
+
+
+def _hessian_model(nodes, elements):
+    if nodes.shape[1] == 2:
+        return Planar(nodes, elements, IsotropicElasticityPlaneStress(1.0, 0.3))
+    return Solid(nodes, elements, IsotropicElasticity3D(1.0, 0.3))
+
+
+@pytest.mark.parametrize("mesh", [rect_quad, rect_tri, cube_hexa, cube_tetra])
+def test_hessian_regularization_energy(mesh):
+    planar = mesh in (rect_quad, rect_tri)
+    nodes, elements = linear_to_quadratic(*(mesh(3, 3) if planar else mesh(3, 3, 3)))
+    d = nodes.shape[1]
+    nodes = nodes @ (torch.eye(d) + 0.2 * torch.ones(d, d).triu(1))  # distorted
+    model = _hessian_model(nodes, elements)
+
+    # Each component x^T Q x has the Hessian 2Q, and u^T k u is twice the energy.
+    Q = torch.rand(d, d)
+    Q = Q + Q.T
+    u_e = torch.einsum("ni,ij,nj->n", nodes, Q, nodes)[elements].repeat_interleave(d, 1)
+    work = torch.einsum("ei,eij,ej->", u_e, model.integrate_hessian(3.0), u_e)
+    volume = model.integrate_field().sum()
+    assert torch.isclose(work, 3.0 * d * (2 * Q).square().sum() * volume)
+
+
+@pytest.mark.parametrize("mesh", [rect_quad, cube_hexa])
+def test_hessian_regularization_curved_elements(mesh):
+    nodes, elements = mesh(3, 3) if mesh is rect_quad else mesh(3, 3, 3)
+    n_corner = len(nodes)
+    nodes, elements = linear_to_quadratic(nodes, elements)
+    d = nodes.shape[1]
+    nodes[n_corner:] += 0.05 * torch.randn(len(nodes) - n_corner, d)  # curved edges
+    model = _hessian_model(nodes, elements)
+
+    # An affine field has no Hessian, also on curved elements.
+    u = nodes @ torch.rand(d, d) + torch.rand(d)
+    k = model.integrate_hessian(3.0)
+    f = torch.einsum("eij,ej->ei", k, u[elements].flatten(1))
+    assert torch.allclose(f, torch.zeros_like(f), atol=1e-10)
+
+
+def test_hessian_regularization_solve():
+    model = _hessian_model(*linear_to_quadratic(*rect_quad(3, 3)))
+    modulus = torch.rand(model.n_elem)
+    increments = torch.linspace(0.0, 1.0, 3)
+    u = torch.rand(model.n_nod, 2)
+    model.displacements = u
+
+    # With only the boundary prescribed, the forces are in equilibrium elsewhere.
+    boundary = (model.nodes == 0.0).any(1) | (model.nodes == 1.0).any(1)
+    model.constraints[boundary] = True
+    _, f, *_ = model.solve(increments=increments, hessian_modulus=modulus)
+    assert torch.allclose(f[~boundary], torch.zeros_like(f[~boundary]), atol=1e-10)
+
+    # With all displacements prescribed, the regularization adds k u to the forces.
+    model.constraints[:] = True
+    _, f, *_ = model.solve(increments=increments, hessian_modulus=modulus)
+    _, f_0, *_ = model.solve(increments=increments)
+    k, u_e = model.integrate_hessian(modulus), u[model.elements].flatten(1)
+    f_h = model.assemble_rhs(torch.einsum("eij,ej->ei", k, u_e))
+    assert torch.allclose(f - f_0, f_h.view_as(f))
+
+
+def test_hessian_regularization_unsupported():
+    model = Axisymmetric(*rect_quad(3, 3), IsotropicElasticity3D(1.0, 0.3))
+    with pytest.raises(NotImplementedError, match="Axisymmetric"):
+        model.integrate_hessian(1.0)

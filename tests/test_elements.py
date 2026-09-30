@@ -23,11 +23,23 @@ def test_jacobian(elem):
     ELEMENT_REGISTRY,
 )
 def test_gradient(elem):
-    for q in elem.ipoints:
-        q.requires_grad = True
-        for i in range(elem.nodes):
-            grad = torch.autograd.grad(elem.N(q)[i], q)[0]
-            assert torch.allclose(grad, elem.B(q)[:, i], atol=1e-5)
+    xi = torch.cat([elem.ipoints, elem.iso_coords])
+    dxi = 1e-6 * torch.eye(elem.iso_dim)[:, None]
+    fd = (elem.N(xi + dxi) - elem.N(xi - dxi)) / 2e-6
+    assert torch.allclose(elem.B(xi), fd.transpose(0, 1), atol=1e-6)
+    assert torch.allclose(elem.B(xi[0]), fd[:, 0])
+
+
+@pytest.mark.parametrize(
+    "elem",
+    ELEMENT_REGISTRY,
+)
+def test_hessian(elem):
+    xi = torch.cat([elem.ipoints, elem.iso_coords])
+    dxi = 1e-6 * torch.eye(elem.iso_dim)[:, None]
+    fd = (elem.B(xi + dxi) - elem.B(xi - dxi)) / 2e-6
+    assert torch.allclose(elem.H(xi), fd.transpose(0, 1), atol=1e-6)
+    assert torch.allclose(elem.H(xi[0]), fd[:, 0], atol=1e-6)
 
 
 @pytest.mark.parametrize(

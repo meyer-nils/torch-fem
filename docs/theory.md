@@ -189,6 +189,16 @@ where $\Delta \mathbf{u}/\Delta \lambda$ is the nodal velocity with respect to t
 
 The viscous forces vanish as the solution approaches a stable equilibrium, so a sufficiently small $\alpha$ barely perturbs the result. To verify this, the dissipated energy is accumulated per increment in `model.stabilization_energy` (the Abaqus `ALLSD` output) and should stay small compared to the strain energy. The default $\alpha = 0$ disables stabilization.
 
+#### Second gradient regularization
+
+The very soft fictitious material of third medium contact distorts excessively before contact. The `hessian_modulus` argument of `solve()` regularizes it with the energy
+
+$$
+\Pi^\textrm{reg} = \int_{\Omega_0} \frac{k}{2} \nabla\nabla\mathbf{u} \mathbin{\vdots} \nabla\nabla\mathbf{u} \, dV,
+$$
+
+whose constant element matrix `integrate_hessian()` builds from the second derivatives of quadratic shape functions, including the curvature of curved elements. The [third medium contact example](examples/basic/planar/third_medium_contact.html) shows its use.
+
 #### Linear solvers
 
 The sparse system of each Newton iteration is solved either directly, by factorizing $\mathbf{K}$, or iteratively, by a Krylov method that needs no more than the product $\mathbf{K} \mathbf{v}$. The `method` argument of `solve()` names the algorithm (`"direct"`, `"cg"`, `"bicgstab"`) and `preconditioner` names what accelerates it (`"amg"`, `"jacobi"`, `"none"`).

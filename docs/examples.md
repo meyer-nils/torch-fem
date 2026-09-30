@@ -70,6 +70,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Snap-through of a cylindrical roof](images/examples/basic/planar/stabilization.png)](examples/basic/planar/stabilization.html)
 
+-   **Third medium contact**
+
+    [![Third medium contact](images/examples/basic/planar/third_medium_contact.png)](examples/basic/planar/third_medium_contact.html)
+
 -   **Modal analysis**
 
     [![Modal analysis](images/examples/basic/planar/modal.png)](examples/basic/planar/modal.html)
