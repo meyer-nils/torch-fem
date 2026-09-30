@@ -10,7 +10,7 @@ Scaling behavior of *torch-fem* on four benchmark problems across several machin
 
 2. **Forward solve:** assembly and sparse linear solve.
 
-3. **Backward solve:** reverse-mode AD through the solve via `autograd`.
+3. **Backward pass:** reverse-mode AD through the solve via `autograd`.
 
 ## Cube extension
 
@@ -94,7 +94,7 @@ The label identifies the machine; results are written to `benchmarks/results/<pr
 python benchmarks/plot.py
 ```
 
-This reads all JSON files in `benchmarks/results/`, groups them by problem, and writes the timing, backward, and RAM plots to `docs/images/benchmark/<problem>_*.png`. 
+This reads all JSON files in `benchmarks/results/`, groups them by problem, and writes the timing and RAM plots to `docs/images/benchmark/<problem>_*.png`. 
 
 !!! info "Acknowledgement: NVIDIA A100 on LiCCA"
     The authors gratefully acknowledge the resources on the LiCCA HPC cluster of the University of Augsburg, co-funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) – Project-ID 499211671.

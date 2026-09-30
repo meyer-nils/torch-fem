@@ -13,37 +13,23 @@
 
 # torch-fem
 
-*torch-fem* is a simple GPU-accelerated differentiable finite element solver for solid mechanics built on PyTorch. Automatic differentiation provides exact sensitivities of simulation results with respect to material parameters, geometry, loads, etc. without hand-derived adjoint formulations. It is aimed at researchers in computational mechanics who need gradients through FEM solvers for tasks such as optimization, inverse problems, and machine-learning-augmented simulation.
+*torch-fem* is a GPU-accelerated differentiable finite element solver for solid mechanics and heat transfer built on PyTorch. Automatic differentiation provides exact sensitivities of simulation results with respect to material parameters, geometry, loads, etc. without hand-derived adjoint formulations. It is aimed at researchers in computational mechanics who need gradients through FEM solvers for tasks such as optimization, inverse problems, and machine-learning-augmented simulation.
 
 ## Features
-- Elements
-  - 1D: Bar1, Bar2
-  - 2D: Quad1, Quad2, Tria1, Tria2
-  - 3D: Hexa1, Hexa2, Tetra1, Tetra2
-  - Shell: Flat-facet Quad1, Tria1
-- Material models
-  - Linear elasticity (isotropic, transverse isotropic, orthotropic) 
-  - Isotropic small strain plasticity
-  - Isotropic small strain damage
-  - Hyperelasticity (via automatic differentiation of their energy function)
-  - Thermal conductivity (isotropic, orthotropic)
-  - Custom user material interface
-
-- Utilities
-  - Assembly of several models coupled by kinematic constraints
-  - Homogenization of orthotropic elasticity for composites
-  - Composite laminates for shells
-  - Simple structured meshing
-  - I/O to and from other mesh formats via meshio
+- **Differentiable:** exact gradients of simulation results through efficient adjoint solves, for linear and nonlinear problems alike
+- **GPU-accelerated:** a linear elastic model with a million degrees of freedom solves in seconds on a single GPU
+- **Broad scope:** solid mechanics and heat transfer from trusses to shells and 3D solids, including nonlinear materials and large deformations
+- **Extensible:** a new hyperelastic material needs only its energy function and a new element only its shape functions, as autograd derives the rest
+- **PyTorch-native:** models are plain tensors, so FEM results plug directly into optimizers and neural networks
 
 ## Installation
 You may install *torch-fem* via pip with
 
 ```
-pip install torch-fem
+pip install torch-fem[notebook]
 ```
 
-To run the example notebooks, install with the `notebook` extra (`pip install torch-fem[notebook]`). For GPU acceleration, install PyTorch with CUDA support - see the [installation guide](https://meyer-nils.github.io/torch-fem/installation/) for details.
+The `notebook` extra adds Jupyter widgets, interactive PyVista rendering, and animation support for the example notebooks. For GPU acceleration, install PyTorch with CUDA support - see the [installation guide](https://meyer-nils.github.io/torch-fem/installation/) for details.
 
 ## Minimal example
 This is a minimal example of how to use *torch-fem* to solve a very simple planar cantilever problem. 
@@ -82,7 +68,7 @@ This creates a minimal planar FEM model:
 </picture>
 
 ```python
-# Solve
+# Solve for displacements u, internal forces f, stresses σ, deformation gradients F, and material states α
 u, f, σ, F, α = cantilever.solve()
 
 # Plot displacement magnitude on deformed state
@@ -95,7 +81,7 @@ This solves the model and plots the result:
   <img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_light.png">
 </picture>
 
-If we want to compute gradients through the FEM model, we simply need to define the variables that require gradients. Automatic differentiation is performed through the entire FE solver. Rather than differentiating through individual solver iterations or Newton iterations (this would explode in memory and autograd graph size) though, the *implicit function theorem* is used to formulate an adjoint backward for `solve()`.
+To compute gradients through the FEM model, we mark the variables that require gradients. The backward pass of `solve()` is an adjoint solve via the implicit function theorem rather than a differentiation through solver iterations, as explained in the [differentiability guide](https://meyer-nils.github.io/torch-fem/differentiability/).
 ```python 
 # Enable automatic differentiation
 cantilever.thickness.requires_grad = True
@@ -111,8 +97,10 @@ tensor([-0.0208, -0.0053])
 ```
 Both entries are negative, so adding material anywhere stiffens the structure, but the element at the clamped end is about four times as effective as the one at the tip.
 
-## Basic examples
-The subdirectory `examples/basic` contains a couple of Jupyter notebooks demonstrating the use of *torch-fem* for trusses, planar problems, shells, and solids. You may click on the examples to check out the notebooks online.
+The [getting started guide](https://meyer-nils.github.io/torch-fem/getting_started/) continues from here to a minimal topology optimization, and the [theory section](https://meyer-nils.github.io/torch-fem/theory/) summarizes the underlying mechanics and finite element formulation.
+
+## Examples
+The subdirectories `examples/basic` and `examples/optimization` contain Jupyter notebooks for trusses, planar problems, shells, and solids, from basic analyses to topology, shape, and orientation optimization. A selection is shown below, and the full set is in the [example gallery](https://meyer-nils.github.io/torch-fem/examples/).
 
 <table>
     <tbody>
@@ -129,43 +117,11 @@ The subdirectory `examples/basic` contains a couple of Jupyter notebooks demonst
             <td colspan="2" align="center"><b>Finite strain cantilever:</b> Hyperelastic model in Total Lagrangian Formulation.</td>
         </tr>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/shell/modal.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/basic/shell/modal.png" alt="Shell modal analysis example"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/gyroid.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/basic/solid/gyroid.png" alt="Implicit gyroid structure example"></a></td>
-        </tr>
-        <tr>
-            <td align="center"><b>Modal analysis of a clamped shell:</b> Natural frequencies and mode shapes of a fully clamped flat shell.</td>
-            <td align="center"><b>Implicit gyroid structure:</b> A voxel mesh is carved into a triply periodic minimal surface with a signed distance function.</td>
-        </tr>
-    </tbody>
-</table>
-
-## Optimization examples
-The subdirectory `examples/optimization` demonstrates the use of *torch-fem* for optimization of structures (e.g. topology optimization, composite orientation optimization). You may click on the examples to check out the notebooks online.
-
-<table>
-    <tbody>
-        <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/truss/shape.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/truss/shape.png" alt="Truss shape optimization example"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/shape.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/shape.png" alt="Planar fillet shape optimization example"></a></td>
-        </tr>
-        <tr>
-            <td align="center"><b>Shape optimization of a truss:</b> The top nodes are moved and MMA + autograd is used to minimize the compliance.</td>
-            <td align="center"><b>Shape optimization of a fillet:</b> The shape is morphed with shape basis vectors and MMA + autograd is used to minimize the maximum stress.</td>
-        </tr>
-        <tr>
             <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/bracket.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/bracket.png" alt="3D jet engine bracket topology optimization result"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/topology+orientation.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/topology+orientation.png" alt="Combined topology and orientation optimization example"></a></td>
-        </tr>
-        <tr>
-            <td align="center"><b>Topology optimization of a jet engine bracket:</b> The optimized part is cut out of the design space at an iso-value of the density.</td>
-            <td align="center"><b>Combined topology and orientation optimization:</b> Compliance is minimized by optimizing fiber orientation and density of an anisotropic material.</td>
-        </tr>
-        <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/orientation.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/orientation.png" alt="Fiber orientation optimization example"></a></td>
             <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/topology_thermal.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/topology_thermal.png" alt="3D heat sink topology optimization example"></a></td>
         </tr>
         <tr>
-            <td align="center"><b>Fiber orientation optimization of a plate with a hole</b> Compliance is minimized by optimizing the fiber orientation of an anisotropic material.</td>
+            <td align="center"><b>Topology optimization of a jet engine bracket:</b> The optimized part is cut out of the design space at an iso-value of the density.</td>
             <td align="center"><b>Topology optimization of a 3D heat sink:</b> Conductive material is distributed in a cube with a homogeneous heat source to minimize thermal compliance.</td>
         </tr>
         <tr>
@@ -180,7 +136,35 @@ The subdirectory `examples/optimization` demonstrates the use of *torch-fem* for
 </table>
 
 ## Performance 
-*torch-fem* solves problems with millions of degrees of freedom: a linear elastic hexahedral cube model with 1.5 million DOFs assembles and solves in about four seconds on a consumer GPU (RTX 4090, float64). Detailed CPU and GPU benchmarks for timing and memory are reported in the [performance documentation](https://meyer-nils.github.io/torch-fem/performance/) and can be reproduced with the scripts in `benchmarks/`.
+Performance is a priority concern in *torch-fem*: it is benchmarked on several CPUs and GPUs for the forward solve, the backward pass, and peak memory. The scripts in `benchmarks/` reproduce all results, and the [performance documentation](https://meyer-nils.github.io/torch-fem/performance/) reports the full set of problems and machines, including thermal and topology optimization problems from the [mosaic benchmark suite](https://github.com/pasteurlabs/mosaic) and a finite-strain hyperelastic problem.
+
+As an example, a linear elastic cube of hexahedral elements with $N$ nodes along each edge is clamped on one face and pulled on the opposite one, and the backward pass computes the gradient of the displacement sum with respect to the nodal forces. On an NVIDIA RTX 5090 in float64, using CG with a Jacobi preconditioner that suffices for this well-conditioned problem, this takes:
+
+|  N  |     DOFs |     Setup |   Forward |  Backward |  Peak VRAM |
+| --- | -------- | --------- | --------- | --------- | ---------- |
+|  20 |    24000 |    0.004s |    0.057s |    0.053s |    212.0MB |
+|  30 |    81000 |    0.007s |    0.108s |    0.100s |    768.0MB |
+|  40 |   192000 |    0.010s |    0.201s |    0.165s |   1820.0MB |
+|  50 |   375000 |    0.017s |    0.353s |    0.292s |   3610.0MB |
+|  60 |   648000 |    0.026s |    0.586s |    0.489s |   6254.0MB |
+|  70 |  1029000 |    0.040s |    0.935s |    0.782s |  10014.0MB |
+|  80 |  1536000 |    0.058s |    1.417s |    1.216s |  15008.0MB |
+
+## Alternatives
+*torch-fem* focuses on solid mechanics and thermal problems. It provides sensitivities through PyTorch autograd, which makes it easy to drop into optimization loops and ML pipelines. It is the natural choice if you are working in the PyTorch ecosystem. Depending on your needs, one of these Python FEM tools may serve you better:
+
+| Library | Stars | Focus | Differentiable | Consider it over torch-fem when… |
+|---|:---:|---|:---:|---|
+| [FEniCSx (DOLFINx)](https://github.com/FEniCS/dolfinx) | ![stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square) | General PDEs, UFL weak forms, MPI | via [dolfin-adjoint](https://github.com/dolfin-adjoint/pyadjoint) | you need arbitrary weak forms or massively parallel distributed runs |
+| [SfePy](https://github.com/sfepy/sfepy) | ![stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square) | General multiphysics, pure Python | — | you need a broad range of PDE applications on CPU |
+| [JAX-FEM](https://github.com/deepmodeling/jax-fem) | ![stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square) | Differentiable FEM, JAX / GPU | Yes | your stack is built on JAX rather than PyTorch |
+| [Firedrake](https://github.com/firedrakeproject/firedrake) | ![stars](https://img.shields.io/github/stars/firedrakeproject/firedrake?style=flat-square) | General PDEs, UFL weak forms | via [pyadjoint](https://github.com/dolfin-adjoint/pyadjoint) | you want a UFL form language with automated adjoints for multiphysics |
+| [scikit-fem](https://github.com/kinnala/scikit-fem) | ![stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square) | Lightweight assembly, NumPy/SciPy | — | you want minimal dependencies and full control over custom forms |
+| [FElupe](https://github.com/adtzlr/felupe) | ![stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square) | Finite-strain solid mechanics | partially via [tensortrax](https://github.com/adtzlr/tensortrax) | you work with hyperelastic / finite-strain solids |
+| [Nutils](https://github.com/evalf/nutils) | ![stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) | High-order / immersed methods | — | you research advanced or immersed discretizations including IGA |
+| [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) | ![stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square) | Biomechanics, PyTorch | Yes | you work on soft-tissue / inverse biomechanics |
+
+Not sure which to pick? The [mosaic](https://github.com/pasteurlabs/mosaic) differentiable-physics benchmark suite compares several of these solvers on gradient accuracy and forward/adjoint performance under a common interface.
 
 ## Citing torch-fem
 If you use torch-fem in your research, please cite it as follows:
@@ -196,19 +180,3 @@ If you use torch-fem in your research, please cite it as follows:
 
 ## Contributing
 Contributions are welcome! Please check out the [contributing guide](https://github.com/meyer-nils/torch-fem/blob/main/CONTRIBUTING.md) for the development workflow. Bug reports, feature requests, and usage questions are all welcome in the [issue tracker](https://github.com/meyer-nils/torch-fem/issues) - see the [support guide](https://github.com/meyer-nils/torch-fem/blob/main/SUPPORT.md) for what to include.
-
-## Alternatives
-*torch-fem* focuses on solid mechanics and thermal problems. It provides sensitivities through PyTorch autograd, which makes it easy to drop into optimization loops and ML pipelines. It is the natural choice if you are working in the PyTorch ecosystem. Depending on your needs, one of these Python FEM tools may serve you better:
-
-| Library | Stars | Focus | Differentiable | Consider it over torch-fem when… |
-|---|:---:|---|:---:|---|
-| [FEniCSx (DOLFINx)](https://github.com/FEniCS/dolfinx) | ![stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square) | General PDEs, UFL weak forms, MPI | via [dolfin-adjoint](https://github.com/dolfin-adjoint/pyadjoint) | you need arbitrary weak forms or massively parallel distributed runs |
-| [SfePy](https://github.com/sfepy/sfepy) | ![stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square) | General multiphysics, pure Python | — | you need a broad range of PDE applications on CPU |
-| [JAX-FEM](https://github.com/deepmodeling/jax-fem) | ![stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square) | Differentiable FEM, JAX / GPU | ✅ | your stack is built on JAX rather than PyTorch |
-| [Firedrake](https://github.com/firedrakeproject/firedrake) | ![stars](https://img.shields.io/github/stars/firedrakeproject/firedrake?style=flat-square) | General PDEs, UFL weak forms | via [pyadjoint](https://github.com/dolfin-adjoint/pyadjoint) | you want a UFL form language with automated adjoints for multiphysics |
-| [scikit-fem](https://github.com/kinnala/scikit-fem) | ![stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square) | Lightweight assembly, NumPy/SciPy | — | you want minimal dependencies and full control over custom forms |
-| [FElupe](https://github.com/adtzlr/felupe) | ![stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square) | Finite-strain solid mechanics | partially via [tensortrax](https://github.com/adtzlr/tensortrax) | you work with hyperelastic / finite-strain solids |
-| [Nutils](https://github.com/evalf/nutils) | ![stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) | High-order / immersed methods | — | you research advanced or immersed discretizations including IGA |
-| [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) | ![stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square) | Biomechanics, PyTorch | ✅ | you work on soft-tissue / inverse biomechanics |
-
-Not sure which to pick? The [mosaic](https://github.com/pasteurlabs/mosaic) differentiable-physics benchmark suite compares several of these solvers on gradient accuracy and forward/adjoint performance under a common interface.
