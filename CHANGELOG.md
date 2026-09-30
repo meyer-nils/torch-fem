@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.13.0 - September 30 2026
 
 ### Added
 - `Axisymmetric` and `AxisymmetricHeat` solve a solid of revolution from a cross section meshed in the half plane `r >= 0`, with the hoop strain `u_r / r` and the revolved measure `2 pi r`. They take the same elements as the planar models and a three-dimensional material, whose tensors are ordered `(r, z, hoop)`.
