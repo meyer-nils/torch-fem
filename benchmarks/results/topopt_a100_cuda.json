@@ -1,5 +1,5 @@
 {
-  "hardware": "A100",
+  "hardware": "A100 80GB",
   "device": "cuda",
   "python": "3.13.15",
   "libraries": "PyTorch 2.13.0+cu129, CUDA 12.9",

@@ -96,5 +96,5 @@ python benchmarks/plot.py
 
 This reads all JSON files in `benchmarks/results/`, groups them by problem, and writes the timing and RAM plots to `docs/images/benchmark/<problem>_*.png`. 
 
-!!! info "Acknowledgement: NVIDIA A100 on LiCCA"
+!!! info "Acknowledgement: NVIDIA A100 80GB on LiCCA"
     The authors gratefully acknowledge the resources on the LiCCA HPC cluster of the University of Augsburg, co-funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) – Project-ID 499211671.
