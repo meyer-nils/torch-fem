@@ -208,7 +208,7 @@ Left at their default `None`, both are resolved per solve. A factorization costs
 | Condition | `method` | `preconditioner` | Library |
 | --- | --- | --- | --- |
 | Below 10 000 DOF | `direct` | `none` | Pardiso, else SuperLU |
-| Larger, CPU | `cg` or `bicgstab` | `amg` | pyamg, driven by SciPy |
+| Larger, CPU | `cg` or `bicgstab` | `amg` | pyamg hierarchy, cycled in PyTorch |
 | Larger, CUDA with AmgX | `cg` or `bicgstab` | `amg` | AmgX |
 | Larger, CUDA without AmgX | `cg` or `bicgstab` | `jacobi` | PyTorch |
 

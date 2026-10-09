@@ -1,5 +1,10 @@
 # Changelog 
 
+## Unreleased
+
+### Changed
+- An AMG-preconditioned solve on CPU applies pyamg's hierarchy as a V-cycle in PyTorch across all cores, which makes it several times faster. `sparse_solve(...)` takes and returns its preconditioner as a callable, where it took a SciPy `LinearOperator`.
+
 ## Version 0.13.0 - September 30 2026
 
 ### Added

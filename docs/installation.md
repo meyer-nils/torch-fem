@@ -19,7 +19,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 For CUDA 12, use the `cu129` index URL instead. CUDA 11 is not supported.
 
 ## Advanced solver backends (optional)
-*torch-fem* runs its iterative solvers in PyTorch itself, on either device, and falls back to SciPy for a direct solve and for the algebraic multigrid preconditioner on CPU. Two optional backends can be faster, and *torch-fem* picks up either one as soon as it is installed.
+*torch-fem* runs its iterative solvers in PyTorch itself, on either device, with an algebraic multigrid preconditioner built by pyamg on CPU, and falls back to SciPy for a direct solve. Two optional backends can be faster, and *torch-fem* picks up either one as soon as it is installed.
 
 **Pardiso** is a direct CPU solver:
 ``` sh

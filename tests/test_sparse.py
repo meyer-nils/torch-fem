@@ -3,6 +3,7 @@ import torch
 from scipy.linalg import eigh as scipy_eigh
 
 from torchfem.sparse import (
+    _multigrid,
     _nodal,
     available_backends,
     describe_method,
@@ -314,13 +315,24 @@ class TestResolveMethod:
         CUDA depends on whether AmgX is installed, which the machine decides."""
         direct = "pypardiso" if "pypardiso" in available_backends else "scipy"
         assert (
-            describe_method("cg", "cpu", None) == "cg | iterative | amg | scipy | cpu"
+            describe_method("cg", "cpu", None) == "cg | iterative | amg | torch | cpu"
         )
         assert (
             describe_method("cg", "cuda", "jacobi")
             == "cg | iterative | jacobi | torch | cuda"
         )
         assert describe_method("direct", "cuda", None) == f"direct | {direct} | cuda"
+
+
+class TestMultigrid:
+    def test_the_cycle_is_symmetric(self):
+        """CG preconditions with the whole cycle, which only a symmetric one allows."""
+        n = 100
+        off = -torch.ones(n - 1)
+        A = 2 * torch.eye(n) + torch.diag(off, 1) + torch.diag(off, -1)
+        M = _multigrid(A.to_sparse_csr(), None)
+        P = torch.stack([M(e) for e in torch.eye(n)])
+        assert torch.allclose(P, P.T)
 
 
 class TestResolvePreconditioner:
@@ -354,8 +366,8 @@ class TestResolveLibrary:
     def test_amg_on_cuda_is_amgx(self):
         assert resolve_library("cg", "cuda", "amg") == "amgx"
 
-    def test_the_cpu_uses_scipy_for_an_iterative_solve(self):
-        assert resolve_library("cg", "cpu", "amg") == "scipy"
+    def test_the_cpu_uses_torch_for_an_iterative_solve(self):
+        assert resolve_library("cg", "cpu", "amg") == "torch"
 
     @pytest.mark.parametrize("device", ["cpu", "cuda"])
     @pytest.mark.parametrize("preconditioner", ["jacobi", "none"])
