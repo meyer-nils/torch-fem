@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pyamg
 import torch
-from pyamg.util.linalg import approximate_spectral_radius
-from pyamg.util.utils import scale_rows
 from scipy.sparse import csgraph
 from scipy.sparse import csr_matrix as scipy_csr_matrix
 from scipy.sparse.linalg import eigsh as scipy_eigsh
@@ -175,14 +173,14 @@ def _multigrid(A: Tensor, B: Tensor | None) -> Callable[[Tensor], Tensor]:
 
     The cycle is nearly all of a solve, so it runs on torch's threaded sparse
     products, with two damped Jacobi sweeps either side: symmetric, as CG needs,
-    and parallel, as pyamg's Gauss-Seidel is not. The damping is pyamg's own.
+    and parallel, as pyamg's Gauss-Seidel is not. The damping `4/3 / ρ(D⁻¹A)` is
+    pyamg's, with `ρ` from power iterations, seeded for reproducible solves.
     """
     B_np = None if B is None else B.detach().numpy()
     ml = pyamg.smoothed_aggregation_solver(_to_scipy(A), B_np, smooth="jacobi")
     levels = []
+    seed = torch.Generator().manual_seed(0)
     for level in ml.levels[:-1]:
-        D_inv = 1.0 / level.A.diagonal()
-        w = 4.0 / 3.0 / approximate_spectral_radius(scale_rows(level.A, D_inv))
         # Sharing SciPy's arrays, so the finest level is `A` itself
         with torch.sparse.check_sparse_tensor_invariants(False):
             A_i, P, R = (
@@ -191,7 +189,14 @@ def _multigrid(A: Tensor, B: Tensor | None) -> Callable[[Tensor], Tensor]:
                 )
                 for S in (level.A.tocsr(), level.P.tocsr(), level.R.tocsr())
             )
-        levels.append((A_i, P, R, torch.from_numpy(w * D_inv)))
+        D_inv = torch.from_numpy(1.0 / level.A.diagonal())
+        # Spectral radius of D⁻¹A by power iteration
+        v = torch.rand(A_i.shape[0], dtype=A_i.dtype, generator=seed)
+        for _ in range(15):
+            v = D_inv * (A_i @ v)
+            v /= v.norm()
+        rho = v @ (D_inv * (A_i @ v))
+        levels.append((A_i, P, R, 4.0 / 3.0 / rho * D_inv))
     coarse = torch.linalg.pinv(torch.from_numpy(ml.levels[-1].A.toarray()))
 
     def cycle(r: Tensor, i: int = 0) -> Tensor:
