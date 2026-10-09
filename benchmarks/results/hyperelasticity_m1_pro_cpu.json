@@ -1,51 +1,51 @@
 {
   "hardware": "Apple M1 Pro",
   "device": "cpu",
-  "python": "3.10.13",
-  "libraries": "SciPy 1.15.3, PyTorch 2.14.0",
+  "python": "3.12.13",
+  "libraries": "SciPy 1.18.1, PyTorch 2.14.0",
   "dtype": "float64",
-  "commit": "48f4b58",
+  "commit": "084f601",
   "problem": "hyperelasticity_stretch",
   "rows": [
     {
       "N": 35,
       "dofs": 18375,
-      "setup_s": 0.0194,
-      "fwd_s": 21.0964,
-      "bwd_s": 4.7617,
-      "peak_ram_mb": 2193.4,
+      "setup_s": 0.0189,
+      "fwd_s": 13.6487,
+      "bwd_s": 3.1892,
+      "peak_ram_mb": 1921.2,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | amg | scipy | cpu"
+      "solver": "cg | iterative | amg | torch | cpu"
     },
     {
       "N": 45,
       "dofs": 30375,
-      "setup_s": 0.0311,
-      "fwd_s": 30.1273,
-      "bwd_s": 7.2041,
-      "peak_ram_mb": 3210.4,
+      "setup_s": 0.0318,
+      "fwd_s": 19.9146,
+      "bwd_s": 4.6546,
+      "peak_ram_mb": 2891.3,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | amg | scipy | cpu"
+      "solver": "cg | iterative | amg | torch | cpu"
     },
     {
       "N": 55,
       "dofs": 45375,
-      "setup_s": 0.0482,
-      "fwd_s": 46.226,
-      "bwd_s": 10.9296,
-      "peak_ram_mb": 4563.6,
+      "setup_s": 0.0441,
+      "fwd_s": 27.9828,
+      "bwd_s": 6.5637,
+      "peak_ram_mb": 4175.3,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | amg | scipy | cpu"
+      "solver": "cg | iterative | amg | torch | cpu"
     },
     {
       "N": 65,
       "dofs": 63375,
-      "setup_s": 0.0639,
-      "fwd_s": 63.7371,
-      "bwd_s": 15.1213,
-      "peak_ram_mb": 5592.3,
+      "setup_s": 0.0627,
+      "fwd_s": 37.4032,
+      "bwd_s": 8.6961,
+      "peak_ram_mb": 5636.3,
       "peak_vram_mb": null,
-      "solver": "cg | iterative | amg | scipy | cpu"
+      "solver": "cg | iterative | amg | torch | cpu"
     }
   ]
 }
