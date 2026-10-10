@@ -120,7 +120,7 @@ class Hyperelastic3D(MechanicsMaterial):
         """
         with torch.enable_grad():
             # Compute deformation gradient.
-            F_new = (F + H_inc).requires_grad_(True)
+            F_new = F + H_inc
             # Compute first Piola-Kirchhoff stress tensor.
             P_new = vmap(jacrev(self.psi))(F_new, self.params)
             # Compute algorithmic tangent stiffness.

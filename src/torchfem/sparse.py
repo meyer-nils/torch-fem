@@ -159,6 +159,24 @@ def _nodal(B: Tensor | None, n: int) -> tuple[int, tuple[Any, ...] | None]:
     )
 
 
+def check_declared(roots: tuple[Tensor, ...], declared: tuple[Tensor, ...]):
+    """Raise if `roots` reach a leaf requiring grad other than through `declared`,
+    which the adjoint would leave with its explicit gradient alone."""
+    seen, todo = {t.grad_fn for t in declared}, [r.grad_fn for r in roots]
+    while todo:
+        node = todo.pop()
+        if node is None or node in seen:
+            continue
+        seen.add(node)
+        leaf = getattr(node, "variable", None)  # held by an AccumulateGrad
+        if leaf is not None and not any(leaf is t for t in declared):
+            raise ValueError(
+                "A tensor that requires grad enters the residual, but is not in "
+                "`differentiable_parameters`. Add it there, or detach it."
+            )
+        todo += [fn for fn, _ in node.next_functions]
+
+
 def _diagonal(A: Tensor) -> Tensor:
     """Diagonal of a matrix compressed by row, as a dense vector."""
     col = A.col_indices()

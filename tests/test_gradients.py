@@ -1,6 +1,7 @@
 import math
 from functools import partial
 
+import pytest
 import torch
 
 from torchfem import Planar, PlanarHeat, Solid
@@ -175,6 +176,35 @@ def test_solve_outputs_detached_without_differentiable_parameters():
 
     compliance = torch.inner(f.ravel(), u.ravel())
     assert not compliance.requires_grad
+
+
+def test_solve_raises_for_a_parameter_missing_beside_a_declared_one():
+    E = torch.tensor(1000.0, requires_grad=True)
+    cantilever = _build_minimal_planar_cantilever()
+    cantilever.material = IsotropicElasticityPlaneStress(E=E, nu=0.3).vectorize(
+        cantilever.n_elem
+    )
+    cantilever.thickness.requires_grad = True
+    with pytest.raises(ValueError, match="differentiable_parameters"):
+        cantilever.solve(differentiable_parameters=cantilever.thickness)
+
+
+def test_solve_accepts_a_declared_tensor_computed_from_the_design_variable():
+    # E is computed from w, so declaring E covers w as well.
+    def compliance(w: torch.Tensor | float) -> torch.Tensor:
+        E = 1000.0 * torch.as_tensor(w) ** 2
+        cantilever = _build_minimal_planar_cantilever()
+        cantilever.material = IsotropicElasticityPlaneStress(E=E, nu=0.3).vectorize(
+            cantilever.n_elem
+        )
+        u, f, _, _, _ = cantilever.solve(differentiable_parameters=E)
+        return torch.inner(f.ravel(), u.ravel())
+
+    w = torch.tensor(1.0, requires_grad=True)
+    gradient = torch.autograd.grad(compliance(w), w)[0]
+    with torch.no_grad():
+        reference = _central_difference(compliance, 1.0, 1e-6)
+    assert torch.isclose(gradient, torch.as_tensor(reference), rtol=1e-6)
 
 
 # Transient sensitivities. `time_integration(...)` differentiates by unrolling its

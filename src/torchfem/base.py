@@ -13,6 +13,7 @@ from .materials import HeatMaterial, Material, MechanicsMaterial
 from .report import solve_report
 from .sparse import (
     ConvergenceError,
+    check_declared,
     differentiable_modal_eigsolve,
     differentiable_sparse_solve,
     newton_solve,
@@ -724,7 +725,8 @@ class FEM(ABC):
                 a float or with shape [n_elem].
             differentiable_parameters: Explicit parameter(s) to differentiate
                 through implicit Newton/sparse solves. Accepts either a single
-                tensor or an iterable of tensors.
+                tensor or an iterable of tensors. A tensor that requires grad
+                and enters the residual must be listed.
 
         Returns:
             Tuple of displacement, internal force, flux, gradient, and material
@@ -897,6 +899,10 @@ class FEM(ABC):
                     f_h = self.assemble_rhs(torch.einsum("eij,ej->ei", k_hess, u_e))
                     f_cur = f_cur + f_h.view_as(f_cur)
                 du = du_eval
+
+                # The adjoint term of an undeclared leaf vanishes if all DOFs are fixed
+                if n == 1 and track_parameter_gradients and len(con) < self.n_dofs:
+                    check_declared((u_cur, f_cur, F_ext), differentiable_parameters)
 
                 # Accept the substep and grow the next one. Growth applies to
                 # the size the solver asked for, not to `step`, which is clipped

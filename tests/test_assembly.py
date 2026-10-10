@@ -212,6 +212,22 @@ def test_gradients_match_finite_differences():
     assert torch.allclose(gradient, expected, rtol=1e-5, atol=1e-8)
 
 
+def test_solve_raises_for_an_undeclared_parameter():
+    """One part's thickness is given to the adjoint, the other's is not."""
+    n_a, e_a = _plate(0.0, L / 2, 5)
+    n_b, e_b = _plate(L / 2, L / 2, 5)
+    thickness_a = torch.full((len(e_a),), T, requires_grad=True)
+    thickness_b = torch.full((len(e_b),), T, requires_grad=True)
+    a = Shell(n_a, e_a, PLANE, thickness=thickness_a)
+    b = Shell(n_b, e_b, PLANE, thickness=thickness_b)
+    a.constraints[n_a[:, 0] == 0.0] = True
+    b.forces[n_b[:, 0] == L, 2] = P / (n_b[:, 0] == L).sum()
+    assembly = Assembly([a, b])
+    assembly.coupling(b, n_b[:, 0] == L / 2, a, n_a[:, 0] == L / 2)
+    with pytest.raises(ValueError, match="differentiable_parameters"):
+        assembly.solve(differentiable_parameters=thickness_b)
+
+
 def test_incremental_loading_matches_a_single_step():
     """A linear assembly reaches the same state however the load is applied."""
     n_a, e_a = _block(0.0, 1.0)

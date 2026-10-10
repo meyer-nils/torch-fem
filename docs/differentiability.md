@@ -66,6 +66,18 @@ Practically, this has two major benefits:
 
 In other words, the differentiable interface is preserved even when the numerical linear algebra backend itself is not natively differentiable.
 
+### Declaring the parameters
+
+The parameters $\theta$ in the adjoint relation are exactly the tensors passed as `differentiable_parameters` to `solve(...)`. List every tensor that requires a gradient and enters the model, e.g. a thickness, a material parameter, nodal coordinates or forces:
+
+```python
+u, f, _, _, _ = model.solve(differentiable_parameters=(model.thickness, E))
+```
+
+If no listed tensor requires a gradient, the results are detached and contribute no gradient at all.
+
+A tensor computed from the actual design variables, such as a modulus field `E = net(x)` predicted by a neural network, may be listed in their place, and autograd carries its gradient on to them.
+
 
 
 ## Neural field example

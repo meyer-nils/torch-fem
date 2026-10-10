@@ -15,7 +15,7 @@ from torch import Tensor
 
 from .base import FEM, Heat, near_null_space, skew
 from .report import solve_report
-from .sparse import newton_solve, resolve_method
+from .sparse import check_declared, newton_solve, resolve_method
 
 # An empty constraint set, so `assemble_matrix` leaves the part matrix raw.
 EMPTY = torch.empty(0, dtype=torch.int64)
@@ -413,7 +413,8 @@ class Assembly:
             aggregate_integration_points: If True, averages flux, gradient, and
                 state over integration points.
             differentiable_parameters: Explicit parameter(s) to differentiate
-                through the implicit Newton solve.
+                through the implicit Newton solve. A tensor that requires grad
+                and enters the residual must be listed.
 
         Returns:
             Tuple of displacement, internal force, flux, gradient, and material
@@ -425,7 +426,8 @@ class Assembly:
                 internal force.
 
         Raises:
-            ValueError: If a constrained degree of freedom is eliminated.
+            ValueError: If a constrained degree of freedom is eliminated, or a
+                tensor requiring grad enters the residual but is not listed.
         """
         increments = torch.tensor([0.0, 1.0]) if increments is None else increments
         N = len(increments)
@@ -587,6 +589,10 @@ class Assembly:
                 prev[0] + du,
                 *(torch.cat([x.ravel() for x in q]) for q in updated),
             )
+
+            # The adjoint term of an undeclared leaf vanishes if all DOFs are fixed
+            if n == 1 and track and len(con) < len(retained):
+                check_declared((carry[0], f_cur, F_ext), differentiable_parameters)
 
             # Store the results at the requested increment
             for j, part in enumerate(self.parts):
