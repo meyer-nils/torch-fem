@@ -172,12 +172,18 @@ def _multigrid(A: Tensor, B: Tensor | None) -> Callable[[Tensor], Tensor]:
     """Return a smoothed aggregation V-cycle, built by pyamg and applied in torch.
 
     The cycle is nearly all of a solve, so it runs on torch's threaded sparse
-    products, with two damped Jacobi sweeps either side: symmetric, as CG needs,
-    and parallel, as pyamg's Gauss-Seidel is not. The damping `4/3 / ρ(D⁻¹A)` is
-    pyamg's, with `ρ` from power iterations, seeded for reproducible solves.
+    products, with Chebyshev smoothing either side: symmetric, as CG needs, and
+    parallel, as pyamg's Gauss-Seidel is not. Its interval comes from `ρ(D⁻¹A)`
+    by power iteration, seeded for reproducible solves. The coarsest level of up
+    to 2000 unknowns is solved exactly, where a further level would lose the
+    modes that a barely supported body depends on.
     """
     B_np = None if B is None else B.detach().numpy()
-    ml = pyamg.smoothed_aggregation_solver(_to_scipy(A), B_np, smooth="jacobi")
+    # pyamg counts `max_coarse` in aggregates, each of one unknown per mode in `B`
+    max_coarse = 2000 // (1 if B is None else B.shape[1])
+    ml = pyamg.smoothed_aggregation_solver(
+        _to_scipy(A), B_np, smooth="jacobi", max_coarse=max_coarse
+    )
     levels = []
     seed = torch.Generator().manual_seed(0)
     for level in ml.levels[:-1]:
@@ -195,20 +201,31 @@ def _multigrid(A: Tensor, B: Tensor | None) -> Callable[[Tensor], Tensor]:
         for _ in range(15):
             v = D_inv * (A_i @ v)
             v /= v.norm()
-        rho = v @ (D_inv * (A_i @ v))
-        levels.append((A_i, P, R, 4.0 / 3.0 / rho * D_inv))
-    coarse = torch.linalg.pinv(torch.from_numpy(ml.levels[-1].A.toarray()))
+        # Degree 2 over [hi / 10, hi] (Saad, Algorithm 12.1), with `hi` above
+        # `ρ`, which power iteration estimates from below
+        hi = 1.1 * (v @ (D_inv * (A_i @ v)))
+        theta, delta = (hi + hi / 10) / 2, (hi - hi / 10) / 2
+        r0 = delta / theta
+        r1 = 1 / (2 / r0 - r0)
+        levels.append((A_i, P, R, D_inv / theta, r1 * r0, 2 * r1 / delta * D_inv))
+    # Cholesky where the coarsest operator is definite, as `R A P` of a definite `A`
+    C = torch.from_numpy(ml.levels[-1].A.toarray())
+    L, info = torch.linalg.cholesky_ex(C)
+    coarse = torch.linalg.pinv(C, hermitian=True) if info else torch.cholesky_inverse(L)
+
+    def smooth(i: int, r: Tensor, x: Tensor | None) -> Tensor:
+        A, _, _, w0, c, w1 = levels[i]
+        d = w0 * (r if x is None else r - A @ x)
+        x = d if x is None else x + d
+        return x + c * d + w1 * (r - A @ x)
 
     def cycle(r: Tensor, i: int = 0) -> Tensor:
         if i == len(levels):
             return coarse @ r
-        A, P, R, w = levels[i]
-        x = w * r  # the first sweep, from zero
-        x += w * (r - A @ x)
-        x += P @ cycle(R @ (r - A @ x), i + 1)
-        for _ in range(2):
-            x += w * (r - A @ x)
-        return x
+        A, P, R = levels[i][:3]
+        x = smooth(i, r, None)
+        x = x + P @ cycle(R @ (r - A @ x), i + 1)
+        return smooth(i, r, x)
 
     return cycle
 

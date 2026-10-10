@@ -57,9 +57,9 @@ _AMGX_RC_OK = 0
 _AMGX_SOLVE_SUCCESS = 0
 _AMGX_SOLVE_STATUS_NAMES = {1: "FAILED", 2: "DIVERGED", 3: "NOT_CONVERGED"}
 
-# Aggregation AMG shaped after the CPU default (pyamg
-# smoothed_aggregation_solver, smooth="jacobi"): two damped Jacobi sweeps either
-# side of the cycle and an exact coarse solve. SIZE_8 shortens the hierarchy by
+# Aggregation AMG shaped after pyamg's smoothed_aggregation_solver with
+# smooth="jacobi": two damped Jacobi sweeps either side of the cycle and an exact
+# coarse solve. SIZE_8 shortens the hierarchy by
 # more than the iterations it costs. The smoother has to be symmetric, because
 # PCG preconditions with the whole cycle, and damped enough to hold a
 # hyperelastic tangent as the deformation grows. `solver` and `tolerance` are
