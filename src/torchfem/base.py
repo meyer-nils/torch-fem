@@ -1053,7 +1053,7 @@ class Mechanics(FEM, ABC):
             self.K.numel() == 0 or self.n_state != 0 or self.finite_strain
         )
         f = torch.zeros(self.n_elem, n_dof, device=du.device)
-        k = torch.zeros(self.n_elem, n_dof, n_dof, device=du.device) if need_k else None
+        k = None
 
         # Initialize output for new state
         grad_new = torch.zeros_like(grad_prev)
@@ -1096,11 +1096,12 @@ class Mechanics(FEM, ABC):
             force_contrib = self.compute_f(detJ[i], B[i], P)
             f += w * force_contrib.reshape(-1, n_dof)
 
-            # Compute element stiffness matrix
+            # Compute element stiffness matrix. The reshape copies the einsum output,
+            # which is freed right away rather than held beside its copy and `k`.
             if need_k:
-                assert k is not None
-                BCB = self.compute_bcb(B[i], ddsdde)
-                k += self.compute_k(detJ[i], BCB.reshape(-1, n_dof, n_dof)).mul_(w)
+                BCB = self.compute_bcb(B[i], ddsdde).reshape(-1, n_dof, n_dof)
+                k_i = self.compute_k(detJ[i], BCB).mul_(w)
+                k = k_i if k is None else k.add_(k_i)
 
         return k, f, grad_new, flux_new, state_new
 
