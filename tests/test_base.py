@@ -165,6 +165,16 @@ class TestAssembleMatrix:
         assert torch.allclose(K[con, con], torch.ones(len(con)))
         assert torch.allclose(K[:, con].sum(dim=0), torch.ones(len(con)))
 
+    def test_int32_elements_assemble_like_int64_ones(self):
+        """Numpy on Windows and some mesh files hand over int32 connectivity."""
+        nodes, elements = rect_quad(3, 3)
+        material = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        model = Planar(nodes, elements.int(), material)
+        K32 = model.assemble_matrix(model.k0(), torch.tensor([0, 1])).to_dense()
+        model = Planar(nodes, elements, material)
+        K64 = model.assemble_matrix(model.k0(), torch.tensor([0, 1])).to_dense()
+        assert torch.equal(K32, K64)
+
 
 class TestShapeFunctions:
     def test_inverted_element_raises(self):

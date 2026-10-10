@@ -90,7 +90,7 @@ class FEM(ABC):
 
         # Store nodes and elements
         self.nodes = nodes
-        self.elements = elements
+        self.elements = elements.long()  # packed with `<< 32` into int64 below
 
         # Compute problem size
         self.n_dofs = self.n_dof_per_node * nodes.shape[0]

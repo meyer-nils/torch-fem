@@ -6,6 +6,7 @@
 - An AMG-preconditioned solve on CPU applies pyamg's hierarchy as a V-cycle in PyTorch across all cores, which makes it several times faster. `sparse_solve(...)` takes and returns its preconditioner as a callable, where it took a SciPy `LinearOperator`.
 
 ### Fixed
+- A model accepts `int32` element connectivity, which overflowed when packed into the sparse assembly maps and left a singular matrix.
 - `solve(...)` raises a `ValueError` for a tensor that requires grad and enters the residual but is missing from `differentiable_parameters` beside one that is listed, where it got a gradient without its adjoint term.
 - The plasticity materials are differentiable with respect to their parameters, where their return mapping updated tensors in place that autograd had saved. `IsotropicPlasticityPlaneStrain` has a consistent tangent, which lacked the normal-shear coupling terms.
 - `IsotropicPlasticity1D` accepts a single element, where it squeezed away the batch dimension of the trial stress.
