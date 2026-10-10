@@ -1133,6 +1133,7 @@ class Mechanics(FEM, ABC):
             Tuple ``(omega_sq, modes)`` where ``omega_sq`` has shape
                 ``[n_modes]`` (squared angular frequencies, differentiable) and
                 ``modes`` has shape ``[n_modes, n_nod, n_dof_per_node]`` (detached).
+                The gradients hold for distinct eigenvalues only, not repeated ones.
         """
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
         free_indices = torch.nonzero(~self.constraints.ravel(), as_tuple=False).ravel()
@@ -1357,11 +1358,14 @@ class Heat(FEM, ABC):
         bc_constraints = self.constraints.clone()
         self.constraints[:] = True
 
-        # solve for initial conditions
-        temp_eq, f_int_eq, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
-            aggregate_integration_points=False,
-            differentiable_parameters=differentiable_parameters,
-        )
+        # solve for initial conditions, restoring the constraints even if it fails
+        try:
+            temp_eq, f_int_eq, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
+                aggregate_integration_points=False,
+                differentiable_parameters=differentiable_parameters,
+            )
+        finally:
+            self.constraints[:] = bc_constraints
 
         # Knots bound the intervals to subdivide; integration starts at t=0
         # even when it is not requested as an output time.
@@ -1391,9 +1395,6 @@ class Heat(FEM, ABC):
         dt = increments[1:] - increments[:-1]  # time step sizes
 
         N_output = len(increments)
-
-        # release boundary conditions, restore
-        self.constraints[:] = bc_constraints
 
         # null space rigid body modes for AMG preconditioner
         null_space = self.near_null_space()
@@ -1438,8 +1439,7 @@ class Heat(FEM, ABC):
             verbose, model, solve_method, preconditioner, dev, newton, **columns
         )
 
-        # Enforce initial BCs on u[0] explicitly, in case line_heat._dirichlet gives
-        # updated BCs
+        # The initial state holds the prescribed temperatures exactly where constrained
         u[0].view(-1)[con] = self._dirichlet.view(-1)[con]
 
         for n in range(1, N_output):

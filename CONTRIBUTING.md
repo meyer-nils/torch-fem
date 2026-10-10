@@ -29,10 +29,10 @@ For usage questions and support requests, see `SUPPORT.md`.
 ## Running the checks
 The CI enforces formatting, linting, type checking, and tests. To reproduce them locally:
 ```sh
-ruff format --check src/ tests/ # formatting (drop --check to auto-format)
-ruff check src/ tests/          # linting and import ordering (add --fix to fix)
+ruff format --check .           # formatting, notebooks included (drop --check to auto-format)
+ruff check .                    # linting and import ordering (add --fix to fix)
 basedpyright                    # type checking (same engine as Pylance)
 pytest -m "not notebook"        # fast unit tests
 pytest -m "notebook"            # slow tests that execute the example notebooks
-pytest -m "not notebook" --cov --cov-report=term-missing  # coverage (CI requires 70%)
+pytest -m "not notebook" --cov --cov-report=term-missing  # coverage (CI requires 78%)
 ```

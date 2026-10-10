@@ -155,3 +155,18 @@ def test_time_integration_matches_the_analytical_slab_solution():
         ]
     )
     assert (temperature[-1].ravel()[row] - exact).abs().max() < 0.005 * hot
+
+
+def test_a_failed_initial_solve_restores_the_constraints(monkeypatch):
+    # The initial state is solved with every DOF constrained, which a failure
+    # must not leave behind.
+    plate = _build_heated_plate()
+    constraints = plate.constraints.clone()
+
+    def failing(*args, **kwargs):
+        raise RuntimeError("initial solve failed")
+
+    monkeypatch.setattr(plate, "solve", failing)
+    with pytest.raises(RuntimeError, match="initial solve failed"):
+        plate.time_integration()
+    assert torch.equal(plate.constraints, constraints)
