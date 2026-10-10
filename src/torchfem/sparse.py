@@ -182,7 +182,11 @@ def _multigrid(A: Tensor, B: Tensor | None) -> Callable[[Tensor], Tensor]:
     # pyamg counts `max_coarse` in aggregates, each of one unknown per mode in `B`
     max_coarse = 2000 // (1 if B is None else B.shape[1])
     ml = pyamg.smoothed_aggregation_solver(
-        _to_scipy(A), B_np, strength=None, smooth="jacobi", max_coarse=max_coarse
+        _to_scipy(A),
+        B_np,
+        strength=None,  # type: ignore[arg-type]
+        smooth="jacobi",
+        max_coarse=max_coarse,
     )
     levels = []
     seed = torch.Generator().manual_seed(0)
