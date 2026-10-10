@@ -1096,12 +1096,17 @@ class Mechanics(FEM, ABC):
             force_contrib = self.compute_f(detJ[i], B[i], P)
             f += w * force_contrib.reshape(-1, n_dof)
 
-            # Compute element stiffness matrix. The reshape copies the einsum output,
-            # which is freed right away rather than held beside its copy and `k`.
+            # Compute element stiffness matrix.
             if need_k:
-                BCB = self.compute_bcb(B[i], ddsdde).reshape(-1, n_dof, n_dof)
+                BCB = torch.empty(self.n_elem, n_dof, n_dof, device=du.device)
+                chunk = 2**16  # elements per call
+                for start in range(0, self.n_elem, chunk):
+                    c = slice(start, start + chunk)
+                    bcb = self.compute_bcb(B[i][c], ddsdde[c])
+                    BCB[c].view(bcb.shape).copy_(bcb)
                 k_i = self.compute_k(detJ[i], BCB).mul_(w)
                 k = k_i if k is None else k.add_(k_i)
+                del BCB, k_i
 
         return k, f, grad_new, flux_new, state_new
 
