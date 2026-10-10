@@ -171,7 +171,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         # Initialize solution variables
         stress_new = stress.clone()
         state_new = state.clone()
-        q = state_new[..., 0]
+        q = state[..., 0]
         ddsdde = self.C.clone()
 
         # Compute trial stress
@@ -194,14 +194,13 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
         # Local Newton solver to find plastic strain increment
         dGamma = torch.zeros_like(f[fm])
+        q_fm = q[fm]
         G = self.G[fm]
         for _ in range(self.max_iter):
-            res = (
-                dev_norm[fm] - 2.0 * G * dGamma - sqrt(2.0 / 3.0) * self.sigma_f(q[fm])
-            )
-            ddGamma = res / (2.0 * G + 2.0 / 3.0 * self.sigma_f_prime(q[fm]))
-            dGamma += ddGamma
-            q[fm] += sqrt(2.0 / 3.0) * ddGamma
+            res = dev_norm[fm] - 2.0 * G * dGamma - sqrt(2.0 / 3.0) * self.sigma_f(q_fm)
+            ddGamma = res / (2.0 * G + 2.0 / 3.0 * self.sigma_f_prime(q_fm))
+            dGamma = dGamma + ddGamma
+            q_fm = q_fm + sqrt(2.0 / 3.0) * ddGamma
 
             # Check convergence for early stopping
             if (torch.abs(res) < self.tolerance).all():
@@ -216,10 +215,10 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         stress_new[fm] = s_trial[fm] - (2.0 * G * dGamma)[:, None, None] * n
 
         # Update state
-        state_new[..., 0] = q
+        state_new[fm, 0] = q_fm
 
         # Update algorithmic tangent
-        A = 2.0 * G / (1.0 + self.sigma_f_prime(q[fm]) / (3.0 * G))
+        A = 2.0 * G / (1.0 + self.sigma_f_prime(q_fm) / (3.0 * G))
         B = 4.0 * G**2 * dGamma / dev_norm[fm]
         I2 = torch.eye(3)
         I4 = torch.einsum("ij,kl->ijkl", I2, I2)
@@ -390,7 +389,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         # Solution variables
         stress_new = stress_voigt.clone()
         state_new = state.clone()
-        q = state_new[..., 0]
+        q = state[..., 0]
         ddsdde = self._C.clone()
 
         # Compute trial stress
@@ -439,7 +438,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             res_prime = 1 / 2 * xi_p - 1 / 3 * H_p
 
             # Update dGamma
-            dGamma -= res / res_prime
+            dGamma = dGamma - res / res_prime
 
             if (torch.abs(res) < self.tolerance).all():
                 break
@@ -454,13 +453,12 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         stress_new[fm] = (inv @ self._S[fm] @ s_trial[fm][:, :, None]).squeeze(-1)
 
         # Update state
-        q[fm] = qq
-        state_new[..., 0] = q
+        state_new[fm, 0] = qq
 
         # Update algorithmic tangent.
         s = stress_new[fm][:, :, None]
         xi = (s.transpose(-1, -2) @ P @ s).squeeze(-1).squeeze(-1)
-        H = self.sigma_f_prime(q[fm])
+        H = self.sigma_f_prime(qq)
         n = inv @ P @ s
         denom = (s.transpose(-1, -2) @ P @ n).squeeze(-1).squeeze(-1) + 2 * xi * H / (
             3 - 2 * H * dGamma
@@ -581,8 +579,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         # Solution variables
         stress_new = stress.clone()
         state_new = state.clone()
-        q = state_new[..., 0]
-        ez = state_new[..., 1]
+        q = state[..., 0]
+        ez = state[..., 1]
         ddsdde = self.C.clone()
 
         # Compute trial stress
@@ -608,14 +606,13 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
         # Local Newton solver to find plastic strain increment
         dGamma = torch.zeros_like(f[fm])
+        q_fm = q[fm]
         G = self.G[fm]
         for _ in range(self.max_iter):
-            res = (
-                dev_norm[fm] - 2.0 * G * dGamma - sqrt(2.0 / 3.0) * self.sigma_f(q[fm])
-            )
-            ddGamma = res / (2.0 * G + 2.0 / 3.0 * self.sigma_f_prime(q[fm]))
-            dGamma += ddGamma
-            q[fm] += sqrt(2.0 / 3.0) * ddGamma
+            res = dev_norm[fm] - 2.0 * G * dGamma - sqrt(2.0 / 3.0) * self.sigma_f(q_fm)
+            ddGamma = res / (2.0 * G + 2.0 / 3.0 * self.sigma_f_prime(q_fm))
+            dGamma = dGamma + ddGamma
+            q_fm = q_fm + sqrt(2.0 / 3.0) * ddGamma
 
             # Check convergence for early stopping
             if (torch.abs(res) < self.tolerance).all():
@@ -632,22 +629,22 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         ]
 
         # Update state
-        state_new[..., 0] = q
-        ez[fm] += dGamma * n[..., 2, 2]
-        state_new[..., 1] = ez
+        state_new[fm, 0] = q_fm
+        state_new[fm, 1] = ez[fm] + dGamma * n[..., 2, 2]
 
-        # Update algorithmic tangent
-        A = 2.0 * G / (1.0 + self.sigma_f_prime(q[fm]) / (3.0 * G))
+        # Update algorithmic tangent, the in-plane block of the 3D one as e_zz = 0
+        A = 2.0 * G / (1.0 + self.sigma_f_prime(q_fm) / (3.0 * G))
         B = 4.0 * G**2 * dGamma / dev_norm[fm]
-        n0n1 = n[:, 0, 0] * n[:, 1, 1]
-        ddsdde[fm, 0, 0, 0, 0] += -A * n[:, 0, 0] ** 2 - B * (2 / 3 - n[:, 0, 0] ** 2)
-        ddsdde[fm, 1, 1, 1, 1] += -A * n[:, 1, 1] ** 2 - B * (2 / 3 - n[:, 1, 1] ** 2)
-        ddsdde[fm, 0, 0, 1, 1] += -A * n0n1 - B * (-1 / 3 - n0n1)
-        ddsdde[fm, 1, 1, 0, 0] += -A * n0n1 - B * (-1 / 3 - n0n1)
-        ddsdde[fm, 0, 1, 0, 1] += -A * n[:, 0, 1] ** 2 - B * (1 / 2 - n[:, 0, 1] ** 2)
-        ddsdde[fm, 0, 1, 1, 0] += -A * n[:, 0, 1] ** 2 - B * (1 / 2 - n[:, 1, 0] ** 2)
-        ddsdde[fm, 1, 0, 0, 1] += -A * n[:, 1, 0] ** 2 - B * (1 / 2 - n[:, 0, 1] ** 2)
-        ddsdde[fm, 1, 0, 1, 0] += -A * n[:, 1, 0] ** 2 - B * (1 / 2 - n[:, 1, 0] ** 2)
+        I2 = torch.eye(3)
+        I4 = torch.einsum("ij,kl->ijkl", I2, I2)
+        I4S = torch.einsum("ik,jl->ijkl", I2, I2) + torch.einsum("il,jk->ijkl", I2, I2)
+        nn = torch.einsum("...ij,...kl->...ijkl", n, n)[..., :2, :2, :2, :2]
+        I_dev = (1 / 2 * I4S - 1 / 3 * I4)[:2, :2, :2, :2]
+        ddsdde[fm] = (
+            self.C[fm]
+            - A[..., None, None, None, None] * nn
+            - B[..., None, None, None, None] * (I_dev - nn)
+        )
 
         return stress_new, state_new, ddsdde
 
@@ -762,12 +759,12 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         # Solution variables
         stress_new = stress.clone()
         state_new = state.clone()
-        q = state_new[..., 0]
+        q = state[..., 0]
         ddsdde = self.C.clone()
 
         # Compute trial stress
         s_trial = stress + torch.einsum("...ijkl,...kl->...ij", self.C, H_inc - de0)
-        s_norm = torch.abs(s_trial).squeeze()
+        s_norm = torch.abs(s_trial).squeeze((-2, -1))
 
         # Flow potential
         f = s_norm - self.sigma_f(q)
@@ -775,12 +772,13 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
 
         # Local Newton solver to find plastic strain increment
         dGamma = torch.zeros_like(f[fm])
+        q_fm = q[fm]
         E = self.E[fm]
         for _ in range(self.max_iter):
-            res = s_norm[fm] - E * dGamma - self.sigma_f(q[fm])
-            ddGamma = res / (E + self.sigma_f_prime(q[fm]))
-            dGamma += ddGamma
-            q[fm] += ddGamma
+            res = s_norm[fm] - E * dGamma - self.sigma_f(q_fm)
+            ddGamma = res / (E + self.sigma_f_prime(q_fm))
+            dGamma = dGamma + ddGamma
+            q_fm = q_fm + ddGamma
 
             # Check convergence for early stopping
             if (torch.abs(res) < self.tolerance).all():
@@ -795,10 +793,10 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         stress_new[fm] = (1.0 - (dGamma * E) / s_norm[fm])[:, None, None] * s_trial[fm]
 
         # Update state
-        state_new[..., 0] = q
+        state_new[fm, 0] = q_fm
 
         # Update algorithmic tangent
-        H = self.sigma_f_prime(q[fm])
+        H = self.sigma_f_prime(q_fm)
         ddsdde[fm] = (E * H / (E + H))[:, None, None, None, None]
 
         return stress_new, state_new, ddsdde
