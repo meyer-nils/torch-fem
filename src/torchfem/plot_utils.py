@@ -63,61 +63,34 @@ def show_plotter(pl, plotter=None, axes=False, camera=None):
     display(viewer)
 
 
+def _embed_gif(path: str):
+    """An HTML image of the GIF at `path`, for a notebook to display inline."""
+    from IPython.display import HTML
+
+    with open(path, "rb") as file:
+        gif = base64.b64encode(file.read()).decode()
+    return HTML(f'<img src="data:image/gif;base64,{gif}">')
+
+
 def embed_animation_gif(ani, fps=20):
-    """
-    Convert a matplotlib FuncAnimation into an embedded GIF for notebooks/GitHub.
-
-    Works cross-platform (Windows, macOS, Linux).
-
-    Parameters
-    ----------
-    ani : matplotlib.animation.FuncAnimation
-        The animation object.
-    fps : int, optional
-        Frames per second for the GIF output (default: 20).
-
-    Returns
-    -------
-    IPython.display.HTML
-        An HTML object embedding the GIF inline.
-    """
-    tmp = tempfile.NamedTemporaryFile(suffix=".gif", delete=False)
-    tmp.close()  # important: close before writing on Windows
-
-    try:
-        ani.save(tmp.name, writer="pillow", fps=fps)
-        with open(tmp.name, "rb") as f:
-            gif_base64 = base64.b64encode(f.read()).decode("utf-8")
-    finally:
-        os.remove(tmp.name)
-
-    from IPython.display import HTML
-
-    return HTML(f'<img src="data:image/gif;base64,{gif_base64}">')
+    """Embed a matplotlib animation inline as a GIF at `fps` frames per second."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "animation.gif")
+        ani.save(path, writer="pillow", fps=fps)
+        return _embed_gif(path)
 
 
-def embed_pyvista_animation(
-    plotter, update_plotter, frames, framerate=24, plotter_args=()
-):
-    tmp = tempfile.NamedTemporaryFile(suffix=".gif", delete=False)
-    tmp.close()  # important: close before writing on Windows
-
-    plotter.open_gif(tmp.name)
-    for i in frames:
-        update_plotter(i, *plotter_args)
-        plotter.render()
-        plotter.write_frame()
-    plotter.close()
-
-    try:
-        with open(tmp.name, "rb") as f:
-            gif_base64 = base64.b64encode(f.read()).decode("utf-8")
-    finally:
-        os.remove(tmp.name)
-
-    from IPython.display import HTML
-
-    return HTML(f'<img src="data:image/gif;base64,{gif_base64}">')
+def embed_pyvista_animation(plotter, update_plotter, frames, plotter_args=()):
+    """Embed the frames `update_plotter(i, *plotter_args)` draws, as a GIF."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "animation.gif")
+        plotter.open_gif(path)
+        for i in frames:
+            update_plotter(i, *plotter_args)
+            plotter.render()
+            plotter.write_frame()
+        plotter.close()
+        return _embed_gif(path)
 
 
 # Boundary condition glyphs. Each takes geometry that is already scaled, so a
