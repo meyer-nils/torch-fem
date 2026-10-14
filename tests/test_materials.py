@@ -322,6 +322,7 @@ class TestIsotropicPlasticityPlaneStress:
         assert torch.allclose(st_new, torch.zeros_like(st_new), atol=1e-8)
         assert torch.isfinite(s_new).all()
 
+    @pytest.mark.filterwarnings("error:Local Newton")
     def test_plastic_step_batched(self):
         """All points in a batch yield together and the consistent tangent
         matches a finite difference.
@@ -370,6 +371,25 @@ class TestIsotropicPlasticityPlaneStress:
             col = (stress2voigt(sp) - stress2voigt(sm)) / (2 * eps)
             fd[:, :, j] = col if a == b else col / 2.0
         assert torch.allclose(Cv, fd, rtol=1e-4, atol=1e-3)
+
+    @pytest.mark.filterwarnings("error:Local Newton")
+    def test_return_mapping_converges_in_si_units(self):
+        """A stress in Pa lands on the yield surface within the default iterations."""
+        n = N_ELEM
+        mat = IsotropicPlasticityPlaneStress(
+            210e9, 0.3, lambda q: 200e6 + 1e9 * q, lambda q: 1e9 + 0 * q
+        ).vectorize(n)
+        _, F, stress, state, de0, cl = _make_step_args_2d(n, n_state=1)
+        H_inc = torch.zeros(n, 2, 2)
+        H_inc[:, 0, 0] = 0.01
+        H_inc[:, 1, 1] = 0.002
+
+        s_new, st_new, _ = mat.step(H_inc, F, stress, state, de0, cl, 1)
+        s = stress2voigt(s_new)
+        von_mises = torch.sqrt(
+            s[:, 0] ** 2 + s[:, 1] ** 2 - s[:, 0] * s[:, 1] + 3 * s[:, 2] ** 2
+        )
+        assert torch.allclose(von_mises, 200e6 + 1e9 * st_new[:, 0], rtol=1e-10)
 
 
 class TestIsotropicPlasticityPlaneStrain:

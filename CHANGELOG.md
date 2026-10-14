@@ -6,6 +6,7 @@
 - A local Newton loop of a material that does not converge, and a `Shell` mirrored about a plane whose nodes are not constrained for it, raise a warning where they printed.
 
 ### Fixed
+- `IsotropicPlasticityPlaneStress` iterates its return mapping on a residual in stress units, as the other plasticity materials do. The squared yield function it iterated on could not reach the tolerance for stresses in Pa and ran out of iterations for a trial stress far past yield.
 - `import_mesh(...)` reads a mesh whose elements of one type are split over several cell blocks, as a mesh tagged into groups is, where it rejected them as mixed types. A flat mesh in any plane `z = const` imports as `Planar`, where only `z = 0` did.
 
 ## Version 0.13.1 - October 10 2026

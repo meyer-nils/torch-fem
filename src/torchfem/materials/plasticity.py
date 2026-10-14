@@ -336,9 +336,12 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         $$
 
         If $\\Psi > 0$, the plastic multiplier $\\Delta\\gamma$ that restores
-        $\\Psi = 0$ is found by a local Newton iteration bounded by `tolerance`
-        and `max_iter`, in which the trial stress components are scaled by
-        $1 + E \\Delta\\gamma / (3 (1 - \\nu))$ and $1 + 2 G \\Delta\\gamma$.
+        $\\Psi = 0$ is found by a local Newton iteration on the equivalent residual
+        $\\sqrt{\\pmb{\\sigma}^\\top \\mathbf{P} \\pmb{\\sigma}} - \\sqrt{2/3}
+        \\, \\sigma_f(q)$, in stress units like the three-dimensional return
+        mapping, bounded by `tolerance` and `max_iter`. The trial stress components
+        are scaled by $1 + E \\Delta\\gamma / (3 (1 - \\nu))$ and
+        $1 + 2 G \\Delta\\gamma$.
         The stress is then updated via
 
         $$
@@ -420,8 +423,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             sxi = torch.sqrt(xi)
             qq = q[fm] + dGamma * torch.sqrt(2 / 3 * xi)
 
-            # Compute residual
-            res = 1 / 2 * xi - 1 / 3 * self.sigma_f(qq) ** 2
+            # Residual in stress units, as in the three-dimensional return mapping
+            res = sxi - sqrt(2 / 3) * self.sigma_f(qq)
 
             # Compute derivative of residual w.r.t dGamma
             H = self.sigma_f_prime(qq)
@@ -429,14 +432,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
                 -a1[fm] / (9 * (1 + E * dGamma / (3 * (1 - nu))) ** 3) * E / (1 - nu)
                 - 2 * G * (a2[fm] + 4 * a3[fm]) / (1 + 2 * G * dGamma) ** 3
             )
-            H_p = (
-                2
-                * self.sigma_f(qq)
-                * H
-                * sqrt(2 / 3)
-                * (sxi + dGamma * xi_p / (2 * sxi))
-            )
-            res_prime = 1 / 2 * xi_p - 1 / 3 * H_p
+            q_p = sqrt(2 / 3) * (sxi + dGamma * xi_p / (2 * sxi))
+            res_prime = xi_p / (2 * sxi) - sqrt(2 / 3) * H * q_p
 
             # Update dGamma
             dGamma = dGamma - res / res_prime
