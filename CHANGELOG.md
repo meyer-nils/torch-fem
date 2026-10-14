@@ -1,5 +1,10 @@
 # Changelog 
 
+## Unreleased
+
+### Fixed
+- `import_mesh(...)` reads a mesh whose elements of one type are split over several cell blocks, as a mesh tagged into groups is, where it rejected them as mixed types. A flat mesh in any plane `z = const` imports as `Planar`, where only `z = 0` did.
+
 ## Version 0.13.1 - October 10 2026
 
 ### Changed

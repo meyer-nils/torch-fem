@@ -72,7 +72,7 @@ def _read_mesh(filename: PathLike) -> tuple[np.ndarray, Tensor, str]:
     boundary edges beside its faces reads as expected.
 
     Raises:
-        ValueError: If the file holds more than one element type.
+        ValueError: If the file holds no supported element type or more than one.
     """
     mesh = read(filename)
     elems = []
@@ -82,7 +82,9 @@ def _read_mesh(filename: PathLike) -> tuple[np.ndarray, Tensor, str]:
         if cell_block.type in allowed:
             etypes.append(cell_block.type)
             elems += cell_block.data.tolist()
-    if len(etypes) > 1:
+    if not etypes:
+        raise ValueError("The file holds no supported element type.")
+    if len(set(etypes)) > 1:
         raise ValueError("Currently, only single element types are supported.")
     return mesh.points.astype(np.float64), torch.tensor(elems), etypes[0]
 
@@ -105,9 +107,9 @@ def import_mesh(
     """Imports a mesh file and returns the matching model type.
 
     The model type follows from the geometry and the element type: a mesh whose nodes
-    all lie in the z=0 plane becomes a `Planar` model, a non-planar triangle mesh a
-    `Shell`, and a tetrahedral or hexahedral mesh a `Solid`. Use `import_shell(...)`
-    to require a shell.
+    all lie in one plane z = const becomes a `Planar` model, a non-planar triangle
+    mesh a `Shell`, and a tetrahedral or hexahedral mesh a `Solid`. Use
+    `import_shell(...)` to require a shell.
 
     A `HeatMaterial` gives the heat model of that geometry, and a `Laminate`
     section needs a surface mesh, as only a `Shell` takes one.
@@ -128,7 +130,7 @@ def import_mesh(
     device = torch.get_default_device()
     dtype = torch.get_default_dtype()
     heat = isinstance(material, HeatMaterial)
-    planar = np.allclose(points[:, 2], np.zeros_like(points[:, 2]))
+    planar = np.allclose(points[:, 2], points[0, 2])
 
     if not planar and etype in ["triangle", "quad"]:
         nodes = torch.tensor(points, dtype=dtype, device=device)

@@ -136,6 +136,37 @@ class TestImportNonPlanarMesh:
             with pytest.raises(ValueError, match="single element types"):
                 import_mesh(path, mat)
 
+    def test_merges_blocks_of_one_element_type(self):
+        """A mesh tagged into groups holds one block per group of one type."""
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "grouped.vtu"
+            write_mesh(
+                path,
+                [
+                    ("triangle", np.array([[0, 1, 2]])),
+                    ("triangle", np.array([[0, 2, 3]])),
+                ],
+                PLANAR_POINTS,
+            )
+            assert import_mesh(path, mat).n_elem == 2
+
+    def test_rejects_mesh_without_supported_elements(self):
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "lines.vtu"
+            write_mesh(path, [("line", np.array([[0, 1]]))])
+            with pytest.raises(ValueError, match="no supported element type"):
+                import_mesh(path, mat)
+
+    def test_flat_mesh_off_the_origin_plane_is_planar(self):
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "lifted.vtu"
+            lifted = PLANAR_POINTS + np.array([0.0, 0.0, 5.0])
+            write_mesh(path, [("quad", np.array([[0, 1, 2, 3]]))], lifted)
+            assert isinstance(import_mesh(path, mat), Planar)
+
     def test_non_planar_quad_mesh_returns_shell(self):
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with tempfile.TemporaryDirectory() as tmpdir:
