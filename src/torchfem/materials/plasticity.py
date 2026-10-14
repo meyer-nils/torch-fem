@@ -17,7 +17,6 @@ from ..utils import (
 from .elasticity import (
     IsotropicElasticity1D,
     IsotropicElasticity3D,
-    IsotropicElasticityPlaneStrain,
     IsotropicElasticityPlaneStress,
 )
 
@@ -465,10 +464,10 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         return voigt2stress(stress_new), state_new, voigt2stiffness(ddsdde)
 
 
-class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
+class IsotropicPlasticityPlaneStrain(IsotropicPlasticity3D):
     """Isotropic elastoplastic material for plane strain problems.
 
-    This class extends `IsotropicElasticityPlaneStrain` to incorporate
+    This class extends `IsotropicPlasticity3D` to incorporate
     isotropic plasticity with a von Mises yield criterion under the plane
     strain constraint.
 
@@ -508,6 +507,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         is reconstructed before each yield check in `step(...)`.
     """
 
+    dim = 2
+
     def __init__(
         self,
         E: float | Tensor,
@@ -518,12 +519,8 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         max_iter: int = 10,
         rho: float | Tensor = 1.0,
     ):
-        super().__init__(E, nu, rho)
-        self.sigma_f = sigma_f
-        self.sigma_f_prime = sigma_f_prime
+        super().__init__(E, nu, sigma_f, sigma_f_prime, tolerance, max_iter, rho)
         self.n_state = 2
-        self.tolerance = tolerance
-        self.max_iter = max_iter
 
     def step(
         self,
@@ -535,15 +532,16 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
         cl: Tensor,
         iter: int,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Performs a strain increment with the plane strain return-mapping algorithm.
+        """Performs a strain increment with the 3D return mapping under plane strain.
 
-        The return mapping expands the in-plane stress to a full 3D tensor
-        with the out-of-plane stress
+        The in-plane stress is expanded to a 3D tensor with the out-of-plane stress
         $$
             \\sigma_{zz} = \\nu (\\sigma_{xx} + \\sigma_{yy})
-                - E \\, \\varepsilon_z^p
+                - E \\, \\varepsilon_z^p,
         $$
-        and performs the deviatoric yield check and radial return in 3D.
+        the return mapping of `IsotropicPlasticity3D` runs with no out-of-plane
+        strain increment, and $\\varepsilon_z^p$ is recovered from the returned
+        $\\sigma_{zz}$ by the same relation.
 
         Args:
             H_inc (Tensor): Incremental displacement gradient.
@@ -553,7 +551,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             stress (Tensor): Current Cauchy stress tensor.
                 *Shape:* `(..., 2, 2)`.
             state (Tensor): Internal state variables, here: equivalent plastic strain
-                and stress in the third direction.
+                and out-of-plane plastic strain.
                 *Shape:* `(..., 2)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
@@ -569,80 +567,24 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
             ddsdde (Tensor): Algorithmic tangent stiffness tensor.
                 *Shape:* `(..., 2, 2, 2, 2)`.
         """
-        # Compute small strain tensor in Voigt notation
-        de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
+        # Expand to 3D, with no out-of-plane strain increments
+        H_inc_3D = torch.zeros(*H_inc.shape[:-2], 3, 3)
+        H_inc_3D[..., :2, :2] = H_inc
+        de0_3D = torch.zeros_like(H_inc_3D)
+        de0_3D[..., :2, :2] = de0
+        stress_3D = torch.zeros_like(H_inc_3D)
+        stress_3D[..., :2, :2] = stress
+        trace = stress[..., 0, 0] + stress[..., 1, 1]
+        stress_3D[..., 2, 2] = self.nu * trace - self.E * state[..., 1]
 
-        # Solution variables
-        stress_new = stress.clone()
-        state_new = state.clone()
-        q = state[..., 0]
-        ez = state[..., 1]
-        ddsdde = self.C.clone()
-
-        # Compute trial stress
-        s_2D = stress + torch.einsum("...ijkl,...kl->...ij", self.C, de - de0)
-        s_trial = torch.zeros(stress.shape[0], 3, 3)
-        s_trial[..., :2, :2] = s_2D
-        s_trial[..., 2, 2] = self.nu * (s_2D[..., 0, 0] + s_2D[..., 1, 1]) - self.E * ez
-
-        # Compute the deviatoric trial stress
-        s_trial_trace = s_trial[..., 0, 0] + s_trial[..., 1, 1] + s_trial[..., 2, 2]
-        dev = s_trial.clone()
-        dev[..., 0, 0] -= s_trial_trace / 3
-        dev[..., 1, 1] -= s_trial_trace / 3
-        dev[..., 2, 2] -= s_trial_trace / 3
-        dev_norm = torch.linalg.norm(dev, dim=(-1, -2))
-
-        # Flow potential
-        f = dev_norm - sqrt(2.0 / 3.0) * self.sigma_f(q)
-        fm = f > 0
-
-        # Direction of flow
-        n = dev[fm] / dev_norm[fm][..., None, None]
-
-        # Local Newton solver to find plastic strain increment
-        dGamma = torch.zeros_like(f[fm])
-        q_fm = q[fm]
-        G = self.G[fm]
-        for _ in range(self.max_iter):
-            res = dev_norm[fm] - 2.0 * G * dGamma - sqrt(2.0 / 3.0) * self.sigma_f(q_fm)
-            ddGamma = res / (2.0 * G + 2.0 / 3.0 * self.sigma_f_prime(q_fm))
-            dGamma = dGamma + ddGamma
-            q_fm = q_fm + sqrt(2.0 / 3.0) * ddGamma
-
-            # Check convergence for early stopping
-            if (torch.abs(res) < self.tolerance).all():
-                break
-
-        # Check if the local Newton iteration converged
-        if (torch.abs(res) > self.tolerance).any():
-            warnings.warn("Local Newton iteration did not converge.", stacklevel=2)
-
-        # Update stress
-        stress_new[~fm] = s_trial[~fm][..., :2, :2]
-        stress_new[fm] = (s_trial[fm] - (2.0 * G * dGamma)[:, None, None] * n)[
-            ..., :2, :2
-        ]
-
-        # Update state
-        state_new[fm, 0] = q_fm
-        state_new[fm, 1] = ez[fm] + dGamma * n[..., 2, 2]
-
-        # Update algorithmic tangent, the in-plane block of the 3D one as e_zz = 0
-        A = 2.0 * G / (1.0 + self.sigma_f_prime(q_fm) / (3.0 * G))
-        B = 4.0 * G**2 * dGamma / dev_norm[fm]
-        I2 = torch.eye(3)
-        I4 = torch.einsum("ij,kl->ijkl", I2, I2)
-        I4S = torch.einsum("ik,jl->ijkl", I2, I2) + torch.einsum("il,jk->ijkl", I2, I2)
-        nn = torch.einsum("...ij,...kl->...ijkl", n, n)[..., :2, :2, :2, :2]
-        I_dev = (1 / 2 * I4S - 1 / 3 * I4)[:2, :2, :2, :2]
-        ddsdde[fm] = (
-            self.C[fm]
-            - A[..., None, None, None, None] * nn
-            - B[..., None, None, None, None] * (I_dev - nn)
+        stress_new, state_new, ddsdde = super().step(
+            H_inc_3D, F, stress_3D, state, de0_3D, cl, iter
         )
 
-        return stress_new, state_new, ddsdde
+        # Recover the out-of-plane plastic strain from the returned stress
+        trace = stress_new[..., 0, 0] + stress_new[..., 1, 1]
+        state_new[..., 1] = (self.nu * trace - stress_new[..., 2, 2]) / self.E
+        return stress_new[..., :2, :2], state_new, ddsdde[..., :2, :2, :2, :2]
 
 
 class IsotropicPlasticity1D(IsotropicElasticity1D):
