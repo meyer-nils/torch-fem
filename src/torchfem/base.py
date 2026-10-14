@@ -1116,9 +1116,6 @@ class Mechanics(FEM, ABC):
 
         return k, f, grad_new, flux_new, state_new
 
-    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        raise NotImplementedError
-
     def solve_modes(self, n_modes: int) -> tuple[Tensor, Tensor]:
         """Compute the natural frequencies and mode shapes.
 

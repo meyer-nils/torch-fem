@@ -428,12 +428,8 @@ def differentiable_sparse_solve(
     # COO caller still gets its gradient back through this conversion.
     if A.layout == torch.sparse_coo:
         A = A.to_sparse_csr()
-    result, _ = Solve.apply(  # type: ignore
-        A, b, B, stol, device, method, preconditioner, M
-    )
-    if result is None:
-        raise RuntimeError("Solve.apply returned None, expected a Tensor.")
-    return result
+    x, _ = Solve.apply(A, b, B, stol, device, method, preconditioner, M)  # type: ignore
+    return x
 
 
 def sparse_solve(
@@ -760,8 +756,6 @@ def newton_solve(
         state_prev,
         *parameters,
     )  # type: ignore
-    if du is None:
-        raise RuntimeError("Solve.apply returned None, expected a Tensor.")
     return du
 
 
@@ -880,6 +874,4 @@ def differentiable_modal_eigsolve(
             *Shape:* `(n_dofs, n_modes)`.
     """
     lambdas, phis = Eigensolve.apply(K, M, n_modes, free_indices)  # type: ignore
-    if lambdas is None:
-        raise RuntimeError("Eigensolve.apply returned None.")
     return lambdas, phis.detach()

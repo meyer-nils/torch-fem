@@ -143,11 +143,6 @@ docstring_style = "google"
 inherited_members = true
 show_source = false
 
-[project.plugins.jupyter]
-src = "examples"
-dest = "examples"
-execute = true
-
 [project.markdown_extensions.abbr]
 [project.markdown_extensions.admonition]
 [project.markdown_extensions.attr_list]

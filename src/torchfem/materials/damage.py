@@ -156,7 +156,6 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         D = state[..., 1]
 
         # Initialize solution variables
-        stress_new = stress.clone()
         state_new = state.clone()
 
         # Equivalent strain and its gradient, which directs the tangent term

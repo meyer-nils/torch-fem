@@ -164,8 +164,6 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
             ddsdde (Tensor): Algorithmic tangent stiffness tensor.
                 *Shape:* `(..., 3, 3, 3, 3)`.
         """
-        # Second order identity tensor
-        I2 = torch.eye(H_inc.shape[-1])
         # Compute small strain tensor
         de = 0.5 * (H_inc.transpose(-1, -2) + H_inc)
 

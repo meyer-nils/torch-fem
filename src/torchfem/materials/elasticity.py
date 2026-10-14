@@ -170,10 +170,7 @@ class IsotropicElasticityPlaneStress(IsotropicElasticity3D):
 
         # Overwrite the 3D stiffness tensor with a 2D plane stress tensor
         fac = self.E / (1.0 - self.nu**2)
-        if self.E.dim() == 0:
-            self.C = torch.zeros(2, 2, 2, 2)
-        else:
-            self.C = torch.zeros(*self.E.shape, 2, 2, 2, 2)
+        self.C = torch.zeros(*self.E.shape, 2, 2, 2, 2)
         self.C[..., 0, 0, 0, 0] = fac
         self.C[..., 0, 0, 1, 1] = fac * self.nu
         self.C[..., 1, 1, 0, 0] = fac * self.nu
@@ -231,10 +228,7 @@ class IsotropicElasticityPlaneStrain(IsotropicElasticity3D):
         # Overwrite the 3D stiffness tensor with a 2D plane strain tensor
         lbd = self.lbd
         G = self.G
-        if self.E.dim() == 0:
-            self.C = torch.zeros(2, 2, 2, 2)
-        else:
-            self.C = torch.zeros(*self.E.shape, 2, 2, 2, 2)
+        self.C = torch.zeros(*self.E.shape, 2, 2, 2, 2)
         self.C[..., 0, 0, 0, 0] = 2.0 * G + lbd
         self.C[..., 0, 0, 1, 1] = lbd
         self.C[..., 1, 1, 0, 0] = lbd
@@ -404,10 +398,7 @@ class OrthotropicElasticity3D(MechanicsMaterial):
         self.n_state = 0
 
         # Full stiffness tensor
-        if self.E_1.dim() == 0:
-            self.C = torch.zeros(3, 3, 3, 3)
-        else:
-            self.C = torch.zeros(*self.E_1.shape, 3, 3, 3, 3)
+        self.C = torch.zeros(*self.E_1.shape, 3, 3, 3, 3)
         F = 1 / (
             1
             - self.nu_12 * self.nu_21
@@ -647,10 +638,7 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.n_state = 0
 
         # Stiffness tensor
-        if self.E_1.dim() == 0:
-            self.C = torch.zeros(2, 2, 2, 2)
-        else:
-            self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)
+        self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)
         nu2 = self.nu_12 * self.nu_21
         self.C[..., 0, 0, 0, 0] = E_1 / (1 - nu2)
         self.C[..., 0, 0, 1, 1] = nu_12 * E_2 / (1 - nu2)
@@ -813,10 +801,7 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         self.n_state = 0
 
         # Full stiffness tensor
-        if self.E_1.dim() == 0:
-            self.C = torch.zeros(2, 2, 2, 2)
-        else:
-            self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)
+        self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)
         F = 1 / (
             1
             - self.nu_12 * self.nu_21
