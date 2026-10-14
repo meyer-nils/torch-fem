@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- A verbose solve prints each row of its progress table once the increment completes, where a notebook redrew the table in place with the running residual.
 - A geometry lists its `element_types`, from which `FEM` derives `etype`, `char_lengths` and its `repr`, so none of them is abstract any more.
 - A geometry defines `volume_scale` alone, and `FEM` scales the element stiffness, force and mass with it, so `compute_k(...)`, `compute_f(...)` and `compute_m(...)` are no longer abstract.
 - A local Newton loop of a material that does not converge, and a `Shell` mirrored about a plane whose nodes are not constrained for it, raise a warning where they printed.

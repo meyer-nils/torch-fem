@@ -712,7 +712,7 @@ class FEM(ABC):
             max_cutbacks: Number of successive cutbacks accepted within an
                 increment before the solve is given up.
             verbose: If True, reports the solver configuration and a table of
-                per-increment progress, updated in place inside notebooks.
+                per-increment progress.
             method: Linear solver method, chosen by size and tangent symmetry
                 when omitted.
             preconditioner: Preconditioner for an iterative method, chosen by
@@ -1316,7 +1316,7 @@ class Heat(FEM, ABC):
             delta_t: Maximum internal time step.
             max_iter: Maximum Newton iterations per time step.
             verbose: If True, reports the solver configuration and a table of
-                per-time-step progress, updated in place inside notebooks.
+                per-time-step progress.
             rtol: Relative residual tolerance for Newton convergence.
             atol: Absolute residual tolerance for Newton convergence.
             stol: Tolerance used by iterative linear solvers.
