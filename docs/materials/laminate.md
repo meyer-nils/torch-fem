@@ -20,7 +20,7 @@ layup = Laminate(
 model = Shell(nodes, elements, layup)
 ```
 
-Layers are given from the bottom surface upwards. `symmetric` mirrors the half-stack about the mid-plane, and `offset` moves the reference surface the shell nodes sit on:
+Layers are given from the bottom surface upwards. `symmetric` mirrors the half-stack about the mid-plane, and the `offset` of a `Shell` moves the reference surface its nodes sit on:
 
 ![Stacking sequences of three laminates](../images/laminate/laminate_stacking_light.png#only-light)
 ![Stacking sequences of three laminates](../images/laminate/laminate_stacking_dark.png#only-dark)

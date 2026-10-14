@@ -18,6 +18,12 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 For CUDA 12, use the `cu129` index URL instead. CUDA 11 is not supported.
 
+A model and its solves run on the GPU once it is the default device:
+``` py
+torch.set_default_dtype(torch.float64)
+torch.set_default_device("cuda")
+```
+
 ## Advanced solver backends (optional)
 *torch-fem* runs its iterative solvers in PyTorch itself, on either device, with an algebraic multigrid preconditioner built by pyamg on CPU, and falls back to SciPy for a direct solve. Two optional backends can be faster, and *torch-fem* picks up either one as soon as it is installed.
 
@@ -43,6 +49,6 @@ In the root of the cloned project, make the installation editable as
 ``` sh 
 pip install -e ".[all]"
 ```
-The `all` extra combines the `notebook` extra with the development tools (`pytest`, `testbook`, `ruff`) in the `dev` extra. Both are required to run the test suite, which executes the example notebooks.
+The `all` extra combines the `notebook`, `dev` and `docs` extras. The unit tests need `dev` alone, while the notebook tests execute the examples and need `notebook` too.
 
 Now, the package is linked to this local directory and whenever you use `import torchfem`, it will use the latest code.

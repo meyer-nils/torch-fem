@@ -173,6 +173,8 @@ If you use torch-fem in your research, please cite it as follows:
 @software{torchfem,
     author = {Meyer, Nils},
     title  = {torch-fem: GPU accelerated differentiable finite elements for solid mechanics with PyTorch},
+    year   = {2026},
+    version = {0.13.1},
     doi    = {10.5281/zenodo.20306384},
     url    = {https://github.com/meyer-nils/torch-fem},
 }
