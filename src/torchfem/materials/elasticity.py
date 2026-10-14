@@ -482,21 +482,15 @@ class OrthotropicElasticity3D(MechanicsMaterial):
     def rotate(self, R: Tensor) -> OrthotropicElasticity3D:
         """Returns a copy with its coordinate system rotated by $\\mathbf{R}$.
 
-        The rotated stiffness tensor is computed as
-        $C'_{mnop} = R_{mi} R_{nj} R_{ok} R_{pl} \\, C_{ijkl}$
-        and the engineering constants are re-extracted from the compliance matrix.
-        They are the apparent moduli along the global axes: a rotated material is
-        generally anisotropic, so they no longer reconstruct $\\mathbb{C}$.
-
         Args:
             R (Tensor): Rotation matrix.
-                *Shape:* `(..., 3, 3)`.
+                *Shape:* `(..., dim, dim)`.
 
         Returns:
             OrthotropicElasticity3D: A material with rotated properties.
         """
-        if R.shape[-2] != 3 or R.shape[-1] != 3:
-            raise ValueError("Rotation matrix must be a 3x3 tensor.")
+        if R.shape[-2:] != (self.dim, self.dim):
+            raise ValueError(f"Rotation matrix must be a {self.dim}x{self.dim} tensor.")
 
         new = copy.copy(self)
 
@@ -509,13 +503,14 @@ class OrthotropicElasticity3D(MechanicsMaterial):
         S = torch.linalg.inv(stiffness2voigt(new.C))
         new.E_1 = 1 / S[..., 0, 0]
         new.E_2 = 1 / S[..., 1, 1]
-        new.E_3 = 1 / S[..., 2, 2]
         new.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
-        new.nu_13 = -S[..., 0, 2] / S[..., 0, 0]
-        new.nu_23 = -S[..., 1, 2] / S[..., 1, 1]
-        new.G_23 = 1 / S[..., 3, 3]
-        new.G_13 = 1 / S[..., 4, 4]
-        new.G_12 = 1 / S[..., 5, 5]
+        new.G_12 = 1 / S[..., -1, -1]
+        if self.dim == 3:
+            new.E_3 = 1 / S[..., 2, 2]
+            new.nu_13 = -S[..., 0, 2] / S[..., 0, 0]
+            new.nu_23 = -S[..., 1, 2] / S[..., 1, 1]
+            new.G_23 = 1 / S[..., 3, 3]
+            new.G_13 = 1 / S[..., 4, 4]
         return new
 
 
@@ -649,34 +644,6 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
         self.C[..., 1, 0, 0, 1] = G_12
         self.C[..., 1, 0, 1, 0] = G_12
 
-    def rotate(self, R: Tensor) -> OrthotropicElasticityPlaneStress:
-        """Returns a copy with its coordinate system rotated by $\\mathbf{R}$.
-
-        Args:
-            R (Tensor): Rotation matrix.
-                *Shape:* `(..., 2, 2)`.
-
-        Returns:
-            OrthotropicElasticityPlaneStress: A material with rotated properties.
-        """
-        if R.shape[-2] != 2 or R.shape[-1] != 2:
-            raise ValueError("Rotation matrix must be a 2x2 tensor.")
-
-        new = copy.copy(self)
-
-        # Compute rotated stiffness tensor
-        new.C = torch.einsum(
-            "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
-        )
-
-        # Compute rotated internal variables
-        S = torch.linalg.inv(stiffness2voigt(new.C))
-        new.E_1 = 1 / S[..., 0, 0]
-        new.E_2 = 1 / S[..., 1, 1]
-        new.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
-        new.G_12 = 1 / S[..., 2, 2]
-        return new
-
 
 class TransverseIsotropicElasticityPlaneStress(OrthotropicElasticityPlaneStress):
     """Transversely isotropic elastic material for plane stress problems.
@@ -777,74 +744,25 @@ class OrthotropicElasticityPlaneStrain(OrthotropicElasticity3D):
         G_23: float | Tensor | None = None,
         rho: float | Tensor = 1.0,
     ):
-        # Convert float inputs to tensors
-        self.E_1 = torch.as_tensor(E_1)
-        self.E_2 = torch.as_tensor(E_2)
-        self.E_3 = torch.as_tensor(E_3)
-        self.nu_12 = torch.as_tensor(nu_12)
-        self.nu_21 = self.E_2 / self.E_1 * self.nu_12
-        self.nu_13 = torch.as_tensor(nu_13)
-        self.nu_31 = self.E_3 / self.E_1 * self.nu_13
-        self.nu_23 = torch.as_tensor(nu_23)
-        self.nu_32 = self.E_3 / self.E_2 * self.nu_23
-        self.G_12 = torch.as_tensor(G_12)
-        if G_13 is not None:
-            self.G_13 = torch.as_tensor(G_13)
-        if G_23 is not None:
-            self.G_23 = torch.as_tensor(G_23)
-        self.rho = torch.as_tensor(rho)
-
-        # Check if the material is vectorized
-        self.is_vectorized = self.E_1.dim() > 0
-
-        # There are no internal variables
-        self.n_state = 0
-
-        # Full stiffness tensor
-        self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)
-        F = 1 / (
-            1
-            - self.nu_12 * self.nu_21
-            - self.nu_13 * self.nu_31
-            - self.nu_23 * self.nu_32
-            - 2 * self.nu_21 * self.nu_32 * self.nu_13
+        # The in-plane block of the 3D stiffness, as the out-of-plane strain vanishes
+        super().__init__(
+            E_1,
+            E_2,
+            E_3,
+            nu_12,
+            nu_13,
+            nu_23,
+            G_12,
+            0.0 if G_13 is None else G_13,
+            0.0 if G_23 is None else G_23,
+            rho,
         )
-        self.C[..., 0, 0, 0, 0] = self.E_1 * (1 - self.nu_23 * self.nu_32) * F
-        self.C[..., 1, 1, 1, 1] = self.E_2 * (1 - self.nu_13 * self.nu_31) * F
-        self.C[..., 0, 0, 1, 1] = self.E_1 * (self.nu_21 + self.nu_31 * self.nu_23) * F
-        self.C[..., 1, 1, 0, 0] = self.C[..., 0, 0, 1, 1]
-        self.C[..., 0, 1, 0, 1] = self.G_12
-        self.C[..., 1, 0, 1, 0] = self.G_12
-        self.C[..., 0, 1, 1, 0] = self.G_12
-        self.C[..., 1, 0, 0, 1] = self.G_12
-
-    def rotate(self, R: Tensor) -> OrthotropicElasticityPlaneStrain:
-        """Returns a copy with its coordinate system rotated by $\\mathbf{R}$.
-
-        Args:
-            R (Tensor): Rotation matrix.
-                *Shape:* `(..., 2, 2)`.
-
-        Returns:
-            OrthotropicElasticityPlaneStrain: A material with rotated properties.
-        """
-        if R.shape[-2] != 2 or R.shape[-1] != 2:
-            raise ValueError("Rotation matrix must be a 2x2 tensor.")
-
-        new = copy.copy(self)
-
-        # Compute rotated stiffness tensor
-        new.C = torch.einsum(
-            "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
-        )
-
-        # Compute rotated internal variables
-        S = torch.linalg.inv(stiffness2voigt(new.C))
-        new.E_1 = 1 / S[..., 0, 0]
-        new.E_2 = 1 / S[..., 1, 1]
-        new.nu_12 = -S[..., 0, 1] / S[..., 0, 0]
-        new.G_12 = 1 / S[..., 2, 2]
-        return new
+        self.C = self.C[..., :2, :2, :2, :2]
+        # A transverse shear modulus stays unset where none is given
+        if G_13 is None:
+            del self.G_13
+        if G_23 is None:
+            del self.G_23
 
 
 class TransverseIsotropicElasticityPlaneStrain(OrthotropicElasticityPlaneStrain):
