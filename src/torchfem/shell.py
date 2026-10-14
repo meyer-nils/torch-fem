@@ -12,6 +12,7 @@ issue 1, pp. 77-88, 1984
 https://doi.org/10.1108/eb023562
 """
 
+import warnings
 from functools import cached_property
 from math import sqrt
 from typing import cast
@@ -320,9 +321,10 @@ class ShellGeometry(FEM):
             for dof in dofs:
                 symmetry[on_plane, dof] = True
             if not (on_plane.any() and self.constraints[on_plane][:, dofs].all()):
-                print(
+                warnings.warn(
                     f"Mirroring about {'xyz'[axis]} = 0, but its nodes are not "
-                    f"constrained in DOFs {dofs} to enforce that symmetry."
+                    f"constrained in DOFs {dofs} to enforce that symmetry.",
+                    stacklevel=2,
                 )
 
         # Mirror meshes across specified planes

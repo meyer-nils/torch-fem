@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from math import sqrt
 
@@ -208,7 +209,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
 
         # Check if the local Newton iteration converged
         if (torch.abs(res) > self.tolerance).any():
-            print("Local Newton iteration did not converge")
+            warnings.warn("Local Newton iteration did not converge.", stacklevel=2)
 
         # Update stress
         stress_new[~fm] = s_trial[~fm]
@@ -443,7 +444,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             if (torch.abs(res) < self.tolerance).all():
                 break
         if (torch.abs(res) > self.tolerance).any():
-            print("Local Newton iteration did not converge.")
+            warnings.warn("Local Newton iteration did not converge.", stacklevel=2)
 
         # Compute inverse operator
         inv = torch.linalg.inv(self._S[fm] + dGamma[:, None, None] * P)
@@ -620,7 +621,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicElasticityPlaneStrain):
 
         # Check if the local Newton iteration converged
         if (torch.abs(res) > self.tolerance).any():
-            print("Local Newton iteration did not converge")
+            warnings.warn("Local Newton iteration did not converge.", stacklevel=2)
 
         # Update stress
         stress_new[~fm] = s_trial[~fm][..., :2, :2]
@@ -786,7 +787,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
 
         # Check if the local Newton iteration converged
         if (torch.abs(res) > self.tolerance).any():
-            print("Local Newton iteration did not converge.")
+            warnings.warn("Local Newton iteration did not converge.", stacklevel=2)
 
         # Update stress
         stress_new[~fm] = s_trial[~fm]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 
 import torch
@@ -254,7 +255,7 @@ class HyperelasticPlaneStress(Hyperelastic3D):
             if (torch.abs(res) < self.tolerance).all():
                 break
         if (torch.abs(res) > self.tolerance).any():
-            print("Local Newton iteration did not converge.")
+            warnings.warn("Local Newton iteration did not converge.", stacklevel=2)
 
         # Update stress
         P_new = P[..., 0:2, 0:2]
