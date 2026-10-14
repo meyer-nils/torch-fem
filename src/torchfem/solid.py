@@ -49,18 +49,6 @@ class SolidGeometry(FEM):
         vols = self.integrate_field()
         return vols ** (1 / 3)
 
-    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        """Element stiffness matrix contribution."""
-        return BCB.mul_(detJ[:, None, None])
-
-    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
-        """Element internal force vector."""
-        return torch.einsum("..., ...iI,...Ai->...IA", detJ, B, S)
-
-    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        """Element mass matrix contribution."""
-        return rho * detJ
-
     @torch.no_grad()
     def plot(
         self,

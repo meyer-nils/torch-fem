@@ -985,15 +985,3 @@ class ShellHeat(ShellGeometry, Heat):
     def n_flux(self) -> list[int]:
         """Shape of the local heat flux tensor."""
         return [1, 2]
-
-    def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        """Element conductivity matrix contribution."""
-        return BCB.mul_((self.thickness * detJ)[..., None, None])
-
-    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
-        """Element internal heat flux vector."""
-        return torch.einsum("...,...,...iI,...Ai->...IA", self.thickness, detJ, B, S)
-
-    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        """Element capacity matrix contribution."""
-        return rho * self.thickness * detJ

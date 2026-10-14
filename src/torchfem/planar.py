@@ -83,18 +83,6 @@ class PlanarGeometry(FEM):
     def volume_scale(self) -> Tensor:
         return self.thickness
 
-    def compute_k(self, detJ: Tensor, BCB: Tensor):
-        """Element stiffness matrix contribution."""
-        return BCB.mul_((self.thickness * detJ)[..., None, None])
-
-    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
-        """Element internal force vector."""
-        return torch.einsum("...,...,...iI,...Ai->...IA", self.thickness, detJ, B, S)
-
-    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        """Element mass matrix contribution."""
-        return rho * self.thickness * detJ
-
     @torch.no_grad()
     def plot(
         self,

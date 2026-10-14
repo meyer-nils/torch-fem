@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- A geometry defines `volume_scale` alone, and `FEM` scales the element stiffness, force and mass with it, so `compute_k(...)`, `compute_f(...)` and `compute_m(...)` are no longer abstract.
 - A local Newton loop of a material that does not converge, and a `Shell` mirrored about a plane whose nodes are not constrained for it, raise a warning where they printed.
 
 ### Fixed

@@ -88,18 +88,6 @@ class TrussGeometry(FEM):
         B = torch.einsum("...jkl,...lm->...jkm", torch.linalg.inv(J), b)
         return self.etype.N(xi), B, detJ
 
-    def compute_k(self, detJ: Tensor, BCB: Tensor):
-        """Element stiffness matrix."""
-        return BCB.mul_((self.areas * detJ)[..., None, None])
-
-    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
-        """Element internal force vector."""
-        return torch.einsum("...,...,...ik,...ij->...kj", self.areas, detJ, B, S)
-
-    def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        """Element mass matrix contribution."""
-        return rho * self.areas * detJ
-
     def plot(self, u: float | Tensor = 0.0, **kwargs):
         """Plot the truss in 2D (matplotlib) or 3D (PyVista).
 

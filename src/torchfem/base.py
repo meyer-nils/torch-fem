@@ -221,9 +221,8 @@ class FEM(ABC):
         """Initial gradient field value at integration points."""
         raise NotImplementedError
 
-    @abstractmethod
     def compute_k(self, detJ: Tensor, BCB: Tensor) -> Tensor:
-        """Compute element stiffness contribution.
+        """Element stiffness contribution, scaled by `volume_scale`.
 
         Args:
             detJ: Jacobian determinant at the current integration point.
@@ -232,11 +231,10 @@ class FEM(ABC):
         Returns:
             Element stiffness contribution tensor.
         """
-        raise NotImplementedError
+        return BCB.mul_((self.volume_scale * detJ)[:, None, None])
 
-    @abstractmethod
-    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor):
-        """Compute element internal force contribution.
+    def compute_f(self, detJ: Tensor, B: Tensor, S: Tensor) -> Tensor:
+        """Element internal force contribution, scaled by `volume_scale`.
 
         Args:
             detJ: Jacobian determinant at the current integration point.
@@ -246,7 +244,7 @@ class FEM(ABC):
         Returns:
             Element internal nodal force contribution.
         """
-        raise NotImplementedError
+        return torch.einsum("...,...,...iI,...Ai->...IA", self.volume_scale, detJ, B, S)
 
     @abstractmethod
     def plot(self, u: float | Tensor = 0.0, **kwargs):
@@ -259,7 +257,7 @@ class FEM(ABC):
         raise NotImplementedError
 
     def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        """Compute element mass contribution.
+        """Element mass contribution, scaled by `volume_scale`.
 
         Args:
             detJ: Jacobian determinant at the current integration point.
@@ -268,7 +266,7 @@ class FEM(ABC):
         Returns:
             Element mass contribution tensor.
         """
-        raise NotImplementedError
+        return rho * self.volume_scale * detJ
 
     def k0(self) -> Tensor:
         """Compute the element matrix of the reference state.
