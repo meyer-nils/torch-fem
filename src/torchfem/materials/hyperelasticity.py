@@ -214,8 +214,8 @@ class HyperelasticPlaneStress(Hyperelastic3D):
                 *Shape:* `(..., 2, 2)`, same as `H_inc`.
             stress (Tensor): Current 1st PK stress tensor.
                 *Shape:* `(..., 2, 2)`.
-            state (Tensor): Internal state variables (unused in hyperelasticity).
-                *Shape:* Arbitrary, remains unchanged.
+            state (Tensor): Internal state, the out-of-plane stretch.
+                *Shape:* `(..., 1)`.
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
@@ -225,7 +225,7 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         Returns:
             stress_new (Tensor): Updated 1st PK stress tensor.
                 *Shape:* `(..., 2, 2)`.
-            state_new (Tensor): Updated internal state (unchanged).
+            state_new (Tensor): The out-of-plane stretch that satisfies plane stress.
                 *Shape:* same as `state`.
             ddsdde (Tensor): Algorithmic tangent stiffness tensor.
                 *Shape:* `(..., 2, 2, 2, 2)`.
@@ -249,11 +249,10 @@ class HyperelasticPlaneStress(Hyperelastic3D):
             P, _, ddsdde = super().step(H_inc_3D, F3D, stress, state, de0, cl, iter)
             # Evaluate plane stress condition
             res = P[..., 2, 2]
-            # Update out-of plane stretch
-            lbd_z -= res / ddsdde[..., 2, 2, 2, 2]
-            # Check convergence
             if (torch.abs(res) < self.tolerance).all():
                 break
+            # Update out-of plane stretch
+            lbd_z -= res / ddsdde[..., 2, 2, 2, 2]
         if (torch.abs(res) > self.tolerance).any():
             warnings.warn("Local Newton iteration did not converge.", stacklevel=2)
 
