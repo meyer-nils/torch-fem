@@ -26,10 +26,6 @@ class AxisymmetricGeometry(PlanarGeometry):
         """Initialize the axisymmetric FEM problem, which carries no thickness."""
         super().__init__(nodes, elements, material)
 
-    def __repr__(self) -> str:
-        etype, n = self.etype.__name__, self.n_nod
-        return f"<torch-fem axisymmetric ({n} nodes, {self.n_elem} {etype} elements)>"
-
     def radii(self, N: Tensor, conn: Tensor) -> Tensor:
         """Radius at the quadrature points `N` is evaluated at."""
         return torch.einsum("in,en->ie", N, self.nodes[conn, 0])

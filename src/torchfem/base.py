@@ -76,6 +76,7 @@ class FEM(ABC):
     """
 
     supports_finite_strain = True
+    element_types: tuple[type[Element], ...]
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material | None):
         """Initialize a finite-element model.
@@ -199,21 +200,24 @@ class FEM(ABC):
         """Number of degrees of freedom per node."""
         raise NotImplementedError
 
+    def __repr__(self) -> str:
+        name, etype = type(self).__name__, self.etype.__name__
+        return (
+            f"<torch-fem {name} ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
+        )
+
     @property
-    @abstractmethod
     def etype(self) -> type[Element]:
-        """Finite-element type implementation used by this problem."""
-        raise NotImplementedError
+        """The one of `element_types` with the nodes per element of the mesh."""
+        for element in self.element_types:
+            if element.nodes == self.elements.shape[1]:
+                return element
+        raise ValueError("Element type not supported.")
 
     @cached_property
-    @abstractmethod
     def char_lengths(self) -> Tensor:
-        """Characteristic element lengths.
-
-        Returns:
-            Tensor with one characteristic length per element.
-        """
-        raise NotImplementedError
+        """Characteristic element lengths, the element measure to the power 1/dim."""
+        return self.integrate_field() ** (1 / self.etype.iso_dim)
 
     @property
     @abstractmethod

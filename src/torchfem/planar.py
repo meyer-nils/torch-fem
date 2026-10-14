@@ -1,5 +1,3 @@
-from functools import cached_property
-
 import matplotlib.pyplot as plt
 import torch
 from matplotlib.axes import Axes
@@ -9,12 +7,13 @@ from matplotlib.tri import Triangulation
 from torch import Tensor
 
 from .base import FEM, Heat, Mechanics
-from .elements import Element, Quad1, Quad2, Tria1, Tria2
+from .elements import Quad1, Quad2, Tria1, Tria2
 from .materials import Material
 from .plot_utils import LABEL_OFFSET, arrows2d, dots2d, markers2d, signs2d
 
 
 class PlanarGeometry(FEM):
+    element_types = (Tria1, Quad1, Tria2, Quad2)
     """The elements, integration and plotting shared by the planar models.
 
     It carries the discretization of a surface in the z=0 plane, which `Planar`
@@ -47,37 +46,7 @@ class PlanarGeometry(FEM):
 
         super().__init__(nodes, elements, material)
 
-        # Set up thickness
-        if isinstance(thickness, float):
-            self.thickness = torch.full((self.n_elem,), thickness)
-        else:
-            self.thickness = torch.as_tensor(thickness)
-
-    def __repr__(self) -> str:
-        etype = self.etype.__name__
-        return (
-            f"<torch-fem planar ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-        )
-
-    @property
-    def etype(self) -> type[Element]:
-        """Set element type depending on number of nodes per element."""
-        if len(self.elements[0]) == 3:
-            return Tria1
-        elif len(self.elements[0]) == 4:
-            return Quad1
-        elif len(self.elements[0]) == 6:
-            return Tria2
-        elif len(self.elements[0]) == 8:
-            return Quad2
-        else:
-            raise ValueError("Element type not supported.")
-
-    @cached_property
-    def char_lengths(self) -> Tensor:
-        """Characteristic lengths of the elements."""
-        areas = self.integrate_field()
-        return areas ** (1 / 2)
+        self.thickness = torch.ones(self.n_elem) * torch.as_tensor(thickness)
 
     @property
     def volume_scale(self) -> Tensor:

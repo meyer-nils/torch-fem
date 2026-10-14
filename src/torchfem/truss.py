@@ -1,4 +1,3 @@
-from functools import cached_property
 from typing import cast
 
 import matplotlib.pyplot as plt
@@ -11,7 +10,7 @@ from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import FEM, Heat, Mechanics
-from .elements import Bar1, Bar2, Element
+from .elements import Bar1, Bar2
 from .materials import Material
 from .plot_utils import LABEL_OFFSET, arrows, arrows2d, cones, dots, dots2d, markers2d
 
@@ -20,6 +19,7 @@ from .plot_utils import new_plotter, show_plotter
 
 
 class TrussGeometry(FEM):
+    element_types = (Bar1, Bar2)
     """The elements, integration and plotting shared by the truss models.
 
     It carries the discretization of a pin-jointed frame of bars, which `Truss`
@@ -45,27 +45,6 @@ class TrussGeometry(FEM):
 
         # Set up areas
         self.areas = torch.ones(len(elements))
-
-    def __repr__(self) -> str:
-        etype = self.etype.__name__
-        return f"<torch-fem truss ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-
-    @property
-    def etype(self) -> type[Element]:
-        """Set element type depending on number of nodes per element."""
-        if len(self.elements[0]) == 2:
-            return Bar1
-        elif len(self.elements[0]) == 3:
-            return Bar2
-        else:
-            raise ValueError("Element type not supported.")
-
-    @cached_property
-    def char_lengths(self) -> Tensor:
-        """Characteristic lengths of the elements."""
-        start_nodes = self.nodes[self.elements[:, 0]]
-        end_nodes = self.nodes[self.elements[:, 1]]
-        return torch.linalg.norm(end_nodes - start_nodes, dim=-1)
 
     @property
     def volume_scale(self) -> Tensor:

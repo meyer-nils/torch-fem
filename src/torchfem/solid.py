@@ -1,5 +1,4 @@
 import typing
-from functools import cached_property
 
 import pyvista
 import torch
@@ -8,11 +7,12 @@ from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import FEM, Heat, Mechanics
-from .elements import Element, Hexa1, Hexa2, Tetra1, Tetra2
+from .elements import Hexa1, Hexa2, Tetra1, Tetra2
 from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 
 
 class SolidGeometry(FEM):
+    element_types = (Tetra1, Hexa1, Tetra2, Hexa2)
     """The elements, integration and plotting shared by the solid models.
 
     It carries the discretization of a three-dimensional continuum, which
@@ -24,30 +24,6 @@ class SolidGeometry(FEM):
         material: Vectorized material model.
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
-
-    def __repr__(self) -> str:
-        etype = self.etype.__name__
-        return f"<torch-fem solid ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-
-    @property
-    def etype(self) -> type[Element]:
-        """Set element type depending on number of nodes per element."""
-        if len(self.elements[0]) == 4:
-            return Tetra1
-        elif len(self.elements[0]) == 8:
-            return Hexa1
-        elif len(self.elements[0]) == 10:
-            return Tetra2
-        elif len(self.elements[0]) == 20:
-            return Hexa2
-        else:
-            raise ValueError("Element type not supported.")
-
-    @cached_property
-    def char_lengths(self) -> Tensor:
-        """Characteristic lengths of the elements."""
-        vols = self.integrate_field()
-        return vols ** (1 / 3)
 
     @torch.no_grad()
     def plot(

@@ -13,7 +13,6 @@ https://doi.org/10.1108/eb023562
 """
 
 import warnings
-from functools import cached_property
 from math import sqrt
 from typing import cast
 
@@ -24,7 +23,7 @@ from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import FEM, Heat, Mechanics
-from .elements import Element, Quad1, Tria1
+from .elements import Quad1, Tria1
 from .laminate import Laminate
 from .materials import Material, MechanicsMaterial
 from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
@@ -32,6 +31,7 @@ from .utils import stiffness2voigt, stress2voigt
 
 
 class ShellGeometry(FEM):
+    element_types = (Tria1, Quad1)
     """The elements, local frames and plotting shared by the shell models.
 
     It carries the discretization of a thin-walled structure by flat facets,
@@ -81,10 +81,7 @@ class ShellGeometry(FEM):
 
         super().__init__(nodes, elements, material)
 
-        if isinstance(thickness, float):
-            self.thickness = torch.full((self.n_elem,), thickness)
-        else:
-            self.thickness = torch.as_tensor(thickness)
+        self.thickness = torch.ones(self.n_elem) * torch.as_tensor(thickness)
 
         # Reference surface within the section, as a fraction of thickness
         self.offset = torch.as_tensor(offset, dtype=nodes.dtype).expand(self.n_elem)
@@ -96,20 +93,6 @@ class ShellGeometry(FEM):
         if orientation.dim() == 1:
             orientation = orientation.unsqueeze(0).expand(self.n_elem, 3)
         self.orientation = orientation
-
-    def __repr__(self) -> str:
-        etype = self.etype.__name__
-        return f"<torch-fem shell ({self.n_nod} nodes, {self.n_elem} {etype} elements)>"
-
-    @property
-    def etype(self) -> type[Element]:
-        """Set element type depending on number of nodes per element."""
-        if len(self.elements[0]) == 3:
-            return Tria1
-        elif len(self.elements[0]) == 4:
-            return Quad1
-        else:
-            raise ValueError("Element type not supported.")
 
     @property
     def volume_scale(self) -> Tensor:
@@ -135,12 +118,6 @@ class ShellGeometry(FEM):
         return self._integrate_facet_load(
             conn, self.etype, torch.as_tensor(load, dtype=self.nodes.dtype)
         )
-
-    @cached_property
-    def char_lengths(self) -> Tensor:
-        """Characteristic lengths of the elements."""
-        areas = self.integrate_field()
-        return areas ** (1 / 2)
 
     def eval_shape_functions(self, xi: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Gradient operator at integration points xi."""

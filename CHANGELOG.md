@@ -3,10 +3,12 @@
 ## Unreleased
 
 ### Changed
+- A geometry lists its `element_types`, from which `FEM` derives `etype`, `char_lengths` and its `repr`, so none of them is abstract any more.
 - A geometry defines `volume_scale` alone, and `FEM` scales the element stiffness, force and mass with it, so `compute_k(...)`, `compute_f(...)` and `compute_m(...)` are no longer abstract.
 - A local Newton loop of a material that does not converge, and a `Shell` mirrored about a plane whose nodes are not constrained for it, raise a warning where they printed.
 
 ### Fixed
+- `Planar` and `Shell` accept an integer thickness, which `Shell.plot(...)` could not index.
 - `HyperelasticPlaneStress` stores the out-of-plane stretch that produced the stress it returns, where it stored the stretch one Newton step past it.
 - `IsotropicPlasticityPlaneStress` iterates its return mapping on a residual in stress units, as the other plasticity materials do. The squared yield function it iterated on could not reach the tolerance for stresses in Pa and ran out of iterations for a trial stress far past yield.
 - `import_mesh(...)` reads a mesh whose elements of one type are split over several cell blocks, as a mesh tagged into groups is, where it rejected them as mixed types. A flat mesh in any plane `z = const` imports as `Planar`, where only `z = 0` did.

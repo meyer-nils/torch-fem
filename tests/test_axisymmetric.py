@@ -203,7 +203,7 @@ class TestInterface:
             Axisymmetric(nodes, elements, IsotropicElasticity3D(E, NU), 2.0)  # type: ignore[call-arg]
 
     def test_repr(self):
-        assert "axisymmetric" in repr(_cylinder())
+        assert "Axisymmetric" in repr(_cylinder())
 
     def test_compliance_gradient(self):
         stiffness = torch.tensor(E, requires_grad=True)
