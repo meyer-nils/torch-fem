@@ -44,6 +44,19 @@ class TestTruss:
         truss = Truss(nodes, elements, IsotropicElasticity1D(E))
         assert torch.allclose(truss.char_lengths, torch.tensor([3.0, 4.0, 5.0]))
 
+    def test_quadratic_axial_bar_matches_analytical_solution(self):
+        """A bar with a mid node integrates at two points and solves the same."""
+        bar = _axial_bar()
+        nodes, elements = linear_to_quadratic(bar.nodes, bar.elements)
+        quadratic = Truss(nodes, elements, IsotropicElasticity1D(E))
+        quadratic.constraints[0, :] = True
+        quadratic.constraints[1:, 1] = True
+        quadratic.forces[1, 0] = 10.0
+        u, f, sigma, _, _ = quadratic.solve()
+        assert torch.allclose(u[1, 0], torch.tensor(10.0 * LENGTH / E))
+        assert torch.allclose(sigma.ravel(), torch.tensor(10.0))
+        assert torch.allclose(f.sum(dim=0), torch.zeros(2), atol=1e-12)
+
     def test_axial_bar_matches_analytical_solution(self):
         bar = _axial_bar()
         u, f, sigma, _, _ = bar.solve()

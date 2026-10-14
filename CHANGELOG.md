@@ -8,6 +8,7 @@
 - A local Newton loop of a material that does not converge, and a `Shell` mirrored about a plane whose nodes are not constrained for it, raise a warning where they printed.
 
 ### Fixed
+- A `Truss` of three-node bars assembles, where its Jacobian carried one integration point and the second raised an index error.
 - `Planar` and `Shell` accept an integer thickness, which `Shell.plot(...)` could not index.
 - `HyperelasticPlaneStress` stores the out-of-plane stretch that produced the stress it returns, where it stored the stretch one Newton step past it.
 - `IsotropicPlasticityPlaneStress` iterates its return mapping on a residual in stress units, as the other plasticity materials do. The squared yield function it iterated on could not reach the tolerance for stresses in Pa and ran out of iterations for a trial stress far past yield.

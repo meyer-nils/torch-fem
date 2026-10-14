@@ -59,7 +59,7 @@ class TrussGeometry(FEM):
 
         # Compute Jacobian and its determinant
         J = 0.5 * l0[:, None, None]
-        detJ = 0.5 * l0[None, :]
+        detJ = (0.5 * l0).expand(len(xi), -1)
         if torch.any(detJ <= 0.0):
             raise ValueError("Negative Jacobian. Check element numbering.")
 
