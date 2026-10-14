@@ -56,24 +56,24 @@ class TestSparseSolve:
     def test_matches_dense_solution(self, method):
         A_dense = _spd(N, 0)
         b = torch.randn(N)
-        x, _, _ = sparse_solve(_to_csr(A_dense), b, method=method)
+        x, _, _, _ = sparse_solve(_to_csr(A_dense), b, method=method)
         assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_direct_method_returns_no_preconditioner(self):
-        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="direct")
+        _, M, _, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method="direct")
         assert M is None
 
     @pytest.mark.parametrize("method", ["cg", "bicgstab"])
     def test_iterative_method_builds_a_preconditioner(self, method):
         """The preconditioner is returned so the adjoint solve can reuse it."""
-        _, M, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
+        _, M, _, _ = sparse_solve(_to_csr(_spd(N, 0)), torch.randn(N), method=method)
         assert M is not None
 
     def test_bicgstab_solves_a_non_symmetric_system(self):
         """CG assumes a symmetric matrix; a damage tangent is not one."""
         A_dense = _nonsymmetric(40, 0)
         b = torch.randn(40)
-        x, _, _ = sparse_solve(_to_csr(A_dense), b, method="bicgstab")
+        x, _, _, _ = sparse_solve(_to_csr(A_dense), b, method="bicgstab")
         assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)
 
     def test_rejects_unknown_preconditioner(self):
@@ -84,7 +84,7 @@ class TestSparseSolve:
     def test_every_preconditioner_reaches_the_same_solution(self, preconditioner):
         A_dense = _spd(N, 0)
         b = torch.randn(N)
-        x, _, _ = sparse_solve(
+        x, _, _, _ = sparse_solve(
             _to_csr(A_dense), b, method="cg", preconditioner=preconditioner
         )
         assert torch.allclose(x, torch.linalg.solve(A_dense, b), atol=1e-8)

@@ -29,15 +29,15 @@ class TestSolveReport:
 
         out = capsys.readouterr().out
         assert " model    a model" in out
-        for title in ("Increment", "Load factor", "Steps", "Iterations"):
+        for title in ("Increment", "Load factor", "Steps", "Newton", "Krylov"):
             assert title in out
         # A header line, the column titles, three rows, a summary and 3 rules.
         # No row is ever elided, so the count also pins the table height.
         assert len(out.splitlines()) == 9
         # One linear solve each: the residual opening a substep is not counted.
-        assert "3 increments | 3 iterations" in out
+        assert "3 increments" in out and "3 Newton iterations" in out
         # No substep flag in the right margin, since none was cut back or grown.
-        assert not re.search(r"[v^]\d", out)
+        assert not re.search(r"[v^\u2193\u2191]\d", out)
 
     def test_cutbacks_and_growths_are_counted(self, capsys):
         report = SolveReport({})
@@ -49,20 +49,22 @@ class TestSolveReport:
             report.cutback()
         report.iteration(0, 1.0)
         report.iteration(1, 1e-12)
+        report.linear(25)
         report.growth()
         report.growth()
         report.end()
         report.close()
 
-        out = capsys.readouterr().out
-        # Increment 1 at λ = 1, solved in 4 substeps and one linear solve.
+        # The separator is drawn as the console allows, so compare in ASCII
+        out = capsys.readouterr().out.replace(" \u00b7 ", " | ")
+        # Increment 1 at λ = 1, solved in 4 substeps, one Newton and 25 Krylov its.
         row = out.splitlines()[-3]
-        assert row.split()[:5] == ["1", "1", "4", "1", "1.00e-12"]
+        assert row.split()[:6] == ["1", "1", "4", "1", "25", "1.00e-12"]
         # The flags count both events and live in the right margin, so the row
-        # still fits the rule.
-        assert row.endswith("v3 ^2")
+        # still fits the rule, drawn with arrows or ASCII as the console allows.
+        assert re.search(r"[v\u2193]3 [\^\u2191]2$", row)
         assert len(row) <= WIDTH
-        assert "1 increment | 1 iteration" in out
+        assert "1 increment | 1 Newton iteration | 25 Krylov iterations" in out
 
 
 class TestVerboseSolve:
@@ -71,7 +73,8 @@ class TestVerboseSolve:
 
         model.solve(increments=torch.linspace(0, 1, 4), verbose=True)
 
-        out = capsys.readouterr().out
+        # The separator is drawn as the console allows, so compare in ASCII
+        out = capsys.readouterr().out.replace(" \u00b7 ", " | ")
         assert describe_method(resolve_method(model.n_dofs, None), "cpu", None) in out
         assert f"{model.n_elem:,} elem" in out
         assert f" machine  {machine()}" in out

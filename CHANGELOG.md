@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Changed
+- `sparse_solve(...)` returns the iteration count of an iterative solve as a fourth value, and the verbose table reports the Krylov iterations of each increment beside the Newton ones.
+- The verbose table is drawn with arrows and rules where the console can encode them, and in ASCII otherwise.
 - A verbose solve prints each row of its progress table once the increment completes, where a notebook redrew the table in place with the running residual.
 - A geometry lists its `element_types`, from which `FEM` derives `etype`, `char_lengths` and its `repr`, so none of them is abstract any more.
 - A geometry defines `volume_scale` alone, and `FEM` scales the element stiffness, force and mass with it, so `compute_k(...)`, `compute_f(...)` and `compute_m(...)` are no longer abstract.

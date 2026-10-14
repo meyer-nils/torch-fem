@@ -13,9 +13,9 @@ from .materials import HeatMaterial, Material, MechanicsMaterial
 from .report import solve_report
 from .sparse import (
     ConvergenceError,
+    Solve,
     check_declared,
     differentiable_modal_eigsolve,
-    differentiable_sparse_solve,
     newton_solve,
     resolve_method,
 )
@@ -1488,15 +1488,12 @@ class Heat(FEM, ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
-                du = differentiable_sparse_solve(
-                    self.M + 0.5 * dt_n * self.K,
-                    -residual,
-                    null_space,
-                    stol,
-                    device,
-                    solve_method,
-                    preconditioner,
+                # Compressed here, so the adjoint reaches the COO sum through it
+                A = (self.M + 0.5 * dt_n * self.K).to_sparse_csr()
+                du, _, iterations = Solve.apply(  # type: ignore
+                    A, -residual, null_space, stol, device, solve_method, preconditioner
                 )
+                report.linear(iterations)
 
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))
 

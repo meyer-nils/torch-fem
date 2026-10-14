@@ -1,5 +1,6 @@
 import os
 import platform
+import sys
 import time
 
 import torch
@@ -7,9 +8,18 @@ import torch
 from .sparse import describe_method
 
 WIDTH = 88
-RULE = "-" * WIDTH
 # The columns leave a margin at the right edge for the substep flags.
-COLUMNS = "  {:>10}  {:>12}  {:>9}  {:>10}  {:>15}  {:>10}"
+COLUMNS = "  {:>9}  {:>11}  {:>5}  {:>6}  {:>6}  {:>8}  {:>9}"
+# Rule, separator and substep flags, in ASCII where a console cannot encode them
+RICH, ASCII = ("\u2500", " \u00b7 ", "\u2193", "\u2191"), ("-", " | ", "v", "^")
+
+
+def _glyphs() -> tuple[str, str, str, str]:
+    try:
+        "".join(RICH).encode(getattr(sys.stdout, "encoding", None) or "ascii")
+        return RICH
+    except (UnicodeEncodeError, LookupError):
+        return ASCII
 
 
 def _plural(n: int, unit: str) -> str:
@@ -36,6 +46,9 @@ def machine(device: str = "cpu") -> str:
 class SolveReport:
     """Table of solver progress, printed one row per increment as it completes.
 
+    It is drawn with arrows and rules where the console can encode them, and in
+    ASCII otherwise.
+
     Args:
         header: Label and text of the lines above the table. None for a report
             that records progress but writes nothing.
@@ -53,15 +66,18 @@ class SolveReport:
     ):
         self.silent = header is None
         self.unit = unit
+        self.rule, self.sep, self.down, self.up = _glyphs()
+        self.rule *= WIDTH
         self.rows = 0
         self.total = 0
+        self.total_krylov = 0
         self.t0 = time.perf_counter()
         self._print(
-            RULE,
+            self.rule,
             *(f" {key:<8} {text}" for key, text in (header or {}).items()),
-            RULE,
+            self.rule,
             COLUMNS.format(
-                label, value, "Steps", "Iterations", "Residual", "Wall time"
+                label, value, "Steps", "Newton", "Krylov", "Residual", "Wall time"
             ),
         )
 
@@ -72,6 +88,7 @@ class SolveReport:
         self.steps = 0
         self.iters = 0
         self.res: float | None = None
+        self.krylov = 0
         self.cutbacks = 0
         self.growths = 0
         self.t = time.perf_counter()
@@ -88,6 +105,10 @@ class SolveReport:
             self.iters += 1
         self.res = float(res)
 
+    def linear(self, iterations: int) -> None:
+        """Record the iterations of a linear solve, which a direct solve has none of."""
+        self.krylov += iterations
+
     def cutback(self) -> None:
         """Record that the substep of the open increment was cut back."""
         self.cutbacks += 1
@@ -100,13 +121,15 @@ class SolveReport:
         """Print the row of the open increment, with the substep flags in the margin."""
         self.rows += 1
         self.total += self.iters
-        flags = [f"v{self.cutbacks}"] if self.cutbacks else []
-        flags += [f"^{self.growths}"] if self.growths else []
+        self.total_krylov += self.krylov
+        flags = [f"{self.down}{self.cutbacks}"] if self.cutbacks else []
+        flags += [f"{self.up}{self.growths}"] if self.growths else []
         row = COLUMNS.format(
             self.index,
             f"{self.value:.4g}",
             self.steps,
             self.iters,
+            self.krylov or "-",
             f"{self.res:.2e}" if self.res is not None else "-",
             f"{time.perf_counter() - self.t:.2f} s",
         )
@@ -114,16 +137,20 @@ class SolveReport:
 
     def close(self) -> None:
         """Print the summary below the table."""
+        counts = _plural(self.total, "Newton iterations")
+        if self.total_krylov:
+            counts += f" | {_plural(self.total_krylov, 'Krylov iterations')}"
         self._print(
-            RULE,
+            self.rule,
             f" converged | {_plural(self.rows, self.unit)}"
-            f" | {_plural(self.total, 'iterations')}"
+            f" | {counts}"
             f" | {time.perf_counter() - self.t0:.2f} s",
         )
 
     def _print(self, *lines: str) -> None:
+        """Print the lines, with the separator the console can encode."""
         if not self.silent:
-            print("\n".join(lines))
+            print("\n".join(lines).replace(" | ", self.sep))
 
 
 def solve_report(

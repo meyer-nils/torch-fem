@@ -254,8 +254,9 @@ def _multigrid(A: Tensor, B: Tensor | None) -> Callable[[Tensor], Tensor]:
 
 def _krylov(
     A: Tensor, b: Tensor, method: str, stol: float, M: Callable | None
-) -> Tensor:
-    """Solve `A x = b` in torch, preconditioned by `M` or nothing.
+) -> tuple[Tensor, int]:
+    """Solve `A x = b` in torch, preconditioned by `M` or nothing, and count
+    the iterations.
 
     Testing the residual every 10 iterations on CUDA rather than every one
     synchronises with the host that much less often, at the cost of overshooting
@@ -270,7 +271,7 @@ def _krylov(
     threshold = stol * stol * torch.dot(b, b)
     # Zero solves to zero, and would divide by a residual that never shrinks.
     if not torch.any(b):
-        return x
+        return x, 0
 
     if method == "cg":
         z = r if M is None else M(r)
@@ -311,7 +312,7 @@ def _krylov(
                 break
 
     if torch.dot(r, r) <= threshold:
-        return x
+        return x, i + 1
     raise ConvergenceError(f"{method} did not reach {stol:g}.")
 
 
@@ -334,7 +335,7 @@ class Solve(Function):
         method: str | None = None,
         preconditioner: str | None = None,
         M: Callable | None = None,
-    ) -> tuple[Tensor, Callable | None]:
+    ) -> tuple[Tensor, Callable | None, int]:
         """Solve `A x = b`.
 
         See `sparse_solve` for the arguments.
@@ -344,14 +345,17 @@ class Solve(Function):
                 *Shape:* `(n_dofs,)`.
             M (Callable | None): Preconditioner built or reused by the
                 solve, passed on to `backward` for the adjoint system.
+            iterations (int): Iterations of an iterative solve, 0 for a direct one.
         """
-        x, M, solver = sparse_solve(A, b, B, stol, device, method, preconditioner, M)
+        x, M, solver, iterations = sparse_solve(
+            A, b, B, stol, device, method, preconditioner, M
+        )
 
         # A solver is freed by the solve that built it. See `torchfem.amgx`.
         if solver is not None:
             solver.close()
 
-        return x, M
+        return x, M, iterations
 
     @staticmethod
     def backward(ctx, *grad_outputs) -> tuple:
@@ -366,7 +370,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # `A.t()` is a CSC view of the same arrays, not a transposed copy.
-        gradb, _, solver = sparse_solve(
+        gradb, _, solver, _ = sparse_solve(
             A.t(),
             grad_outputs[0],
             ctx.B,
@@ -396,7 +400,7 @@ class Solve(Function):
         passed in, so the adjoint solve reuses the AMG hierarchy built there.
         """
         A, b, B, stol, device, method, preconditioner, M = inputs
-        x, M_computed = output
+        x, M_computed, _ = output
         ctx.save_for_backward(A, x)
 
         # Save the parameters for backward pass (including the preconditioner)
@@ -428,7 +432,7 @@ def differentiable_sparse_solve(
     # COO caller still gets its gradient back through this conversion.
     if A.layout == torch.sparse_coo:
         A = A.to_sparse_csr()
-    x, _ = Solve.apply(A, b, B, stol, device, method, preconditioner, M)  # type: ignore
+    x, _, _ = Solve.apply(A, b, B, stol, device, method, preconditioner, M)  # type: ignore
     return x
 
 
@@ -442,7 +446,7 @@ def sparse_solve(
     preconditioner: str | None = None,
     M: Callable | None = None,
     solver: AmgXSolver | None = None,
-) -> tuple[Tensor, Callable | None, AmgXSolver | None]:
+) -> tuple[Tensor, Callable | None, AmgXSolver | None, int]:
     """
     Solve the linear system Ax = b.
 
@@ -478,6 +482,7 @@ def sparse_solve(
             `None` for a direct solve and wherever AmgX runs it.
         solver (AmgXSolver | None): Solver built or reused by the solve, `None`
             unless AmgX ran it. Holds its hierarchy until `close()`.
+        iterations (int): Iterations of an iterative solve, 0 for a direct one.
     """
     if A.ndim != 2 or A.shape[0] != A.shape[1]:
         raise ValueError("A should be a square 2D matrix.")
@@ -508,7 +513,8 @@ def sparse_solve(
             M = _diagonal(A).reciprocal().mul if preconditioner == "jacobi" else None
         elif M is None:
             M = _multigrid(A, B)
-        return _krylov(A, b, method, stol, M).to(out_device), M, solver
+        x, iterations = _krylov(A, b, method, stol, M)
+        return x.to(out_device), M, solver, iterations
 
     if library == "amgx":
         # AmgX runs the whole solve on torch's arrays where they lie, allocating
@@ -521,7 +527,8 @@ def sparse_solve(
             solver.setup(A)
         else:
             solver.resetup(A)
-        return solver.solve(b.contiguous()).to(out_device), M, solver
+        x = solver.solve(b.contiguous()).to(out_device)
+        return x, M, solver, solver.iterations
 
     # SciPy and Pardiso read host arrays, CUDA data included: cuSOLVER's sparse
     # LU is slower than SuperLU even counting the transfer either way.
@@ -532,7 +539,7 @@ def sparse_solve(
         x = x[np.argsort(order)]
     else:
         x = scipy_spsolve(A_np, b_np)
-    return torch.tensor(x, dtype=b.dtype, device=out_device), None, solver
+    return torch.tensor(x, dtype=b.dtype, device=out_device), None, solver, 0
 
 
 class NewtonRaphsonAdjoint(Function):
@@ -618,9 +625,11 @@ class NewtonRaphsonAdjoint(Function):
                 break
 
             # Solve for displacement increment
-            du_i, M, solver = sparse_solve(
+            du_i, M, solver, iterations = sparse_solve(
                 K, residual, B, stol, device, method, preconditioner, M, solver
             )
+            if report is not None:
+                report.linear(iterations)
 
             du = du - du_i
 
@@ -662,7 +671,7 @@ class NewtonRaphsonAdjoint(Function):
         prev = (u_prev, grad_prev, flux_prev, state_prev)
 
         # `K.t()` is a CSC view of the same arrays, not a transposed copy.
-        lambda_, _, solver = sparse_solve(
+        lambda_, _, solver, _ = sparse_solve(
             K.t(),
             grad_outputs[0],
             ctx.B,
