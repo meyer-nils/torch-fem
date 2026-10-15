@@ -55,8 +55,6 @@ class ShellGeometry(FEM):
         nodes: Tensor,
         elements: Tensor,
         material: Material | None,
-        thickness: Tensor | float = 1.0,
-        offset: Tensor | float = 0.0,
         orientation: Tensor | None = None,
     ):
         """Initialize the shell FEM problem.
@@ -67,11 +65,6 @@ class ShellGeometry(FEM):
                 [n_elem, 3] or [n_elem, 4].
             material: Pointwise material model, or None for a shell whose
                 section carries the materials.
-            thickness: Shell thickness. A float is expanded to all elements, a
-                tensor assigns one thickness per element.
-            offset: Reference surface position within the section, as a
-                fraction of thickness from the mid-plane along the element
-                normal. `+0.5` puts it on the top face.
             orientation: Global reference direction from which material/ply
                 angles are measured. It is projected onto each element's surface
                 to define the element's local material 0°-axis. Accepts
@@ -81,11 +74,6 @@ class ShellGeometry(FEM):
 
         super().__init__(nodes, elements, material)
 
-        self.thickness = torch.ones(self.n_elem) * torch.as_tensor(thickness)
-
-        # Reference surface within the section, as a fraction of thickness
-        self.offset = torch.as_tensor(offset, dtype=nodes.dtype).expand(self.n_elem)
-
         # Material reference orientation
         if orientation is None:
             orientation = torch.tensor([1.0, 0.0, 0.0])
@@ -93,6 +81,29 @@ class ShellGeometry(FEM):
         if orientation.dim() == 1:
             orientation = orientation.unsqueeze(0).expand(self.n_elem, 3)
         self.orientation = orientation
+
+    def _per_element(self, value: Tensor | float) -> Tensor:
+        """A float expanded to every element, a tensor with its graph kept."""
+        return torch.ones(self.n_elem) * torch.as_tensor(value)
+
+    @property
+    def thickness(self) -> Tensor:
+        """Thickness per element, which a float assigns to all elements."""
+        return self._thickness
+
+    @thickness.setter
+    def thickness(self, value: Tensor | float):
+        self._thickness = self._per_element(value)
+
+    @property
+    def offset(self) -> Tensor:
+        """Reference surface position per element, as a fraction of the thickness
+        from the mid-plane, which a float assigns to all elements."""
+        return self._offset
+
+    @offset.setter
+    def offset(self, value: Tensor | float):
+        self._offset = self._per_element(value)
 
     @property
     def volume_scale(self) -> Tensor:
@@ -378,9 +389,11 @@ class Shell(ShellGeometry, Mechanics):
         nodes: Nodal coordinates with shape [n_nod, 3].
         elements: Triangle or quadrilateral connectivity with shape [n_elem, 3]
             or [n_elem, 4].
-        material: Vectorized plane-stress material (None for laminate shells).
-        section: Laminate section (None for homogeneous shells).
-        thickness: Element thicknesses with shape [n_elem].
+        section: The `Laminate` integrated through the thickness, a single layer
+            for a homogeneous shell. Its materials, angles and thicknesses may be
+            reassigned per layer.
+        thickness: Element thicknesses with shape [n_elem], the total of the
+            section, whose `thicknesses` are set per layer.
         offset: Reference surface position per element with shape [n_elem], as a
             fraction of thickness from the mid-plane.
         orientation: Per-element material reference direction with shape
@@ -442,140 +455,59 @@ class Shell(ShellGeometry, Mechanics):
                 `(n_elem, 3)` tensor. Defaults to the global x-direction.
         """
 
-        # A Laminate is the shell's section, not a pointwise material: keep it in
-        # self.section and give the base no material, so check its layers here.
-        pointwise = None if isinstance(material, Laminate) else material
-        if isinstance(material, Laminate) and material.finite_strain:
+        # The section carries the materials, so the base gets none
+        super().__init__(nodes, elements, None, orientation)
+
+        # A plain material is a section of one layer, which checks its kind
+        if not isinstance(material, Laminate):
+            layer = cast(MechanicsMaterial, material)
+            thickness = self._per_element(thickness)
+            material = Laminate([layer], [thickness], [0.0], n_simpson)
+        if material.finite_strain:
             raise NotImplementedError(
                 f"Geometric nonlinearity is not implemented for {type(self).__name__}."
             )
-        super().__init__(nodes, elements, pointwise, thickness, offset, orientation)
+        self.section = material.vectorize(self.n_elem, self._per_element(offset))
+        self.n_z = self.section.n_z
+        self.n_int = self.n_int * self.n_z
 
-        self.section: Laminate | None = (
-            material.vectorize(self.n_elem, self.offset)
-            if isinstance(material, Laminate)
-            else None
-        )
-
-        # Drill penalty
         self.drill_penalty = drill_penalty
-
-        # Transverse shear properties
+        self.transverse_G = transverse_G
         self.transverse_nu = transverse_nu
         self.transverse_kappa = transverse_kappa
 
-        if self.section is not None:
-            # Layered shell: take thickness, stations, and shear from the section.
-            self.n_simpson = self.section.n_simpson
-            self.n_z = self.section.n_z
-            self.thickness = self.section.thickness
-            if transverse_G is None:
-                self.As = self.section.As
-            else:
-                self.As = self._build_As(transverse_G)
-        else:
-            # Homogeneous shell (unchanged behavior).
-            assert self.material is not None
+    @property
+    def thickness(self) -> Tensor:
+        """Thickness per element, the total of the section."""
+        return self.section.thickness
 
-            # Thickness integration points
-            if n_simpson % 2 == 0:
-                raise ValueError("n_simpson must be an odd integer.")
-            self.n_simpson = n_simpson
-            self.n_z = n_simpson
+    @property
+    def offset(self) -> Tensor:
+        """Reference surface position per element, as a fraction of the thickness
+        from the mid-plane. Assigning it moves the section."""
+        return self.section.offset
 
-            # Simpson points (normalized) and weights (summing to 1)
-            self.z_simpson = torch.linspace(-0.5, 0.5, n_simpson)
-            self.w_simpson = torch.ones(n_simpson)
-            self.w_simpson[1:-1:2] = 4.0
-            self.w_simpson[2:-2:2] = 2.0
-            self.w_simpson *= 1.0 / (n_simpson - 1) / 3.0
+    @offset.setter
+    def offset(self, value: Tensor | float):
+        self.section.offset = self._per_element(value)
 
-            # Effective through-thickness transverse shear stiffness
-            if transverse_G is None:
-                # getattr keeps these dynamic: the shear moduli exist only on
-                # some Material subclasses, which is what the hasattr guards test.
-                if hasattr(self.material, "G"):
-                    G = 2 * [getattr(self.material, "G")]  # noqa: B009
-                elif hasattr(self.material, "G_13") and hasattr(self.material, "G_23"):
-                    G = [
-                        getattr(self.material, "G_13"),  # noqa: B009
-                        getattr(self.material, "G_23"),  # noqa: B009
-                    ]
-                else:
-                    raise ValueError(
-                        "Material must have shear modulus 'G' defined or "
-                        "transverse_G must be provided."
-                    )
-                z = torch.zeros(self.n_elem)
-                Cs = torch.stack(
-                    [
-                        torch.stack([G[0], z], dim=-1),
-                        torch.stack([z, G[1]], dim=-1),
-                    ],
-                    dim=-1,
-                )
-                self.As = self.thickness[:, None, None] * Cs
-            else:
-                self.As = self._build_As(transverse_G)
-
-        # Update number of integration points to account for thickness
-        # integration over the through-thickness stations.
-        self.n_int = self.n_int * self.n_z
-
-    def _build_As(self, transverse_G: list[float] | list[Tensor]) -> Tensor:
-        """Build the integrated transverse shear stiffness from a user override.
-
-        Args:
-            transverse_G: Pair ``[G_xz, G_yz]`` of effective transverse shear
-                moduli. The values are integrated over the total thickness.
-
-        Returns:
-            Tensor of shape `(n_elem, 2, 2)`.
-        """
-        g0 = torch.as_tensor(transverse_G[0]).repeat(self.n_elem)
-        g1 = torch.as_tensor(transverse_G[1]).repeat(self.n_elem)
-        z = torch.zeros(self.n_elem)
-        Cs = torch.stack(
-            [
-                torch.stack([g0, z], dim=-1),
-                torch.stack([z, g1], dim=-1),
-            ],
-            dim=-1,
-        )
-        return self.thickness[:, None, None] * Cs
-
-    def _thickness_stations(self) -> tuple[list[MechanicsMaterial], Tensor, Tensor]:
-        """Through-thickness integration stations.
-
-        Returns:
-            Tuple ``(materials, z, w)`` where ``materials`` is a list of length
-            ``n_z`` giving the material active at each station, ``z`` has shape
-            `(n_z, n_elem)` with absolute through-thickness coordinates, and
-            ``w`` has shape `(n_z, n_elem)` with absolute integration weights
-            (such that ``sum_j w_j f_j`` approximates ``integral f dz``).
-        """
-        if self.section is not None:
-            return self.section.materials_per_station, self.section.z, self.section.w
-        else:
-            assert isinstance(self.material, MechanicsMaterial)
-            z = (self.z_simpson[:, None] - self.offset[None, :]) * self.thickness
-            w = self.w_simpson[:, None] * self.thickness[None, :]
-            return [self.material] * self.n_simpson, z, w
+    @property
+    def As(self) -> Tensor:
+        """Transverse shear stiffness per element, with shape [n_elem, 2, 2]."""
+        if self.transverse_G is None:
+            return self.section.As
+        G = torch.as_tensor(self.transverse_G).expand(self.n_elem, 2)
+        return self.thickness[:, None, None] * torch.diag_embed(G)
 
     @property
     def n_state(self) -> int:
         """Number of internal state variables per through-thickness station."""
-        if self.section is not None:
-            return self.section.n_state
-        assert self.material is not None
-        return self.material.n_state
+        return self.section.n_state
 
     @property
     def symmetric_tangent(self) -> bool:
-        """The tangent symmetry of the section, where the shell has one."""
-        if self.section is not None:
-            return self.section.symmetric_tangent
-        return super().symmetric_tangent
+        """The tangent symmetry of the section."""
+        return self.section.symmetric_tangent
 
     @property
     def n_dof_per_node(self) -> int:
@@ -753,13 +685,7 @@ class Shell(ShellGeometry, Mechanics):
         """Mass matrix (translational: ∫ρ dz, rotational: ∫ρz² dz)."""
         n = self.n_dof_per_node * self.etype.nodes
         m = torch.zeros((self.n_elem, n, n))
-        if self.section is not None:
-            rho_trans = self.section.rho_h
-            rho_rot = self.section.rho_zz
-        else:
-            assert self.material is not None
-            rho_trans = self.material.rho * self.thickness
-            rho_rot = self.material.rho * self.thickness**3 * (1 / 12 + self.offset**2)
+        rho_trans, rho_rot = self.section.rho_h, self.section.rho_zz
         D = torch.diag_embed(torch.stack([rho_trans] * 3 + [rho_rot] * 3, dim=-1))
         N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
         for i, w in enumerate(self.etype.iweights):
@@ -816,8 +742,13 @@ class Shell(ShellGeometry, Mechanics):
         # Compute gradient operators
         _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
 
-        # Through-thickness integration stations (layer-aware for laminates)
-        materials, z_stations, w_stations = self._thickness_stations()
+        # Through-thickness integration stations of the section
+        section = self.section
+        materials, z_stations, w_stations = (
+            section.materials_per_station,
+            section.z,
+            section.w,
+        )
 
         # Transverse shear operators and stiffnesses at the integration points
         Ds = self._Ds(detJ)
@@ -957,6 +888,22 @@ class ShellHeat(ShellGeometry, Heat):
         temperatures: Prescribed nodal temperatures with shape [n_nod, 1].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, 1].
     """
+
+    def __init__(
+        self,
+        nodes: Tensor,
+        elements: Tensor,
+        material: Material,
+        thickness: Tensor | float = 1.0,
+        offset: Tensor | float = 0.0,
+        orientation: Tensor | None = None,
+    ):
+        """As `ShellGeometry`, with a `thickness` and an `offset` of the reference
+        surface that a float expands to all elements and a tensor assigns per
+        element."""
+        super().__init__(nodes, elements, material, orientation)
+        self.thickness = thickness
+        self.offset = offset
 
     @property
     def n_flux(self) -> list[int]:

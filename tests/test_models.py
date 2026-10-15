@@ -462,6 +462,16 @@ class TestShellHeat:
 
     L, W, t, kappa, dT = 4.0, 1.0, 0.3, 5.0, 100.0
 
+    def test_thickness_and_offset_assign_per_element(self):
+        """A float assigned after construction expands like one given to it, and
+        a reassigned thickness enters the conduction."""
+        strip = self._strip()[0]
+        strip.thickness = 2.0 * self.t
+        strip.offset = 0.25
+        assert torch.equal(strip.thickness, 2.0 * self.t * torch.ones(strip.n_elem))
+        assert torch.equal(strip.offset, 0.25 * torch.ones(strip.n_elem))
+        assert torch.allclose(strip.k0(), 2.0 * self._strip()[0].k0())
+
     def _strip(self, material=None, thickness=None, orientation=None, rotation=None):
         """A strip along x, held cold at x = 0 and hot at x = L."""
         nodes, elements = rect_quad(9, 3, self.L, self.W)

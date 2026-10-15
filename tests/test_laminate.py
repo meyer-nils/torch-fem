@@ -130,6 +130,63 @@ def test_laminate_gradient_flows():
     assert torch.isfinite(t.grad)
 
 
+def test_ply_thicknesses_are_design_variables():
+    """Layer thicknesses reassigned on the bound section enter the solve with
+    their gradients, as a free-size optimization of the plies needs."""
+    nodes, elements = square_plate()
+    mat = IsotropicElasticityPlaneStress(E=70000.0, nu=0.3)
+    plate = Shell(nodes, elements, Laminate([mat, mat], [1.0, 1.0], [0.0, 0.0]))
+    design = torch.full((2, plate.n_elem), 1.5, requires_grad=True)
+    plate.section.thicknesses[0] = 0.5 * design[0]
+    plate.section.thicknesses[1] = design[1] + 0.5
+    assert torch.allclose(plate.thickness, 2.75 * torch.ones(plate.n_elem))
+    u = cantilever_tip_displacement(plate, differentiable_parameters=design)
+    (grad,) = torch.autograd.grad(u.abs().sum(), design)
+    assert torch.isfinite(grad).all() and (grad != 0.0).all()
+
+
+def test_layer_angle_is_a_design_variable():
+    """A layer angle reassigned on the bound section rotates its material in the
+    solve, with a gradient, as an orientation optimization needs."""
+    nodes, elements = square_plate()
+    plate = Shell(nodes, elements, _gfrp(), thickness=1.0)
+    aligned = cantilever_tip_displacement(plate)
+    phi = torch.full((plate.n_elem,), torch.pi / 2, requires_grad=True)
+    plate.section.angles[0] = phi
+    u = cantilever_tip_displacement(plate, differentiable_parameters=phi)
+    assert not torch.allclose(u, aligned)
+    (grad,) = torch.autograd.grad(u.abs().sum(), phi)
+    assert torch.isfinite(grad).all() and grad.abs().sum() > 0.0
+
+
+def test_bound_sections_are_independent():
+    """Two shells built from one laminate keep their own layers."""
+    nodes, elements = square_plate()
+    layup = Laminate([_gfrp()], [1.0], [0.0])
+    first, second = (Shell(nodes, elements, layup) for _ in range(2))
+    first.section.angles[0] = torch.tensor(0.5)
+    first.section.thicknesses[0] = 2.0 * torch.ones(first.n_elem)
+    assert float(layup.angles[0]) == 0.0 and float(second.section.angles[0]) == 0.0
+    assert torch.all(second.section.thickness == 1.0)
+
+
+def test_offset_can_be_reassigned():
+    """An offset assigned after construction moves the section like one given
+    to the constructor, and carries a gradient."""
+    nodes, elements = square_plate()
+    mat = IsotropicElasticityPlaneStress(E=70000.0, nu=0.3)
+    built = Shell(nodes, elements, mat, thickness=1.0, offset=0.3)
+    moved = Shell(nodes, elements, mat, thickness=1.0)
+    moved.offset = 0.3
+    assert torch.allclose(moved.k0(), built.k0())
+    assert torch.allclose(moved.integrate_mass(), built.integrate_mass())
+    offset = torch.full((moved.n_elem,), 0.3, requires_grad=True)
+    moved.offset = offset
+    u = cantilever_tip_displacement(moved, differentiable_parameters=offset)
+    (grad,) = torch.autograd.grad(u.abs().sum(), offset)
+    assert torch.isfinite(grad).all() and grad.abs().sum() > 0.0
+
+
 def test_metal_ply_plasticizes():
     """A fiber-metal laminate yields in its metal plies under in-plane stretch.
 
@@ -270,8 +327,8 @@ def test_shell_orientation_rotates_response():
 
 
 def test_laminate_is_section_not_material():
-    """A laminate is stored as the shell's section; self.material stays a real
-    (pointwise) Material and is None for a layered shell."""
+    """A shell stores its laminate as the section and carries no material of its
+    own, a homogeneous one as a section of a single layer."""
     nodes, elements = square_plate()
     gfrp = OrthotropicElasticityPlaneStress(
         E_1=40000.0, E_2=10000.0, nu_12=0.3, G_12=5000.0, G_13=5000.0, G_23=4000.0
@@ -287,8 +344,9 @@ def test_laminate_is_section_not_material():
         IsotropicElasticityPlaneStress(E=70000.0, nu=0.3),
         thickness=1.0,
     )
-    assert homogeneous.section is None
-    assert homogeneous.material is not None
+    assert isinstance(homogeneous.section, Laminate)
+    assert homogeneous.section.n_layers == 1
+    assert homogeneous.material is None
 
 
 def _gfrp():

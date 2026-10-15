@@ -14,7 +14,9 @@ reference surface within that stack through its `offset`.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Sequence
+from typing import cast
 
 import torch
 from torch import Tensor
@@ -42,11 +44,18 @@ class Laminate:
         - Layers may carry internal state (e.g. an elastoplastic metal ply); the
           state width is the per-layer maximum. Stations are integrated during
           the analysis, so nonlinear, state-bearing layers need no ABD matrices.
-        - The laminate behaves like a `Material` (`is_vectorized`, `vectorize`,
-          `n_state`), so it can be passed straight to `Shell`.
+        - `Shell` binds the laminate to its mesh with `vectorize(...)`, and the
+          bound section at `shell.section` rotates its `materials` by their
+          `angles` and reads its stations, transverse shear stiffness and mass
+          from its `thicknesses` whenever they are needed. A layer's material,
+          angle or thickness may be reassigned there and may carry a gradient,
+          as a design variable of an orientation or free-size optimization.
         - The stack is centered on its mid-plane. `Shell(offset=...)` moves the
           reference surface, adding the membrane-bending coupling it implies.
     """
+
+    n_elem: int
+    offset: Tensor
 
     @property
     def symmetric_tangent(self) -> bool:
@@ -96,12 +105,16 @@ class Laminate:
 
         self.n_layers = len(self.materials)
         self.n_simpson = n_simpson
-
-        # Number of through-thickness integration stations
         self.n_z = self.n_layers * n_simpson
 
-        # The laminate is considered vectorized once all layer materials are.
-        self.is_vectorized = all(m.is_vectorized for m in self.materials)
+        # The layer of each station, its position within the layer from 0 to 1,
+        # and its Simpson weight within the layer, which sum to 1 per layer
+        self.layer = torch.arange(self.n_layers).repeat_interleave(n_simpson)
+        self.zeta = torch.linspace(0.0, 1.0, n_simpson).repeat(self.n_layers)
+        weights = torch.ones(n_simpson)
+        weights[1:-1:2] = 4.0
+        weights[2:-2:2] = 2.0
+        self.weights = weights.repeat(self.n_layers) / (3.0 * (n_simpson - 1))
 
         # State width is the per-layer maximum; each layer's `step` touches only
         # the slots it needs, so mixing elastic and state-bearing layers is free.
@@ -114,120 +127,90 @@ class Laminate:
         )
 
     def vectorize(self, n_elem: int, offset: Tensor) -> Laminate:
-        """Return a vectorized copy for `n_elem` elements.
+        """Return a copy bound to `n_elem` elements and the reference surface `offset`.
 
-        Each layer material is vectorized and rotated into the element frame, and
-        the stations, transverse shear stiffness, and mass integrals are
-        precomputed about the reference surface given by `offset`.
+        Each layer material is vectorized and each layer thickness is expanded to
+        one value per element.
         """
-        if self.is_vectorized:
-            return self
-
-        new = Laminate.__new__(Laminate)
-        new.n_simpson = self.n_simpson
-        new.n_layers = self.n_layers
-        new.n_z = self.n_z
-        new.n_state = self.n_state
-        new.angles = self.angles
-        new.is_vectorized = True
-
-        new.materials = []
-        new.thicknesses = []
-        for mat, ang, t in zip(self.materials, self.angles, self.thicknesses):
-            m = mat.vectorize(n_elem).rotate(planar_rotation(ang))
-            new.materials.append(m)
-            new.thicknesses.append(t.expand(n_elem) if t.dim() == 0 else t)
-
-        new._build(n_elem, offset)
-        return new
-
-    def _build(self, n_elem: int, offset: Tensor) -> None:
-        """Precompute stations, transverse shear, and mass integrals."""
-        self.n_elem = n_elem
-
-        # Per-layer thickness [n_layers, n_elem]
-        t = torch.stack(self.thicknesses, dim=0)
-        self.thickness = t.sum(dim=0)
-
-        # Interface coordinates from the reference surface (z = 0); the offset
-        # shifts the stack so the reference sits at the requested fraction.
-        z_bot = -(0.5 + offset) * self.thickness
-        layer_top = z_bot[None, :] + torch.cumsum(t, dim=0)
-        layer_bot = layer_top - t
-        self._layer_top = layer_top
-        self._layer_bot = layer_bot
-
-        # Simpson nodes (in [0, 1]) and weights (summing to 1) within a layer
-        zeta = torch.linspace(0.0, 1.0, self.n_simpson)
-        w_simpson = torch.ones(self.n_simpson)
-        w_simpson[1:-1:2] = 4.0
-        w_simpson[2:-2:2] = 2.0
-        w_simpson *= 1.0 / (self.n_simpson - 1) / 3.0
-
-        # Stations with absolute z and weights, so sum_j w_j f_j ~ integral f dz
-        z_list, w_list, layer_idx = [], [], []
-        for k in range(self.n_layers):
-            z_k = layer_bot[k][None, :] + zeta[:, None] * t[k][None, :]
-            w_k = w_simpson[:, None] * t[k][None, :]
-            z_list.append(z_k)
-            w_list.append(w_k)
-            layer_idx += [k] * self.n_simpson
-        self.z = torch.cat(z_list, dim=0)  # [n_z, n_elem]
-        self.w = torch.cat(w_list, dim=0)  # [n_z, n_elem]
-        self.layer = torch.tensor(layer_idx, dtype=torch.long)  # [n_z]
-
-        # Material at each station, for the Shell integration loop
-        self.materials_per_station = [self.materials[k] for k in layer_idx]
-
-        # Transverse shear stiffness As = sum_k R_k diag(G13, G23)_k R_k^T t_k
-        self.As = self._transverse_shear(t)
-
-        # Mass integrals: rho_h = integral rho dz, rho_zz = integral rho z^2 dz
-        rho_h = torch.zeros(n_elem)
-        rho_zz = torch.zeros(n_elem)
-        for k in range(self.n_layers):
-            rho_k = torch.as_tensor(self.materials[k].rho)
-            if rho_k.dim() == 0:
-                rho_k = rho_k.expand(n_elem)
-            rho_h = rho_h + rho_k * t[k]
-            rho_zz = rho_zz + rho_k * (layer_top[k] ** 3 - layer_bot[k] ** 3) / 3.0
-        self.rho_h = rho_h
-        self.rho_zz = rho_zz
-
-    def _transverse_shear(self, t: Tensor) -> Tensor:
-        """Transverse shear stiffness ``sum_k G_k(rotated) * t_k``.
-
-        Each layer's principal-axis shear moduli are rotated into the element
-        frame as a second-order tensor.
-        """
-        n_elem = self.n_elem
-        As = torch.zeros(n_elem, 2, 2)
-        for k in range(self.n_layers):
-            m = self.materials[k]
-            # getattr keeps these dynamic: the transverse moduli exist only on
-            # some Material subclasses, which is what the hasattr guards test.
-            if hasattr(m, "G_13"):
-                g13 = torch.as_tensor(getattr(m, "G_13"))  # noqa: B009
-                g23 = torch.as_tensor(getattr(m, "G_23"))  # noqa: B009
-            elif hasattr(m, "G"):
-                g13 = torch.as_tensor(getattr(m, "G"))  # noqa: B009
-                g23 = g13
-            else:
+        for material in self.materials:
+            if not hasattr(material, "G") and not hasattr(material, "G_13"):
                 raise ValueError(
-                    "Layer material must define transverse shear moduli "
+                    "A laminate layer must define transverse shear moduli "
                     "('G_13'/'G_23') or a shear modulus 'G'."
                 )
-            g13 = g13.expand(n_elem) if g13.dim() == 0 else g13
-            g23 = g23.expand(n_elem) if g23.dim() == 0 else g23
-            Gs = torch.zeros(n_elem, 2, 2)
-            Gs[:, 0, 0] = g13
-            Gs[:, 1, 1] = g23
-            R = planar_rotation(self.angles[k])
-            if R.dim() == 2:
-                R = R.expand(n_elem, 2, 2)
-            Gs_rot = torch.einsum("emi,eij,enj->emn", R, Gs, R)
-            As = As + Gs_rot * t[k][:, None, None]
+        new = copy.copy(self)
+        new.n_elem = n_elem
+        new.offset = offset
+        new.angles = list(self.angles)  # its own, so a reassigned angle stays here
+        new.materials = [m.vectorize(n_elem) for m in self.materials]
+        new.thicknesses = [
+            t.expand(n_elem) if t.dim() == 0 else t for t in self.thicknesses
+        ]
+        return new
+
+    @property
+    def materials_per_station(self) -> list[MechanicsMaterial]:
+        """The material at each station, rotated by the angle of its layer."""
+        layers = [
+            cast(MechanicsMaterial, m.rotate(planar_rotation(a)))
+            for m, a in zip(self.materials, self.angles)
+        ]
+        return [layers[k] for k in self.layer.tolist()]
+
+    @property
+    def thickness(self) -> Tensor:
+        """Total thickness per element."""
+        return torch.stack(self.thicknesses).sum(dim=0)
+
+    def _interfaces(self) -> tuple[Tensor, Tensor, Tensor]:
+        """Layer thicknesses and the bottom and top of each layer, measured from
+        the reference surface, each with shape [n_layers, n_elem]."""
+        t = torch.stack(self.thicknesses)
+        top = -(0.5 + self.offset) * t.sum(dim=0) + torch.cumsum(t, dim=0)
+        return t, top - t, top
+
+    @property
+    def z(self) -> Tensor:
+        """Through-thickness coordinate of each station, shape [n_z, n_elem]."""
+        t, bot, _ = self._interfaces()
+        return bot[self.layer] + self.zeta[:, None] * t[self.layer]
+
+    @property
+    def w(self) -> Tensor:
+        """Integration weight of each station, shape [n_z, n_elem], so that
+        `sum_j w_j f_j` approximates the integral of `f` over the thickness."""
+        return self.weights[:, None] * torch.stack(self.thicknesses)[self.layer]
+
+    @property
+    def As(self) -> Tensor:
+        """Transverse shear stiffness `sum_k R_k diag(G13, G23)_k R_k^T t_k`, with
+        shape [n_elem, 2, 2]."""
+        As = torch.zeros(self.n_elem, 2, 2)
+        for m, angle, t in zip(self.materials, self.angles, self.thicknesses):
+            # Read dynamically, as only some materials carry the moduli
+            names = ("G_13", "G_23") if hasattr(m, "G_13") else ("G", "G")
+            moduli = [torch.as_tensor(getattr(m, name)) for name in names]
+            G = torch.diag_embed(torch.stack(moduli, dim=-1))
+            R = planar_rotation(angle)
+            As = (
+                As
+                + torch.einsum("...mi,...ij,...nj->...mn", R, G, R) * t[:, None, None]
+            )
         return As
+
+    @property
+    def rho_h(self) -> Tensor:
+        """Mass per area, the integral of the density over the thickness."""
+        layers = zip(self.materials, self.thicknesses)
+        return torch.stack([m.rho * t for m, t in layers]).sum(dim=0)
+
+    @property
+    def rho_zz(self) -> Tensor:
+        """Rotational inertia per area, the integral of `rho z^2` over the thickness."""
+        _, bot, top = self._interfaces()
+        layers = zip(self.materials, top, bot)
+        moments = [m.rho * (t**3 - b**3) / 3.0 for m, t, b in layers]
+        return torch.stack(moments).sum(dim=0)
 
     def plot(self, ax=None):
         """Illustrate the stacking sequence.
