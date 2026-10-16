@@ -4,15 +4,15 @@
   "python": "3.13.12",
   "libraries": "PyTorch 2.11.0+cu128, CUDA 12.8",
   "dtype": "float64",
-  "commit": "41bba96",
+  "commit": "08fa2c7",
   "problem": "thermal_slab_simp",
   "rows": [
     {
       "N": 128,
       "dofs": 16770,
-      "setup_s": 0.0044,
-      "fwd_s": 0.0533,
-      "bwd_s": 0.0303,
+      "setup_s": 0.0043,
+      "fwd_s": 0.0535,
+      "bwd_s": 0.0313,
       "peak_ram_mb": null,
       "peak_vram_mb": 72.0,
       "solver": "cg | iterative | jacobi | torch | cuda"
@@ -21,8 +21,8 @@
       "N": 256,
       "dofs": 66306,
       "setup_s": 0.0056,
-      "fwd_s": 0.105,
-      "bwd_s": 0.0595,
+      "fwd_s": 0.1069,
+      "bwd_s": 0.0571,
       "peak_ram_mb": null,
       "peak_vram_mb": 294.0,
       "solver": "cg | iterative | jacobi | torch | cuda"
@@ -30,9 +30,9 @@
     {
       "N": 512,
       "dofs": 263682,
-      "setup_s": 0.0128,
-      "fwd_s": 0.3173,
-      "bwd_s": 0.1666,
+      "setup_s": 0.0123,
+      "fwd_s": 0.3221,
+      "bwd_s": 0.1706,
       "peak_ram_mb": null,
       "peak_vram_mb": 1052.0,
       "solver": "cg | iterative | jacobi | torch | cuda"
@@ -40,9 +40,9 @@
     {
       "N": 1024,
       "dofs": 1051650,
-      "setup_s": 0.0387,
-      "fwd_s": 1.2848,
-      "bwd_s": 0.7329,
+      "setup_s": 0.0382,
+      "fwd_s": 1.2909,
+      "bwd_s": 0.7286,
       "peak_ram_mb": null,
       "peak_vram_mb": 4226.0,
       "solver": "cg | iterative | jacobi | torch | cuda"
@@ -50,11 +50,11 @@
     {
       "N": 2048,
       "dofs": 4200450,
-      "setup_s": 0.1548,
-      "fwd_s": 8.0062,
-      "bwd_s": 5.8577,
+      "setup_s": 0.1549,
+      "fwd_s": 7.9919,
+      "bwd_s": 5.856,
       "peak_ram_mb": null,
-      "peak_vram_mb": 16806.0,
+      "peak_vram_mb": 17407.4,
       "solver": "cg | iterative | jacobi | torch | cuda"
     }
   ]
