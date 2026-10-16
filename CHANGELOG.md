@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `convection(mask, h, T_inf)` adds convection to ambient, `q = h (T - T_inf)`, on a surface of a thermal model. It holds in `solve(...)`, `time_integration(...)` and an `Assembly`, and `h` and `T_inf` may carry gradients.
+
 ### Changed
 - **Breaking:** A `Shell` integrates its material as a `Laminate` of one layer, so every shell carries a `section` and `shell.material` is `None`. The section rotates its `materials` by their `angles` and derives its stations, transverse shear stiffness and mass from its `thicknesses` whenever they are read, so a layer's material, angle or thickness is reassigned at `shell.section` and may carry a gradient, where an orientation optimization assigned `shell.material`. `Shell.thickness` is the total of the section, and `Shell.offset` can be reassigned as well. The transverse shear stiffness follows a reassigned thickness, where it kept the value at construction.
 - `sparse_solve(...)` returns the iteration count of an iterative solve as a fourth value, and the verbose table reports the Krylov iterations of each increment beside the Newton ones.

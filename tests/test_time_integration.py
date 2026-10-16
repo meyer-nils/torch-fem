@@ -3,9 +3,9 @@ import math
 import pytest
 import torch
 
-from torchfem import PlanarHeat
-from torchfem.materials import IsotropicConductivity2D
-from torchfem.mesh import rect_quad
+from torchfem import PlanarHeat, SolidHeat
+from torchfem.materials import IsotropicConductivity2D, IsotropicConductivity3D
+from torchfem.mesh import cube_hexa, rect_quad
 
 
 def _build_heated_plate() -> PlanarHeat:
@@ -170,3 +170,19 @@ def test_a_failed_initial_solve_restores_the_constraints(monkeypatch):
     with pytest.raises(RuntimeError, match="initial solve failed"):
         plate.time_integration()
     assert torch.equal(plate.constraints, constraints)
+
+
+def test_convection_matches_the_lumped_capacitance_solution():
+    """A body of negligible thermal resistance cools exponentially to ambient."""
+    h, rho, T0, T_inf = 3.0, 50.0, 100.0, 20.0
+    material = IsotropicConductivity3D(kappa=1.0e4, rho=rho)
+    cube = SolidHeat(*cube_hexa(3, 3, 3, 1.0, 1.0, 1.0), material)
+    cube.temperatures[:] = T0
+    cube.convection(torch.ones(cube.n_nod, dtype=torch.bool), h, T_inf)
+
+    times = torch.tensor([0.0, 0.5, 1.0])
+    temperature, _, _, _, _ = cube.time_integration(times, delta_t=0.01)
+
+    # Unit cube, so the surface is 6 and the volume 1
+    exact = T_inf + (T0 - T_inf) * torch.exp(-h * 6.0 * times / rho)
+    assert torch.allclose(temperature.mean(dim=(1, 2)), exact, atol=0.1)

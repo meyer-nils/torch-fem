@@ -96,7 +96,8 @@ class PlanarGeometry(FEM):
                 scale as arrows with a dot at the tip instead of a marker. In
                 the deformed configuration, only the dot is drawn, marking the
                 position the node was pulled to. A heat flux is drawn as a plus
-                or a minus, and a prescribed temperature keeps its marker.
+                or a minus, a convecting edge as tildes on its nodes, and a
+                prescribed temperature keeps its marker.
             color: Element fill color. Edges, markers and labels follow the foreground
                 of the style.
             alpha: Opacity of nodal contour plots.
@@ -235,7 +236,9 @@ class PlanarGeometry(FEM):
                 dots2d(ax, ends)
             else:
                 fixed = constraints
-                signs2d(ax, pos, neumann[:, 0])
+                robin = torch.zeros(self.n_nod, dtype=torch.bool)
+                robin[self._robin[3].cpu()] = True
+                signs2d(ax, pos, neumann[:, 0], robin)
             markers2d(ax, pos, fixed)
 
         # Material orientations

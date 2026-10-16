@@ -68,3 +68,12 @@ A `Shell` element is its own surface, so [`Shell.integrate_surface_load(...)`](s
         docstring_section_style: list
 
 An `Axisymmetric` model carries the revolution in every measure, so a body load is per unit volume of the revolved solid and an edge load is per unit area of the surface it sweeps. Both integrate to the load on the full circumference, not per radian.
+
+A thermal model also exchanges heat with its surroundings through a boundary surface or line, which `convection(...)` selects like a load but applies as a condition on the temperature.
+
+::: torchfem.base.Heat.convection
+    options:
+        show_root_heading: true
+        show_root_full_path: false
+        heading_level: 3
+        docstring_section_style: list

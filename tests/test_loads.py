@@ -1,7 +1,19 @@
+import math
+
 import pytest
 import torch
 
-from torchfem import Planar, Shell, ShellHeat, Solid, SolidHeat, Truss
+from torchfem import (
+    AxisymmetricHeat,
+    Planar,
+    PlanarHeat,
+    Shell,
+    ShellHeat,
+    Solid,
+    SolidHeat,
+    Truss,
+    TrussHeat,
+)
 from torchfem.elements import (
     Hexa1,
     Hexa2,
@@ -14,6 +26,7 @@ from torchfem.elements import (
     linear_to_quadratic,
 )
 from torchfem.materials import (
+    IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
     IsotropicElasticity1D,
@@ -359,3 +372,99 @@ class TestUnsupportedLoads:
         mask = torch.ones(model.n_nod, dtype=torch.bool)
         with pytest.raises(ValueError, match="no unique normal"):
             model.integrate_line_load(mask, torch.tensor(1.0))
+
+
+# Slab of conductivity KAPPA held at T0 on one side and cooled by convection on
+# the other, whose exact temperature at the cooled side is T_L
+KAPPA, H, T0, T_INF, LENGTH = 2.0, 3.0, 100.0, 20.0, 2.0
+T_L = (KAPPA * T0 + H * LENGTH * T_INF) / (KAPPA + H * LENGTH)
+
+
+def _solid_slab(gen=cube_hexa, quadratic: bool = False) -> SolidHeat:
+    nodes, elements = gen(5, 3, 3, LENGTH, 1.0, 1.0)
+    if quadratic:
+        nodes, elements = linear_to_quadratic(nodes, elements)
+    model = SolidHeat(nodes, elements, IsotropicConductivity3D(KAPPA))
+    model.constraints[nodes[:, 0] == 0.0] = True
+    model.temperatures[nodes[:, 0] == 0.0, 0] = T0
+    return model
+
+
+def _planar_slab(thickness: float) -> PlanarHeat:
+    nodes, elements = rect_quad(5, 3, LENGTH, 1.0)
+    model = PlanarHeat(nodes, elements, IsotropicConductivity2D(KAPPA), thickness)
+    model.constraints[nodes[:, 0] == 0.0] = True
+    model.temperatures[nodes[:, 0] == 0.0, 0] = T0
+    return model
+
+
+class TestConvection:
+    """Convection to ambient is a Robin condition on the boundary facets."""
+
+    @pytest.mark.parametrize(
+        "model, area",
+        [
+            (_solid_slab(cube_hexa), 1.0),
+            (_solid_slab(cube_tetra, quadratic=True), 1.0),
+            (_planar_slab(thickness=0.3), 0.3),
+        ],
+    )
+    def test_slab_matches_the_closed_form(self, model, area):
+        cooled = model.nodes[:, 0] == LENGTH
+        model.convection(cooled, H, T_INF)
+        T, f, _, _, _ = model.solve()
+        assert torch.allclose(T[cooled, 0], torch.full((int(cooled.sum()),), T_L))
+        # The heat entering at the hot side leaves through the cooled face
+        reaction = f[model.nodes[:, 0] == 0.0, 0].sum()
+        assert reaction.item() == pytest.approx(H * (T_L - T_INF) * area)
+
+    def test_cylinder_matches_the_closed_form(self):
+        """A revolved edge convects over the full circumference."""
+        a, b, height = 10.0, 20.0, 2.0
+        nodes, elements = linear_to_quadratic(*rect_quad(21, 3, b - a, height))
+        nodes[:, 0] += a
+        model = AxisymmetricHeat(nodes, elements, IsotropicConductivity2D(KAPPA))
+        model.constraints[nodes[:, 0] == a] = True
+        model.temperatures[nodes[:, 0] == a, 0] = T0
+        model.convection(nodes[:, 0] == b, H, T_INF)
+        T, _, _, _, _ = model.solve()
+        # T = c log(r) + d, with the flux at r = b balanced by the convection
+        c = -H * (T0 - T_INF) / (KAPPA / b + H * math.log(b / a))
+        exact = c * torch.log(nodes[:, 0] / a) + T0
+        assert torch.allclose(T[:, 0], exact, atol=1e-3 * (T0 - T_INF))
+
+    def test_interior_faces_do_not_convect(self):
+        model = _solid_slab()
+        model.convection(model.nodes[:, 0] == 1.0, H, T_INF)
+        T, _, _, _, _ = model.solve()
+        assert torch.allclose(T, torch.full_like(T, T0))
+
+    def test_surfaces_accumulate_over_calls(self):
+        model = _solid_slab()
+        split = _solid_slab()
+        top, bottom = model.nodes[:, 2] == 1.0, model.nodes[:, 2] == 0.0
+        model.convection(top | bottom, H, T_INF)
+        split.convection(top, H, T_INF)
+        split.convection(bottom, H, T_INF)
+        assert torch.allclose(model.solve()[0], split.solve()[0])
+
+    def test_a_truss_has_no_surface(self):
+        model = TrussHeat(
+            torch.tensor([[0.0, 0.0], [1.0, 0.0]]),
+            torch.tensor([[0, 1]]),
+            IsotropicConductivity1D(1.0),
+        )
+        with pytest.raises(NotImplementedError):
+            model.convection(torch.ones(2, dtype=torch.bool), H, T_INF)
+
+    def test_gradients_match_the_closed_form(self):
+        model = _solid_slab()
+        cooled = model.nodes[:, 0] == LENGTH
+        h = torch.tensor(H, requires_grad=True)
+        T_inf = torch.tensor(T_INF, requires_grad=True)
+        model.convection(cooled, h, T_inf)
+        T, _, _, _, _ = model.solve(differentiable_parameters=(h, T_inf))
+        dh, dT_inf = torch.autograd.grad(T[cooled].mean(), (h, T_inf))
+        denominator = (KAPPA + H * LENGTH) ** 2
+        assert dh.item() == pytest.approx(KAPPA * LENGTH * (T_INF - T0) / denominator)
+        assert dT_inf.item() == pytest.approx(H * LENGTH / (KAPPA + H * LENGTH))

@@ -5,7 +5,7 @@ from typing import cast
 
 import pyvista
 import torch
-from matplotlib import rcParams
+from matplotlib import patheffects, rcParams
 from matplotlib.axes import Axes
 from matplotlib.transforms import ScaledTranslation
 from torch import Tensor
@@ -255,12 +255,16 @@ def markers2d(ax: Axes, points: Tensor, fixed: Tensor):
         ax.plot(*drawn.T, marker, **_glyph(transform=ax.transData + shift))
 
 
-def signs2d(ax: Axes, points: Tensor, values: Tensor):
-    """Mark every nonzero value with its sign, as a heat source or a sink."""
-    for marker, drawn in [("+", values > 0.0), ("_", values < 0.0)]:
-        shown = points[drawn]
-        if shown.numel() == 0:
-            continue
-        # A line marker carries no fill, so it is drawn larger and heavier
-        style = _glyph(1.5 * MARKERSIZE, markeredgecolor="gray", markeredgewidth=2.0)
-        ax.plot(*shown.T, marker, **style)
+def signs2d(ax: Axes, points: Tensor, values: Tensor, robin: Tensor):
+    """Mark a nonzero value with its sign, as a source or a sink, and a node of a
+    Robin surface with a tilde."""
+    # A line marker carries no fill, so it is drawn larger and heavier, and
+    # outlined by a stroke beneath it like the filled glyphs
+    outline = patheffects.withStroke(linewidth=3.5, foreground=rcParams["text.color"])
+    style = _glyph(1.5 * MARKERSIZE, markeredgecolor="gray", markeredgewidth=2.0)
+    style["path_effects"] = [outline]
+    marks = [("+", values > 0.0), ("_", values < 0.0), ("$\\sim$", robin)]
+    for marker, drawn in marks:
+        # An empty line still reports the box of a marker at the figure origin
+        if drawn.any():
+            ax.plot(*points[drawn].T, marker=marker, linestyle="", **style)

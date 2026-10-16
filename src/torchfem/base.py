@@ -108,6 +108,18 @@ class FEM(ABC):
         )
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
 
+        # Robin conditions as the element of each facet, its matrix ∫ Nᵀ C N dA and
+        # its vector ∫ Nᵀ C u_inf dA in the degrees of freedom of that element, and
+        # the nodes of all facets
+        n = self.n_dof_per_node * self.etype.nodes
+        device = nodes.device
+        self._robin = (
+            torch.zeros(0, dtype=torch.long, device=device),
+            torch.zeros(0, n, n, device=device),
+            torch.zeros(0, n, device=device),
+            torch.zeros(0, dtype=torch.long, device=device),
+        )
+
         # Compute mapping from local to global indices
         idx = (self.n_dof_per_node * self.elements).unsqueeze(-1) + torch.arange(
             self.n_dof_per_node
@@ -380,7 +392,7 @@ class FEM(ABC):
             [n_elem, nodes_per_element]. They sum to the element volume or area.
         """
         N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
-        return torch.einsum("i,in,ie->en", self.etype.iweights, N, detJ)
+        return torch.einsum("i,in,ie->en", self.etype.iweights.to(detJ), N, detJ)
 
     def integrate_field(self, field: Tensor | None = None) -> Tensor:
         """Integrate a nodal scalar field over each element.
@@ -503,16 +515,19 @@ class FEM(ABC):
         f = torch.zeros(self.n_nod, contrib.shape[-1], device=self.nodes.device)
         return f.index_add_(0, conn.ravel(), contrib.flatten(0, 1))
 
-    def _boundary_facets(self, mask: Tensor) -> Tensor:
+    def _boundary_facets(self, mask: Tensor) -> tuple[Tensor, Tensor]:
         """Select boundary facets whose nodes all lie in a nodal mask.
 
         A facet is on the boundary if it belongs to exactly one element, so facets
-        inside the selection are dropped rather than loaded twice.
+        inside the selection are dropped rather than loaded twice. Returns their
+        connectivity and their rows in the facet table, where facet `i` of element
+        `e` is row `e * n_facets + i`.
         """
         device = self.elements.device
         table = self.etype.facets.to(device)
         facets = self.elements[:, table].reshape(-1, table.shape[1])
-        facets = facets[mask[facets].all(dim=1)]
+        rows = torch.nonzero(mask[facets].all(dim=1)).ravel()
+        facets = facets[rows]
         _, inv, count = torch.unique(
             facets.sort(dim=1).values, dim=0, return_inverse=True, return_counts=True
         )
@@ -521,22 +536,30 @@ class FEM(ABC):
         first.scatter_reduce_(
             0, inv, torch.arange(len(inv), device=device), reduce="amin"
         )
-        return facets[first[count == 1]]
+        kept = first[count == 1]
+        return facets[kept], rows[kept]
 
     def facet_measure(self, conn: Tensor, N: Tensor, detJ: Tensor) -> Tensor:
         """Measure of the facets per unit reference measure at the quadrature points."""
         return detJ
 
-    def _integrate_facet_load(
-        self, conn: Tensor, ftype: type[Element], load: Tensor
-    ) -> Tensor:
-        """Consistent nodal loads from a distributed load on the given facets."""
-        xi = ftype.ipoints
+    def _facet_jacobian(
+        self, conn: Tensor, ftype: type[Element]
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Shape functions, Jacobian and measure of facets at the quadrature points."""
+        xi = ftype.ipoints.to(self.nodes)
         N = ftype.N(xi)
         # The facet Jacobian is not square, so the measure is sqrt(det(J J^T))
         J = torch.einsum("iaN,eNj->ieaj", ftype.B(xi), self.nodes[conn])
         detJ = torch.sqrt(torch.linalg.det(J @ J.transpose(-1, -2)))
-        detJ = self.facet_measure(conn, N, detJ)
+        return N, J, self.facet_measure(conn, N, detJ)
+
+    def _integrate_facet_load(
+        self, conn: Tensor, ftype: type[Element], load: Tensor
+    ) -> Tensor:
+        """Consistent nodal loads from a distributed load on the given facets."""
+        N, J, detJ = self._facet_jacobian(conn, ftype)
+        load = load.to(detJ)
         if load.dim() == 0 and self.n_dof_per_node > 1:
             # A scalar is a pressure acting along the outward normal
             if J.shape[-2] == 2:  # face of a volume element or a shell element
@@ -547,9 +570,41 @@ class FEM(ABC):
         else:
             # A uniform load is broadcast to one value per facet
             per_facet = load if load.dim() == 2 else load.reshape(1, -1)
-            val = per_facet.expand(len(conn), -1).expand(len(xi), -1, -1)
-        contrib = torch.einsum("i,in,ie,iek->enk", ftype.iweights, N, detJ, val)
+            val = per_facet.expand(len(conn), -1).expand(len(N), -1, -1)
+        weights = ftype.iweights.to(detJ)
+        contrib = torch.einsum("i,in,ie,iek->enk", weights, N, detJ, val)
         return self._scatter(conn, contrib)
+
+    def _add_robin(self, mask: Tensor, coefficient: Tensor, ambient: Tensor):
+        """Add a Robin condition `flux = C (u - u_inf)` on boundary facets in a mask.
+
+        `coefficient` is `C` with shape [n_facet, d, d] and `ambient` is `u_inf` with
+        shape [n_facet, d] for `d` degrees of freedom per node, or broadcast to them.
+        """
+        if self.etype.iso_dim == 1:
+            raise NotImplementedError(f"{type(self).__name__} has no surfaces.")
+        device = self.nodes.device
+        ftype, table = self.etype.facet_type, self.etype.facets.to(device)
+        facets, rows = self._boundary_facets(mask)
+        elems, slots = rows // len(table), table[rows % len(table)]
+        N, _, detJ = self._facet_jacobian(facets, ftype)
+        w = ftype.iweights.to(detJ)[:, None] * detJ * self.volume_scale[elems]
+        d = self.n_dof_per_node
+        C = coefficient.to(detJ).expand(len(elems), d, d)
+        u_inf = ambient.to(detJ).expand(len(elems), d)
+        # Facet terms in the local degrees of freedom of the parent element
+        dofs = (d * slots[:, :, None] + torch.arange(d, device=device)).flatten(1)
+        at = torch.arange(len(elems), device=device)[:, None]
+        n = d * self.etype.nodes
+        k = torch.zeros(len(elems), n, n, device=device)
+        f = torch.zeros(len(elems), n, device=device)
+        k_facet = torch.einsum("ie,eab,in,im->enamb", w, C, N, N)
+        k[at[:, :, None], dofs[:, :, None], dofs[:, None, :]] = k_facet.flatten(
+            3, 4
+        ).flatten(1, 2)
+        f[at, dofs] = torch.einsum("ie,eab,eb,in->ena", w, C, u_inf, N).flatten(1)
+        new = (elems, k, f, facets.ravel())
+        self._robin = tuple(torch.cat(x) for x in zip(self._robin, new))
 
     def integrate_body_load(self, load: float | Tensor) -> Tensor:
         """Consistent nodal loads from a load per unit volume, e.g. gravity.
@@ -563,7 +618,7 @@ class FEM(ABC):
         Returns:
             Nodal loads with shape [n_nod, k], to be added to `forces` or `heat_flux`.
         """
-        load = torch.as_tensor(load, dtype=self.nodes.dtype)
+        load = torch.as_tensor(load, dtype=self.nodes.dtype, device=self.nodes.device)
         # A uniform load is broadcast to one value per element
         per_elem = load if load.dim() == 2 else load.reshape(1, -1)
         w = self.integrate_shape_functions() * self.volume_scale[:, None]
@@ -591,7 +646,7 @@ class FEM(ABC):
                 "integrate_line_load(...) or integrate_body_load(...) instead."
             )
         return self._integrate_facet_load(
-            self._boundary_facets(mask),
+            self._boundary_facets(mask)[0],
             self.etype.facet_type,
             torch.as_tensor(load, dtype=self.nodes.dtype),
         )
@@ -622,7 +677,7 @@ class FEM(ABC):
                 "Pass a load vector instead."
             )
         return self._integrate_facet_load(
-            self._boundary_facets(mask), self.etype.facet_type, load
+            self._boundary_facets(mask)[0], self.etype.facet_type, load
         )
 
     def _residual(
@@ -1201,6 +1256,22 @@ class Heat(FEM, ABC):
             raise TypeError("Temperatures must be a floating-point tensor.")
         self._dirichlet = value.to(self.nodes.device)
 
+    def convection(self, mask: Tensor, h: float | Tensor, T_inf: float | Tensor):
+        """Add convection to ambient, `q = h (T - T_inf)`, on a boundary surface.
+
+        The surface is selected like a surface or line load, and a planar edge
+        includes the thickness. Each call adds a surface, applied in full at every
+        increment.
+
+        Args:
+            mask: Boolean nodal mask with shape [n_nod] selecting the surface.
+            h: Heat transfer coefficient per unit area, a float or per facet.
+            T_inf: Ambient temperature, a float or per facet.
+        """
+        h = torch.as_tensor(h, dtype=self.nodes.dtype).reshape(-1, 1, 1)
+        T_inf = torch.as_tensor(T_inf, dtype=self.nodes.dtype).reshape(-1, 1)
+        self._add_robin(mask, h, T_inf)
+
     def integrate_material(
         self,
         u_prev: Tensor,
@@ -1280,6 +1351,14 @@ class Heat(FEM, ABC):
                 assert k is not None
                 BCB = torch.einsum("...ij,...iN,...jM->...NM", ddfddg, B[i], B[i])
                 k -= self.compute_k(detJ[i], BCB.reshape(-1, n_dof, n_dof)).mul_(w)
+
+        # Robin terms, linear in the temperature of their parent elements
+        elems, k_r, f_r, _ = self._robin
+        if len(elems):
+            T = u_prev.reshape(-1, 1)[self.elements[elems]] + du[elems]
+            f.index_add_(0, elems, torch.einsum("enm,em->en", k_r, T.flatten(1)) - f_r)
+            if k is not None:
+                k.index_add_(0, elems, k_r)
 
         return (
             k,

@@ -389,6 +389,31 @@ def test_coupling_ties_two_conducting_meshes():
     assert torch.equal(T[1][n_b[:, 2] == 1.0], T[0][n_a[:, 2] == 1.0])
 
 
+def test_coupling_carries_convection_of_a_tied_mesh():
+    """Convection on one part cools the whole tied assembly."""
+    nodes = torch.tensor(
+        [[x, y, z] for z in (0.0, 1.0, 2.0) for y in (0.0, 1.0) for x in (0.0, 1.0)]
+    )
+    elements = torch.tensor([[0, 1, 3, 2, 4, 5, 7, 6], [4, 5, 7, 6, 8, 9, 11, 10]])
+    reference = SolidHeat(nodes, elements, IsotropicConductivity3D(1.0))
+    reference.constraints[nodes[:, 2] == 0.0] = True
+    reference.temperatures[nodes[:, 2] == 0.0, 0] = 100.0
+    reference.convection(nodes[:, 2] == 2.0, 3.0, 20.0)
+    T_ref = reference.solve()[0]
+
+    a, b = _bar(0.0, 1.0), _bar(1.0, 2.0)
+    n_a, n_b = a.nodes, b.nodes
+    a.constraints[n_a[:, 2] == 0.0] = True
+    a.temperatures[n_a[:, 2] == 0.0, 0] = 100.0
+    b.convection(n_b[:, 2] == 2.0, 3.0, 20.0)
+    assembly = Assembly([a, b])
+    assembly.coupling(b, n_b[:, 2] == 1.0, a, n_a[:, 2] == 1.0)
+    T, _, _, _, _ = assembly.solve()
+
+    assert torch.allclose(T[0], T_ref[:8])
+    assert torch.allclose(T[1], T_ref[4:])
+
+
 def test_a_thermal_point_holds_a_surface_isothermal():
     """A heat source at the point spreads over the whole coupled surface."""
     nodes, elements = cube_hexa(4, 4, 4)
