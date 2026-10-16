@@ -58,10 +58,6 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Damage in a plate with hole](images/examples/basic/planar/damage.png)](examples/basic/planar/damage.html)
 
--   **Fillet**
-
-    [![Fillet](images/examples/basic/planar/fillet.png)](examples/basic/planar/fillet.html)
-
 -   **Finite strain**
 
     [![Finite strain](images/examples/basic/planar/finite_strain.png)](examples/basic/planar/finite_strain.html)
@@ -77,10 +73,6 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 -   **Modal analysis**
 
     [![Modal analysis](images/examples/basic/planar/modal.png)](examples/basic/planar/modal.html)
-
--   **Patch tests**
-
-    [![Patch tests](images/examples/basic/planar/test_problems.png)](examples/basic/planar/test_problems.html)
 
 -   **Static heat conduction**
 
@@ -176,13 +168,9 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Plate damage](images/examples/basic/solid/plate_damage.png)](examples/basic/solid/plate_damage.html)
 
--   **Large compression**
+-   **Large stretch and compression**
 
-    [![Large compression](images/examples/basic/solid/large_compression.png)](examples/basic/solid/large_compression.html)
-
--   **Large stretch**
-
-    [![Large stretch](images/examples/basic/solid/large_stretch.png)](examples/basic/solid/large_stretch.html)
+    [![Large stretch and compression](images/examples/basic/solid/large_stretch.png)](examples/basic/solid/large_stretch.html)
 
 -   **Rubber stretch**
 
@@ -195,10 +183,6 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 -   **Modal analysis**
 
     [![Modal analysis](images/examples/basic/solid/modal.png)](examples/basic/solid/modal.html)
-
--   **Static heat conduction**
-
-    [![Static heat conduction](images/examples/basic/solid/thermal_static.png)](examples/basic/solid/thermal_static.html)
 
 -   **Transient heat conduction**
 
