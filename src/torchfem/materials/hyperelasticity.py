@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 import torch
 from torch import Tensor
-from torch.func import jacrev, vmap
+from torch.func import grad, jacrev, vmap
 
 from .base import MechanicsMaterial
 
@@ -122,10 +122,12 @@ class Hyperelastic3D(MechanicsMaterial):
         with torch.enable_grad():
             # Compute deformation gradient.
             F_new = F + H_inc
-            # Compute first Piola-Kirchhoff stress tensor.
-            P_new = vmap(jacrev(self.psi))(F_new, self.params)
-            # Compute algorithmic tangent stiffness.
-            ddsdde = vmap(jacrev(jacrev(self.psi)))(F_new, self.params)
+            # Compute first Piola-Kirchhoff stress tensor and algorithmic tangent
+            # stiffness in one pass, which differentiates and returns the stress.
+            P = grad(self.psi)
+            ddsdde, P_new = vmap(jacrev(lambda F, p: (P(F, p),) * 2, has_aux=True))(
+                F_new, self.params
+            )
 
         # Hyperelastic materials have no internal state update.
         state_new = state
