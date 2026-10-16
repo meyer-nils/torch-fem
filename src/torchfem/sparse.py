@@ -204,6 +204,7 @@ def _multigrid(A: Tensor, B: Tensor | None) -> Callable[[Tensor], Tensor]:
         B_np,
         strength=None,  # type: ignore[arg-type]
         smooth="jacobi",
+        improve_candidates=None,
         max_coarse=max_coarse,
     )
     levels = []
