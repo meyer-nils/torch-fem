@@ -236,7 +236,7 @@ class PlanarGeometry(FEM):
                 dots2d(ax, ends)
             else:
                 fixed = constraints
-                robin = torch.zeros(self.n_nod, dtype=torch.bool)
+                robin = torch.zeros(self.n_nod, dtype=torch.bool, device="cpu")
                 robin[self._robin[3].cpu()] = True
                 signs2d(ax, pos, neumann[:, 0], robin)
             markers2d(ax, pos, fixed)
