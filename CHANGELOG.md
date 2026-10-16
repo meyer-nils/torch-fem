@@ -9,6 +9,7 @@
 ### Changed
 - **Breaking:** A `Shell` integrates its material as a `Laminate` of one layer, so every shell carries a `section` and `shell.material` is `None`. The section rotates its `materials` by their `angles` and derives its stations, transverse shear stiffness and mass from its `thicknesses` whenever they are read, so a layer's material, angle or thickness is reassigned at `shell.section` and may carry a gradient, where an orientation optimization assigned `shell.material`. `Shell.thickness` is the total of the section, and `Shell.offset` can be reassigned as well. The transverse shear stiffness follows a reassigned thickness, where it kept the value at construction.
 - `sparse_solve(...)` returns the iteration count of an iterative solve as a fourth value, and the verbose table reports the Krylov iterations of each increment beside the Newton ones.
+- An AMG-preconditioned solve on CUDA stops coarsening at a level of about 1000 to 2500 unknowns, which the dense coarse solve takes, and needs about a quarter fewer iterations than with AmgX's default coarsest level of 128.
 - The verbose table is drawn with arrows and rules where the console can encode them, and in ASCII otherwise.
 - A verbose solve prints each row of its progress table once the increment completes, where a notebook redrew the table in place with the running residual.
 - A geometry lists its `element_types`, from which `FEM` derives `etype`, `char_lengths` and its `repr`, so none of them is abstract any more.
@@ -16,6 +17,7 @@
 - A local Newton loop of a material that does not converge, and a `Shell` mirrored about a plane whose nodes are not constrained for it, raise a warning where they printed.
 
 ### Fixed
+- An AMG-preconditioned solve on CUDA aggregates a mesh with a hole algebraically, where AmgX's geometric selector left empty cells on its coarsest grid that the coarse solve could not factorise.
 - A `Truss` of three-node bars assembles, where its Jacobian carried one integration point and the second raised an index error.
 - `Planar` and `Shell` accept an integer thickness, which `Shell.plot(...)` could not index.
 - `HyperelasticPlaneStress` stores the out-of-plane stretch that produced the stress it returns, where it stored the stretch one Newton step past it.

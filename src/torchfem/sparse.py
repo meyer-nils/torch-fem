@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -153,6 +154,20 @@ def _nodal(B: Tensor | None, n: int) -> tuple[int, tuple[Any, ...] | None]:
     elif B.shape[1] == 6:  # three of each
         cols = B[base + 1, 5], B[base + 2, 3], B[base, 4]
     else:
+        return block_size, None
+    # `GEO` bins the bounding box into 2^(⌈log₂ ∛n⌉ - 1) cells per axis, with
+    # ⌊log₂ √n⌋ in 2D, halves the grid per level and keeps every cell, so a cell
+    # left empty on the coarsest grid is a zero row where that level is
+    # factorised exactly. Coarsening stops at `dense_lu_num_rows` unknowns per
+    # block row, 512 in `amgx._DEFAULT_CONFIG`, so that grid is 8x8x8 or 16x16.
+    dim = len(cols)
+    rounded = math.ceil if dim == 3 else math.floor
+    finest = 2 ** (rounded(math.log2(len(base)) / dim) - 1)
+    cells = min(finest, 8 if dim == 3 else 16)
+    xyz = torch.stack(cols, dim=1)
+    lo, hi = xyz.min(dim=0).values, xyz.max(dim=0).values
+    bins = ((xyz - lo) / (1.01 * (hi - lo)) * cells).long()
+    if len(torch.unique(bins, dim=0)) < cells**dim:
         return block_size, None
     return block_size, tuple(
         np.ascontiguousarray(c.detach().cpu().numpy()) for c in cols

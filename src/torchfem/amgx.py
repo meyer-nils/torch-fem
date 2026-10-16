@@ -26,9 +26,10 @@ implicitly, and passing nodal coordinates to `AMGX_matrix_attach_geometry` lets
 the `GEO` selector aggregate geometrically, which is where the rotational modes
 hide. `GEO` needs one coordinate per block row, so a shell, whose node spans
 two blocks, keeps the algebraic `SIZE_8` selector, as does a scalar problem that
-has no coordinates to read. AmgX reads the problem dimension from whether a
-third coordinate is attached, so a planar model attaches two rather than a flat
-z, which it would call degenerate.
+has no coordinates to read and a mesh with a hole, which `_nodal` explains.
+AmgX reads the problem dimension from whether a third coordinate is attached,
+so a planar model attaches two rather than a flat z, which it would call
+degenerate.
 
 `resolve_preconditioner` prefers AMG for iterative solves on CUDA once AmgX is
 installed, and `resolve_library` then routes the whole solve here. Aggregation
@@ -62,7 +63,10 @@ _AMGX_SOLVE_STATUS_NAMES = {1: "FAILED", 2: "DIVERGED", 3: "NOT_CONVERGED"}
 # coarse solve. SIZE_8 shortens the hierarchy by
 # more than the iterations it costs. The smoother has to be symmetric, because
 # PCG preconditions with the whole cycle, and damped enough to hold a
-# hyperelastic tangent as the deformation grows. `solver` and `tolerance` are
+# hyperelastic tangent as the deformation grows. Coarsening stops at the last
+# level with `dense_lu_num_rows` unknowns per block row, which leaves about
+# 1000 to 2500 unknowns to the dense solve and saves a quarter of the
+# iterations over AmgX's default of 128. `solver` and `tolerance` are
 # overwritten per solve with the Krylov method and `stol`.
 _DEFAULT_CONFIG: dict[str, Any] = {
     "config_version": 2,
@@ -84,7 +88,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
             "cycle": "V",
             "max_iters": 1,
             "coarse_solver": "DENSE_LU_SOLVER",
-            "min_coarse_rows": 16,
+            "dense_lu_num_rows": 512,
             "max_levels": 50,
         },
     },

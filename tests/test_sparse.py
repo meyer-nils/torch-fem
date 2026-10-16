@@ -429,6 +429,24 @@ class TestNodal:
         model = self._model(kind)
         assert _nodal(model.near_null_space(), model.n_dofs)[1] is None
 
+    @pytest.mark.parametrize("file", ["plate_hole.vtk", "quarter_plate_hole_3d.vtu"])
+    def test_a_mesh_with_a_hole_keeps_the_algebraic_selector(self, file):
+        """AmgX's geometric selector keeps every cell of its grid, and a hole
+        leaves some empty, which its coarse solve cannot factorise."""
+        from torchfem.data import get_data
+        from torchfem.io import import_mesh
+        from torchfem.materials import (
+            IsotropicElasticity3D,
+            IsotropicElasticityPlaneStress,
+        )
+
+        planar = file.endswith(".vtk")
+        mat = (IsotropicElasticityPlaneStress if planar else IsotropicElasticity3D)(
+            1e3, 0.3
+        )
+        model = import_mesh(get_data(file), mat)
+        assert _nodal(model.near_null_space(), model.n_dofs)[1] is None
+
     def test_rows_in_no_nodal_stride_are_not_blocked(self):
         """An assembly eliminates constrained rows, leaving no uniform blocking."""
         B = torch.zeros(17, 6)
