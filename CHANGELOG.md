@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `Assembly.conductance(...)` exchanges heat between the surfaces of two parts through a contact conductance `q = h (T_secondary - T_primary)`, pairing the congruent nodes of the interface like `coupling(...)`. A `ReferencePointHeat` held at a temperature serves as the ambient of a convection.
 - `convection(mask, h, T_inf)` adds convection to ambient, `q = h (T - T_inf)`, on a surface of a thermal model. It holds in `solve(...)`, `time_integration(...)` and an `Assembly`, and `h` and `T_inf` may carry gradients.
 
 ### Changed

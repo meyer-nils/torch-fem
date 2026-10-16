@@ -120,7 +120,8 @@ class Assembly:
     follow `u_secondary = u_primary + theta_primary x (x_secondary - x_primary)`
     and rotations follow `theta_secondary = theta_primary`. A primary without
     rotations leaves a pure translation link, which joins a coincident mechanical
-    interface and holds two thermal meshes at one temperature.
+    interface and holds two thermal meshes at one temperature. Thermal parts in
+    imperfect contact exchange heat through `conductance(...)` instead.
 
     Constraints are enforced by eliminating the secondary degrees of freedom, so
     the solved system stays symmetric and positive definite and needs no penalty
@@ -170,11 +171,36 @@ class Assembly:
         self._rows: list[tuple[Tensor, Tensor, Tensor]] = [
             (EMPTY, EMPTY, torch.empty(0))
         ]
+        # Interface exchange `H u` as (row, col, value) entries of `H`, seeded empty
+        self._exchange: list[tuple[Tensor, Tensor, Tensor]] = [
+            (EMPTY, EMPTY, torch.empty(0))
+        ]
         # The two ends of each coupling as (part, nodes), kept for `plot(...)`
         self._links: list[tuple[tuple[Part, Tensor], tuple[Part, Tensor]]] = []
 
     def __repr__(self) -> str:
         return f"<torch-fem assembly ({len(self.parts)} parts, {self.n_dofs} dofs)>"
+
+    def _pair(
+        self,
+        secondary: Part,
+        mask: Tensor,
+        primary: Part,
+        primary_mask: Tensor | None,
+    ) -> tuple[Tensor, Tensor]:
+        """Pair each masked node of a part with the closest node of another part."""
+        if id(secondary) not in self._at or id(primary) not in self._at:
+            raise ValueError("Both parts must belong to this assembly.")
+        secondary_nodes = torch.nonzero(mask).ravel()
+        if primary_mask is None:
+            primary_nodes = torch.arange(primary.n_nod)
+        else:
+            primary_nodes = torch.nonzero(primary_mask).ravel()
+        x_secondary = secondary.nodes[secondary_nodes]
+        distance = torch.cdist(x_secondary, primary.nodes[primary_nodes])
+        primary_nodes = primary_nodes[distance.argmin(dim=1)]
+        self._links.append(((secondary, secondary_nodes), (primary, primary_nodes)))
+        return secondary_nodes, primary_nodes
 
     def coupling(
         self,
@@ -204,9 +230,6 @@ class Assembly:
                 its degrees of freedom per node. Defaults to all of them, so
                 `dofs=[2]` couples only the displacement along z.
         """
-        if id(secondary) not in self._at or id(primary) not in self._at:
-            raise ValueError("Both parts must belong to this assembly.")
-
         n_sec = secondary.n_dof_per_node
         n_pri = primary.n_dof_per_node
         dofs = list(range(n_sec)) if dofs is None else list(dofs)
@@ -217,22 +240,14 @@ class Assembly:
                 "Rotational DOFs cannot be coupled to a primary part that has none."
             )
 
-        # Pair each secondary node with the closest primary node
-        secondary_nodes = torch.nonzero(mask).ravel()
-        if primary_mask is None:
-            primary_nodes = torch.arange(primary.n_nod)
-        else:
-            primary_nodes = torch.nonzero(primary_mask).ravel()
-        x_secondary = secondary.nodes[secondary_nodes]
-        distance = torch.cdist(x_secondary, primary.nodes[primary_nodes])
-        primary_nodes = primary_nodes[distance.argmin(dim=1)]
-
-        self._links.append(((secondary, secondary_nodes), (primary, primary_nodes)))
-
+        secondary_nodes, primary_nodes = self._pair(
+            secondary, mask, primary, primary_mask
+        )
         secondary_base = self._at[id(secondary)] + secondary_nodes * n_sec
         primary_base = self._at[id(primary)] + primary_nodes * n_pri
         ones = torch.ones(len(secondary_nodes))
 
+        x_secondary = secondary.nodes[secondary_nodes]
         r = skew(x_secondary - primary.nodes[primary_nodes], self.dim)
         axes = (0, 1, 2) if self.dim == 3 else (2,)
 
@@ -243,6 +258,62 @@ class Assembly:
                 for b, axis in enumerate(axes):
                     rot = primary_base + self.dim + b
                     self._rows.append((secondary_base + dof, rot, r[:, dof, axis]))
+
+    def conductance(
+        self,
+        secondary: Part,
+        mask: Tensor,
+        primary: Part,
+        h: float | Tensor,
+        primary_mask: Tensor | None = None,
+    ):
+        """Exchange heat between two parts, `q = h (T_secondary - T_primary)`.
+
+        The interface meshes must be congruent: each secondary node pairs with
+        the primary node it sits on, and the exchange is integrated over the
+        boundary facets of the secondary surface. A `ReferencePointHeat` held at
+        a temperature is an ambient, so `convection(...)` is the case of a fixed
+        primary.
+
+        Args:
+            secondary: Part whose surface carries the exchange.
+            mask: Boolean nodal mask with shape [n_nod] selecting that surface.
+            primary: Part on the other side of the interface.
+            h: Contact conductance per unit area, a float or per facet.
+            primary_mask: Boolean nodal mask selecting the candidate nodes of
+                `primary`. Defaults to all of them.
+        """
+        if not isinstance(secondary, FEM):
+            raise ValueError("The secondary part must carry a mesh.")
+        d, n_pri = secondary.n_dof_per_node, primary.n_dof_per_node
+        secondary_nodes, primary_nodes = self._pair(
+            secondary, mask, primary, primary_mask
+        )
+        # The transfer is node to node, so a node off its partner misdirects its share
+        if isinstance(primary, FEM):
+            gap = secondary.nodes[secondary_nodes] - primary.nodes[primary_nodes]
+            tol = 1e-6 * secondary.char_lengths.min()
+            if (torch.linalg.norm(gap, dim=1) > tol).any():
+                raise ValueError(
+                    "A conductance needs congruent interface meshes. Mesh both "
+                    "parts with coincident nodes on the interface."
+                )
+        C = torch.as_tensor(h, dtype=secondary.nodes.dtype).reshape(-1, 1, 1)
+        facets, _, k, _ = secondary._facet_terms(mask, C * torch.eye(d), torch.zeros(d))
+
+        # Global DOFs of the facet nodes and of the primary nodes they pair with
+        pair = torch.zeros(secondary.n_nod, dtype=torch.long)
+        pair[secondary_nodes] = primary_nodes
+        dof = torch.arange(d)
+        s = (self._at[id(secondary)] + d * facets[..., None] + dof).flatten(1)
+        p = (self._at[id(primary)] + n_pri * pair[facets][..., None] + dof).flatten(1)
+
+        # H = Bᵀ M B with B = [I, -P], i.e. four signed copies of each facet matrix
+        m = s.shape[1]
+        rows = torch.stack([s, s, p, p])[..., :, None].expand(-1, -1, -1, m)
+        cols = torch.stack([s, p, s, p])[..., None, :].expand(-1, -1, m, -1)
+        sign = torch.tensor([1.0, -1.0, -1.0, 1.0])[:, None, None, None]
+        self._exchange.append((rows.ravel(), cols.ravel(), (sign * k).ravel()))
 
     def _build_T(self) -> tuple[Tensor, Tensor]:
         """Build the map from retained to all degrees of freedom.
@@ -284,16 +355,16 @@ class Assembly:
             return T.to_sparse_csr(), retained
 
     def _assembler(
-        self, T: Tensor
+        self, T: Tensor, exchange: tuple[Tensor, Tensor, Tensor]
     ) -> Callable[[list[tuple[int, Tensor]], Tensor], Tensor]:
-        """Return the function that assembles `T^T K T` from the part tangents.
+        """Return the function that assembles `T^T (K + H) T` from the part tangents.
 
         `(T^T K T)[a, b]` sums `T[i, a] K[i, j] T[j, b]`, so every entry of `K`
         spreads over the entries `T` holds in its row and its column. `T` and the
         part sparsities hold over a solve, so where each product lands is worked
         out once here and each tangent is then one `index_add_`. Multiplying it
         out instead would need a sparse-sparse product, which a CPU build offers
-        only with MKL.
+        only with MKL. The constant interface exchange `H` joins as entries.
         """
         n = T.shape[1]
         parts = [
@@ -301,14 +372,17 @@ class Assembly:
             for offset, part in zip(self.offsets, self.parts)
             if isinstance(part, FEM)
         ]
-        # (row, col) of the block diagonal, in the order the values concatenate
+        # (row, col) of the block diagonal and of `H`, in the order the values
+        # concatenate
+        h_row, h_col, h_val = exchange
         k_row = torch.cat(
             [
                 torch.repeat_interleave(torch.arange(p.n_dofs), p.crow.diff()) + offset
                 for offset, p in parts
             ]
+            + [h_row]
         )
-        k_col = torch.cat([p.col.long() + offset for offset, p in parts])
+        k_col = torch.cat([p.col.long() + offset for offset, p in parts] + [h_col])
 
         # `T` is compressed by row, so its offsets already say where the entries
         # of each row sit and how many there are.
@@ -347,7 +421,7 @@ class Assembly:
 
         def assemble_matrix(blocks: list[tuple[int, Tensor]], con: Tensor) -> Tensor:
             """Assemble the part tangents onto the retained DOFs and constrain."""
-            values = torch.cat([K.values() for _, K in blocks])
+            values = torch.cat([K.values() for _, K in blocks] + [h_val])
             val = torch.zeros(col.numel())
             val.index_add_(0, slot, coefficient * values[source])
 
@@ -442,7 +516,12 @@ class Assembly:
 
         T, retained = self._build_T()
         Tt = T.transpose(0, 1)
-        assemble_matrix = self._assembler(T)
+        rows, cols, vals = (torch.cat(x) for x in zip(*self._exchange))
+        assemble_matrix = self._assembler(T, (rows, cols, vals))
+
+        def exchange(u: Tensor) -> Tensor:
+            """The flux `H u` the interfaces exchange at the field `u`."""
+            return torch.zeros(self.n_dofs).index_add_(0, rows, vals * u[cols])
 
         # Global boundary conditions, gathered from the parts in DOF order
         neumann = torch.cat([part._neumann.ravel() for part in self.parts])
@@ -491,8 +570,9 @@ class Assembly:
         def integrate(prev, du, step, iteration, tangent=True):
             """Integrate every part over the global increment `du`.
 
-            Returns the part tangent blocks, the global internal force, and the
-            new gradient, flux and state as one list per quantity.
+            Returns the part tangent blocks, the global internal force including
+            the interface exchange, and the new gradient, flux and state as one
+            list per quantity.
             """
             u_p, grad_p, flux_p, state_p = (
                 _split(value, shape) for value, shape in zip(prev, shapes)
@@ -520,7 +600,8 @@ class Assembly:
                 blocks.append((offset, part.K))
                 F_int.append(part.assemble_rhs(f_e))
                 updated.append(tuple(new))
-            return blocks, torch.cat(F_int), list(zip(*updated))
+            F_int = torch.cat(F_int) + exchange(prev[0] + du)
+            return blocks, F_int, list(zip(*updated))
 
         def residual(F_ext, DU, step, dq, iteration, prev):
             """Residual and tangent of one Newton iteration under these loads.

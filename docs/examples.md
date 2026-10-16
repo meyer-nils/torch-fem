@@ -218,6 +218,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Bending a plate with a reference point](images/examples/basic/assembly/planar_rp.png)](examples/basic/assembly/planar_rp.html)
 
+-   **Two solids in thermal contact**
+
+    [![Two solids in thermal contact](images/examples/basic/assembly/conductance.png)](examples/basic/assembly/conductance.html)
+
 </div>
 
 ## Optimization examples

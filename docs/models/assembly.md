@@ -9,6 +9,7 @@
         members:
             - __init__
             - coupling
+            - conductance
             - solve
             - plot
 

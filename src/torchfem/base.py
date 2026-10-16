@@ -575,34 +575,44 @@ class FEM(ABC):
         contrib = torch.einsum("i,in,ie,iek->enk", weights, N, detJ, val)
         return self._scatter(conn, contrib)
 
-    def _add_robin(self, mask: Tensor, coefficient: Tensor, ambient: Tensor):
-        """Add a Robin condition `flux = C (u - u_inf)` on boundary facets in a mask.
+    def _facet_terms(
+        self, mask: Tensor, coefficient: Tensor, ambient: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Facet matrices ∫ Nᵀ C N dA and vectors ∫ Nᵀ C u_inf dA on a boundary.
 
         `coefficient` is `C` with shape [n_facet, d, d] and `ambient` is `u_inf` with
         shape [n_facet, d] for `d` degrees of freedom per node, or broadcast to them.
+        Returns the facets, their rows in the facet table, and the terms in the
+        degrees of freedom of the facet nodes.
         """
         if self.etype.iso_dim == 1:
             raise NotImplementedError(f"{type(self).__name__} has no surfaces.")
-        device = self.nodes.device
-        ftype, table = self.etype.facet_type, self.etype.facets.to(device)
+        ftype = self.etype.facet_type
         facets, rows = self._boundary_facets(mask)
-        elems, slots = rows // len(table), table[rows % len(table)]
         N, _, detJ = self._facet_jacobian(facets, ftype)
+        elems = rows // len(self.etype.facets)
         w = ftype.iweights.to(detJ)[:, None] * detJ * self.volume_scale[elems]
         d = self.n_dof_per_node
         C = coefficient.to(detJ).expand(len(elems), d, d)
         u_inf = ambient.to(detJ).expand(len(elems), d)
+        k = torch.einsum("ie,eab,in,im->enamb", w, C, N, N).flatten(3, 4).flatten(1, 2)
+        f = torch.einsum("ie,eab,eb,in->ena", w, C, u_inf, N).flatten(1)
+        return facets, rows, k, f
+
+    def _add_robin(self, mask: Tensor, coefficient: Tensor, ambient: Tensor):
+        """Add a Robin condition `flux = C (u - u_inf)` on boundary facets in a mask."""
+        facets, rows, k_facet, f_facet = self._facet_terms(mask, coefficient, ambient)
         # Facet terms in the local degrees of freedom of the parent element
+        device = self.nodes.device
+        d, table = self.n_dof_per_node, self.etype.facets.to(device)
+        elems, slots = rows // len(table), table[rows % len(table)]
         dofs = (d * slots[:, :, None] + torch.arange(d, device=device)).flatten(1)
         at = torch.arange(len(elems), device=device)[:, None]
         n = d * self.etype.nodes
         k = torch.zeros(len(elems), n, n, device=device)
         f = torch.zeros(len(elems), n, device=device)
-        k_facet = torch.einsum("ie,eab,in,im->enamb", w, C, N, N)
-        k[at[:, :, None], dofs[:, :, None], dofs[:, None, :]] = k_facet.flatten(
-            3, 4
-        ).flatten(1, 2)
-        f[at, dofs] = torch.einsum("ie,eab,eb,in->ena", w, C, u_inf, N).flatten(1)
+        k[at[:, :, None], dofs[:, :, None], dofs[:, None, :]] = k_facet
+        f[at, dofs] = f_facet
         new = (elems, k, f, facets.ravel())
         self._robin = tuple(torch.cat(x) for x in zip(self._robin, new))
 

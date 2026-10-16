@@ -414,6 +414,94 @@ def test_coupling_carries_convection_of_a_tied_mesh():
     assert torch.allclose(T[1], T_ref[4:])
 
 
+# Two unit bars of unit conductivity in series, held at T0 below and heated by a
+# unit flux on top, with a contact conductance H_C between them
+T0, H_C = 100.0, 4.0
+
+
+def _stacked_bars(refined: bool = False) -> tuple[SolidHeat, SolidHeat]:
+    a = _bar(0.0, 1.0)
+    a.constraints[a.nodes[:, 2] == 0.0] = True
+    a.temperatures[a.nodes[:, 2] == 0.0, 0] = T0
+    if refined:
+        nodes, elements = cube_hexa(3, 3, 2, 1.0, 1.0, 1.0)
+        b = SolidHeat(nodes + torch.tensor([0.0, 0.0, 1.0]), elements, a.material)
+    else:
+        b = _bar(1.0, 2.0)
+    b.heat_flux = b.integrate_surface_load(b.nodes[:, 2] == 2.0, 1.0)
+    return a, b
+
+
+def test_conductance_matches_the_series_resistance():
+    """The temperature jumps by q / h at the interface of congruent meshes."""
+    a, b = _stacked_bars()
+    assembly = Assembly([a, b])
+    assembly.conductance(b, b.nodes[:, 2] == 1.0, a, H_C, a.nodes[:, 2] == 1.0)
+    T, q, _, _, _ = assembly.solve()
+
+    jump = T[1][b.nodes[:, 2] == 1.0] - T[0][a.nodes[:, 2] == 1.0]
+    assert torch.allclose(jump, torch.full_like(jump, 1.0 / H_C))
+    top = T[1][b.nodes[:, 2] == 2.0]
+    assert torch.allclose(top, torch.full_like(top, T0 + 2.0 + 1.0 / H_C))
+    assert q[0][a.nodes[:, 2] == 0.0].sum().item() == pytest.approx(-1.0)
+
+
+def test_a_conductance_needs_congruent_interface_meshes():
+    a, b = _stacked_bars(refined=True)
+    assembly = Assembly([a, b])
+    with pytest.raises(ValueError, match="congruent"):
+        assembly.conductance(b, b.nodes[:, 2] == 1.0, a, H_C, a.nodes[:, 2] == 1.0)
+
+
+def test_conductance_to_a_fixed_point_is_convection():
+    nodes, elements = cube_hexa(3, 3, 3)
+    top = nodes[:, 2] == 1.0
+    alone = SolidHeat(nodes, elements, IsotropicConductivity3D(1.0))
+    alone.constraints[nodes[:, 2] == 0.0] = True
+    alone.temperatures[nodes[:, 2] == 0.0, 0] = T0
+    alone.convection(top, H_C, 20.0)
+
+    solid = SolidHeat(nodes, elements, IsotropicConductivity3D(1.0))
+    solid.constraints[nodes[:, 2] == 0.0] = True
+    solid.temperatures[nodes[:, 2] == 0.0, 0] = T0
+    ambient = ReferencePointHeat([0.5, 0.5, 2.0])
+    ambient.constraints[:] = True
+    ambient.temperatures[:] = 20.0
+    assembly = Assembly([solid, ambient])
+    assembly.conductance(solid, top, ambient, H_C)
+
+    assert torch.allclose(assembly.solve()[0][0], alone.solve()[0])
+
+
+def test_a_large_conductance_approaches_the_tie():
+    a, b = _stacked_bars()
+    tied = Assembly([a, b])
+    tied.coupling(b, b.nodes[:, 2] == 1.0, a, a.nodes[:, 2] == 1.0)
+    conducting = Assembly([a, b])
+    conducting.conductance(b, b.nodes[:, 2] == 1.0, a, 1e8, a.nodes[:, 2] == 1.0)
+    T_tied, T = tied.solve()[0], conducting.solve()[0]
+    assert torch.allclose(T[0], T_tied[0], atol=1e-6)
+    assert torch.allclose(T[1], T_tied[1], atol=1e-6)
+
+
+def test_conductance_gradient_matches_the_closed_form():
+    a, b = _stacked_bars()
+    h = torch.tensor(H_C, requires_grad=True)
+    assembly = Assembly([a, b])
+    assembly.conductance(b, b.nodes[:, 2] == 1.0, a, h, a.nodes[:, 2] == 1.0)
+    T, _, _, _, _ = assembly.solve(differentiable_parameters=h)
+    gradient = torch.autograd.grad(T[1][b.nodes[:, 2] == 2.0].mean(), h)[0]
+    assert gradient.item() == pytest.approx(-1.0 / H_C**2)
+
+
+def test_a_point_cannot_carry_a_conductance():
+    solid = SolidHeat(*cube_hexa(2, 2, 2), IsotropicConductivity3D(1.0))
+    point = ReferencePointHeat([0.5, 0.5, 2.0])
+    assembly = Assembly([solid, point])
+    with pytest.raises(ValueError):
+        assembly.conductance(point, torch.ones(1, dtype=torch.bool), solid, H_C)
+
+
 def test_a_thermal_point_holds_a_surface_isothermal():
     """A heat source at the point spreads over the whole coupled surface."""
     nodes, elements = cube_hexa(4, 4, 4)
