@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.14.0 - October 17 2026
 
 ### Added
 - `Assembly.conductance(...)` exchanges heat between the surfaces of two parts through a contact conductance `q = h (T_secondary - T_primary)`, pairing the congruent nodes of the interface like `coupling(...)`. A `ReferencePointHeat` held at a temperature serves as the ambient of a convection.
