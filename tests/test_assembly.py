@@ -105,7 +105,7 @@ def test_coupling_couples_a_solid_to_a_shell():
     reference = Solid(nodes, elements, SOLID)
     reference.constraints[nodes[:, 0] == 0.0] = True
     reference.forces[nodes[:, 0] == L, 2] = P / (nodes[:, 0] == L).sum()
-    tip_ref = reference.solve()[0][nodes[:, 0] == L][:, 2].mean()
+    tip_ref = reference.solve()[0][nodes[:, 0] == L][:, 2].mean().item()
 
     n_s, e_s = _beam_solid(L / 2, 11)
     solid = Solid(n_s, e_s, SOLID)
