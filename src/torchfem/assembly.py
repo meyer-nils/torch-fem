@@ -603,17 +603,18 @@ class Assembly:
             F_int = torch.cat(F_int) + exchange(prev[0] + du)
             return blocks, F_int, list(zip(*updated))
 
-        def residual(F_ext, DU, step, dq, iteration, prev):
+        def residual(F_ext, DU, step, dq, iteration, prev, tangent=True):
             """Residual and tangent of one Newton iteration under these loads.
 
             The loads are bound to their increment with `partial(...)`, so the
-            adjoint backward replays that increment rather than the last.
+            adjoint backward replays that increment rather than the last, and
+            passes `tangent=False` to get the cached part tangents back.
             """
             # Enforce the Dirichlet increment on the retained DOFs
             dq = dq.clone()
             dq[con] = DU[con]
             du = _mv(T, dq)
-            blocks, F_int, _ = integrate(prev, du, step, iteration)
+            blocks, F_int, _ = integrate(prev, du, step, iteration, tangent)
             res = _mv(Tt, F_int - F_ext)
             res[con] = 0.0
             return res, assemble_matrix(blocks, con)

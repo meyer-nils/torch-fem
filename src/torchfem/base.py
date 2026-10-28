@@ -701,6 +701,7 @@ class FEM(ABC):
         du: Tensor,
         i: int,
         prev: tuple[Tensor, Tensor, Tensor, Tensor],
+        tangent: bool = True,
     ) -> tuple[Tensor, Tensor]:
         """Residual and tangent of one Newton iteration of a quasi-static solve.
 
@@ -708,13 +709,14 @@ class FEM(ABC):
         `partial(...)`, so the adjoint backward replays the substep they belong
         to rather than the last one a closure would have seen. `du`, `i` and
         `prev`, the state of the last converged substep, are what
-        `newton_solve(...)` supplies per iteration.
+        `newton_solve(...)` supplies per iteration. The adjoint backward passes
+        `tangent=False` and gets the cached `K` back.
         """
         # Enforce Dirichlet BCs on increment
         du = du.clone()
         du[con] = DU[con]
 
-        k, f_i, _, _, _ = self.integrate_material(*prev, du, de0, i)
+        k, f_i, _, _, _ = self.integrate_material(*prev, du, de0, i, tangent)
 
         # Viscous stabilization (k is None when self.K is reused as-is)
         if k_visc is not None:

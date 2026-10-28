@@ -581,8 +581,8 @@ class NewtonRaphsonAdjoint(Function):
     """Custom autograd function for nonlinear Newton-Raphson solves.
 
     The forward pass performs Newton iterations on the residual callback
-    `eval_residual(du, iter, (u_prev, grad_prev, flux_prev, state_prev)) ->
-    (residual, tangent)` and returns the converged increment `du`.
+    `eval_residual(du, iter, (u_prev, grad_prev, flux_prev, state_prev), tangent)
+    -> (residual, tangent)` and returns the converged increment `du`.
 
     In the backward pass, gradients are computed by an implicit adjoint
     relation at the converged state:
@@ -722,7 +722,9 @@ class NewtonRaphsonAdjoint(Function):
         du_local = du.detach().requires_grad_(True)
         prev_local = tuple(p.detach().requires_grad_(True) for p in prev)
         with torch.enable_grad(), torch.device(du_local.device):
-            residual, _ = ctx.eval_residual(du_local, ctx.converged_iter, prev_local)
+            residual, _ = ctx.eval_residual(
+                du_local, ctx.converged_iter, prev_local, tangent=False
+            )
 
         grads = torch.autograd.grad(
             residual,

@@ -4,6 +4,7 @@
 
 ### Changed
 - `solve(...)` raises if a tensor in `differentiable_parameters` is computed from another one, which silently counted their shared path twice.
+- The adjoint backward recomputes the residual without its tangent, which it never used, so the residual callbacks of `newton_solve(...)` take a `tangent` flag.
 
 ## Version 0.14.0 - October 17 2026
 
