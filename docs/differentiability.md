@@ -76,7 +76,7 @@ u, f, _, _, _ = model.solve(differentiable_parameters=(model.thickness, E))
 
 If no listed tensor requires a gradient, the results are detached and contribute no gradient at all.
 
-A tensor computed from the actual design variables, such as a modulus field `E = net(x)` predicted by a neural network, may be listed in their place, and autograd carries its gradient on to them.
+A tensor computed from the actual design variables, such as a modulus field `E = net(x)` predicted by a neural network, may be listed in their place, and autograd carries its gradient on to them. Listing both would count their shared path twice, so `solve(...)` raises.
 
 
 

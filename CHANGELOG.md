@@ -1,5 +1,10 @@
 # Changelog 
 
+## Unreleased
+
+### Changed
+- `solve(...)` raises if a tensor in `differentiable_parameters` is computed from another one, which silently counted their shared path twice.
+
 ## Version 0.14.0 - October 17 2026
 
 ### Added

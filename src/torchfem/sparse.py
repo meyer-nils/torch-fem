@@ -174,22 +174,41 @@ def _nodal(B: Tensor | None, n: int) -> tuple[int, tuple[Any, ...] | None]:
     )
 
 
-def check_declared(roots: tuple[Tensor, ...], declared: tuple[Tensor, ...]):
-    """Raise if `roots` reach a leaf requiring grad other than through `declared`,
-    which the adjoint would leave with its explicit gradient alone."""
-    seen, todo = {t.grad_fn for t in declared}, [r.grad_fn for r in roots]
+def _reachable(starts, stop):
+    """Grad nodes reachable from `starts` without passing through `stop`."""
+    seen, todo = set(stop), list(starts)
     while todo:
         node = todo.pop()
-        if node is None or node in seen:
-            continue
-        seen.add(node)
+        if node is not None and node not in seen:
+            seen.add(node)
+            yield node
+            todo += [fn for fn, _ in node.next_functions]
+
+
+def check_declared(roots: tuple[Tensor, ...], declared: tuple[Tensor, ...]):
+    """Raise if `roots` reach a leaf requiring grad other than through `declared`,
+    which the adjoint would miss, or if a declared tensor is computed from another,
+    whose shared path it would count twice."""
+    grad_fns = {t.grad_fn for t in declared}
+
+    def is_declared(node):
         leaf = getattr(node, "variable", None)  # held by an AccumulateGrad
-        if leaf is not None and not any(leaf is t for t in declared):
-            raise ValueError(
-                "A tensor that requires grad enters the residual, but is not in "
-                "`differentiable_parameters`. Add it there, or detach it."
-            )
-        todo += [fn for fn, _ in node.next_functions]
+        return node in grad_fns or any(leaf is t for t in declared)
+
+    if any(
+        hasattr(node, "variable") and not is_declared(node)
+        for node in _reachable([r.grad_fn for r in roots], grad_fns)
+    ):
+        raise ValueError(
+            "A tensor that requires grad enters the residual, but is not in "
+            "`differentiable_parameters`. Add it there, or detach it."
+        )
+    behind = [fn for t in declared if t.grad_fn for fn, _ in t.grad_fn.next_functions]
+    if any(is_declared(node) for node in _reachable(behind, ())):
+        raise ValueError(
+            "A tensor in `differentiable_parameters` is computed from another one, "
+            "which would count their shared path twice. List only the latter."
+        )
 
 
 def _diagonal(A: Tensor) -> Tensor:

@@ -189,6 +189,17 @@ def test_solve_raises_for_a_parameter_missing_beside_a_declared_one():
         cantilever.solve(differentiable_parameters=cantilever.thickness)
 
 
+def test_solve_raises_for_a_declared_tensor_computed_from_another():
+    # Declaring both counts the path through `forces` twice.
+    cantilever = _build_minimal_planar_cantilever()
+    cantilever.nodes.requires_grad = True
+    cantilever.forces[5, 1] = -cantilever.nodes[5, 0]
+    with pytest.raises(ValueError, match="computed from"):
+        cantilever.solve(
+            differentiable_parameters=(cantilever.nodes, cantilever.forces)
+        )
+
+
 def test_solve_accepts_a_declared_tensor_computed_from_the_design_variable():
     # E is computed from w, so declaring E covers w as well.
     def compliance(w: torch.Tensor | float) -> torch.Tensor:
