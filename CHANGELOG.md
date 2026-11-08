@@ -1,5 +1,10 @@
 # Changelog 
 
+## Unreleased
+
+### Added
+- `solve_arc_length(...)` traces the equilibrium path of a mechanics model under a load factor scaling `forces`, following it through limit points and snap-backs.
+
 ## Version 0.14.2 - November 11 2026
 
 ### Changed

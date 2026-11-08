@@ -14,10 +14,12 @@ from .report import solve_report
 from .sparse import (
     ConvergenceError,
     Solve,
+    border,
     check_declared,
     differentiable_modal_eigsolve,
     newton_solve,
     resolve_method,
+    sparse_solve,
 )
 
 
@@ -998,6 +1000,30 @@ class FEM(ABC):
 
         report.close()
 
+        u, f, flux, grad, state = self._outputs(
+            u,
+            f,
+            flux,
+            grad,
+            state,
+            aggregate_integration_points,
+            track_parameter_gradients,
+        )
+        if not return_intermediate:
+            u, f, flux, grad, state = (x[-1] for x in (u, f, flux, grad, state))
+        return u, f, flux, grad, state
+
+    def _outputs(
+        self,
+        u: Tensor,
+        f: Tensor,
+        flux: Tensor,
+        grad: Tensor,
+        state: Tensor,
+        aggregate_integration_points: bool,
+        track_parameter_gradients: bool,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Results of a solve as returned, with a leading increment axis."""
         # The material works in the first Piola stress, converted before averaging.
         if isinstance(self.material, MechanicsMaterial) and self.material.finite_strain:
             flux = self.material.cauchy(flux, grad, state)
@@ -1008,8 +1034,6 @@ class FEM(ABC):
         flux, grad = flux.squeeze((-2, -1)), grad.squeeze((-2, -1))
         if not track_parameter_gradients:
             u, f, flux, grad, state = (x.detach() for x in (u, f, flux, grad, state))
-        if not return_intermediate:
-            u, f, flux, grad, state = (x[-1] for x in (u, f, flux, grad, state))
         return u, f, flux, grad, state
 
 
@@ -1185,6 +1209,206 @@ class Mechanics(FEM, ABC):
                 del BCB, k_i
 
         return k, f, grad_new, flux_new, state_new
+
+    def solve_arc_length(
+        self,
+        arc_length: float,
+        max_steps: int,
+        max_load: float | None = None,
+        max_iter: int = 10,
+        rtol: float = 1e-8,
+        atol: float = 1e-6,
+        stol: float = 1e-10,
+        cutback_factor: float = 0.5,
+        growth_factor: float = 1.1,
+        max_cutbacks: int = 10,
+        verbose: bool = False,
+        device: str | None = None,
+        aggregate_integration_points: bool = True,
+        differentiable_parameters: Tensor | Iterable[Tensor] | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Trace the equilibrium path of a load factor scaling `forces`.
+
+        Each step solves for the increment of displacement and load factor
+        `[du; dλ]` under the cylindrical constraint `du·du = Δs²`, so the path is
+        followed through limit points and snap-backs. The predictor follows the
+        tangent `K⁻¹f` in the direction of the previous step. The bordered tangent
+        is not symmetric, so the linear solves are direct. Gradients are those of
+        the path for the step sizes and predictor directions taken.
+
+        Args:
+            arc_length: Step length Δs, which is also the largest one.
+            max_steps: Number of steps after which the path ends.
+            max_load: Load factor magnitude at which the path ends early.
+            max_iter: Maximum Newton iterations before a step is cut back.
+            rtol: Relative residual tolerance for Newton convergence.
+            atol: Absolute residual tolerance for Newton convergence.
+            stol: Tolerance used by iterative linear solvers.
+            cutback_factor: Factor applied to Δs after a Newton solve failed to
+                converge.
+            growth_factor: Factor applied to Δs after a Newton solve converged,
+                capped at `arc_length`.
+            max_cutbacks: Number of successive cutbacks accepted within a step
+                before the solve is given up.
+            verbose: If True, reports the solver configuration and a table of
+                per-step progress.
+            device: Optional device hint for the linear solver backend.
+            aggregate_integration_points: If True, averages flux, gradient, and
+                state over integration points.
+            differentiable_parameters: Explicit parameter(s) to differentiate
+                through implicit Newton/sparse solves. Accepts either a single
+                tensor or an iterable of tensors. A tensor that requires grad
+                and enters the residual must be listed.
+
+        Returns:
+            Tuple of displacement, internal force, flux, gradient, material state
+                and load factor, each with the step as the leading axis, starting
+                at the unloaded state.
+        """
+        if self._dirichlet.any() or self._external_gradient.any():
+            raise ValueError(
+                "Arc-length steps scale forces only, not prescribed displacements "
+                "or external strains."
+            )
+
+        if differentiable_parameters is None:
+            differentiable_parameters = ()
+        elif isinstance(differentiable_parameters, torch.Tensor):
+            differentiable_parameters = (differentiable_parameters,)
+        else:
+            differentiable_parameters = tuple(differentiable_parameters)
+        track = any(param.requires_grad for param in differentiable_parameters)
+        keep = Tensor.clone if track else Tensor.detach
+
+        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
+        f_hat = torch.where(self.constraints.ravel(), 0.0, self._neumann.ravel())
+        zero = torch.zeros(self.n_dofs)
+        de0 = torch.zeros_like(self._external_gradient)
+
+        def residual(
+            ds: float, z: Tensor, i: int, prev: tuple, tangent: bool = True
+        ) -> tuple[Tensor, Tensor | None]:
+            # λ of the last step rides along its displacements, so the adjoint
+            # chains it across steps like the state, without replaying them.
+            u_prev = prev[0][:-1].view(-1, self.n_dof_per_node)
+            lam_prev = prev[0][-1]
+            du, dlam = z[:-1], z[-1]
+            r, K = self._residual(
+                zero, zero, de0, None, None, con, du, i, (u_prev, *prev[1:]), tangent
+            )
+            g = (du @ du - ds**2) / (2 * ds)
+            res = torch.cat([r - (lam_prev + dlam) * f_hat, g[None]])
+            return res, border(K, -f_hat, du / ds) if tangent else None
+
+        newton = (
+            f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
+            + (" | finite strain" if self.finite_strain else "")
+            + f" | arc length {arc_length:g}"
+        )
+        dev = device or self.nodes.device.type
+        model = f"{type(self).__name__} | {self.n_elem:,} elem | {self.n_dofs:,} dof"
+        report = solve_report(
+            verbose, model, "direct", None, dev, newton, label="Step", unit="steps"
+        )
+
+        # Running state, stored after each step
+        u_cur = torch.zeros(self.n_nod, self.n_dof_per_node)
+        f_cur = torch.zeros(self.n_nod, self.n_dof_per_node)
+        grad_cur = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
+        grad_cur[...] = self.initial_grad
+        flux_cur = torch.zeros(self.n_int, self.n_elem, *self.n_flux)
+        state_cur = torch.zeros(self.n_int, self.n_elem, self.n_state)
+        lam = torch.zeros(())
+        steps = [(u_cur, f_cur, flux_cur, grad_cur, state_cur, lam)]
+
+        self.K = torch.empty(0)
+        ds = arc_length
+        du_prev = None
+        for n in range(1, max_steps + 1):
+            report.begin(n, float(lam.detach()))
+
+            # Tangent at the last converged state, from its final Newton iteration
+            if self.K.numel() == 0:
+                prev = (u_cur, grad_cur, flux_cur, state_cur)
+                self._residual(zero, zero, de0, None, None, con, zero, 0, prev)
+            t = sparse_solve(self.K.detach(), f_hat.detach(), None, stol, device)[0]
+            sign = 1.0 if du_prev is None or t @ du_prev >= 0.0 else -1.0
+            t = torch.cat([t, torch.ones(1)]) / t.norm()
+
+            prev = (
+                torch.cat([u_cur.ravel(), lam[None]]),
+                grad_cur,
+                flux_cur,
+                state_cur,
+            )
+            prev = tuple(keep(x) for x in prev)
+            for cutbacks in range(max_cutbacks + 1):
+                try:
+                    z = newton_solve(
+                        partial(residual, ds),
+                        sign * ds * t,
+                        torch.empty(0),
+                        max_iter,
+                        rtol,
+                        atol,
+                        stol,
+                        report,
+                        "direct",
+                        None,
+                        device,
+                        *prev,
+                        *differentiable_parameters,
+                    )
+                    break
+                except ConvergenceError as err:
+                    if cutbacks == max_cutbacks:
+                        raise ConvergenceError(
+                            f"Newton-Raphson did not converge in arc-length step "
+                            f"{n} after {max_cutbacks} cutbacks."
+                        ) from err
+                    report.cutback()
+                    ds *= cutback_factor
+
+            # Evaluate converged state. Tangent not needed (compute_stiffness=False)
+            du = z[:-1].clone()
+            du[con] = 0.0
+            _, f_i, grad_cur, flux_cur, state_cur = self.integrate_material(
+                u_cur,
+                grad_cur,
+                flux_cur,
+                state_cur,
+                du,
+                de0,
+                max_iter,
+                compute_stiffness=False,
+            )
+            f_cur = self.assemble_rhs(f_i).view_as(u_cur)
+            u_cur = u_cur + du.view_as(u_cur)
+            lam = lam + z[-1]
+            du_prev = du.detach()
+            steps.append((u_cur, f_cur, flux_cur, grad_cur, state_cur, lam))
+
+            # The adjoint term of an undeclared leaf vanishes if all DOFs are fixed
+            if n == 1 and track and len(con) < self.n_dofs:
+                check_declared((u_cur, f_cur, lam), differentiable_parameters)
+
+            if ds < arc_length:
+                report.growth()
+                ds = min(growth_factor * ds, arc_length)
+
+            # The row reports the load factor the step reached
+            report.value = float(lam.detach())
+            report.end()
+            if max_load is not None and abs(lam) >= max_load:
+                break
+
+        report.close()
+
+        u, f, flux, grad, state, lam = (torch.stack(x) for x in zip(*steps))
+        u, f, flux, grad, state = self._outputs(
+            u, f, flux, grad, state, aggregate_integration_points, track
+        )
+        return u, f, flux, grad, state, lam if track else lam.detach()
 
     def solve_modes(self, n_modes: int) -> tuple[Tensor, Tensor]:
         """Compute the natural frequencies and mode shapes.
