@@ -93,10 +93,7 @@ nav = [
   ] },
 ]
 
-extra_javascript = [
-    "javascripts/mathjax.js",
-    "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"
-]
+extra_javascript = ["https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"]
 
 [project.theme]
 language = "en"
