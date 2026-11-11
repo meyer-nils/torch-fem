@@ -426,20 +426,6 @@ class Quad2(Quad1):
         N_8 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 1])
         return 0.25 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
 
-    @classproperty
-    def iweights(cls) -> Tensor:
-        return torch.tensor([1.0, 1.0, 1.0, 1.0])
-
-    @classproperty
-    def ipoints(cls) -> Tensor:
-        return torch.tensor(
-            [
-                [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0)]
-                for xi_2 in [-1, 1]
-                for xi_1 in [-1, 1]
-            ]
-        )
-
 
 class Tetra1(Element):
     r"""Four-node linear tetrahedral element.
@@ -697,7 +683,6 @@ class Hexa2(Hexa1):
             0 --  8 --  1
     """
 
-    iso_dim = 3
     nodes = 20
     meshio_type = "hexahedron20"
     facet_type = Quad2
@@ -850,32 +835,6 @@ class Hexa2(Hexa1):
                 N_20,
             ],
             dim=-1,
-        )
-
-    @classproperty
-    def iweights(cls) -> Tensor:
-        return torch.tensor(
-            [
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-            ]
-        )
-
-    @classproperty
-    def ipoints(cls) -> Tensor:
-        return torch.tensor(
-            [
-                [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0), xi_3 / sqrt(3.0)]
-                for xi_3 in [-1.0, 1.0]
-                for xi_2 in [-1.0, 1.0]
-                for xi_1 in [-1.0, 1.0]
-            ]
         )
 
 
