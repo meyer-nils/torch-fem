@@ -1579,7 +1579,8 @@ class Heat(FEM, ABC):
                 # Report iteration information
                 report.iteration(it, res_norm)
 
-                if res_norm < rtol * res_norm0 or res_norm < atol:
+                # The zero guess of a time step does not converge on `atol`
+                if res_norm <= rtol * res_norm0 or (it > 0 and res_norm < atol):
                     break
 
                 # A residual that is not finite never converges

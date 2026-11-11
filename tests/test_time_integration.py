@@ -195,3 +195,16 @@ def test_time_integration_raises_for_a_residual_that_is_not_finite():
 
     with pytest.raises(ConvergenceError):
         model.time_integration(torch.tensor([0.0, 1.0]), delta_t=1.0, max_iter=5)
+
+
+def test_time_integration_does_not_freeze_at_a_small_time_step():
+    def midpoint(temperature: float) -> float:
+        material = IsotropicConductivity2D(kappa=1.0, rho=1.0)
+        model = PlanarHeat(*rect_quad(21, 3, 1.0, 0.1), material)
+        west = model.nodes[:, 0] == 0.0
+        model.constraints[west] = True
+        model.temperatures[west, 0] = temperature
+        temp = model.time_integration(torch.tensor([0.0, 0.05]), delta_t=1e-3)[0]
+        return float(temp[-1, model.nodes[:, 0] == 0.5].mean()) / temperature
+
+    assert midpoint(1e-5) == pytest.approx(midpoint(100.0))

@@ -650,8 +650,9 @@ class NewtonRaphsonAdjoint(Function):
             if report is not None:
                 report.iteration(i, res_norm)
 
-            # Check convergence
-            if res_norm < rtol * res_norm0 or res_norm < atol:
+            # Check convergence, which a zero guess does not meet on `atol`
+            solved = i > 0 or du.any()
+            if res_norm <= rtol * res_norm0 or (solved and res_norm < atol):
                 converged_iter = i
                 break
 

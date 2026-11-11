@@ -489,3 +489,14 @@ def test_solve_raises_for_increments_not_starting_at_zero():
         model.solve(increments=torch.tensor([0.5, 1.0]))
     with pytest.raises(ValueError, match="start at 0"):
         Assembly([model]).solve(increments=torch.tensor([0.5, 1.0]))
+
+
+def test_solve_does_not_accept_a_small_load_unsolved():
+    def tip_deflection(load: float) -> float:
+        material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
+        model = Planar(*rect_quad(11, 3, 10.0, 1.0), material)
+        model.constraints[model.nodes[:, 0] == 0.0] = True
+        model.forces[-1, 1] = load
+        return float(model.solve()[0][-1, 1]) / load
+
+    assert tip_deflection(1e-9) == pytest.approx(tip_deflection(1.0))
