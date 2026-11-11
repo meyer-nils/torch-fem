@@ -1,5 +1,10 @@
 # Changelog 
 
+## Unreleased
+
+### Changed
+- `linear_to_quadratic(...)` numbers the mid-side nodes the same on CPU and CUDA, so their IDs on CPU change.
+
 ## Version 0.14.2 - November 11 2026
 
 ### Changed

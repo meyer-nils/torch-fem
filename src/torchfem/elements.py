@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from math import sqrt
 
-import numpy as np
 import torch
 from torch import Tensor
 
@@ -936,33 +935,17 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
     """
     edges = linear_etype(nodes, elements).edges
 
-    # Vectorize edges for all elements and sort each pair with increasing node IDs
-    edge_vector = elements[:, edges].reshape(-1, 2)
-    edge_vector, _ = torch.sort(edge_vector, dim=1)
-
-    # Find unique edges and get the inverse mapping
-    if edge_vector.device.type == "cuda":
-        # Default torch implementation for CUDA
-        unique_edges, inv_indices = torch.unique(
-            edge_vector, dim=0, return_inverse=True
-        )
-    else:
-        # Numpy implementation for CPU (breaks gradient flow, but should not be needed)
-        edge_vector_np = edge_vector.numpy()
-        dt = np.dtype((np.void, edge_vector_np.dtype.itemsize * edge_vector.shape[1]))
-        b = np.ascontiguousarray(edge_vector).view(dt)
-        _, unique_indices, inv_indices_np = np.unique(
-            b, return_index=True, return_inverse=True
-        )
-        unique_edges = edge_vector[unique_indices]
-        inv_indices = torch.as_tensor(inv_indices_np)
+    # Each edge of each element as one key of its two node IDs, smaller first
+    n_nod = nodes.shape[0]
+    lo, hi = elements[:, edges].reshape(-1, 2).aminmax(dim=1)
+    unique_edges, inv_indices = torch.unique(lo * n_nod + hi, return_inverse=True)
 
     # Compute nodes
-    mid_node_coords = (nodes[unique_edges[:, 0]] + nodes[unique_edges[:, 1]]) / 2.0
-    new_nodes = torch.cat([nodes, mid_node_coords], dim=0)
+    lo, hi = unique_edges // n_nod, unique_edges % n_nod
+    new_nodes = torch.cat([nodes, (nodes[lo] + nodes[hi]) / 2.0], dim=0)
 
     # Compute elements
-    mid_node_map = inv_indices.view(elements.shape[0], -1) + nodes.shape[0]
+    mid_node_map = inv_indices.view(elements.shape[0], -1) + n_nod
     new_elements = torch.cat([elements, mid_node_map], dim=1)
 
     return new_nodes, new_elements
