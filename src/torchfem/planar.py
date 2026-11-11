@@ -13,7 +13,6 @@ from .plot_utils import LABEL_OFFSET, arrows2d, dots2d, markers2d, signs2d
 
 
 class PlanarGeometry(FEM):
-    element_types = (Tria1, Quad1, Tria2, Quad2)
     """The elements, integration and plotting shared by the planar models.
 
     It carries the discretization of a surface in the z=0 plane, which `Planar`
@@ -26,6 +25,8 @@ class PlanarGeometry(FEM):
         thickness: Element thicknesses with shape [n_elem].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Tria1, Quad1, Tria2, Quad2)
 
     def __init__(
         self,

@@ -31,7 +31,6 @@ from .utils import stiffness2voigt, stress2voigt
 
 
 class ShellGeometry(FEM):
-    element_types = (Tria1, Quad1)
     """The elements, local frames and plotting shared by the shell models.
 
     It carries the discretization of a thin-walled structure by flat facets,
@@ -49,6 +48,8 @@ class ShellGeometry(FEM):
             [n_elem, 3].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Tria1, Quad1)
 
     def __init__(
         self,

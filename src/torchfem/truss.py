@@ -19,7 +19,6 @@ from .plot_utils import new_plotter, show_plotter
 
 
 class TrussGeometry(FEM):
-    element_types = (Bar1, Bar2)
     """The elements, integration and plotting shared by the truss models.
 
     It carries the discretization of a pin-jointed frame of bars, which `Truss`
@@ -32,6 +31,8 @@ class TrussGeometry(FEM):
         areas: Cross-sectional areas with shape [n_elem]. Defaults to ones.
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Bar1, Bar2)
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem.

@@ -12,7 +12,6 @@ from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 
 
 class SolidGeometry(FEM):
-    element_types = (Tetra1, Hexa1, Tetra2, Hexa2)
     """The elements, integration and plotting shared by the solid models.
 
     It carries the discretization of a three-dimensional continuum, which
@@ -24,6 +23,8 @@ class SolidGeometry(FEM):
         material: Vectorized material model.
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Tetra1, Hexa1, Tetra2, Hexa2)
 
     @torch.no_grad()
     def plot(
