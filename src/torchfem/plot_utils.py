@@ -57,10 +57,9 @@ def show_plotter(pl, plotter=None, axes=False, camera=None):
         return
 
     # IPython ships with the notebook extra, so it is imported where it is used
-    from IPython.display import display
+    from IPython.display import HTML, display
 
-    viewer.value = viewer.value.replace("</body>", RERENDER + "</body>")
-    display(viewer)
+    display(HTML(viewer.value.replace("</body>", RERENDER + "</body>")))
 
 
 def _embed_gif(path: str):
