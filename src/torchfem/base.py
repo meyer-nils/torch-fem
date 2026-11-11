@@ -108,6 +108,9 @@ class FEM(ABC):
         )
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
 
+        # Global tangent, empty until assembled and reused where it is constant
+        self.K = torch.empty(0)
+
         # Robin conditions as the element of each facet, its matrix ∫ Nᵀ C N dA and
         # its vector ∫ Nᵀ C u_inf dA in the degrees of freedom of that element, and
         # the nodes of all facets
