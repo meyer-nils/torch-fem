@@ -6,6 +6,7 @@ import torch
 from torchfem import PlanarHeat, SolidHeat
 from torchfem.materials import IsotropicConductivity2D, IsotropicConductivity3D
 from torchfem.mesh import cube_hexa, rect_quad
+from torchfem.sparse import ConvergenceError
 
 
 def _build_heated_plate() -> PlanarHeat:
@@ -186,3 +187,11 @@ def test_convection_matches_the_lumped_capacitance_solution():
     # Unit cube, so the surface is 6 and the volume 1
     exact = T_inf + (T0 - T_inf) * torch.exp(-h * 6.0 * times / rho)
     assert torch.allclose(temperature.mean(dim=(1, 2)), exact, atol=0.1)
+
+
+def test_time_integration_raises_for_a_residual_that_is_not_finite():
+    model = _build_heated_plate()
+    model.heat_flux[12, 0] = float("nan")
+
+    with pytest.raises(ConvergenceError):
+        model.time_integration(torch.tensor([0.0, 1.0]), delta_t=1.0, max_iter=5)

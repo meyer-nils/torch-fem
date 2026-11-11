@@ -1,5 +1,13 @@
 # Changelog 
 
+## Unreleased
+
+### Changed
+- `solve(...)` raises if `increments` does not start at 0, which applied the forces in full but the prescribed displacements only from the first increment on.
+
+### Fixed
+- `time_integration(...)` raises a `ConvergenceError` for a residual that is NaN or infinite, where it returned the NaN field.
+
 ## Version 0.14.1 - October 28 2026
 
 ### Changed

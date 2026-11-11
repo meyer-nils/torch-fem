@@ -38,7 +38,7 @@ def test_gradients_incremental_final_matches_single_step():
     grad_single = torch.autograd.grad(compliance_single, cantilever.thickness)[0]
 
     # Same load reached through incremental loading.
-    increments = torch.linspace(0.1, 1.0, 5)
+    increments = torch.linspace(0.0, 1.0, 5)
     u_inc, f_inc, _, _, _ = cantilever.solve(
         increments=increments,
         return_intermediate=True,
@@ -55,7 +55,7 @@ def test_gradients_incremental_force_matches_single_step():
     # incremental gradient is only correct if sensitivities chain across
     # increments through the previous state.
     grads = {}
-    for increments in [None, torch.linspace(0.1, 1.0, 5)]:
+    for increments in [None, torch.linspace(0.0, 1.0, 5)]:
         cantilever = _build_minimal_planar_cantilever()
         cantilever.forces = torch.zeros_like(cantilever.nodes)
         cantilever.forces[5, 1] = -1.0

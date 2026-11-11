@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from torchfem import (
+    Assembly,
     Axisymmetric,
     Planar,
     PlanarHeat,
@@ -478,3 +479,13 @@ def test_hessian_regularization_unsupported():
     model = Axisymmetric(*rect_quad(3, 3), IsotropicElasticity3D(1.0, 0.3))
     with pytest.raises(NotImplementedError, match="Axisymmetric"):
         model.integrate_hessian(1.0)
+
+
+def test_solve_raises_for_increments_not_starting_at_zero():
+    material = IsotropicElasticityPlaneStress(E=1000.0, nu=0.3)
+    model = Planar(*rect_quad(3, 3), material)
+
+    with pytest.raises(ValueError, match="start at 0"):
+        model.solve(increments=torch.tensor([0.5, 1.0]))
+    with pytest.raises(ValueError, match="start at 0"):
+        Assembly([model]).solve(increments=torch.tensor([0.5, 1.0]))

@@ -470,7 +470,7 @@ class Assembly:
         """Solve the constrained quasi-static problem by load increments.
 
         Args:
-            increments: Load scale factors, typically [0, 1]. Unlike
+            increments: Load scale factors starting at 0, typically [0, 1]. Unlike
                 `FEM.solve(...)`, an increment that does not converge is not
                 subdivided, so a nonlinear problem needs its own increments.
             max_iter: Maximum Newton iterations per increment.
@@ -500,10 +500,13 @@ class Assembly:
                 internal force.
 
         Raises:
-            ValueError: If a constrained degree of freedom is eliminated, or a
-                tensor requiring grad enters the residual but is not listed.
+            ValueError: If `increments` does not start at 0, a constrained degree
+                of freedom is eliminated, or a tensor requiring grad enters the
+                residual but is not listed.
         """
         increments = torch.tensor([0.0, 1.0]) if increments is None else increments
+        if increments[0] != 0.0:
+            raise ValueError("increments must start at 0, the unloaded state.")
         N = len(increments)
 
         if differentiable_parameters is None:

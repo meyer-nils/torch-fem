@@ -762,8 +762,8 @@ class FEM(ABC):
         """Solve the quasi-static finite-element problem by load increments.
 
         Args:
-            increments: Load scale factors, typically [0, 1]. They may rise and
-                fall, so a load cycle is expressed as a sequence like
+            increments: Load scale factors starting at 0, typically [0, 1]. They
+                may rise and fall, so a load cycle is expressed as a sequence like
                 [0, 1, 0]. Results are always returned at exactly these values.
                 If a Newton solve does not converge, the increment is subdivided
                 internally and retried, and the substep is grown again after
@@ -803,6 +803,8 @@ class FEM(ABC):
                 increment dimension as the leading axis.
         """
         increments = torch.tensor([0.0, 1.0]) if increments is None else increments
+        if increments[0] != 0.0:
+            raise ValueError("increments must start at 0, the unloaded state.")
 
         # Number of increments
         N = len(increments)
@@ -1429,7 +1431,8 @@ class Heat(FEM, ABC):
 
         Raises:
             ValueError: If `t_output` is empty, negative, or not increasing.
-            ConvergenceError: If Newton iterations do not converge for a time step.
+            ConvergenceError: If Newton iterations do not converge for a time step,
+                or the residual becomes NaN or infinite.
         """
 
         # Validate before self.constraints is modified below.
@@ -1579,6 +1582,10 @@ class Heat(FEM, ABC):
                 if res_norm < rtol * res_norm0 or res_norm < atol:
                     break
 
+                # A residual that is not finite never converges
+                if not torch.isfinite(res_norm):
+                    break
+
                 # Compressed here, so the adjoint reaches the COO sum through it
                 A = (self.M + 0.5 * dt_n * self.K).to_sparse_csr()
                 du, _, iterations = Solve.apply(  # type: ignore
@@ -1588,7 +1595,8 @@ class Heat(FEM, ABC):
 
                 u_guess = u_guess + du.reshape((-1, self.n_dof_per_node))
 
-            if res_norm > rtol * res_norm0 and res_norm > atol:
+            # Final convergence check, which a residual that is not finite fails
+            if not (res_norm < rtol * res_norm0 or res_norm < atol):
                 raise ConvergenceError("Newton-Raphson iteration did not converge.")
 
             u[n] = u_guess
