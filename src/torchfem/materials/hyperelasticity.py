@@ -119,6 +119,10 @@ class Hyperelastic3D(MechanicsMaterial):
             ddsdde (Tensor): Algorithmic tangent stiffness tensor.
                 *Shape:* `(..., 3, 3, 3, 3)`.
         """
+        if de0.any():
+            raise NotImplementedError(
+                f"An external strain is not implemented for {type(self).__name__}."
+            )
         with torch.enable_grad():
             # Compute deformation gradient.
             F_new = F + H_inc

@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- A hyperelastic material raises for a non-zero `ext_strain`, which it silently ignored.
 - `solve(...)` raises if `increments` does not start at 0, which applied the forces in full but the prescribed displacements only from the first increment on.
 
 ### Fixed

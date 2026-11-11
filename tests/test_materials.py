@@ -235,6 +235,14 @@ class TestHyperelastic3D:
         assert torch.allclose(s_new, torch.zeros_like(s_new), atol=1e-8)
         assert torch.allclose(st_new, state)
 
+    def test_external_strain_raises(self):
+        n = N_ELEM
+        mat = Hyperelastic3D(self.neo_hookean, torch.tensor([80.0, 120.0])).vectorize(n)
+        H_inc, F, stress, state, _, cl = _make_step_args_3d(n)
+        de0 = 0.01 * torch.eye(3).expand(n, 3, 3)
+        with pytest.raises(NotImplementedError, match="external strain"):
+            mat.step(H_inc, F, stress, state, de0, cl, 0)
+
     def test_vectorize(self):
         mat = Hyperelastic3D(self.neo_hookean, torch.tensor([80.0, 120.0]))
         mat_v = mat.vectorize(N_ELEM)
