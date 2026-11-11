@@ -167,7 +167,7 @@ class TrussGeometry(FEM):
                 ax.annotate(str(i), (x, y), color=default_color, **LABEL_OFFSET)
 
         # Bounding box
-        size = torch.linalg.norm(pos.max() - pos.min())
+        size = torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values)
 
         # Bars
         for j, element in enumerate(self.elements):

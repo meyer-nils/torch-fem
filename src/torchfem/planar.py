@@ -129,7 +129,7 @@ class PlanarGeometry(FEM):
         deformed = isinstance(u, Tensor)
 
         # Bounding box
-        size = float(torch.linalg.norm(pos.max() - pos.min()))
+        size = float(torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values))
 
         # Set figure size
         if ax is None:
