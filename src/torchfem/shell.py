@@ -384,9 +384,9 @@ class Shell(ShellGeometry, Mechanics):
     a tuning parameter on a coarse doubly-curved mesh, and a folded or branched
     shell, whose nodes carry no unique normal, is not supported.
 
-    `solve` reports stress in the local material frame of each element, and
-    leaves the gradient at the identity, as the formulation never forms one. Its
-    default aggregation averages the through-thickness stations, where a bending
+    `solve` reports stress in the local material frame of each element, and as
+    gradient the identity plus the in-plane displacement gradient in that frame.
+    Its default aggregation averages the through-thickness stations, where a bending
     stress cancels: pass `aggregate_integration_points=False` to read one.
 
     Attributes:
@@ -714,7 +714,7 @@ class Shell(ShellGeometry, Mechanics):
         """Perform numerical integrations for element stiffness matrix.
 
         Args:
-            grad_prev: Deformation gradient at previous step [n_int, n_elem, *n_flux]
+            grad_prev: In-plane gradient at previous step [n_int, n_elem, *n_flux]
             flux_prev: Stress at previous step [n_int, n_elem, *n_flux]
             state_prev: Material state at previous step [n_int, n_elem, n_state]
             compute_stiffness: If True, assemble and return element stiffness.

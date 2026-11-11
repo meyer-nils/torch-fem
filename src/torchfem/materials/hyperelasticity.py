@@ -108,7 +108,7 @@ class Hyperelastic3D(MechanicsMaterial):
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -229,7 +229,7 @@ class HyperelasticPlaneStress(Hyperelastic3D):
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -348,7 +348,7 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:

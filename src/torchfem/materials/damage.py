@@ -131,18 +131,18 @@ class IsotropicDamage3D(IsotropicElasticity3D):
                 *Shape:* `(..., 3, 3)`, same as `H_inc`.
             stress (Tensor): Current Cauchy stress tensor.
                 *Shape:* `(..., 3, 3)`.
-            state (Tensor): Internal state variables, here: equivalent plastic strain.
-                *Shape:* `(..., 1)`.
+            state (Tensor): Internal state variables, here $\\kappa$ and $D$.
+                *Shape:* `(..., 2)`.
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Newton iteration.
 
         Returns:
-            stress_new (Tensor): Updated Cauchy stress tensor after plastic update.
+            stress_new (Tensor): Updated Cauchy stress tensor.
                 *Shape:* `(..., 3, 3)`.
-            state_new (Tensor): Updated internal state with updated plastic strain.
+            state_new (Tensor): Updated internal state.
                 *Shape:* same as `state`.
             ddsdde (Tensor): Algorithmic tangent stiffness tensor.
                 *Shape:* `(..., 3, 3, 3, 3)`.
@@ -308,7 +308,7 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Newton iteration.
 
         Returns:

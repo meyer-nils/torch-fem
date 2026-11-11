@@ -276,14 +276,14 @@ class FEM(ABC):
         raise NotImplementedError
 
     def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        """Element mass contribution, scaled by `volume_scale`.
+        """Mass per unit reference measure of each element at an integration point.
 
         Args:
             detJ: Jacobian determinant at the current integration point.
             rho: Material density at the current integration point.
 
         Returns:
-            Element mass contribution tensor.
+            Mass weights with shape [n_elem], scaled by `volume_scale`.
         """
         return rho * self.volume_scale * detJ
 

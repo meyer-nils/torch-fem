@@ -112,7 +112,7 @@ class MechanicsMaterial(Material, ABC):
             de0 (Tensor): External strain increment (e.g., thermal).
                 *Shape:* `(..., d, d)`.
             cl (Tensor): Characteristic lengths for regularization.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -161,7 +161,7 @@ class HeatMaterial(Material, ABC):
             state (Tensor): Internal state variables $\\pmb{\\alpha}_n$.
                 *Shape:* `(..., <number of state variables>)`.
             cl (Tensor): Characteristic lengths for regularization.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:

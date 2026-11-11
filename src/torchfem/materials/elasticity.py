@@ -105,7 +105,7 @@ class IsotropicElasticity3D(MechanicsMaterial):
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., d, d)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -304,7 +304,7 @@ class IsotropicElasticity1D(MechanicsMaterial):
             de0 (Tensor): External strain increment (e.g., thermal).
                 *Shape:* `(..., 1, 1)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -458,7 +458,7 @@ class OrthotropicElasticity3D(MechanicsMaterial):
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
