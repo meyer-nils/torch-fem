@@ -183,8 +183,9 @@ class ShellGeometry(FEM):
         """Plot the shell mesh with PyVista, optionally with results.
 
         Args:
-            u: Nodal displacements added to the positions, e.g. to plot the
-                deformed configuration. Defaults to 0.0 (undeformed).
+            u: Nodal displacements whose translations are added to the
+                positions, e.g. the `u` of `solve(...)` to plot the deformed
+                configuration. Defaults to 0.0 (undeformed).
             node_property: Nodal field, optionally keyed by its color bar
                 title, e.g. `{"u": u[:, :3]}`.
             element_property: Element field, keyed like `node_property`.
@@ -212,6 +213,8 @@ class ShellGeometry(FEM):
             **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
         """
         pl = new_plotter(plotter)
+        if isinstance(u, Tensor):
+            u = u[:, :3]
 
         # VTK element list
         elements = []
