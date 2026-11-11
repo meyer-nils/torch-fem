@@ -1,6 +1,6 @@
 # Changelog 
 
-## Unreleased
+## Version 0.14.2 - November 11 2026
 
 ### Changed
 - A hyperelastic material raises for a non-zero `ext_strain`, which it silently ignored.
@@ -11,6 +11,7 @@
 - `solve(...)` reports the Cauchy stress of a `HyperelasticPlaneStress` material, where it reported it times the out-of-plane stretch. A mechanics material converts its stress with `cauchy(...)`.
 - `solve(...)` and `time_integration(...)` no longer accept a zero initial guess on `atol`, which returned a zero solution for loads below it and froze a transient at small time steps.
 - `time_integration(...)` raises a `ConvergenceError` for a residual that is NaN or infinite, where it returned the NaN field.
+- A 3D `plot(...)` in a notebook works with trame-pyvista 0.3, which raised an `AttributeError`.
 
 ## Version 0.14.1 - October 28 2026
 
