@@ -77,7 +77,7 @@ def _read_mesh(filename: PathLike) -> tuple[np.ndarray, Tensor, str]:
     mesh = read(filename)
     elems = []
     etypes = []
-    allowed = {e.meshio_type for e in ELEMENT_REGISTRY} - {"line"}
+    allowed = {e.meshio_type for e in ELEMENT_REGISTRY if e.iso_dim > 1}
     for cell_block in mesh.cells:
         if cell_block.type in allowed:
             etypes.append(cell_block.type)

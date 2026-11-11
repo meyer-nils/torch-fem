@@ -15,7 +15,8 @@ class IsotropicConductivity3D(HeatMaterial):
         kappa (Tensor | float): Thermal conductivity. If a float is provided, it is
             converted.
             *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
-        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+        rho (Tensor | float): Volumetric heat capacity, i.e. mass density times
+            specific heat. If a float is provided, it is converted.
             *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
 
     Notes:
@@ -101,7 +102,8 @@ class IsotropicConductivity2D(IsotropicConductivity3D):
         kappa (Tensor | float): In-plane thermal conductivity. If a float is
             provided, it is converted.
             *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
-        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+        rho (Tensor | float): Volumetric heat capacity, i.e. mass density times
+            specific heat. If a float is provided, it is converted.
             *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
 
     Notes:
@@ -133,7 +135,8 @@ class IsotropicConductivity1D(IsotropicConductivity3D):
         kappa (Tensor | float): Thermal conductivity along the bar. If a float is
             provided, it is converted.
             *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
-        rho (Tensor | float): Mass density. If a float is provided, it is converted.
+        rho (Tensor | float): Volumetric heat capacity, i.e. mass density times
+            specific heat. If a float is provided, it is converted.
             *Shape:* `()` for a scalar or `(N,)` for a batch of materials.
 
     Notes:
@@ -165,7 +168,8 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
         kappa_1 (Tensor | float): Conductivity along local axis 1.
         kappa_2 (Tensor | float): Conductivity along local axis 2.
         kappa_3 (Tensor | float): Conductivity along local axis 3.
-        rho (Tensor | float): Mass density. Default is `1.0`.
+        rho (Tensor | float): Volumetric heat capacity, i.e. mass density times
+            specific heat. Default is `1.0`.
 
     Notes:
         - No internal state variables (``n_state = 0``).
@@ -233,7 +237,8 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
     Args:
         kappa_1 (Tensor | float): Conductivity along local axis 1.
         kappa_2 (Tensor | float): Conductivity along local axis 2.
-        rho (Tensor | float): Mass density. Default is `1.0`.
+        rho (Tensor | float): Volumetric heat capacity, i.e. mass density times
+            specific heat. Default is `1.0`.
 
     Notes:
         - No internal state variables (``n_state = 0``).

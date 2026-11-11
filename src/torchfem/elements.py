@@ -199,7 +199,7 @@ class Bar2(Bar1):
     """
 
     nodes = 3
-    meshio_type = "line"
+    meshio_type = "line3"
 
     @classproperty
     def iso_coords(cls) -> Tensor:

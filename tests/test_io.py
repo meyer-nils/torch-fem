@@ -14,6 +14,7 @@ from torchfem import (
     ShellHeat,
     Solid,
     SolidHeat,
+    Truss,
 )
 from torchfem.elements import Quad1
 from torchfem.io import (
@@ -24,6 +25,7 @@ from torchfem.io import (
 from torchfem.materials import (
     IsotropicConductivity2D,
     IsotropicConductivity3D,
+    IsotropicElasticity1D,
     IsotropicElasticity3D,
     IsotropicElasticityPlaneStress,
 )
@@ -65,6 +67,18 @@ class TestExportMesh:
 
         assert np.allclose(written.point_data["displacement"], u.numpy())
         assert np.allclose(written.cell_data["rho"][0], rho.numpy())
+
+    def test_quadratic_bars_are_written_as_three_node_lines(self):
+        nodes = torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.5, 0.0]])
+        model = Truss(nodes, torch.tensor([[0, 1, 2]]), IsotropicElasticity1D(1.0))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.vtu"
+            export_mesh(model, str(path))
+            written = read(path)
+
+        assert written.cells[0].type == "line3"
+        assert written.cells[0].data.tolist() == [[0, 1, 2]]
 
 
 class TestImportMesh:
@@ -121,6 +135,22 @@ class TestImportNonPlanarMesh:
             assert isinstance(model, Shell)
             assert model.n_elem == 2
             assert isinstance(import_shell(path, mat), Shell)
+
+    def test_quadratic_boundary_lines_are_skipped(self):
+        mat = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        points = np.array(
+            [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0, 0], [0.5, 0.5, 0], [0, 0.5, 0]]
+        )
+        cells = [
+            ("triangle6", np.array([[0, 1, 2, 3, 4, 5]])),
+            ("line3", np.array([[0, 1, 3]])),
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "plate.vtu"
+            write_mesh(path, cells, points=points)
+            model = import_mesh(path, mat)
+            assert isinstance(model, Planar)
+            assert model.n_elem == 1
 
     def test_rejects_multiple_element_types(self):
         mat = IsotropicElasticityPlaneStress(1000.0, 0.3)

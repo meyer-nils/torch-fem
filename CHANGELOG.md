@@ -7,6 +7,7 @@
 - `solve(...)` raises if `increments` does not start at 0, which applied the forces in full but the prescribed displacements only from the first increment on.
 
 ### Fixed
+- `export_mesh(...)` writes a `Truss` of quadratic bars, which meshio rejected as two-node lines.
 - `solve(...)` reports the Cauchy stress of a `HyperelasticPlaneStress` material, where it reported it times the out-of-plane stretch. A mechanics material converts its stress with `cauchy(...)`.
 - `solve(...)` and `time_integration(...)` no longer accept a zero initial guess on `atol`, which returned a zero solution for loads below it and froze a transient at small time steps.
 - `time_integration(...)` raises a `ConvergenceError` for a residual that is NaN or infinite, where it returned the NaN field.
