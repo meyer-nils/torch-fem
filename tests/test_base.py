@@ -16,6 +16,7 @@ from torchfem import (
 from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
     Hyperelastic3D,
+    HyperelasticPlaneStress,
     IsotropicConductivity1D,
     IsotropicConductivity2D,
     IsotropicConductivity3D,
@@ -353,6 +354,30 @@ def test_finite_strain_reports_an_objective_cauchy_stress():
     assert torch.allclose(straight, straight.transpose(-1, -2), atol=1e-10)
     assert torch.allclose(turned, turned.transpose(-1, -2), atol=1e-10)
     assert torch.allclose(turned, R @ straight @ R.T, atol=1e-8)
+
+
+def test_plane_stress_reports_the_cauchy_stress_of_a_solid():
+    """A uniaxial stretch is the same stress state in a plate and in a bar."""
+
+    def psi(F, params):
+        C = F.transpose(-1, -2) @ F
+        logJ = 0.5 * torch.logdet(C)
+        return params[0] / 2 * (torch.trace(C) - 3.0) - params[0] * logJ + logJ**2
+
+    def stretched(model: Planar | Solid) -> float:
+        x = model.nodes[:, 0]
+        model.constraints[(x == 0.0) | (x == 1.0), 0] = True
+        model.displacements[x == 1.0, 0] = 0.5
+        # Symmetry planes, which leave the cross section free to contract
+        for axis in range(1, model.n_dim):
+            model.constraints[model.nodes[:, axis] == 0.0, axis] = True
+        stress = model.solve(increments=torch.linspace(0.0, 1.0, 6))[2]
+        return float(stress[0, 0, 0])
+
+    plate = Planar(*rect_quad(3, 3), HyperelasticPlaneStress(psi, [100.0, 150.0]))
+    bar = Solid(*cube_hexa(3, 3, 3), Hyperelastic3D(psi, [100.0, 150.0]))
+
+    assert stretched(plate) == pytest.approx(stretched(bar), rel=1e-6)
 
 
 class TestMaterialCompatibility:

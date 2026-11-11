@@ -201,6 +201,10 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         # State variable for out-of-plane stretch
         self.n_state = 1
 
+    def cauchy(self, P: Tensor, F: Tensor, state: Tensor) -> Tensor:
+        """As the base, with the out-of-plane stretch in the volume change."""
+        return super().cauchy(P, F, state) / (1.0 + state[..., :1, None])
+
     def step(
         self,
         H_inc: Tensor,

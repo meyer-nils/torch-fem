@@ -78,6 +78,11 @@ class MechanicsMaterial(Material, ABC):
     Its `step(...)` maps a displacement gradient increment to a stress.
     """
 
+    def cauchy(self, P: Tensor, F: Tensor, state: Tensor) -> Tensor:
+        """Cauchy stress from the first Piola stress `P` at the deformation gradient
+        `F`, which a `finite_strain` material is reported in."""
+        return P @ F.transpose(-1, -2) / torch.linalg.det(F)[..., None, None]
+
     @abstractmethod
     def step(
         self,

@@ -14,6 +14,7 @@ from pyvista.plotting import CameraPositionOptions
 from torch import Tensor
 
 from .base import FEM, Heat, near_null_space, skew
+from .materials import MechanicsMaterial
 from .report import solve_report
 from .sparse import check_declared, newton_solve, resolve_method
 
@@ -692,9 +693,9 @@ class Assembly:
 
         # A part works in the first Piola stress, converted before averaging.
         for j, part in enumerate(self.parts):
-            if isinstance(part, FEM) and part.finite_strain:
-                J = torch.linalg.det(grad[j])[..., None, None]
-                flux[j] = flux[j] @ grad[j].transpose(-1, -2) / J
+            material = getattr(part, "material", None)
+            if isinstance(material, MechanicsMaterial) and material.finite_strain:
+                flux[j] = material.cauchy(flux[j], grad[j], state[j])
 
         if aggregate_integration_points:
             # A reference point has no integration points to average over

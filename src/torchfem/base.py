@@ -999,9 +999,8 @@ class FEM(ABC):
         report.close()
 
         # The material works in the first Piola stress, converted before averaging.
-        if self.finite_strain:
-            J = torch.linalg.det(grad)[..., None, None]
-            flux = flux @ grad.transpose(-1, -2) / J
+        if isinstance(self.material, MechanicsMaterial) and self.material.finite_strain:
+            flux = self.material.cauchy(flux, grad, state)
 
         # Rebinding rather than mutating, so what eval_residual captured still holds
         if aggregate_integration_points:
