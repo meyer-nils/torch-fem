@@ -405,16 +405,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # `A.t()` is a CSC view of the same arrays, not a transposed copy.
-        gradb, _, solver, _ = sparse_solve(
-            A.t(),
-            grad_outputs[0],
-            ctx.B,
-            ctx.stol,
-            ctx.device,
-            ctx.method,
-            ctx.pre,
-            ctx.M,
-        )
+        gradb, _, solver, _ = sparse_solve(A.t(), grad_outputs[0], *ctx.solver_args)
         if solver is not None:
             solver.close()
 
@@ -438,13 +429,8 @@ class Solve(Function):
         x, M_computed, _ = output
         ctx.save_for_backward(A, x)
 
-        # Save the parameters for backward pass (including the preconditioner)
-        ctx.B = None if B is None else B.detach()
-        ctx.stol = stol
-        ctx.device = device
-        ctx.method = method
-        ctx.pre = preconditioner
-        ctx.M = M_computed
+        B = None if B is None else B.detach()
+        ctx.solver_args = (B, stol, device, method, preconditioner, M_computed)
 
 
 def differentiable_sparse_solve(
@@ -705,14 +691,8 @@ class NewtonRaphsonAdjoint(Function):
         ctx.save_for_backward(
             K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters
         )
-        ctx.B = B.detach()
-        ctx.M = M
-        ctx.stol = stol
-        ctx.device = device
-        ctx.method = method
-        ctx.pre = preconditioner
+        ctx.solver_args = (B.detach(), stol, device, method, preconditioner, M)
         ctx.eval_residual = eval_residual
-        ctx.n_parameters = len(parameters)
         ctx.converged_iter = converged_iter
 
         return du
@@ -732,16 +712,7 @@ class NewtonRaphsonAdjoint(Function):
         prev = (u_prev, grad_prev, flux_prev, state_prev)
 
         # `K.t()` is a CSC view of the same arrays, not a transposed copy.
-        lambda_, _, solver, _ = sparse_solve(
-            K.t(),
-            grad_outputs[0],
-            ctx.B,
-            ctx.stol,
-            ctx.device,
-            ctx.method,
-            ctx.pre,
-            ctx.M,
-        )
+        lambda_, _, solver, _ = sparse_solve(K.t(), grad_outputs[0], *ctx.solver_args)
         if solver is not None:
             solver.close()
 
