@@ -19,6 +19,14 @@ Each finite element model in *torch-fem* is defined by three core components:
 
 
 ### Model
+*torch-fem* computes in double precision, so we make it the default before creating any tensor:
+
+``` py
+import torch
+
+torch.set_default_dtype(torch.float64)
+```
+
 Let's consider a very simple example of a coarse planar cantilever beam with six nodes and two elements arranged with unit edge length like this: 
 ```
 3 ---- 4 ---- 5
