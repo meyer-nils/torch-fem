@@ -190,13 +190,10 @@ class TrussGeometry(FEM):
             markers2d(ax, pos, fixed)
 
         # Adjustments (limits include the arrow tips)
-        extent = torch.cat(tips)
-        nmin = extent.min(dim=0).values
-        nmax = extent.max(dim=0).values
-        ax.set(
-            xlim=(float(nmin[0]) - 0.5, float(nmax[0]) + 0.5),
-            ylim=(float(nmin[1]) - 0.5, float(nmax[1]) + 0.5),
-        )
+        lo, hi = torch.cat(tips).aminmax(dim=0)
+        margin = 0.1 * float(size)
+        ax.set_xlim(float(lo[0]) - margin, float(hi[0]) + margin)
+        ax.set_ylim(float(lo[1]) - margin, float(hi[1]) + margin)
 
         if title:
             ax.set_title(title)
