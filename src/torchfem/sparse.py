@@ -622,8 +622,33 @@ class NewtonRaphsonAdjoint(Function):
     ) -> Tensor:
         """Run Newton iterations until the residual meets `rtol` or `atol`.
 
-        Only the converged state is saved for backward. See `newton_solve` for
-        arguments.
+        Only the converged state is saved for backward.
+
+        Args:
+            eval_residual: Callback returning `(residual, tangent)` for the
+                current iterate, Newton iteration index, and the previous
+                state as one tuple.
+            du: Initial guess for the unknown increment.
+            B: Null-space rigid-body basis for AMG preconditioning.
+            max_iter: Maximum Newton iterations.
+            rtol: Relative residual tolerance.
+            atol: Absolute residual tolerance.
+            stol: Linear-solver tolerance used inside Newton steps for iterative
+                solvers.
+            report: Optional progress report receiving the iteration residuals.
+            method: Sparse backend method name.
+            preconditioner: Sparse backend preconditioner name.
+            device: Optional sparse backend device hint.
+            u_prev: Previous increment's field values. Receives residual gradients
+                in backward so sensitivities chain across increments.
+            grad_prev: Previous increment's gradient (e.g. deformation gradient).
+            flux_prev: Previous increment's flux (e.g. stress).
+            state_prev: Previous increment's internal state variables.
+            *parameters: Explicit tensors that should receive gradients via the
+                implicit adjoint backward.
+
+        Returns:
+            Converged increment with shape `(n_dofs,)`.
 
         Raises:
             ConvergenceError: If the residual becomes NaN or infinite, or the
@@ -739,71 +764,7 @@ class NewtonRaphsonAdjoint(Function):
         return (*(None,) * 11, *grads[1:])
 
 
-def newton_solve(
-    eval_residual: Callable,
-    du: Tensor,
-    B: Tensor,
-    max_iter: int,
-    rtol: float,
-    atol: float,
-    stol: float,
-    report: SolveReport | None,
-    method: str | None = None,
-    preconditioner: str | None = None,
-    device: str | None = None,
-    u_prev: Tensor | None = None,
-    grad_prev: Tensor | None = None,
-    flux_prev: Tensor | None = None,
-    state_prev: Tensor | None = None,
-    *parameters: Tensor,
-) -> Tensor:
-    """Solve a nonlinear residual equation with adjoint-safe Newton iterations.
-
-    Args:
-        eval_residual: Callback returning `(residual, tangent)` for the
-            current iterate, Newton iteration index, and the previous
-            state as one tuple.
-        du: Initial guess for the unknown increment.
-        B: Null-space rigid-body basis for AMG preconditioning.
-        max_iter: Maximum Newton iterations.
-        rtol: Relative residual tolerance.
-        atol: Absolute residual tolerance.
-        stol: Linear-solver tolerance used inside Newton steps for iterative solvers.
-        report: Optional progress report receiving the iteration residuals.
-        method: Sparse backend method name.
-        preconditioner: Sparse backend preconditioner name.
-        device: Optional sparse backend device hint.
-        u_prev: Previous increment's field values. Receives residual gradients
-            in backward so sensitivities chain across increments.
-        grad_prev: Previous increment's gradient (e.g. deformation gradient).
-        flux_prev: Previous increment's flux (e.g. stress).
-        state_prev: Previous increment's internal state variables.
-        *parameters: Explicit tensors that should receive gradients via the
-            implicit adjoint backward.
-
-    Returns:
-        du (Tensor): Converged increment.
-            *Shape:* `(n_dofs,)`.
-    """
-    du = NewtonRaphsonAdjoint.apply(
-        eval_residual,
-        du,
-        B,
-        max_iter,
-        rtol,
-        atol,
-        stol,
-        report,
-        method,
-        preconditioner,
-        device,
-        u_prev,
-        grad_prev,
-        flux_prev,
-        state_prev,
-        *parameters,
-    )  # type: ignore
-    return du
+newton_solve = NewtonRaphsonAdjoint.apply
 
 
 def modal_eigsolve(
