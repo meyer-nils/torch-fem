@@ -119,8 +119,8 @@ class TrussGeometry(FEM):
                 scale as arrows with a dot at the tip instead of a marker. In
                 the deformed configuration, only the dot is drawn, marking the
                 position the node was pulled to.
-            default_color: Bar color, the foreground of the style if omitted. Nodes
-                and labels are gray.
+            default_color: Bar and node color, the foreground of the style if
+                omitted. Labels are gray.
             cmap: Matplotlib colormap or its name.
             title: Plot title.
             axes: If True, shows the coordinate axes.
@@ -144,6 +144,8 @@ class TrussGeometry(FEM):
         if isinstance(element_property, Tensor):
             element_property = {"element_property": element_property}
 
+        default_color = default_color or plt.rcParams["text.color"]
+
         # Line color from the first field (if present)
         if element_property:
             label, values = next(iter(element_property.items()))
@@ -156,11 +158,12 @@ class TrussGeometry(FEM):
             sm = plt.cm.ScalarMappable(cmap=cm, norm=Normalize(vmin=vmin, vmax=vmax))
             plt.colorbar(sm, ax=ax, shrink=0.5, label=label)
         else:
-            color = self.n_elem * [default_color or plt.rcParams["text.color"]]
+            color = self.n_elem * [default_color]
 
         # Nodes
         pos = self.nodes + u
-        dots2d(ax, pos, zorder=10)
+        # Above the dots of the boundary conditions, so every node looks alike
+        ax.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o", zorder=13)
         if node_labels:
             labels2d(ax, pos)
 

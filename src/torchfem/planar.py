@@ -99,7 +99,7 @@ class PlanarGeometry(FEM):
                 position the node was pulled to. A heat flux is drawn as a plus
                 or a minus, a convecting edge as tildes on its nodes, and a
                 prescribed temperature keeps its marker.
-            color: Element fill color. Edges are black, and node markers and labels
+            color: Element fill color. Edges and node markers are black and labels
                 gray, in every style.
             alpha: Opacity of nodal contour plots.
             cmap: Matplotlib colormap or its name.
@@ -213,7 +213,7 @@ class PlanarGeometry(FEM):
 
         # Nodes
         if node_markers:
-            dots2d(ax, pos, zorder=3)
+            ax.scatter(pos[:, 0], pos[:, 1], color="black", marker="o", zorder=3)
         if node_labels:
             labels2d(ax, pos)
 
