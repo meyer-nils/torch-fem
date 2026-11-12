@@ -58,14 +58,12 @@ class TrussGeometry(FEM):
         l0 = torch.linalg.norm(dx, dim=-1)
         self.t = dx / l0[:, None]
 
-        # Compute Jacobian and its determinant
-        J = 0.5 * l0[:, None, None]
+        # The Jacobian of a bar is half its length
         detJ = (0.5 * l0).expand(len(xi), -1)
         if torch.any(detJ <= 0.0):
             raise ValueError("Negative Jacobian. Check element numbering.")
 
-        b = self.etype.B(xi)
-        B = torch.einsum("...jkl,...lm->...jkm", torch.linalg.inv(J), b)
+        B = self.etype.B(xi)[:, None] / detJ[..., None, None]
         return self.etype.N(xi), B, detJ
 
     def plot(self, u: float | Tensor = 0.0, **kwargs):
