@@ -217,9 +217,9 @@ class PlanarGeometry(FEM):
         # Nodes
         if node_markers:
             ax.scatter(pos[:, 0], pos[:, 1], color=foreground, marker="o", zorder=3)
-            if node_labels:
-                for i, (x, y) in enumerate(pos.tolist()):
-                    ax.annotate(str(i), (x, y), color=foreground, **LABEL_OFFSET)
+        if node_labels:
+            for i, (x, y) in enumerate(pos.tolist()):
+                ax.annotate(str(i), (x, y), color=foreground, **LABEL_OFFSET)
 
         # Boundary conditions
         tips = [pos]
