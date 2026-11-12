@@ -5,7 +5,7 @@ from typing import cast
 
 import pyvista
 import torch
-from matplotlib import patheffects, rcParams
+from matplotlib import patheffects
 from matplotlib.axes import Axes
 from matplotlib.transforms import ScaledTranslation
 from torch import Tensor
@@ -175,25 +175,33 @@ def dots(pl: pyvista.Plotter, points: Tensor, radius: float):
 
 
 # Boundary conditions in a matplotlib plot. Every glyph is gray and outlined in
-# the foreground of the style, sized in points so it looks the same on any mesh.
+# a darker gray, sized in points so it looks the same on any mesh.
 
 MARKERSIZE = 6.0
-
-# A node label sits diagonally off its node, clear of the marker drawn there
-LABEL_OFFSET = {"textcoords": "offset points", "xytext": (MARKERSIZE, MARKERSIZE)}
+FILL = "darkgray"
+OUTLINE = "dimgray"
 
 
 def _glyph(size: float = MARKERSIZE, zorder: float = 10, **kwargs) -> dict:
-    """Keywords drawing a marker, taking its outline from the current style."""
+    """Keywords drawing a gray marker with a darker outline."""
     return {
-        "markerfacecolor": "gray",
-        "markeredgecolor": rcParams["text.color"],
+        "markerfacecolor": FILL,
+        "markeredgecolor": OUTLINE,
         "markeredgewidth": 1.0,
         "markersize": size,
         "zorder": zorder,
         "clip_on": False,
         **kwargs,
     }
+
+
+def labels2d(ax: Axes, points: Tensor):
+    """Number every point, diagonally off it and a point clear of its marker."""
+    gap = MARKERSIZE / 2 + 1
+    for i, point in enumerate(points.tolist()):
+        ax.annotate(
+            str(i), point, xytext=(gap, gap), textcoords="offset points", c=OUTLINE
+        )
 
 
 def dots2d(ax: Axes, points: Tensor, zorder: float = 12):
@@ -223,8 +231,8 @@ def arrows2d(
     style = {
         "width": width,
         "length_includes_head": span is None,
-        "facecolor": "gray",
-        "edgecolor": rcParams["text.color"],
+        "facecolor": FILL,
+        "edgecolor": OUTLINE,
         "linewidth": 1.0,
         # Above the constraint markers a load may share a node with
         "zorder": 11,
@@ -259,8 +267,8 @@ def signs2d(ax: Axes, points: Tensor, values: Tensor, robin: Tensor):
     Robin surface with a tilde."""
     # A line marker carries no fill, so it is drawn larger and heavier, and
     # outlined by a stroke beneath it like the filled glyphs
-    outline = patheffects.withStroke(linewidth=3.5, foreground=rcParams["text.color"])
-    style = _glyph(1.5 * MARKERSIZE, markeredgecolor="gray", markeredgewidth=2.0)
+    outline = patheffects.withStroke(linewidth=3.5, foreground=OUTLINE)
+    style = _glyph(1.5 * MARKERSIZE, markeredgecolor=FILL, markeredgewidth=2.0)
     style["path_effects"] = [outline]
     marks = [("+", values > 0.0), ("_", values < 0.0), ("$\\sim$", robin)]
     for marker, drawn in marks:

@@ -12,7 +12,7 @@ from torch import Tensor
 from .base import FEM, Heat, Mechanics
 from .elements import Bar1, Bar2
 from .materials import Material
-from .plot_utils import LABEL_OFFSET, arrows, arrows2d, cones, dots, dots2d, markers2d
+from .plot_utils import arrows, arrows2d, cones, dots, dots2d, labels2d, markers2d
 
 # isort: split
 from .plot_utils import new_plotter, show_plotter
@@ -93,7 +93,7 @@ class TrussGeometry(FEM):
         show_thickness: bool = False,
         thickness_threshold: float = 0.0,
         bcs: bool = True,
-        default_color: str = "black",
+        default_color: str | None = None,
         cmap: str | Colormap = "viridis",
         title: str | None = None,
         axes: bool = False,
@@ -119,7 +119,8 @@ class TrussGeometry(FEM):
                 scale as arrows with a dot at the tip instead of a marker. In
                 the deformed configuration, only the dot is drawn, marking the
                 position the node was pulled to.
-            default_color: Bar, node, and label color.
+            default_color: Bar color, the foreground of the style if omitted. Nodes
+                and labels are gray.
             cmap: Matplotlib colormap or its name.
             title: Plot title.
             axes: If True, shows the coordinate axes.
@@ -155,14 +156,13 @@ class TrussGeometry(FEM):
             sm = plt.cm.ScalarMappable(cmap=cm, norm=Normalize(vmin=vmin, vmax=vmax))
             plt.colorbar(sm, ax=ax, shrink=0.5, label=label)
         else:
-            color = self.n_elem * [default_color]
+            color = self.n_elem * [default_color or plt.rcParams["text.color"]]
 
         # Nodes
         pos = self.nodes + u
-        ax.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o", zorder=10)
+        dots2d(ax, pos, zorder=10)
         if node_labels:
-            for i, (x, y) in enumerate(pos.tolist()):
-                ax.annotate(str(i), (x, y), color=default_color, **LABEL_OFFSET)
+            labels2d(ax, pos)
 
         # Bounding box
         size = torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values)
