@@ -35,7 +35,7 @@ def new_plotter(plotter: pyvista.Plotter | None) -> pyvista.Plotter:
     pyvista.set_plot_theme("document")
     pl = pyvista.Plotter() if plotter is None else plotter
     pl.enable_anti_aliasing("ssaa")
-    pl.renderer.add_axes()
+    pl.renderer.add_axes(color=pl.theme.font.color)
     return pl
 
 

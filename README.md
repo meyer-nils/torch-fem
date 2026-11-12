@@ -105,28 +105,28 @@ The subdirectories `examples/basic` and `examples/optimization` contain Jupyter 
 <table>
     <tbody>
         <tr>
-            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity_light.png" alt="Planar plate with a hole plasticity example"></a></td>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity_light.png" alt="Planar plate with a hole plasticity example"></picture></a></td>
         </tr>
         <tr>
             <td colspan="2" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
         </tr>
         <tr>
-            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><img src="https://meyer-nils.github.io/torch-fem/images/cantilever_finite_strain.png" alt="Finite-strain cantilever example"></a></td>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/cantilever_finite_strain_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/cantilever_finite_strain_light.png" alt="Finite-strain cantilever example"></picture></a></td>
         </tr>
         <tr>
             <td colspan="2" align="center"><b>Finite strain cantilever:</b> Hyperelastic model in Total Lagrangian Formulation.</td>
         </tr>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/bracket.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/bracket.png" alt="3D jet engine bracket topology optimization result"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/topology_thermal.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/topology_thermal.png" alt="3D heat sink topology optimization example"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/bracket.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/bracket_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/bracket_light.png" alt="3D jet engine bracket topology optimization result"></picture></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/topology_thermal.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/topology_thermal_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/topology_thermal_light.png" alt="3D heat sink topology optimization example"></picture></a></td>
         </tr>
         <tr>
             <td align="center"><b>Topology optimization of a jet engine bracket:</b> The optimized part is cut out of the design space at an iso-value of the density.</td>
             <td align="center"><b>Topology optimization of a 3D heat sink:</b> Conductive material is distributed in a cube with a homogeneous heat source to minimize thermal compliance.</td>
         </tr>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/property_fields.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/property_fields.png" alt="Property field recovery example"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/shell/pressure_vessel.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/shell/pressure_vessel.png" alt="Pressure vessel free size optimization example"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/property_fields.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/property_fields_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/property_fields_light.png" alt="Property field recovery example"></picture></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/shell/pressure_vessel.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/shell/pressure_vessel_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/shell/pressure_vessel_light.png" alt="Pressure vessel free size optimization example"></picture></a></td>
         </tr>
         <tr>
             <td align="center"><b>Recovery of a property field:</b> A direct optimization and a neural field recover a graded elastic modulus from noisy observations of the displacement.</td>

@@ -120,7 +120,7 @@ class SolidGeometry(FEM):
                 mesh.cell_data[key] = val.cpu().numpy()
 
         if show_outline:
-            pl.add_mesh(mesh.outline(), color="black")
+            pl.add_mesh(mesh.outline(), color=pl.theme.font.color)
 
         # Averaging onto the nodes makes the field continuous, so the cut runs
         # through the elements instead of around them.
