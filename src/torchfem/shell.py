@@ -527,10 +527,10 @@ class Shell(ShellGeometry, Mechanics):
         """Aggregate strain-displacement matrices
 
         Args:
-            B (torch tensor): Derivative of element shape functions (shape: [N x 2 x 3])
+            B (torch tensor): Derivative of shape functions (shape: [N x 2 x nodes])
 
         Returns:
-            torch tensor: Strain-displacement matrices shaped [N x 3 x 18]
+            torch tensor: Strain-displacement matrices shaped [N x 3 x 6*nodes]
         """
         N = self.n_elem
         z = torch.zeros(N, self.etype.nodes)
@@ -543,10 +543,10 @@ class Shell(ShellGeometry, Mechanics):
         """Aggregate curvature-displacement matrices
 
         Args:
-            B (torch tensor): Derivative of element shape functions (shape: [N x 2 x 3])
+            B (torch tensor): Derivative of shape functions (shape: [N x 2 x nodes])
 
         Returns:
-            torch tensor: Curvature-displacement matrices shaped [N x 3 x 18]
+            torch tensor: Curvature-displacement matrices shaped [N x 3 x 6*nodes]
         """
         N = self.n_elem
         z = torch.zeros(N, self.etype.nodes)

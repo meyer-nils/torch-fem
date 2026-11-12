@@ -108,8 +108,8 @@ def import_mesh(
 
     The model type follows from the geometry and the element type: a mesh whose nodes
     all lie in one plane z = const becomes a `Planar` model, a non-planar triangle
-    mesh a `Shell`, and a tetrahedral or hexahedral mesh a `Solid`. Use
-    `import_shell(...)` to require a shell.
+    or quadrilateral mesh a `Shell`, and a tetrahedral or hexahedral mesh a `Solid`.
+    Use `import_shell(...)` to require a shell.
 
     A `HeatMaterial` gives the heat model of that geometry, and a `Laminate`
     section needs a surface mesh, as only a `Shell` takes one.
@@ -123,7 +123,7 @@ def import_mesh(
         FEM: A model of the type described above.
 
     Raises:
-        Exception: If the file holds more than one element type, or if its element
+        ValueError: If the file holds more than one element type, or if its element
             type has no corresponding model.
     """
     points, elements, etype = _read_mesh(filename)

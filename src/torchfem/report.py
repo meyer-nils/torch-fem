@@ -51,7 +51,7 @@ class SolveReport:
 
     Args:
         header: Label and text of the lines above the table. None for a report
-            that records progress but writes nothing.
+            that writes nothing.
         label: Name of the first column.
         value: Name of the second column.
         unit: Plural noun for one row, used in the summary.

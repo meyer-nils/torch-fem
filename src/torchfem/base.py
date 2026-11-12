@@ -1005,7 +1005,7 @@ class FEM(ABC):
         if isinstance(self.material, MechanicsMaterial) and self.material.finite_strain:
             flux = self.material.cauchy(flux, grad, state)
 
-        # Rebinding rather than mutating, so what eval_residual captured still holds
+        # Rebinding rather than mutating, so what the autograd graph captured holds
         if aggregate_integration_points:
             flux, grad, state = (x.mean(dim=1) for x in (flux, grad, state))
         flux, grad = flux.squeeze((-2, -1)), grad.squeeze((-2, -1))
@@ -1343,7 +1343,7 @@ class Heat(FEM, ABC):
         for i, w in enumerate(self.etype.iweights):
             # Compute temperature gradient increment
             temp_grad_inc = torch.einsum("...ij,...jk->...ki", B[i], du)
-            # Update deformation gradient
+            # Update temperature gradient
             grad_new.append(grad_prev[i] + temp_grad_inc)
 
             # Evaluate material response
@@ -1401,9 +1401,9 @@ class Heat(FEM, ABC):
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Integrate the heat equation in time with implicit increments.
 
-        Computes an equilibrium state at t=0 under the current boundary
-        conditions, then advances to each requested output time using internal
-        steps of at most `delta_t`.
+        Starts at t=0 from `temperatures` as the initial condition on every node,
+        then advances to each requested output time using internal steps of at
+        most `delta_t`, holding the constrained nodes at their temperatures.
 
         Args:
             t_output: Requested output times. Results are returned at exactly
@@ -1447,13 +1447,12 @@ class Heat(FEM, ABC):
         if (t_output[1:] <= t_output[:-1]).any():
             raise ValueError("t_output must be strictly increasing.")
 
-        # initial step: we get heat fluxes and temperature gradients for initial
-        # conditions enforce initial conditions as boundary conditions
-
+        # The temperatures are the initial condition, so a solve with every node
+        # constrained yields the heat fluxes and temperature gradients at t=0.
         bc_constraints = self.constraints.clone()
         self.constraints[:] = True
 
-        # solve for initial conditions, restoring the constraints even if it fails
+        # Restore the constraints even if that solve fails
         try:
             temp_eq, f_int_eq, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
                 aggregate_integration_points=False,

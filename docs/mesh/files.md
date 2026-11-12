@@ -20,8 +20,8 @@ The model type follows from the geometry and the element type:
 
 | Mesh | Model |
 | --- | --- |
-| Any element type, all nodes at `z = 0` | `Planar` |
-| Triangles or quadrilaterals that leave the `z = 0` plane | `Shell` |
+| Any element type, all nodes in one plane `z = const` | `Planar` |
+| Triangles or quadrilaterals that leave such a plane | `Shell` |
 | Tetrahedra or hexahedra | `Solid` |
 
 ::: torchfem.io.import_shell

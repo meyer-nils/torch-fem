@@ -164,7 +164,7 @@ def IBOF_closure(A2: Tensor) -> Tensor:
 
     beta5 = -4 / 5 * beta3 - 7 / 5 * beta4 - 6 / 5 * beta6 * (1 - 4 / 3 * II)
 
-    # second order identy matrix
+    # second order identity matrix
     delta = torch.eye(3)
 
     # generate fourth order tensor with parameters and tensor algebra
@@ -194,7 +194,7 @@ def symm(A4: Tensor) -> Tensor:
         A4 (Tensor): Input tensor (shape Nx3x3x3x3)
 
     Returns:
-        Tensor: Symmetrized outout tensor
+        Tensor: Symmetrized output tensor
     """
     B4 = torch.stack([torch.permute(A4, (0, *p)) for p in permutations([1, 2, 3, 4])])
     return B4.sum(dim=0) / 24
@@ -227,7 +227,7 @@ def compute_orientation_average(C: Tensor, A2: Tensor, A4: Tensor) -> Tensor:
     # Identity tensor
     Id = torch.eye(3)
 
-    # Coeffients from Advani-Tucker paper
+    # Coefficients from Advani-Tucker paper
     B1 = (
         C[..., 0, 0, 0, 0]
         + C[..., 1, 1, 1, 1]
@@ -265,8 +265,8 @@ def compute_orientation_average(C: Tensor, A2: Tensor, A4: Tensor) -> Tensor:
 def tandon_weng_homogenization(
     matrix: IsotropicElasticity3D, fiber: IsotropicElasticity3D, a, volfrac
 ) -> OrthotropicElasticity3D:
-    """Compute transversly isotropic material based on Tandon-Wengs's paper [1]. See
-    also [2] for more general Mori-Tanka approach.
+    """Compute transversely isotropic material based on Tandon-Weng's paper [1]. See
+    also [2] for more general Mori-Tanaka approach.
 
     [1] Tandon, G.P. and Weng, G.J. (1984)
         'The effect of aspect ratio of inclusions on the elastic properties of
@@ -286,7 +286,7 @@ def tandon_weng_homogenization(
         volfrac (float): Volume fraction of inclusions
 
     Returns:
-        Otrhotropic: Transversely isotropic effective elastic material.
+        OrthotropicElasticity3D: Transversely isotropic effective elastic material.
     """
 
     # Extract scalar properties from matrix and fiber material
