@@ -603,12 +603,16 @@ class TestDamageEquivalentStrain:
             analytic = torch.einsum("...ijkl,...kl->...ij", ddsdde, dE)
             assert torch.allclose(analytic, fd, rtol=1e-6, atol=1e-6 * 210e3)
 
-    def test_mises_damages_a_bar_in_compression_but_rankine_does_not(self):
+    @pytest.mark.parametrize(
+        "eq_strain, damaged", [("mises", True), ("rankine", False)]
+    )
+    def test_mises_damages_a_bar_in_compression_but_rankine_does_not(
+        self, eq_strain, damaged
+    ):
         H = torch.full((1, 1, 1), -4.0e-3)
-        for eq_strain, damaged in (("mises", True), ("rankine", False)):
-            mat = IsotropicDamage1D(210e3, _softening, _softening_prime, eq_strain)
-            _, state, _ = mat.vectorize(1).step(H, *self._virgin(1))
-            assert (state[0, 1] > 0.0) == damaged
+        mat = IsotropicDamage1D(210e3, _softening, _softening_prime, eq_strain)
+        _, state, _ = mat.vectorize(1).step(H, *self._virgin(1))
+        assert (state[0, 1] > 0.0) == damaged
 
 
 def _orthotropic_3d() -> OrthotropicElasticity3D:
