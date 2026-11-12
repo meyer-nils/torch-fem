@@ -36,39 +36,9 @@ def axis_rotation(axis: Tensor, phi: float | Tensor) -> Tensor:
 
 def euler_rotation(rotation_angles: Tensor) -> Tensor:
     """Create a rotation matrix from intrinsic z-y-x Euler angles."""
-    alpha = rotation_angles[..., 0]
-    beta = rotation_angles[..., 1]
-    gamma = rotation_angles[..., 2]
-    return torch.stack(
-        [
-            torch.stack(
-                [
-                    torch.cos(alpha) * torch.cos(beta),
-                    torch.cos(alpha) * torch.sin(beta) * torch.sin(gamma)
-                    - torch.sin(alpha) * torch.cos(gamma),
-                    torch.cos(alpha) * torch.sin(beta) * torch.cos(gamma)
-                    + torch.sin(alpha) * torch.sin(gamma),
-                ],
-                dim=-1,
-            ),
-            torch.stack(
-                [
-                    torch.sin(alpha) * torch.cos(beta),
-                    torch.sin(alpha) * torch.sin(beta) * torch.sin(gamma)
-                    + torch.cos(alpha) * torch.cos(gamma),
-                    torch.sin(alpha) * torch.sin(beta) * torch.cos(gamma)
-                    - torch.cos(alpha) * torch.sin(gamma),
-                ],
-                dim=-1,
-            ),
-            torch.stack(
-                [
-                    -torch.sin(beta),
-                    torch.cos(beta) * torch.sin(gamma),
-                    torch.cos(beta) * torch.cos(gamma),
-                ],
-                dim=-1,
-            ),
-        ],
-        dim=-2,
-    )
+    ca, cb, cg = torch.cos(rotation_angles).unbind(-1)
+    sa, sb, sg = torch.sin(rotation_angles).unbind(-1)
+    row_1 = [ca * cb, ca * sb * sg - sa * cg, ca * sb * cg + sa * sg]
+    row_2 = [sa * cb, sa * sb * sg + ca * cg, sa * sb * cg - ca * sg]
+    row_3 = [-sb, cb * sg, cb * cg]
+    return torch.stack([torch.stack(r, dim=-1) for r in (row_1, row_2, row_3)], dim=-2)
