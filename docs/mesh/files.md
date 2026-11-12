@@ -6,7 +6,7 @@ A mesh of arbitrary geometry is read from file with `meshio`, in any format it s
 from torchfem.io import export_mesh, import_mesh
 
 model = import_mesh("plate.vtu", material)
-u, f, sigma, epsilon, state = model.solve()
+u, f, sigma, F, state = model.solve()
 export_mesh(model, "result.vtu", nodal_data={"u": u})
 ```
 
