@@ -13,6 +13,7 @@ https://doi.org/10.1108/eb023562
 """
 
 import warnings
+from itertools import product
 from math import sqrt
 from typing import cast
 
@@ -217,14 +218,15 @@ class ShellGeometry(FEM):
             u = u[:, :3]
 
         # VTK element list
+        conn = self.elements.cpu().numpy()
         elements = []
-        for element in self.elements.cpu().numpy():
+        for element in conn:
             elements += [len(element), *element]
 
         # Deformed node positions
         pos = (self.nodes + u).cpu().numpy()
 
-        # Create unstructured mesh
+        # Create surface mesh
         mesh = pyvista.PolyData(pos.tolist(), elements)
 
         # A bare field is titled by its argument, a named one by its key
@@ -233,12 +235,12 @@ class ShellGeometry(FEM):
         if isinstance(element_property, Tensor):
             element_property = {"element_property": element_property}
 
-        # Plot node properties
+        # Attach node properties
         if node_property:
             for key, val in node_property.items():
                 mesh.point_data[key] = val.cpu().numpy()
 
-        # Plot cell properties
+        # Attach cell properties
         if element_property:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()
@@ -249,37 +251,31 @@ class ShellGeometry(FEM):
 
         # Plot as solid elements spanning the thickness
         kwargs.setdefault("show_edges", True)
-        base_meshes = []
+        base = mesh
         if thickness:
             # Averaged onto the nodes, so the extrusion stays continuous
             nodal = np.zeros((len(self.nodes), 2))
             count = np.zeros((len(self.nodes), 1))
-            for element, surface in zip(
-                self.elements.cpu().numpy(), surfaces.cpu().numpy()
-            ):
-                nodal[element] += surface
-                count[element] += 1
+            np.add.at(nodal, conn, surfaces.cpu().numpy()[:, None])
+            np.add.at(count, conn, 1)
             nodal /= count
 
             # Triangle windings are flipped, as VTK winds the base of a wedge
             # away from its top face.
             normals = np.asarray(mesh.point_normals)
             tria = self.etype is Tria1
-            conn = self.elements.cpu().numpy()[:, :: -1 if tria else 1]
+            cells = conn[:, :: -1 if tria else 1]
             ctype = pyvista.CellType.WEDGE if tria else pyvista.CellType.HEXAHEDRON
             solid = pyvista.UnstructuredGrid(
-                {ctype: np.hstack([conn, conn + self.n_nod])},
+                {ctype: np.hstack([cells, cells + self.n_nod])},
                 np.vstack([pos + nodal[:, :1] * normals, pos + nodal[:, 1:] * normals]),
             )
             solid.cell_data.update(mesh.cell_data)
             for key, val in mesh.point_data.items():
                 solid.point_data[key] = np.concatenate([val, val])
 
-            pl.add_mesh(solid, **kwargs)
-            base_meshes.append(solid)
-        else:
-            pl.add_mesh(mesh, **kwargs)
-            base_meshes.append(mesh)
+            base = solid
+        pl.add_mesh(base, **kwargs)
 
         # Plot orientations, lifted onto the top surface of a thick shell so
         # that they do not disappear inside it
@@ -320,20 +316,11 @@ class ShellGeometry(FEM):
                 )
 
         # Mirror meshes across specified planes
-        sx_values = [1.0, -1.0] if mirror[0] else [1.0]
-        sy_values = [1.0, -1.0] if mirror[1] else [1.0]
-        sz_values = [1.0, -1.0] if mirror[2] else [1.0]
-        for sx in sx_values:
-            for sy in sy_values:
-                for sz in sz_values:
-                    if sx == 1.0 and sy == 1.0 and sz == 1.0:
-                        continue
-                    for msh in base_meshes:
-                        mirrored = msh.copy()
-                        mirrored.points[:, 0] *= sx
-                        mirrored.points[:, 1] *= sy
-                        mirrored.points[:, 2] *= sz
-                        pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
+        for signs in product(*([1.0, -1.0] if m else [1.0] for m in mirror)):
+            if signs != (1.0, 1.0, 1.0):
+                mirrored = base.copy()
+                mirrored.points *= signs
+                pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
 
         if show_undeformed:
             undefo = pyvista.PolyData(self.nodes.cpu().numpy(), elements)
