@@ -418,25 +418,19 @@ class FEM(ABC):
         return (w * field[self.elements]).sum(dim=1)
 
     def integrate_mass(self) -> Tensor:
-        """Integrate mass matrix.
+        """Integrate the consistent element mass matrix ∫ ρ Nᵀ N dV.
+
+        The volume includes `volume_scale`.
 
         Returns:
             Element mass matrix tensor with shape [n_elem, n_dof_elem, n_dof_elem].
         """
         assert self.material is not None
-        n_dof = self.n_dof_per_node * self.etype.nodes
-        m = torch.zeros(self.n_elem, n_dof, n_dof)
-
         N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
-        I_dof = torch.eye(self.n_dof_per_node)
-
-        for i, w in enumerate(self.etype.iweights):
-            m_i = self.compute_m(detJ[i], self.material.rho)
-            m_scalar = torch.einsum("N,M,E->ENM", N[i], N[i], m_i)
-            m_block = torch.einsum("Enm,ij->Enimj", m_scalar, I_dof)
-            m += w * m_block.reshape(self.n_elem, n_dof, n_dof)
-
-        return m
+        w = self.etype.iweights.to(detJ)
+        dm = self.compute_m(detJ, self.material.rho)
+        m = torch.einsum("i,in,im,ie->enm", w, N, N, dm)
+        return torch.kron(m, torch.eye(self.n_dof_per_node).to(m)[None])
 
     def integrate_hessian(self, modulus: Tensor | float) -> Tensor:
         """Integrate the element matrix of the regularization energy ½ k ∇∇u ⋮ ∇∇u.
