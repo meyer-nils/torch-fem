@@ -833,7 +833,7 @@ class FEM(ABC):
         # Null space rigid body modes for AMG preconditioner
         null_space = self.near_null_space()
 
-        # Indexes of constrained and unconstrained degrees of freedom
+        # Indexes of constrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
@@ -1487,7 +1487,7 @@ class Heat(FEM, ABC):
         # null space rigid body modes for AMG preconditioner
         null_space = self.near_null_space()
 
-        # Indexes of constrained and unconstrained degrees of freedom
+        # Indexes of constrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
@@ -1511,7 +1511,7 @@ class Heat(FEM, ABC):
         # compute element mass matrices
         m = self.integrate_mass()
 
-        # Initialize displacement increment
+        # Initialize temperature increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
         newton = (

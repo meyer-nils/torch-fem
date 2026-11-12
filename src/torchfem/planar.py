@@ -131,7 +131,7 @@ class PlanarGeometry(FEM):
         # Bounding box
         size = float(torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values))
 
-        # Set figure size
+        # Create a figure unless axes are given
         if ax is None:
             _, ax = plt.subplots(figsize=figsize)
 

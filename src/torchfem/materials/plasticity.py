@@ -414,7 +414,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         G = self.G[fm]
         nu = self.nu[fm]
         for _ in range(self.max_iter):
-            # Compute xi and some short hands
+            # Compute xi and the equivalent plastic strain
             xi = (
                 a1[fm] / (6 * (1 + E * dGamma / (3 * (1 - nu))) ** 2)
                 + (1 / 2 * a2[fm] + 2 * a3[fm]) / (1 + 2 * G * dGamma) ** 2

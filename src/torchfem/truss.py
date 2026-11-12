@@ -127,7 +127,7 @@ class TrussGeometry(FEM):
             vmax: Upper color limit.
             ax: Existing matplotlib axes to plot into.
         """
-        # Set figure size
+        # Create a figure unless axes are given
         if ax is None:
             _, ax = plt.subplots()
 

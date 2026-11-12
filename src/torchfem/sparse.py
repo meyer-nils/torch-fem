@@ -646,7 +646,7 @@ class NewtonRaphsonAdjoint(Function):
 
         # Newton-Raphson iterations
         for i in range(max_iter):
-            # Evaluate residual, stiffness matrix, and internal forces
+            # Evaluate residual and tangent
             prev = (u_prev, grad_prev, flux_prev, state_prev)
             residual, K = eval_residual(du, i, prev)
 

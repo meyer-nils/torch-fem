@@ -109,12 +109,12 @@ class SolidGeometry(FEM):
         if isinstance(element_property, Tensor):
             element_property = {"element_property": element_property}
 
-        # Plot node properties
+        # Attach node properties
         if node_property:
             for key, val in node_property.items():
                 mesh.point_data[key] = val.cpu().numpy()
 
-        # Plot cell properties
+        # Attach cell properties
         if element_property:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()

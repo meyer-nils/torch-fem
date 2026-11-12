@@ -42,10 +42,10 @@ class IsotropicConductivity3D(HeatMaterial):
         # Check if the material is vectorized
         self.is_vectorized = self.kappa.dim() > 0
 
-        # Identity tensors
+        # Identity tensor
         I2 = torch.eye(3)
 
-        # Stiffness tensor
+        # Conductivity tensor
         self.KAPPA = self.kappa[..., None, None] * I2
 
     def step(

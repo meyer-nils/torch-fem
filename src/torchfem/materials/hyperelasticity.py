@@ -276,7 +276,6 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         )
         ddsdde_new = ddsdde[..., 0:2, 0:2, 0:2, 0:2] - tangent_correction
 
-        # Update stress
         return P_new, state_new, ddsdde_new
 
 

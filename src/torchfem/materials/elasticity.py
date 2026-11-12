@@ -490,7 +490,7 @@ class OrthotropicElasticity3D(MechanicsMaterial):
             "...ijkl,...mi,...nj,...ok,...pl->...mnop", self.C, R, R, R, R
         )
 
-        # Compute rotated internal variables
+        # Compute rotated engineering constants
         S = torch.linalg.inv(stiffness2voigt(new.C))
         new.E_1 = 1 / S[..., 0, 0]
         new.E_2 = 1 / S[..., 1, 1]
