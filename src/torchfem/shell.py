@@ -731,10 +731,17 @@ class Shell(ShellGeometry, Mechanics):
         # Compute updated configuration
         u_trial = u_prev + du.view((-1, self.n_dof_per_node))
 
-        # Reshape displacement increment and rotation increment
+        # Compute gradient operators and the local frames `t` and `T`
+        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
+
+        # Displacement and rotation increments in local element coordinates
         du = du.view(-1, self.n_dof_per_node)[self.elements]
-        d_u = du[..., :3]
-        d_w = du[..., 3:]
+        du_local = torch.einsum("...ij,...kj->...ki", self.t, du[..., :3])
+        dw_local = torch.einsum("...ij,...kj->...ki", self.t, du[..., 3:])
+
+        # Updated configuration in the local degrees of freedom of each element
+        disp = u_trial[self.elements, :].reshape(self.n_elem, -1)
+        loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
 
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
@@ -743,16 +750,9 @@ class Shell(ShellGeometry, Mechanics):
         need_k = compute_stiffness and (self.K.numel() == 0 or self.n_state != 0)
         k = torch.zeros(self.n_elem, n_dof, n_dof) if need_k else None
 
-        # Compute gradient operators
-        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
-
         # Through-thickness integration stations of the section
-        section = self.section
-        materials, z_stations, w_stations = (
-            section.materials_per_station,
-            section.z,
-            section.w,
-        )
+        materials = self.section.materials_per_station
+        z_stations, w_stations = self.section.z, self.section.w
 
         # Transverse shear operators and stiffnesses at the integration points
         Ds = self._Ds(detJ)
@@ -764,9 +764,10 @@ class Shell(ShellGeometry, Mechanics):
         shear = self.As.diagonal(dim1=-2, dim2=-1).mean(-1)
 
         for i, wi in enumerate(self.etype.iweights):
-            # Transform displacement increment to local element coordinates
-            du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
-            dw_local = torch.einsum("...ij,...kj->...ki", self.t, d_w)
+            # Gradient of the displacement increment and curvature increment
+            dudxi = B[i] @ du_local
+            dwdxi = B[i] @ dw_local
+            dkappa = torch.stack([dwdxi[..., 1], -dwdxi[..., 0]], dim=-2)
 
             # Initialize local force contributions
             f_loc = torch.zeros(self.n_elem, *self.n_flux)
@@ -786,25 +787,12 @@ class Shell(ShellGeometry, Mechanics):
                 z = z_stations[j][:, None, None]
                 wz = w_stations[j][:, None, None]
 
-                # Compute gradient of displacement increment and rotation increment
-                dudxi = B[i] @ du_local
-                dwdxi = B[i] @ dw_local
-
-                # Compute curvature
-                dkappa = torch.stack(
-                    [
-                        torch.stack([dwdxi[..., 0, 1], -dwdxi[..., 0, 0]], dim=-1),
-                        torch.stack([dwdxi[..., 1, 1], -dwdxi[..., 1, 0]], dim=-1),
-                    ],
-                    dim=-1,
-                )
-
                 # Compute in-plane displacement gradient increment
                 H_inc = dudxi[..., 0:2] + z * dkappa
                 grad_new[ip] = grad_prev[ip] + H_inc
 
                 # Evaluate material response
-                flux_new[ip], state_new[ip], ddsdde = material.step(
+                flux, state_new[ip], ddsdde = material.step(
                     H_inc,
                     grad_prev[ip],
                     flux_prev[ip],
@@ -814,9 +802,11 @@ class Shell(ShellGeometry, Mechanics):
                     iter,
                 )
 
+                flux_new[ip] = flux
+
                 # Thickness integration of membrane forces and bending moments.
-                f_loc += wz * flux_new[ip].clone()
-                m_loc += wz * z * flux_new[ip].clone()
+                f_loc += wz * flux
+                m_loc += wz * z * flux
 
                 # Compute ABD matrix contributions
                 C = stiffness2voigt(ddsdde)
@@ -851,11 +841,9 @@ class Shell(ShellGeometry, Mechanics):
                 kt = km + kb + kc + ks + kd
 
                 # Total element stiffness in global coordinates
-                k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T
+                k += self.T.transpose(1, 2) @ kt @ self.T
 
             # Total force contribution
-            disp = u_trial[self.elements, :].reshape(self.n_elem, -1)
-            loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
             n_loc = stress2voigt(f_loc)
             m_loc_voigt = stress2voigt(m_loc)
             f_membrane = wi * torch.einsum("...,...ji,...j->...i", detJ[i], Dm, n_loc)
@@ -864,9 +852,7 @@ class Shell(ShellGeometry, Mechanics):
             )
             f_shear_drill = torch.einsum("...ij,...j->...i", ks + kd, loc_disp)
             f_loc_total = f_membrane + f_bending + f_shear_drill
-            f[:, :] += torch.einsum(
-                "...ij,...j->...i", self.T.transpose(1, 2), f_loc_total
-            )
+            f += torch.einsum("...ij,...j->...i", self.T.transpose(1, 2), f_loc_total)
 
         return k, f, grad_new, flux_new, state_new
 
