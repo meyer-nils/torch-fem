@@ -402,13 +402,13 @@ class Shell(ShellGeometry, Mechanics):
         nodes: Tensor,
         elements: Tensor,
         material: Material | Laminate,
-        thickness: Tensor | float = 1.0,
+        thickness: Tensor | float | None = None,
         offset: Tensor | float = 0.0,
         transverse_nu: float = 0.5,
         transverse_kappa: float = 5.0 / 6.0,
         transverse_G: list[float] | list[Tensor] | None = None,
         drill_penalty: float = 1e-3,
-        n_simpson: int = 3,
+        n_simpson: int | None = None,
         orientation: Tensor | None = None,
     ):
         """Initialize the shell FEM problem.
@@ -419,11 +419,10 @@ class Shell(ShellGeometry, Mechanics):
                 [n_elem, 3] or [n_elem, 4].
             material: Either a single plane-stress `Material` (homogeneous
                 shell) or a `Laminate` describing a layered stacking sequence.
-                When a `Laminate` is passed, `thickness` and `n_simpson` are
-                taken from the laminate and the corresponding arguments here are
-                ignored.
-            thickness: Shell thickness. A float is expanded to all elements, a
-                tensor assigns one thickness per element.
+                A `Laminate` carries its own thicknesses and `n_simpson`, so
+                neither may be passed with one.
+            thickness: Shell thickness, 1.0 if omitted. A float is expanded to
+                all elements, a tensor assigns one thickness per element.
             offset: Reference surface position within the section, as a
                 fraction of thickness from the mid-plane along the element
                 normal. `+0.5` puts it on the top face.
@@ -438,7 +437,7 @@ class Shell(ShellGeometry, Mechanics):
                 in-plane rotation of the membrane field, as a fraction of the shear
                 stiffness of the section.
             n_simpson: Number of Simpson integration points through the
-                thickness. Must be an odd integer.
+                thickness, 3 if omitted. Must be an odd integer.
             orientation: Global reference direction from which material/ply
                 angles are measured. It is projected onto each element's surface
                 to define the element's local material 0°-axis. Accepts
@@ -452,8 +451,11 @@ class Shell(ShellGeometry, Mechanics):
         # A plain material is a section of one layer, which checks its kind
         if not isinstance(material, Laminate):
             layer = cast(MechanicsMaterial, material)
-            thickness = self._per_element(thickness)
+            thickness = self._per_element(1.0 if thickness is None else thickness)
+            n_simpson = 3 if n_simpson is None else n_simpson
             material = Laminate([layer], [thickness], [0.0], n_simpson)
+        elif thickness is not None or n_simpson is not None:
+            raise ValueError("Set thickness and n_simpson on the Laminate instead.")
         if material.finite_strain:
             raise NotImplementedError(
                 f"Geometric nonlinearity is not implemented for {type(self).__name__}."

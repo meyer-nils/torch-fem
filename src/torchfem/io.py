@@ -117,7 +117,8 @@ def import_mesh(
     Args:
         filename (PathLike): Path to a mesh file in any format meshio can read.
         material (Material | Laminate): Material or section assigned to the model.
-        thickness (float): Thickness of a planar or shell model. Unused for a solid.
+        thickness (float): Thickness of a planar or shell model. Unused for a solid
+            or a `Laminate`, which carries its own.
 
     Returns:
         FEM: A model of the type described above.
@@ -136,6 +137,8 @@ def import_mesh(
         nodes = torch.tensor(points, dtype=dtype, device=device)
         if isinstance(material, HeatMaterial):
             return ShellHeat(nodes, elements, material, thickness=thickness)
+        if isinstance(material, Laminate):
+            return Shell(nodes, elements, material)
         return Shell(nodes, elements, material, thickness=thickness)
 
     if isinstance(material, Laminate):
@@ -196,4 +199,6 @@ def import_shell(
     )
     if isinstance(material, HeatMaterial):
         return ShellHeat(nodes, elements, material, thickness=thickness, offset=offset)
+    if isinstance(material, Laminate):
+        return Shell(nodes, elements, material, offset=offset)
     return Shell(nodes, elements, material, thickness=thickness, offset=offset)
