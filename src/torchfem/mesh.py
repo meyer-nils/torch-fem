@@ -160,59 +160,27 @@ def rect_tri(
 
     # Start with quads
     nodes, quads = rect_quad(Nx, Ny, Lx, Ly)
-
-    # Extract quad corners:
     n0, n1, n3, n2 = quads.unbind(dim=1)
 
+    # The two triangles of a quad split along either diagonal
+    up = [torch.stack([n0, n1, n3], dim=1), torch.stack([n0, n3, n2], dim=1)]
+    down = [torch.stack([n1, n3, n2], dim=1), torch.stack([n1, n2, n0], dim=1)]
+
     if variant == "up":
-        # Up split
-        T1 = torch.stack([n0, n1, n3], dim=1)
-        T2 = torch.stack([n0, n3, n2], dim=1)
-        return nodes, torch.vstack([T1, T2])
-
-    elif variant == "down":
-        # Down split
-        T1 = torch.stack([n1, n3, n2], dim=1)
-        T2 = torch.stack([n1, n2, n0], dim=1)
-        return nodes, torch.vstack([T1, T2])
-
-    elif variant == "zigzag":
-        # Determine the type of split for each quad based on its position
-        i = torch.div(n0, Ny, rounding_mode="floor")
-        j = n0 % Ny
-        is_type_A = ((i + j) % 2 == 0).unsqueeze(1)
-
-        # Up split
-        T1_A = torch.stack([n0, n1, n3], dim=1)
-        T2_A = torch.stack([n0, n3, n2], dim=1)
-
-        # Down split
-        T1_B = torch.stack([n1, n3, n2], dim=1)
-        T2_B = torch.stack([n1, n2, n0], dim=1)
-
-        # Select T1 and T2 based on the mask
-        T1 = torch.where(is_type_A, T1_A, T1_B)
-        T2 = torch.where(is_type_A, T2_A, T2_B)
-        return nodes, torch.vstack([T1, T2])
-
-    elif variant == "center":
-        ecenters = nodes[quads].mean(dim=1)
-        nodes = torch.vstack([nodes, ecenters])
-
-        # Get the indices of the new center nodes
-        n_c = torch.arange(nodes.size(0) - ecenters.size(0), nodes.size(0))
-
-        # Create the four triangles for each quad
-        T1 = torch.stack([n0, n1, n_c], dim=1)
-        T2 = torch.stack([n1, n3, n_c], dim=1)
-        T3 = torch.stack([n3, n2, n_c], dim=1)
-        T4 = torch.stack([n2, n0, n_c], dim=1)
-
-        # Stack all four sets of triangles
-        cells = torch.vstack([T1, T2, T3, T4]).long()
-        return nodes, cells
-    else:
-        raise ValueError(f"Unknown variant: {variant}")
+        return nodes, torch.vstack(up)
+    if variant == "down":
+        return nodes, torch.vstack(down)
+    if variant == "zigzag":
+        # Alternate the split over the quads like a checkerboard
+        even = ((n0 // Ny + n0 % Ny) % 2 == 0).unsqueeze(1)
+        return nodes, torch.vstack([torch.where(even, a, b) for a, b in zip(up, down)])
+    if variant == "center":
+        # A new node at the center of each quad joins its four edges
+        n_c = len(nodes) + torch.arange(len(quads))
+        nodes = torch.vstack([nodes, nodes[quads].mean(dim=1)])
+        edges = [(n0, n1), (n1, n3), (n3, n2), (n2, n0)]
+        return nodes, torch.vstack([torch.stack([*e, n_c], dim=1) for e in edges])
+    raise ValueError(f"Unknown variant: {variant}")
 
 
 def mesh_to_lattice(
