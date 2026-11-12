@@ -16,9 +16,6 @@ dist
 *.npy
 *.npz
 
-# Abaqus 
-*.inp
-
 # VTU and INP files except for the ones in the folder data 
 *.vtu
 !src/torchfem/data/*.vtu
