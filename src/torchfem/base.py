@@ -345,7 +345,7 @@ class FEM(ABC):
     @constraints.setter
     def constraints(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Constraints must have the same shape as nodes.")
+            raise ValueError("Constraints must have shape [n_nod, n_dof_per_node].")
         if value.dtype != torch.bool:
             raise TypeError("Constraints must be a boolean tensor.")
         self._constraints = value.to(self.nodes.device)
@@ -1041,7 +1041,7 @@ class Mechanics(FEM, ABC):
     @forces.setter
     def forces(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Forces must have the same shape as nodes.")
+            raise ValueError("Forces must have shape [n_nod, n_dof_per_node].")
         if not torch.is_floating_point(value):
             raise TypeError("Forces must be a floating-point tensor.")
         self._neumann = value.to(self.nodes.device)
@@ -1057,7 +1057,7 @@ class Mechanics(FEM, ABC):
     @displacements.setter
     def displacements(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Displacements must have the same shape as nodes.")
+            raise ValueError("Displacements must have shape [n_nod, n_dof_per_node].")
         if not torch.is_floating_point(value):
             raise TypeError("Displacements must be a floating-point tensor.")
         self._dirichlet = value.to(self.nodes.device)
@@ -1073,7 +1073,7 @@ class Mechanics(FEM, ABC):
     @ext_strain.setter
     def ext_strain(self, value: Tensor):
         if not value.shape == (self.n_elem, *self.n_flux):
-            raise ValueError("External strain must have the same shape as strains.")
+            raise ValueError("External strain must have shape [n_elem, d, d].")
         if not torch.is_floating_point(value):
             raise TypeError("External strain must be a floating-point tensor.")
         self._external_gradient = value.to(self.nodes.device)
@@ -1251,7 +1251,7 @@ class Heat(FEM, ABC):
     @heat_flux.setter
     def heat_flux(self, value: Tensor):
         if not value.shape == (self.n_nod, 1):
-            raise ValueError("Heat flux must have the same shape as nodes.")
+            raise ValueError("Heat flux must have shape [n_nod, 1].")
         if not torch.is_floating_point(value):
             raise TypeError("Heat flux must be a floating-point tensor.")
         self._neumann = value.to(self.nodes.device)
@@ -1267,7 +1267,7 @@ class Heat(FEM, ABC):
     @temperatures.setter
     def temperatures(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Temperatures must have the same shape as nodes.")
+            raise ValueError("Temperatures must have shape [n_nod, 1].")
         if not torch.is_floating_point(value):
             raise TypeError("Temperatures must be a floating-point tensor.")
         self._dirichlet = value.to(self.nodes.device)
