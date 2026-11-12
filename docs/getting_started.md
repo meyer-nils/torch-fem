@@ -80,8 +80,7 @@ cantilever.plot(node_markers=True, node_labels=True)
 gives 
 
 <figure markdown="span">
-![Plot of the two-element model](images/minimal_example/minimal_example_bare_light.png#only-light)
-![Plot of the two-element model](images/minimal_example/minimal_example_bare_dark.png#only-dark)
+![Plot of the two-element model](images/minimal_example/minimal_example_bare.png)
 </figure>
 
 ### Boundary conditions 
@@ -106,8 +105,7 @@ cantilever.plot(node_markers=True, node_labels=True)
 with triangles indicating constraint directions and arrows indicating forces acting on the nodes.
 
 <figure markdown="span">
-![Plot of the two-element model with boundary conditions](images/minimal_example/minimal_example_light.png#only-light)
-![Plot of the two-element model with boundary conditions](images/minimal_example/minimal_example_dark.png#only-dark)
+![Plot of the two-element model with boundary conditions](images/minimal_example/minimal_example.png)
 </figure>
 
 ### Solve 
@@ -141,8 +139,7 @@ cantilever.plot(u, node_property=torch.norm(u, dim=1))
 where the first argument `u` visualizes the deformed configuration, while `node_property` is used to color the mesh (here: displacement magnitude).
 
 <figure markdown="span">
-![Plot of the two-element model](images/minimal_example/minimal_example_solved_light.png#only-light)
-![Plot of the two-element model](images/minimal_example/minimal_example_solved_dark.png#only-dark)
+![Plot of the two-element model](images/minimal_example/minimal_example_solved.png)
 </figure>
 
 

@@ -62,10 +62,7 @@ cantilever.plot(node_markers=True, node_labels=True)
 ```
 This creates a minimal planar FEM model:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_dark.png">
-  <img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_light.png">
-</picture>
+<img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example.png">
 
 ```python
 # Solve for displacements u, internal forces f, stresses σ, deformation gradients F, and material states α
@@ -76,10 +73,7 @@ cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 This solves the model and plots the result:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_dark.png">
-  <img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_light.png">
-</picture>
+<img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved.png">
 
 To compute gradients through the FEM model, we mark the variables that require gradients. The backward pass of `solve()` is an adjoint solve via the implicit function theorem rather than a differentiation through solver iterations, as explained in the [differentiability guide](https://meyer-nils.github.io/torch-fem/differentiability/).
 ```python 
