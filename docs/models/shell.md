@@ -22,5 +22,6 @@
         members:
             - __init__
             - solve
+            - time_integration
             - integrate_surface_load
             - plot
