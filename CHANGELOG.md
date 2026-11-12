@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `IsotropicDamagePlaneStrain`, `IsotropicDamagePlaneStress` and `IsotropicDamage1D` take `eq_strain="mises"`, evaluated on the full strain tensor that their kinematics imply.
+
 ### Changed
 - `linear_to_quadratic(...)` numbers the mid-side nodes the same on CPU and CUDA, so their IDs on CPU change.
 - A `Shell` raises if `thickness` or `n_simpson` is passed beside a `Laminate`, which it silently ignored.

@@ -64,8 +64,8 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         scaled to coincide with the axial strain of a uniaxial tension. It is
         never negative and ignores the hydrostatic part, so it drives damage in
         shear, where ``"rankine"`` may report a compressive principal strain
-        that leaves $\\kappa$ untouched. Only the three-dimensional model
-        offers it, as the plane variants do not carry the full strain tensor.
+        that leaves $\\kappa$ untouched. The reduced models evaluate it on the
+        full strain tensor that their kinematics imply.
 
         The history variable $\\kappa$ tracks the maximum equivalent strain
         ever reached:
@@ -166,16 +166,24 @@ class IsotropicDamage3D(IsotropicElasticity3D):
             eps_eq = torch.take_along_dim(L, idx, dim=-1).squeeze(-1)
             n = torch.take_along_dim(Q, idx.unsqueeze(-2), dim=-1).squeeze(-1)
             deps_eq = torch.einsum("...i,...j->...ij", n, n)
-        elif self.eq_strain == "mises" and self.dim == 3:
-            trace = eps_new.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
-            dev = eps_new - trace[..., None, None] / 3.0 * torch.eye(3)
+        elif self.eq_strain == "mises" and self.dim == 1:
+            # The lateral contraction of a bar cancels against the scaling below
+            eps_eq = eps_new[..., 0, 0].abs()
+            deps_eq = eps_new.sign()
+        elif self.eq_strain == "mises":
+            # Full strain tensor, whose out-of-plane part is zero in plane strain
+            dim = self.dim
+            eps_3d = torch.zeros(*eps_new.shape[:-2], 3, 3)
+            eps_3d[..., :dim, :dim] = eps_new
+            trace = eps_3d.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+            dev = eps_3d - trace[..., None, None] / 3.0 * torch.eye(3)
             # Scaled so that the equivalent strain is the axial strain of a
             # uniaxial tension, which keeps eps_0 the uniaxial initiation strain
             scale = (1.0 + self.nu) / 1.5**0.5
             tiny = torch.finfo(eps_new.dtype).tiny
             mag = torch.linalg.matrix_norm(dev).clamp(min=tiny)
             eps_eq = mag / scale
-            deps_eq = dev / (mag * scale)[..., None, None]
+            deps_eq = (dev / (mag * scale)[..., None, None])[..., :dim, :dim]
         else:
             raise NotImplementedError(
                 f"Equivalent strain '{self.eq_strain}' is not implemented for "
@@ -226,8 +234,6 @@ class IsotropicDamagePlaneStrain(IsotropicDamage3D, IsotropicElasticityPlaneStra
 
     Notes:
         - Small-strain assumption with plane strain condition.
-        - Only ``eq_strain="rankine"`` is available, as the equivalent strain
-          of ``"mises"`` needs the full three-dimensional strain tensor.
         - Two internal state variables (``n_state = 2``):
           $\\kappa$ (damage driving variable) and $D$ (damage variable).
         - Supports batched/vectorized material parameters.
@@ -236,6 +242,7 @@ class IsotropicDamagePlaneStrain(IsotropicDamage3D, IsotropicElasticityPlaneStra
         The model of `IsotropicDamage3D` carries over unchanged: the vanishing
         out-of-plane strain is a third principal strain of zero, which never
         exceeds an in-plane one in magnitude and contributes no tangent term.
+        For ``"mises"``, it still enters the deviator through the trace.
     """
 
 
@@ -256,8 +263,6 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
 
     Notes:
         - Small-strain assumption with plane stress condition.
-        - Only ``eq_strain="rankine"`` is available, as the equivalent strain
-          of ``"mises"`` needs the full three-dimensional strain tensor.
         - Two internal state variables (``n_state = 2``):
           $\\kappa$ (damage driving variable) and $D$ (damage variable).
         - Supports batched/vectorized material parameters.
@@ -277,10 +282,12 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
 
         It enters the equivalent strain, where it may exceed the in-plane
         principal strains in magnitude, and varies with the in-plane strain, so
+        the gradient $\\pmb{g}$ of the equivalent strain in the full strain
+        tensor, $n_k n_l$ for ``"rankine"``, reduces to
 
         $$
             \\frac{\\partial \\kappa}{\\partial \\varepsilon_{kl}}
-                = n_k n_l - n_3^2 \\frac{\\nu}{1 - \\nu} \\delta_{kl}.
+                = g_{kl} - g_{33} \\frac{\\nu}{1 - \\nu} \\delta_{kl}.
         $$
     """
 
@@ -319,11 +326,6 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
             ddsdde (Tensor): Algorithmic tangent stiffness tensor.
                 *Shape:* `(..., 2, 2, 2, 2)`.
         """
-        if self.eq_strain != "rankine":
-            raise NotImplementedError(
-                f"Equivalent strain type '{self.eq_strain}' is not implemented."
-            )
-
         # Compute total in-plane strain
         H_new = (F - torch.eye(2)) + H_inc
         eps = 0.5 * (H_new.transpose(-1, -2) + H_new)
@@ -337,14 +339,29 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
         ratio = self.nu / (1.0 - self.nu)
         eps_33 = -ratio * (eps[..., 0, 0] + eps[..., 1, 1])
 
-        # Equivalent strain from the full strain tensor
+        # Equivalent strain from the full strain tensor, and its gradient in it
         eps_3d = torch.zeros(*eps.shape[:-2], 3, 3)
         eps_3d[..., :2, :2] = eps
         eps_3d[..., 2, 2] = eps_33
-        L, Q = torch.linalg.eigh(eps_3d)
-        idx = L.abs().argmax(dim=-1, keepdim=True)
-        eps_eq = torch.take_along_dim(L, idx, dim=-1).squeeze(-1)
-        n = torch.take_along_dim(Q, idx.unsqueeze(-2), dim=-1).squeeze(-1)
+        if self.eq_strain == "rankine":
+            L, Q = torch.linalg.eigh(eps_3d)
+            idx = L.abs().argmax(dim=-1, keepdim=True)
+            eps_eq = torch.take_along_dim(L, idx, dim=-1).squeeze(-1)
+            n = torch.take_along_dim(Q, idx.unsqueeze(-2), dim=-1).squeeze(-1)
+            g = torch.einsum("...i,...j->...ij", n, n)
+        elif self.eq_strain == "mises":
+            trace = eps_3d.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+            dev = eps_3d - trace[..., None, None] / 3.0 * torch.eye(3)
+            scale = (1.0 + self.nu) / 1.5**0.5
+            tiny = torch.finfo(eps.dtype).tiny
+            mag = torch.linalg.matrix_norm(dev).clamp(min=tiny)
+            eps_eq = mag / scale
+            g = dev / (mag * scale)[..., None, None]
+        else:
+            raise NotImplementedError(
+                f"Equivalent strain '{self.eq_strain}' is not implemented for "
+                f"{type(self).__name__}."
+            )
 
         # Update kappa and damage
         kappa_new = torch.maximum(kappa, eps_eq)
@@ -367,9 +384,8 @@ class IsotropicDamagePlaneStress(IsotropicDamage3D, IsotropicElasticityPlaneStre
         ddsdde = (1.0 - D_new)[..., None, None, None, None] * self.C
         if iter > 0:
             active = D_new > D
-            m = n[..., :2]
-            oop = (n[..., 2] ** 2 * ratio)[..., None, None]
-            dkappa = torch.einsum("...i,...j->...ij", m, m) - oop * torch.eye(2)
+            oop = (g[..., 2, 2] * ratio)[..., None, None]
+            dkappa = g[..., :2, :2] - oop * torch.eye(2)
             ddsdde[active] -= D_prime[active, None, None, None, None] * torch.einsum(
                 "...ij,...kl->...ijkl", sigma_trial[active], dkappa[active]
             )
@@ -394,15 +410,15 @@ class IsotropicDamage1D(IsotropicDamage3D, IsotropicElasticity1D):
         - Two internal state variables (``n_state = 2``):
           $\\kappa$ (damage driving variable) and $D$ (damage variable).
         - Supports batched/vectorized material parameters.
-        - $\\kappa$ never decreases, so a bar damages in tension alone.
-        - Only ``eq_strain="rankine"`` is available, as the equivalent strain
-          of ``"mises"`` needs the full three-dimensional strain tensor.
+        - $\\kappa$ never decreases, so ``"rankine"`` damages a bar in tension
+          alone, while ``"mises"`` also damages it in compression.
 
     Info: Uniaxial damage
         The single strain is the only principal strain, so the model of
         `IsotropicDamage3D` reduces to $\\sigma = (1 - D) E \\varepsilon$ with
         $\\kappa = \\max(\\kappa_n, \\varepsilon)$ and the tangent
-        $(1 - D) E - D' \\sigma^{\\text{trial}}$.
+        $(1 - D) E - D' \\sigma^{\\text{trial}}$. For ``"mises"``, the equivalent
+        strain is $|\\varepsilon|$.
     """
 
     dim = 1

@@ -540,14 +540,75 @@ class TestDamageEquivalentStrain:
             tol = 1e-6 * float(fd.abs().max())
             assert torch.allclose(analytic, fd, rtol=1e-6, atol=tol)
 
-    @pytest.mark.parametrize(
-        "material, dim",
-        [(IsotropicDamagePlaneStrain, 2), (IsotropicDamagePlaneStress, 2)],
-    )
-    def test_mises_needs_the_full_strain_tensor(self, material, dim):
-        mat = material(210e3, NU, _softening, _softening_prime, "mises").vectorize(1)
-        with pytest.raises(NotImplementedError, match="mises"):
-            mat.step(*_make_step_args(dim, 1, n_state=2), 0)
+    def _reduced(self, kind: str):
+        """A reduced "mises" model, its strain and the full strain it implies."""
+        law = (_softening, _softening_prime, "mises")
+        dim = 1 if kind == "bar" else 2
+        H = torch.tensor([[2.0e-3, 1.5e-3], [1.5e-3, -1.0e-3]])[None, :dim, :dim]
+        H_3d = torch.zeros(1, 3, 3)
+        H_3d[:, :dim, :dim] = H
+        if kind == "plane strain":
+            mat = IsotropicDamagePlaneStrain(210e3, NU, *law)
+        elif kind == "plane stress":
+            mat = IsotropicDamagePlaneStress(210e3, NU, *law)
+            H_3d[:, 2, 2] = -NU / (1 - NU) * (H[:, 0, 0] + H[:, 1, 1])
+        else:
+            mat = IsotropicDamage1D(210e3, *law)
+            H_3d[:, 1, 1] = H_3d[:, 2, 2] = -NU * H[:, 0, 0]
+        return mat.vectorize(1), H, H_3d
+
+    @staticmethod
+    def _virgin(dim: int):
+        """Arguments of `step(...)` after the increment, for an unloaded point."""
+        zero = torch.zeros(1, dim, dim)
+        return (
+            torch.eye(dim).unsqueeze(0),
+            zero,
+            torch.zeros(1, 2),
+            zero,
+            torch.ones(1),
+            1,
+        )
+
+    @pytest.mark.parametrize("kind", ["plane strain", "plane stress", "bar"])
+    def test_mises_of_a_reduced_model_matches_the_3d_one(self, kind):
+        """The 3D model agrees on the full strain a reduced model implies."""
+        mat, H, H_3d = self._reduced(kind)
+        dim = H.shape[-1]
+        full = IsotropicDamage3D(
+            210e3, NU, _softening, _softening_prime, "mises"
+        ).vectorize(1)
+        stress, state, _ = mat.step(H, *self._virgin(dim))
+        stress_3d, state_3d, _ = full.step(H_3d, *self._virgin(3))
+        assert state[0, 1] > 0.3
+        assert torch.allclose(state, state_3d)
+        assert torch.allclose(stress, stress_3d[:, :dim, :dim])
+
+    @pytest.mark.parametrize("kind", ["plane strain", "plane stress", "bar"])
+    def test_mises_tangent_of_a_reduced_model_matches_a_derivative(self, kind):
+        mat, H, _ = self._reduced(kind)
+        dim = H.shape[-1]
+        args = self._virgin(dim)
+        _, state, ddsdde = mat.step(H, *args)
+        assert state[0, 1] > 0.3
+
+        torch.manual_seed(0)
+        for _ in range(5):
+            A = torch.randn(1, dim, dim)
+            dE = 0.5 * (A + A.transpose(-1, -2))
+            t = 1.0e-8
+            fd = (mat.step(H + t * dE, *args)[0] - mat.step(H - t * dE, *args)[0]) / (
+                2 * t
+            )
+            analytic = torch.einsum("...ijkl,...kl->...ij", ddsdde, dE)
+            assert torch.allclose(analytic, fd, rtol=1e-6, atol=1e-6 * 210e3)
+
+    def test_mises_damages_a_bar_in_compression_but_rankine_does_not(self):
+        H = torch.full((1, 1, 1), -4.0e-3)
+        for eq_strain, damaged in (("mises", True), ("rankine", False)):
+            mat = IsotropicDamage1D(210e3, _softening, _softening_prime, eq_strain)
+            _, state, _ = mat.vectorize(1).step(H, *self._virgin(1))
+            assert (state[0, 1] > 0.0) == damaged
 
 
 def _orthotropic_3d() -> OrthotropicElasticity3D:
