@@ -49,9 +49,6 @@ class IsotropicElasticity3D(MechanicsMaterial):
         self.nu = torch.as_tensor(nu)
         self.rho = torch.as_tensor(rho)
 
-        # There are no internal variables
-        self.n_state = 0
-
         # Check if the material is vectorized
         self.is_vectorized = self.E.dim() > 0
 
@@ -266,9 +263,6 @@ class IsotropicElasticity1D(MechanicsMaterial):
         # Check if the material is vectorized
         self.is_vectorized = self.E.dim() > 0
 
-        # There are no internal variables
-        self.n_state = 0
-
         # Stiffness tensor (in 1D, this is a 1x1x1x1 "tensor")
         self.C = self.E[..., None, None, None, None]
 
@@ -393,9 +387,6 @@ class OrthotropicElasticity3D(MechanicsMaterial):
 
         # Check if the material is vectorized
         self.is_vectorized = self.E_1.dim() > 0
-
-        # There are no internal variables
-        self.n_state = 0
 
         # Full stiffness tensor
         self.C = torch.zeros(*self.E_1.shape, 3, 3, 3, 3)
@@ -628,9 +619,6 @@ class OrthotropicElasticityPlaneStress(OrthotropicElasticity3D):
 
         # Check if the material is vectorized
         self.is_vectorized = self.E_1.dim() > 0
-
-        # There are no internal variables
-        self.n_state = 0
 
         # Stiffness tensor
         self.C = torch.zeros(*self.E_1.shape, 2, 2, 2, 2)

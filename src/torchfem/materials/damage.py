@@ -80,6 +80,7 @@ class IsotropicDamage3D(IsotropicElasticity3D):
     """
 
     symmetric_tangent = False
+    n_state = 2
 
     def __init__(
         self,
@@ -93,7 +94,6 @@ class IsotropicDamage3D(IsotropicElasticity3D):
         super().__init__(E, nu, rho)
         self.d = d
         self.d_prime = d_prime
-        self.n_state = 2
         self.eq_strain: Literal["rankine", "mises"] = eq_strain
 
     def step(
@@ -418,5 +418,4 @@ class IsotropicDamage1D(IsotropicDamage3D, IsotropicElasticity1D):
         IsotropicElasticity1D.__init__(self, E, rho)
         self.d = d
         self.d_prime = d_prime
-        self.n_state = 2
         self.eq_strain: Literal["rankine", "mises"] = eq_strain

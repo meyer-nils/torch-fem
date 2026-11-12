@@ -32,11 +32,11 @@ class Material:
     """
 
     dim: int = 3
+    n_state: int = 0
     symmetric_tangent: bool = True
     finite_strain: bool = False
 
     def __init__(self):
-        self.n_state: int = 0
         self.is_vectorized: bool = False
         self.rho: Tensor = torch.tensor(1.0)
 

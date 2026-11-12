@@ -39,9 +39,6 @@ class IsotropicConductivity3D(HeatMaterial):
         self.kappa = torch.as_tensor(kappa)
         self.rho = torch.as_tensor(rho)
 
-        # There are no internal variables
-        self.n_state = 0
-
         # Check if the material is vectorized
         self.is_vectorized = self.kappa.dim() > 0
 
@@ -204,9 +201,6 @@ class OrthotropicConductivity3D(IsotropicConductivity3D):
         self.kappa_3 = torch.as_tensor(kappa_3)
         self.rho = torch.as_tensor(rho)
 
-        # There are no internal variables
-        self.n_state = 0
-
         e1, e2, e3 = torch.eye(3)
         P1 = torch.outer(e1, e1)
         P2 = torch.outer(e2, e2)
@@ -269,9 +263,6 @@ class OrthotropicConductivity2D(IsotropicConductivity2D):
         self.kappa_1 = torch.as_tensor(kappa_1)
         self.kappa_2 = torch.as_tensor(kappa_2)
         self.rho = torch.as_tensor(rho)
-
-        # There are no internal variables
-        self.n_state = 0
 
         e1, e2 = torch.eye(2)
         P1 = torch.outer(e1, e1)

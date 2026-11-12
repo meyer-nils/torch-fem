@@ -75,9 +75,6 @@ class Hyperelastic3D(MechanicsMaterial):
         # Store material parameters
         self.params = torch.as_tensor(params)
 
-        # There are no internal variables
-        self.n_state = 0
-
         # Density
         self.rho = torch.as_tensor(rho)
 
@@ -185,6 +182,7 @@ class HyperelasticPlaneStress(Hyperelastic3D):
     """
 
     dim = 2
+    n_state = 1
 
     def __init__(
         self,
@@ -197,9 +195,6 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         super().__init__(psi, params, rho)
         self.tolerance = tolerance
         self.max_iter = max_iter
-
-        # State variable for out-of-plane stretch
-        self.n_state = 1
 
     def cauchy(self, P: Tensor, F: Tensor, state: Tensor) -> Tensor:
         """As the base, with the out-of-plane stretch in the volume change."""
