@@ -41,10 +41,6 @@ def IBOF_closure(A2: Tensor) -> Tensor:
     III = torch.linalg.det(A2)
 
     # coefficients from Chung & Kwon paper
-    C1 = torch.zeros((1, 21))
-
-    C2 = torch.zeros((1, 21))
-
     C3 = torch.tensor(
         [
             [
@@ -101,8 +97,6 @@ def IBOF_closure(A2: Tensor) -> Tensor:
         ]
     )
 
-    C5 = torch.zeros((1, 21))
-
     C6 = torch.tensor(
         [
             [
@@ -131,80 +125,12 @@ def IBOF_closure(A2: Tensor) -> Tensor:
         ]
     )
 
-    # build matrix of coefficients by stacking vectors
-    C = torch.vstack((C1, C2, C3, C4, C5, C6))
-
-    # compute parameters as fith order polynom based on invariants
-    beta3 = (
-        C[2, 0]
-        + C[2, 1] * II
-        + C[2, 2] * II**2
-        + C[2, 3] * III
-        + C[2, 4] * III**2
-        + C[2, 5] * II * III
-        + C[2, 6] * II**2 * III
-        + C[2, 7] * II * III**2
-        + C[2, 8] * II**3
-        + C[2, 9] * III**3
-        + C[2, 10] * II**3 * III
-        + C[2, 11] * II**2 * III**2
-        + C[2, 12] * II * III**3
-        + C[2, 13] * II**4
-        + C[2, 14] * III**4
-        + C[2, 15] * II**4 * III
-        + C[2, 16] * II**3 * III**2
-        + C[2, 17] * II**2 * III**3
-        + C[2, 18] * II * III**4
-        + C[2, 19] * II**5
-        + C[2, 20] * III**5
-    )
-
-    beta4 = (
-        C[3, 0]
-        + C[3, 1] * II
-        + C[3, 2] * II**2
-        + C[3, 3] * III
-        + C[3, 4] * III**2
-        + C[3, 5] * II * III
-        + C[3, 6] * II**2 * III
-        + C[3, 7] * II * III**2
-        + C[3, 8] * II**3
-        + C[3, 9] * III**3
-        + C[3, 10] * II**3 * III
-        + C[3, 11] * II**2 * III**2
-        + C[3, 12] * II * III**3
-        + C[3, 13] * II**4
-        + C[3, 14] * III**4
-        + C[3, 15] * II**4 * III
-        + C[3, 16] * II**3 * III**2
-        + C[3, 17] * II**2 * III**3
-        + C[3, 18] * II * III**4
-        + C[3, 19] * II**5
-        + C[3, 20] * III**5
-    )
-
-    beta6 = (
-        C[5, 0]
-        + C[5, 1] * II
-        + C[5, 2] * II**2
-        + C[5, 3] * III
-        + C[5, 4] * III**2
-        + C[5, 5] * II * III
-        + C[5, 6] * II**2 * III
-        + C[5, 7] * II * III**2
-        + C[5, 8] * II**3
-        + C[5, 9] * III**3
-        + C[5, 10] * II**3 * III
-        + C[5, 11] * II**2 * III**2
-        + C[5, 12] * II * III**3
-        + C[5, 13] * II**4
-        + C[5, 14] * III**4
-        + C[5, 15] * II**4 * III
-        + C[5, 16] * II**3 * III**2
-        + C[5, 17] * II**2 * III**3
-        + C[5, 18] * II * III**4
-        + C[5, 19] * II**5
-        + C[5, 20] * III**5
+    # exponents of II and III in the 21 terms of the fifth order polynomials
+    p = [0, 1, 2, 0, 0, 1, 2, 1, 3, 0, 3, 2, 1, 4, 0, 4, 3, 2, 1, 5, 0]
+    q = [0, 0, 0, 1, 2, 1, 1, 2, 0, 3, 1, 2, 3, 0, 4, 1, 2, 3, 4, 0, 5]
+    beta3, beta4, beta6 = (
+        sum((c_i * II**p_i * III**q_i for c_i, p_i, q_i in zip(c[0], p, q)), 0.0 * II)
+        for c in (C3, C4, C6)
     )
 
     beta1 = (
