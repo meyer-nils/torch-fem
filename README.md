@@ -145,18 +145,23 @@ As an example, a linear elastic cube of hexahedral elements with $N$ nodes along
 |  80 |  1536000 |    0.058s |    1.417s |    1.216s |  15008.0MB |
 
 ## Alternatives
-*torch-fem* focuses on solid mechanics and thermal problems. It provides sensitivities through PyTorch autograd, which makes it easy to drop into optimization loops and ML pipelines. It is the natural choice if you are working in the PyTorch ecosystem. Depending on your needs, one of these Python FEM tools may serve you better:
+*torch-fem* focuses on solid mechanics and thermal problems. It provides sensitivities through PyTorch autograd, which makes it easy to drop into optimization loops and ML pipelines. It is the natural choice if you are working in the PyTorch ecosystem. Depending on your needs, one of these FEM libraries written in Python may serve you better:
 
-| Library | Stars | Focus | Differentiable | Consider it over torch-fem when… |
-|---|:---:|---|:---:|---|
-| [FEniCSx (DOLFINx)](https://github.com/FEniCS/dolfinx) | ![stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square) | General PDEs, UFL weak forms, MPI | via [dolfin-adjoint](https://github.com/dolfin-adjoint/pyadjoint) | you need arbitrary weak forms or massively parallel distributed runs |
-| [SfePy](https://github.com/sfepy/sfepy) | ![stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square) | General multiphysics, pure Python | — | you need a broad range of PDE applications on CPU |
-| [JAX-FEM](https://github.com/deepmodeling/jax-fem) | ![stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square) | Differentiable FEM, JAX / GPU | Yes | your stack is built on JAX rather than PyTorch |
-| [Firedrake](https://github.com/firedrakeproject/firedrake) | ![stars](https://img.shields.io/github/stars/firedrakeproject/firedrake?style=flat-square) | General PDEs, UFL weak forms | via [pyadjoint](https://github.com/dolfin-adjoint/pyadjoint) | you want a UFL form language with automated adjoints for multiphysics |
-| [scikit-fem](https://github.com/kinnala/scikit-fem) | ![stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square) | Lightweight assembly, NumPy/SciPy | — | you want minimal dependencies and full control over custom forms |
-| [FElupe](https://github.com/adtzlr/felupe) | ![stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square) | Finite-strain solid mechanics | partially via [tensortrax](https://github.com/adtzlr/tensortrax) | you work with hyperelastic / finite-strain solids |
-| [Nutils](https://github.com/evalf/nutils) | ![stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) | High-order / immersed methods | — | you research advanced or immersed discretizations including IGA |
-| [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) | ![stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square) | Biomechanics, PyTorch | Yes | you work on soft-tissue / inverse biomechanics |
+| Library | Stars | Built on | Differentiable solve | Choose it for |
+|---|:---:|---|---|---|
+| [Warp](https://github.com/NVIDIA/warp) | ![stars](https://img.shields.io/github/stars/NVIDIA/warp?style=flat-square) | CUDA | ✓ | GPU simulation kernels with a FEM toolkit |
+| [FEniCSx](https://github.com/FEniCS/dolfinx) | ![stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square) | C++ core | via [dolfinx-adjoint](https://github.com/scientificcomputing/dolfinx-adjoint) | arbitrary weak forms at scale |
+| [SfePy](https://github.com/sfepy/sfepy) | ![stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square) | NumPy / C | — | broad multiphysics |
+| [Pynite](https://github.com/JWock82/Pynite) | ![stars](https://img.shields.io/github/stars/JWock82/Pynite?style=flat-square) | NumPy | — | frame and plate analysis for structural engineering |
+| [JAX-FEM](https://github.com/deepmodeling/jax-fem) | ![stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square) | JAX | ✓ | differentiable FEM in JAX |
+| [Firedrake](https://github.com/firedrakeproject/firedrake) | ![stars](https://img.shields.io/github/stars/firedrakeproject/firedrake?style=flat-square) | PETSc | via [pyadjoint](https://github.com/dolfin-adjoint/pyadjoint) | weak forms with automated adjoints |
+| [scikit-fem](https://github.com/kinnala/scikit-fem) | ![stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square) | NumPy | — | lightweight custom assembly |
+| [FEALPy](https://github.com/weihuayi/fealpy) | ![stars](https://img.shields.io/github/stars/weihuayi/fealpy?style=flat-square) | NumPy | — | high-order and non-standard elements |
+| [TensorMesh](https://github.com/camlab-ethz/TensorMesh) | ![stars](https://img.shields.io/github/stars/camlab-ethz/TensorMesh?style=flat-square) | PyTorch | ✓ | custom weak forms in PyTorch |
+| [FElupe](https://github.com/adtzlr/felupe) | ![stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square) | NumPy | — | finite-strain hyperelasticity |
+| [Nutils](https://github.com/evalf/nutils) | ![stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) | NumPy | — | high-order, immersed and isogeometric methods |
+| [JAX-SSO](https://github.com/GaoyuanWu/JaxSSO) | ![stars](https://img.shields.io/github/stars/GaoyuanWu/JaxSSO?style=flat-square) | JAX | ✓ | beam and shell optimization in JAX |
+| [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) | ![stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square) | PyTorch | — | soft-tissue biomechanics |
 
 Not sure which to pick? The [mosaic](https://github.com/pasteurlabs/mosaic) differentiable-physics benchmark suite compares several of these solvers on gradient accuracy and forward/adjoint performance under a common interface.
 
