@@ -5,8 +5,10 @@ import pytest
 import torch
 
 from torchfem import Planar, PlanarHeat, Solid
+from torchfem.elements import linear_to_quadratic
 from torchfem.materials import (
     Hyperelastic3D,
+    HyperelasticPlaneStrain,
     IsotropicConductivity2D,
     IsotropicElasticityPlaneStress,
 )
@@ -80,7 +82,7 @@ def test_gradients_incremental_force_matches_single_step():
 
 def test_gradients_incremental_nonlinear_matches_analytical():
     # Uniaxial Neo-Hookean stretch of a unit cube: the deformation is
-    # homogeneous, so the reaction force sensitivities w.r.t. the Lamé
+    # homogeneous, so the reaction force sensitivities w.r.t. the LamÃ©
     # parameters follow from the analytical uniaxial response.
     E = 1000.0
     nu = 0.3
@@ -333,3 +335,57 @@ def test_time_integration_differentiates_without_declared_parameters():
     gradient = torch.autograd.grad(temperature.sum(), rho)[0]
     assert torch.isfinite(gradient).all()
     assert (gradient != 0.0).any()
+
+
+def _build_lee_frame(thickness: torch.Tensor | float = 3.0) -> Planar:
+    """The Lee frame, legs of 120 and a 2 x 3 section, loaded 24 from the corner."""
+
+    def ticks(a: float, b: float) -> torch.Tensor:
+        return torch.linspace(a, b, max(round((b - a) / 8.0), 1) + 1)
+
+    # L-shaped quads cut from a grid, with the hinges and the load on nodes
+    x = torch.cat([torch.tensor([-1.0]), ticks(1.0, 24.0), ticks(24.0, 120.0)[1:]])
+    y = torch.cat([ticks(0.0, 119.0), torch.tensor([121.0])])
+    nodes = torch.cartesian_prod(x, y)
+    idx = torch.arange(len(nodes)).view(len(x), len(y))
+    quads = torch.stack([idx[:-1, :-1], idx[1:, :-1], idx[1:, 1:], idx[:-1, 1:]], -1)
+    center = nodes[quads].mean(-2)
+    quads = quads[(center[..., 0] < 1.0) | (center[..., 1] > 119.0)]
+    used, quads = torch.unique(quads, return_inverse=True)
+    nodes, elements = linear_to_quadratic(nodes[used], quads)
+
+    def psi(F, params):
+        """Saint Venant-Kirchhoff energy for E = 720 and nu = 0."""
+        E = 0.5 * (F.transpose(-1, -2) @ F - torch.eye(3))
+        return 360.0 * (E * E).sum((-1, -2))
+
+    frame = Planar(nodes, elements, HyperelasticPlaneStrain(psi, []), thickness)
+    for hinge in ([0.0, 0.0], [120.0, 120.0]):
+        frame.constraints[(nodes == torch.tensor(hinge)).all(1)] = True
+    load = (nodes[:, 0] == 24.0) & (nodes[:, 1] > 119.0)
+    frame.forces[load, 1] = -1.0 / int(load.sum())
+    return frame
+
+
+def test_arc_length_gradients_match_finite_differences_through_the_snap_back():
+    frame = _build_lee_frame()
+    column = frame.nodes[frame.elements].mean(1)[:, 1] < 119.0
+    thickness = torch.full((frame.n_elem,), 3.0, requires_grad=True)
+    frame = _build_lee_frame(thickness)
+    u, _, _, _, _, lam = frame.solve_arc_length(
+        60.0, 16, differentiable_parameters=thickness
+    )
+    gradient = torch.autograd.grad(lam[-1], thickness)[0]
+
+    # Past the limit load P L² / EI = 18.55, the load point moves back up
+    v = -u[:, frame.forces[:, 1] < 0.0, 1].mean(1)
+    assert torch.isclose(lam.max(), torch.tensor(1.855), rtol=1e-2)
+    assert ((lam.diff() < 0.0) & (v.diff() < 0.0)).any()
+
+    # Thickening only the column changes the path, not just its load scale
+    def loss(value: float) -> float:
+        field = torch.where(column, value, 3.0)
+        return float(_build_lee_frame(field).solve_arc_length(60.0, 16)[-1][-1])
+
+    reference = _central_difference(loss, 3.0, 1e-5)
+    assert torch.isclose(gradient[column].sum(), torch.tensor(reference), rtol=1e-5)

@@ -64,7 +64,7 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
 -   **Snap-through of a cylindrical roof**
 
-    [![Snap-through of a cylindrical roof](images/examples/basic/planar/stabilization.png)](examples/basic/planar/stabilization.html)
+    [![Snap-through of a cylindrical roof](images/examples/basic/planar/snap_through.png)](examples/basic/planar/snap_through.html)
 
 -   **Third medium contact**
 

@@ -1215,6 +1215,7 @@ class Mechanics(FEM, ABC):
         arc_length: float,
         max_steps: int,
         max_load: float | None = None,
+        max_displacement: float | None = None,
         max_iter: int = 10,
         rtol: float = 1e-8,
         atol: float = 1e-6,
@@ -1229,8 +1230,8 @@ class Mechanics(FEM, ABC):
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Trace the equilibrium path of a load factor scaling `forces`.
 
-        Each step solves for the increment of displacement and load factor
-        `[du; dλ]` under the cylindrical constraint `du·du = Δs²`, so the path is
+        Each step solves for the displacement increment and the total load factor
+        `[du; λ]` under the cylindrical constraint `du·du = Δs²`, so the path is
         followed through limit points and snap-backs. The predictor follows the
         tangent `K⁻¹f` in the direction of the previous step. The bordered tangent
         is not symmetric, so the linear solves are direct. Gradients are those of
@@ -1240,6 +1241,8 @@ class Mechanics(FEM, ABC):
             arc_length: Step length Δs, which is also the largest one.
             max_steps: Number of steps after which the path ends.
             max_load: Load factor magnitude at which the path ends early.
+            max_displacement: Largest displacement component magnitude at which
+                the path ends early.
             max_iter: Maximum Newton iterations before a step is cut back.
             rtol: Relative residual tolerance for Newton convergence.
             atol: Absolute residual tolerance for Newton convergence.
@@ -1285,20 +1288,21 @@ class Mechanics(FEM, ABC):
         zero = torch.zeros(self.n_dofs)
         de0 = torch.zeros_like(self._external_gradient)
 
+        def constraint(du: Tensor, ds: float) -> tuple[Tensor, Tensor]:
+            # Cylindrical constraint `du·du = Δs²` and its gradient in du
+            return (du @ du - ds**2) / (2 * ds), du / ds
+
         def residual(
             ds: float, z: Tensor, i: int, prev: tuple, tangent: bool = True
         ) -> tuple[Tensor, Tensor | None]:
-            # λ of the last step rides along its displacements, so the adjoint
-            # chains it across steps like the state, without replaying them.
-            u_prev = prev[0][:-1].view(-1, self.n_dof_per_node)
-            lam_prev = prev[0][-1]
-            du, dlam = z[:-1], z[-1]
+            # The total λ is unknown, so the last step's λ only starts Newton
+            du, lam = z[:-1], z[-1]
             r, K = self._residual(
-                zero, zero, de0, None, None, con, du, i, (u_prev, *prev[1:]), tangent
+                zero, zero, de0, None, None, con, du, i, prev, tangent
             )
-            g = (du @ du - ds**2) / (2 * ds)
-            res = torch.cat([r - (lam_prev + dlam) * f_hat, g[None]])
-            return res, border(K, -f_hat, du / ds) if tangent else None
+            g, row = constraint(du, ds)
+            res = torch.cat([r - lam * f_hat, g[None]])
+            return res, border(K, -f_hat, row) if tangent else None
 
         newton = (
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
@@ -1334,19 +1338,14 @@ class Mechanics(FEM, ABC):
             t = sparse_solve(self.K.detach(), f_hat.detach(), None, stol, device)[0]
             sign = 1.0 if du_prev is None or t @ du_prev >= 0.0 else -1.0
             t = torch.cat([t, torch.ones(1)]) / t.norm()
+            z0 = torch.cat([torch.zeros(self.n_dofs), lam.detach()[None]])
 
-            prev = (
-                torch.cat([u_cur.ravel(), lam[None]]),
-                grad_cur,
-                flux_cur,
-                state_cur,
-            )
-            prev = tuple(keep(x) for x in prev)
+            prev = tuple(keep(x) for x in (u_cur, grad_cur, flux_cur, state_cur))
             for cutbacks in range(max_cutbacks + 1):
                 try:
                     z = newton_solve(
                         partial(residual, ds),
-                        sign * ds * t,
+                        z0 + sign * ds * t,
                         torch.empty(0),
                         max_iter,
                         rtol,
@@ -1384,7 +1383,7 @@ class Mechanics(FEM, ABC):
             )
             f_cur = self.assemble_rhs(f_i).view_as(u_cur)
             u_cur = u_cur + du.view_as(u_cur)
-            lam = lam + z[-1]
+            lam = z[-1]
             du_prev = du.detach()
             steps.append((u_cur, f_cur, flux_cur, grad_cur, state_cur, lam))
 
@@ -1400,6 +1399,8 @@ class Mechanics(FEM, ABC):
             report.value = float(lam.detach())
             report.end()
             if max_load is not None and abs(lam) >= max_load:
+                break
+            if max_displacement is not None and u_cur.abs().max() >= max_displacement:
                 break
 
         report.close()
