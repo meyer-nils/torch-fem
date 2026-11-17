@@ -4,6 +4,11 @@
 
 ### Added
 - `solve_arc_length(...)` traces the equilibrium path of a mechanics model under a load factor scaling `forces`, following it through limit points and snap-backs.
+- `IsotropicDamagePlaneStrain`, `IsotropicDamagePlaneStress` and `IsotropicDamage1D` take `eq_strain="mises"`, evaluated on the full strain tensor that their kinematics imply.
+
+### Changed
+- `linear_to_quadratic(...)` numbers the mid-side nodes the same on CPU and CUDA, so their IDs on CPU change.
+- A `Shell` raises if `thickness` or `n_simpson` is passed beside a `Laminate`, which it silently ignored.
 
 ## Version 0.14.2 - November 11 2026
 

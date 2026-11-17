@@ -214,6 +214,13 @@ class TestShellValidation:
     nodes = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     elements = torch.tensor([[0, 1, 2]])
 
+    @pytest.mark.parametrize("argument", [{"thickness": 2.0}, {"n_simpson": 5}])
+    def test_rejects_section_arguments_beside_a_laminate(self, argument):
+        ply = IsotropicElasticityPlaneStress(1000.0, 0.3)
+        section = Laminate([ply], [1.0], [0.0])
+        with pytest.raises(ValueError, match="on the Laminate"):
+            Shell(self.nodes, self.elements, section, **argument)
+
     def test_rejects_even_n_simpson(self):
         material = IsotropicElasticityPlaneStress(1000.0, 0.3)
         with pytest.raises(ValueError, match="odd integer"):

@@ -423,16 +423,7 @@ class Solve(Function):
         A, x = ctx.saved_tensors
 
         # `A.t()` is a CSC view of the same arrays, not a transposed copy.
-        gradb, _, solver, _ = sparse_solve(
-            A.t(),
-            grad_outputs[0],
-            ctx.B,
-            ctx.stol,
-            ctx.device,
-            ctx.method,
-            ctx.pre,
-            ctx.M,
-        )
+        gradb, _, solver, _ = sparse_solve(A.t(), grad_outputs[0], *ctx.solver_args)
         if solver is not None:
             solver.close()
 
@@ -456,13 +447,8 @@ class Solve(Function):
         x, M_computed, _ = output
         ctx.save_for_backward(A, x)
 
-        # Save the parameters for backward pass (including the preconditioner)
-        ctx.B = None if B is None else B.detach()
-        ctx.stol = stol
-        ctx.device = device
-        ctx.method = method
-        ctx.pre = preconditioner
-        ctx.M = M_computed
+        B = None if B is None else B.detach()
+        ctx.solver_args = (B, stol, device, method, preconditioner, M_computed)
 
 
 def differentiable_sparse_solve(
@@ -640,8 +626,33 @@ class NewtonRaphsonAdjoint(Function):
     ) -> Tensor:
         """Run Newton iterations until the residual meets `rtol` or `atol`.
 
-        Only the converged state is saved for backward. See `newton_solve` for
-        arguments.
+        Only the converged state is saved for backward.
+
+        Args:
+            eval_residual: Callback returning `(residual, tangent)` for the
+                current iterate, Newton iteration index, and the previous
+                state as one tuple.
+            du: Initial guess for the unknown increment.
+            B: Null-space rigid-body basis for AMG preconditioning.
+            max_iter: Maximum Newton iterations.
+            rtol: Relative residual tolerance.
+            atol: Absolute residual tolerance.
+            stol: Linear-solver tolerance used inside Newton steps for iterative
+                solvers.
+            report: Optional progress report receiving the iteration residuals.
+            method: Sparse backend method name.
+            preconditioner: Sparse backend preconditioner name.
+            device: Optional sparse backend device hint.
+            u_prev: Previous increment's field values. Receives residual gradients
+                in backward so sensitivities chain across increments.
+            grad_prev: Previous increment's gradient (e.g. deformation gradient).
+            flux_prev: Previous increment's flux (e.g. stress).
+            state_prev: Previous increment's internal state variables.
+            *parameters: Explicit tensors that should receive gradients via the
+                implicit adjoint backward.
+
+        Returns:
+            Converged increment with shape `(n_dofs,)`.
 
         Raises:
             ConvergenceError: If the residual becomes NaN or infinite, or the
@@ -653,7 +664,7 @@ class NewtonRaphsonAdjoint(Function):
 
         # Newton-Raphson iterations
         for i in range(max_iter):
-            # Evaluate residual, stiffness matrix, and internal forces
+            # Evaluate residual and tangent
             prev = (u_prev, grad_prev, flux_prev, state_prev)
             residual, K = eval_residual(du, i, prev)
 
@@ -698,14 +709,8 @@ class NewtonRaphsonAdjoint(Function):
         ctx.save_for_backward(
             K, du, u_prev, grad_prev, flux_prev, state_prev, *parameters
         )
-        ctx.B = B.detach()
-        ctx.M = M
-        ctx.stol = stol
-        ctx.device = device
-        ctx.method = method
-        ctx.pre = preconditioner
+        ctx.solver_args = (B.detach(), stol, device, method, preconditioner, M)
         ctx.eval_residual = eval_residual
-        ctx.n_parameters = len(parameters)
         ctx.converged_iter = converged_iter
 
         return du
@@ -725,16 +730,7 @@ class NewtonRaphsonAdjoint(Function):
         prev = (u_prev, grad_prev, flux_prev, state_prev)
 
         # `K.t()` is a CSC view of the same arrays, not a transposed copy.
-        lambda_, _, solver, _ = sparse_solve(
-            K.t(),
-            grad_outputs[0],
-            ctx.B,
-            ctx.stol,
-            ctx.device,
-            ctx.method,
-            ctx.pre,
-            ctx.M,
-        )
+        lambda_, _, solver, _ = sparse_solve(K.t(), grad_outputs[0], *ctx.solver_args)
         if solver is not None:
             solver.close()
 
@@ -757,71 +753,7 @@ class NewtonRaphsonAdjoint(Function):
         return (*(None,) * 11, *grads[1:])
 
 
-def newton_solve(
-    eval_residual: Callable,
-    du: Tensor,
-    B: Tensor,
-    max_iter: int,
-    rtol: float,
-    atol: float,
-    stol: float,
-    report: SolveReport | None,
-    method: str | None = None,
-    preconditioner: str | None = None,
-    device: str | None = None,
-    u_prev: Tensor | None = None,
-    grad_prev: Tensor | None = None,
-    flux_prev: Tensor | None = None,
-    state_prev: Tensor | None = None,
-    *parameters: Tensor,
-) -> Tensor:
-    """Solve a nonlinear residual equation with adjoint-safe Newton iterations.
-
-    Args:
-        eval_residual: Callback returning `(residual, tangent)` for the
-            current iterate, Newton iteration index, and the previous
-            state as one tuple.
-        du: Initial guess for the unknown increment.
-        B: Null-space rigid-body basis for AMG preconditioning.
-        max_iter: Maximum Newton iterations.
-        rtol: Relative residual tolerance.
-        atol: Absolute residual tolerance.
-        stol: Linear-solver tolerance used inside Newton steps for iterative solvers.
-        report: Optional progress report receiving the iteration residuals.
-        method: Sparse backend method name.
-        preconditioner: Sparse backend preconditioner name.
-        device: Optional sparse backend device hint.
-        u_prev: Previous increment's field values. Receives residual gradients
-            in backward so sensitivities chain across increments.
-        grad_prev: Previous increment's gradient (e.g. deformation gradient).
-        flux_prev: Previous increment's flux (e.g. stress).
-        state_prev: Previous increment's internal state variables.
-        *parameters: Explicit tensors that should receive gradients via the
-            implicit adjoint backward.
-
-    Returns:
-        du (Tensor): Converged increment.
-            *Shape:* `(n_dofs,)`.
-    """
-    du = NewtonRaphsonAdjoint.apply(
-        eval_residual,
-        du,
-        B,
-        max_iter,
-        rtol,
-        atol,
-        stol,
-        report,
-        method,
-        preconditioner,
-        device,
-        u_prev,
-        grad_prev,
-        flux_prev,
-        state_prev,
-        *parameters,
-    )  # type: ignore
-    return du
+newton_solve = NewtonRaphsonAdjoint.apply
 
 
 def modal_eigsolve(

@@ -9,11 +9,10 @@ from torch import Tensor
 from .base import FEM, Heat, Mechanics
 from .elements import Quad1, Quad2, Tria1, Tria2
 from .materials import Material
-from .plot_utils import LABEL_OFFSET, arrows2d, dots2d, markers2d, signs2d
+from .plot_utils import arrows2d, dots2d, labels2d, markers2d, signs2d
 
 
 class PlanarGeometry(FEM):
-    element_types = (Tria1, Quad1, Tria2, Quad2)
     """The elements, integration and plotting shared by the planar models.
 
     It carries the discretization of a surface in the z=0 plane, which `Planar`
@@ -26,6 +25,8 @@ class PlanarGeometry(FEM):
         thickness: Element thicknesses with shape [n_elem].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Tria1, Quad1, Tria2, Quad2)
 
     def __init__(
         self,
@@ -98,8 +99,8 @@ class PlanarGeometry(FEM):
                 position the node was pulled to. A heat flux is drawn as a plus
                 or a minus, a convecting edge as tildes on its nodes, and a
                 prescribed temperature keeps its marker.
-            color: Element fill color. Edges, markers and labels follow the foreground
-                of the style.
+            color: Element fill color. Edges and node markers are black and labels
+                gray, in every style.
             alpha: Opacity of nodal contour plots.
             cmap: Matplotlib colormap or its name.
             linewidth: Element edge line width. Set to 0.0 to hide edges.
@@ -110,7 +111,7 @@ class PlanarGeometry(FEM):
             title: Plot title.
             ax: Existing matplotlib axes to plot into.
             **kwargs: Forwarded to the `PolyCollection` of the elements, e.g.
-                `edgecolor` to override the foreground or `hatch` to fill them
+                `edgecolor` to recolor the edges or `hatch` to fill them
                 with a pattern.
         """
         # Compute deformed positions
@@ -128,14 +129,11 @@ class PlanarGeometry(FEM):
         deformed = isinstance(u, Tensor)
 
         # Bounding box
-        size = float(torch.linalg.norm(pos.max() - pos.min()))
+        size = float(torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values))
 
-        # Set figure size
+        # Create a figure unless axes are given
         if ax is None:
             _, ax = plt.subplots(figsize=figsize)
-
-        # Edges, markers and labels follow the style, so a dark theme flips them
-        foreground = plt.rcParams["text.color"]
 
         # Quadratic elements are drawn through their corner nodes
         corners = elements[:, :3] if self.etype in (Tria1, Tria2) else elements[:, :4]
@@ -207,7 +205,7 @@ class PlanarGeometry(FEM):
             PolyCollection(
                 verts,
                 facecolors="none" if colored else color,
-                edgecolors=foreground,
+                edgecolors="black",
                 linewidths=linewidth,
                 **kwargs,
             )
@@ -215,10 +213,9 @@ class PlanarGeometry(FEM):
 
         # Nodes
         if node_markers:
-            ax.scatter(pos[:, 0], pos[:, 1], color=foreground, marker="o", zorder=3)
-            if node_labels:
-                for i, (x, y) in enumerate(pos.tolist()):
-                    ax.annotate(str(i), (x, y), color=foreground, **LABEL_OFFSET)
+            ax.scatter(pos[:, 0], pos[:, 1], color="black", marker="o", zorder=3)
+        if node_labels:
+            labels2d(ax, pos)
 
         # Boundary conditions
         tips = [pos]

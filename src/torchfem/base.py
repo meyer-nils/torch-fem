@@ -110,6 +110,9 @@ class FEM(ABC):
         )
         self._external_gradient = torch.zeros(self.n_elem, *self.n_flux)
 
+        # Global tangent, empty until assembled and reused where it is constant
+        self.K = torch.empty(0)
+
         # Robin conditions as the element of each facet, its matrix ∫ Nᵀ C N dA and
         # its vector ∫ Nᵀ C u_inf dA in the degrees of freedom of that element, and
         # the nodes of all facets
@@ -275,14 +278,14 @@ class FEM(ABC):
         raise NotImplementedError
 
     def compute_m(self, detJ: Tensor, rho: Tensor) -> Tensor:
-        """Element mass contribution, scaled by `volume_scale`.
+        """Mass per unit reference measure of each element at an integration point.
 
         Args:
             detJ: Jacobian determinant at the current integration point.
             rho: Material density at the current integration point.
 
         Returns:
-            Element mass contribution tensor.
+            Mass weights with shape [n_elem], scaled by `volume_scale`.
         """
         return rho * self.volume_scale * detJ
 
@@ -344,7 +347,7 @@ class FEM(ABC):
     @constraints.setter
     def constraints(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Constraints must have the same shape as nodes.")
+            raise ValueError("Constraints must have shape [n_nod, n_dof_per_node].")
         if value.dtype != torch.bool:
             raise TypeError("Constraints must be a boolean tensor.")
         self._constraints = value.to(self.nodes.device)
@@ -417,25 +420,19 @@ class FEM(ABC):
         return (w * field[self.elements]).sum(dim=1)
 
     def integrate_mass(self) -> Tensor:
-        """Integrate mass matrix.
+        """Integrate the consistent element mass matrix ∫ ρ Nᵀ N dV.
+
+        The volume includes `volume_scale`.
 
         Returns:
             Element mass matrix tensor with shape [n_elem, n_dof_elem, n_dof_elem].
         """
         assert self.material is not None
-        n_dof = self.n_dof_per_node * self.etype.nodes
-        m = torch.zeros(self.n_elem, n_dof, n_dof)
-
         N, _, detJ = self.eval_shape_functions(self.etype.ipoints)
-        I_dof = torch.eye(self.n_dof_per_node)
-
-        for i, w in enumerate(self.etype.iweights):
-            m_i = self.compute_m(detJ[i], self.material.rho)
-            m_scalar = torch.einsum("N,M,E->ENM", N[i], N[i], m_i)
-            m_block = torch.einsum("Enm,ij->Enimj", m_scalar, I_dof)
-            m += w * m_block.reshape(self.n_elem, n_dof, n_dof)
-
-        return m
+        w = self.etype.iweights.to(detJ)
+        dm = self.compute_m(detJ, self.material.rho)
+        m = torch.einsum("i,in,im,ie->enm", w, N, N, dm)
+        return torch.kron(m, torch.eye(self.n_dof_per_node).to(m)[None])
 
     def integrate_hessian(self, modulus: Tensor | float) -> Tensor:
         """Integrate the element matrix of the regularization energy ½ k ∇∇u ⋮ ∇∇u.
@@ -838,7 +835,7 @@ class FEM(ABC):
         # Null space rigid body modes for AMG preconditioner
         null_space = self.near_null_space()
 
-        # Indexes of constrained and unconstrained degrees of freedom
+        # Indexes of constrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
@@ -1028,7 +1025,7 @@ class FEM(ABC):
         if isinstance(self.material, MechanicsMaterial) and self.material.finite_strain:
             flux = self.material.cauchy(flux, grad, state)
 
-        # Rebinding rather than mutating, so what eval_residual captured still holds
+        # Rebinding rather than mutating, so what the autograd graph captured holds
         if aggregate_integration_points:
             flux, grad, state = (x.mean(dim=1) for x in (flux, grad, state))
         flux, grad = flux.squeeze((-2, -1)), grad.squeeze((-2, -1))
@@ -1062,7 +1059,7 @@ class Mechanics(FEM, ABC):
     @forces.setter
     def forces(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Forces must have the same shape as nodes.")
+            raise ValueError("Forces must have shape [n_nod, n_dof_per_node].")
         if not torch.is_floating_point(value):
             raise TypeError("Forces must be a floating-point tensor.")
         self._neumann = value.to(self.nodes.device)
@@ -1078,7 +1075,7 @@ class Mechanics(FEM, ABC):
     @displacements.setter
     def displacements(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Displacements must have the same shape as nodes.")
+            raise ValueError("Displacements must have shape [n_nod, n_dof_per_node].")
         if not torch.is_floating_point(value):
             raise TypeError("Displacements must be a floating-point tensor.")
         self._dirichlet = value.to(self.nodes.device)
@@ -1094,7 +1091,7 @@ class Mechanics(FEM, ABC):
     @ext_strain.setter
     def ext_strain(self, value: Tensor):
         if not value.shape == (self.n_elem, *self.n_flux):
-            raise ValueError("External strain must have the same shape as strains.")
+            raise ValueError("External strain must have shape [n_elem, d, d].")
         if not torch.is_floating_point(value):
             raise TypeError("External strain must be a floating-point tensor.")
         self._external_gradient = value.to(self.nodes.device)
@@ -1473,7 +1470,7 @@ class Heat(FEM, ABC):
     @heat_flux.setter
     def heat_flux(self, value: Tensor):
         if not value.shape == (self.n_nod, 1):
-            raise ValueError("Heat flux must have the same shape as nodes.")
+            raise ValueError("Heat flux must have shape [n_nod, 1].")
         if not torch.is_floating_point(value):
             raise TypeError("Heat flux must be a floating-point tensor.")
         self._neumann = value.to(self.nodes.device)
@@ -1489,7 +1486,7 @@ class Heat(FEM, ABC):
     @temperatures.setter
     def temperatures(self, value: Tensor):
         if not value.shape == (self.n_nod, self.n_dof_per_node):
-            raise ValueError("Temperatures must have the same shape as nodes.")
+            raise ValueError("Temperatures must have shape [n_nod, 1].")
         if not torch.is_floating_point(value):
             raise TypeError("Temperatures must be a floating-point tensor.")
         self._dirichlet = value.to(self.nodes.device)
@@ -1565,7 +1562,7 @@ class Heat(FEM, ABC):
         for i, w in enumerate(self.etype.iweights):
             # Compute temperature gradient increment
             temp_grad_inc = torch.einsum("...ij,...jk->...ki", B[i], du)
-            # Update deformation gradient
+            # Update temperature gradient
             grad_new.append(grad_prev[i] + temp_grad_inc)
 
             # Evaluate material response
@@ -1623,9 +1620,9 @@ class Heat(FEM, ABC):
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Integrate the heat equation in time with implicit increments.
 
-        Computes an equilibrium state at t=0 under the current boundary
-        conditions, then advances to each requested output time using internal
-        steps of at most `delta_t`.
+        Starts at t=0 from `temperatures` as the initial condition on every node,
+        then advances to each requested output time using internal steps of at
+        most `delta_t`, holding the constrained nodes at their temperatures.
 
         Args:
             t_output: Requested output times. Results are returned at exactly
@@ -1669,13 +1666,12 @@ class Heat(FEM, ABC):
         if (t_output[1:] <= t_output[:-1]).any():
             raise ValueError("t_output must be strictly increasing.")
 
-        # initial step: we get heat fluxes and temperature gradients for initial
-        # conditions enforce initial conditions as boundary conditions
-
+        # The temperatures are the initial condition, so a solve with every node
+        # constrained yields the heat fluxes and temperature gradients at t=0.
         bc_constraints = self.constraints.clone()
         self.constraints[:] = True
 
-        # solve for initial conditions, restoring the constraints even if it fails
+        # Restore the constraints even if that solve fails
         try:
             temp_eq, f_int_eq, heat_flux_eq, temp_grad_eq, alpha_eq = self.solve(
                 aggregate_integration_points=False,
@@ -1716,7 +1712,7 @@ class Heat(FEM, ABC):
         # null space rigid body modes for AMG preconditioner
         null_space = self.near_null_space()
 
-        # Indexes of constrained and unconstrained degrees of freedom
+        # Indexes of constrained degrees of freedom
         con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
 
         # Initialize variables to be computed
@@ -1740,7 +1736,7 @@ class Heat(FEM, ABC):
         # compute element mass matrices
         m = self.integrate_mass()
 
-        # Initialize displacement increment
+        # Initialize temperature increment
         du = torch.zeros(self.n_nod, self.n_dof_per_node).ravel()
 
         newton = (

@@ -21,3 +21,5 @@
         members:
             - __init__
             - solve
+            - time_integration
+            - plot

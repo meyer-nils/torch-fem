@@ -63,6 +63,8 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         carries out.
     """
 
+    n_state = 1
+
     def __init__(
         self,
         E: float | Tensor,
@@ -76,7 +78,6 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
         super().__init__(E, nu, rho)
         self.sigma_f = sigma_f
         self.sigma_f_prime = sigma_f_prime
-        self.n_state = 1
         self.tolerance = tolerance
         self.max_iter = max_iter
 
@@ -152,7 +153,7 @@ class IsotropicPlasticity3D(IsotropicElasticity3D):
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -282,6 +283,8 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         https://doi.org/10.1002/9780470694626.ch9, 2008.
     """
 
+    n_state = 1
+
     def __init__(
         self,
         E: float | Tensor,
@@ -297,7 +300,6 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         self._S = torch.linalg.inv(self._C)
         self.sigma_f = sigma_f
         self.sigma_f_prime = sigma_f_prime
-        self.n_state = 1
         self.tolerance = tolerance
         self.max_iter = max_iter
 
@@ -367,7 +369,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -412,7 +414,7 @@ class IsotropicPlasticityPlaneStress(IsotropicElasticityPlaneStress):
         G = self.G[fm]
         nu = self.nu[fm]
         for _ in range(self.max_iter):
-            # Compute xi and some short hands
+            # Compute xi and the equivalent plastic strain
             xi = (
                 a1[fm] / (6 * (1 + E * dGamma / (3 * (1 - nu))) ** 2)
                 + (1 / 2 * a2[fm] + 2 * a3[fm]) / (1 + 2 * G * dGamma) ** 2
@@ -508,19 +510,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicPlasticity3D):
     """
 
     dim = 2
-
-    def __init__(
-        self,
-        E: float | Tensor,
-        nu: float | Tensor,
-        sigma_f: Callable,
-        sigma_f_prime: Callable,
-        tolerance: float = 1e-5,
-        max_iter: int = 10,
-        rho: float | Tensor = 1.0,
-    ):
-        super().__init__(E, nu, sigma_f, sigma_f_prime, tolerance, max_iter, rho)
-        self.n_state = 2
+    n_state = 2
 
     def step(
         self,
@@ -556,7 +546,7 @@ class IsotropicPlasticityPlaneStrain(IsotropicPlasticity3D):
             de0 (Tensor): External small strain increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -622,6 +612,8 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         return mapping `step(...)` carries out.
     """
 
+    n_state = 1
+
     def __init__(
         self,
         E: float | Tensor,
@@ -634,7 +626,6 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
         super().__init__(E, rho)
         self.sigma_f = sigma_f
         self.sigma_f_prime = sigma_f_prime
-        self.n_state = 1
         self.tolerance = tolerance
         self.max_iter = max_iter
 
@@ -683,7 +674,7 @@ class IsotropicPlasticity1D(IsotropicElasticity1D):
             de0 (Tensor): External strain increment (e.g., thermal).
                 *Shape:* `(..., 1, 1)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:

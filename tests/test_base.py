@@ -75,7 +75,7 @@ class TestMechanicsBoundaryConditions:
     @pytest.mark.parametrize("prop", ["forces", "displacements"])
     def test_rejects_wrong_shape(self, prop):
         model = _planar()
-        with pytest.raises(ValueError, match="same shape as nodes"):
+        with pytest.raises(ValueError, match="must have shape"):
             setattr(model, prop, torch.zeros(model.n_nod, 3))
 
     @pytest.mark.parametrize("prop", ["forces", "displacements"])
@@ -98,7 +98,7 @@ class TestMechanicsBoundaryConditions:
         value = torch.randn(model.n_elem, *model.n_flux)
         model.ext_strain = value
         assert torch.equal(model.ext_strain, value)
-        with pytest.raises(ValueError, match="same shape as strains"):
+        with pytest.raises(ValueError, match="must have shape"):
             model.ext_strain = torch.zeros(
                 model.n_elem, model.n_dof_per_node, model.n_dim
             )
@@ -124,7 +124,7 @@ class TestMechanicsBoundaryConditions:
 
     def test_ext_strain_rejects_wrong_shape(self):
         model = _planar()
-        with pytest.raises(ValueError, match="same shape as strains"):
+        with pytest.raises(ValueError, match="must have shape"):
             model.ext_strain = torch.zeros(model.n_elem, 3, 3)
 
     def test_ext_strain_rejects_non_floating_point(self):
@@ -141,7 +141,7 @@ class TestMechanicsBoundaryConditions:
 
     def test_constraints_reject_wrong_shape(self):
         model = _planar()
-        with pytest.raises(ValueError, match="same shape as nodes"):
+        with pytest.raises(ValueError, match="must have shape"):
             model.constraints = torch.zeros(model.n_nod, 3, dtype=torch.bool)
 
     def test_constraints_reject_non_boolean(self):
@@ -199,7 +199,7 @@ class TestHeatBoundaryConditions:
     @pytest.mark.parametrize("prop", ["heat_flux", "temperatures"])
     def test_rejects_wrong_shape(self, prop):
         model = _planar_heat()
-        with pytest.raises(ValueError, match="same shape as nodes"):
+        with pytest.raises(ValueError, match="must have shape"):
             setattr(model, prop, torch.zeros(model.n_nod, 2))
 
     @pytest.mark.parametrize("prop", ["heat_flux", "temperatures"])

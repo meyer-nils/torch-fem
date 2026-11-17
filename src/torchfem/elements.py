@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from math import sqrt
 
-import numpy as np
 import torch
 from torch import Tensor
 
@@ -176,8 +175,9 @@ class Bar1(Element):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = 1 - xi[..., 0]
-        N_2 = 1 + xi[..., 0]
+        xi_1 = xi[..., 0]
+        N_1 = 1 - xi_1
+        N_2 = 1 + xi_1
         return 1 / 2 * torch.stack([N_1, N_2], dim=-1)
 
     @classproperty
@@ -211,9 +211,10 @@ class Bar2(Bar1):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = 1 / 2 * xi[..., 0] * (xi[..., 0] - 1)
-        N_2 = 1 / 2 * xi[..., 0] * (xi[..., 0] + 1)
-        N_3 = 1 - xi[..., 0] ** 2
+        xi_1 = xi[..., 0]
+        N_1 = 1 / 2 * xi_1 * (xi_1 - 1)
+        N_2 = 1 / 2 * xi_1 * (xi_1 + 1)
+        N_3 = 1 - xi_1**2
         return torch.stack([N_1, N_2, N_3], dim=-1)
 
     @classproperty
@@ -257,9 +258,10 @@ class Tria1(Element):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = 1.0 - xi[..., 0] - xi[..., 1]
-        N_2 = xi[..., 0]
-        N_3 = xi[..., 1]
+        xi_1, xi_2 = xi.unbind(-1)
+        N_1 = 1.0 - xi_1 - xi_2
+        N_2 = xi_1
+        N_3 = xi_2
         return torch.stack([N_1, N_2, N_3], dim=-1)
 
     @classproperty
@@ -307,12 +309,13 @@ class Tria2(Tria1):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = (1 - xi[..., 0] - xi[..., 1]) * (1 - 2 * xi[..., 0] - 2 * xi[..., 1])
-        N_2 = xi[..., 0] * (2 * xi[..., 0] - 1)
-        N_3 = xi[..., 1] * (2 * xi[..., 1] - 1)
-        N_4 = 4 * xi[..., 0] * (1 - xi[..., 0] - xi[..., 1])
-        N_5 = 4 * xi[..., 0] * xi[..., 1]
-        N_6 = 4 * xi[..., 1] * (1 - xi[..., 0] - xi[..., 1])
+        xi_1, xi_2 = xi.unbind(-1)
+        N_1 = (1 - xi_1 - xi_2) * (1 - 2 * xi_1 - 2 * xi_2)
+        N_2 = xi_1 * (2 * xi_1 - 1)
+        N_3 = xi_2 * (2 * xi_2 - 1)
+        N_4 = 4 * xi_1 * (1 - xi_1 - xi_2)
+        N_5 = 4 * xi_1 * xi_2
+        N_6 = 4 * xi_2 * (1 - xi_1 - xi_2)
         return torch.stack([N_1, N_2, N_3, N_4, N_5, N_6], dim=-1)
 
     @classproperty
@@ -356,10 +359,11 @@ class Quad1(Element):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1])
-        N_2 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1])
-        N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1])
-        N_4 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1])
+        xi_1, xi_2 = xi.unbind(-1)
+        N_1 = (1.0 - xi_1) * (1.0 - xi_2)
+        N_2 = (1.0 + xi_1) * (1.0 - xi_2)
+        N_3 = (1.0 + xi_1) * (1.0 + xi_2)
+        N_4 = (1.0 - xi_1) * (1.0 + xi_2)
         return 0.25 * torch.stack([N_1, N_2, N_3, N_4], dim=-1)
 
     @classproperty
@@ -417,29 +421,16 @@ class Quad2(Quad1):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = -(1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 0] + xi[..., 1])
-        N_2 = -(1 + xi[..., 0]) * (1 - xi[..., 1]) * (1 - xi[..., 0] + xi[..., 1])
-        N_3 = -(1 + xi[..., 0]) * (1 + xi[..., 1]) * (1 - xi[..., 0] - xi[..., 1])
-        N_4 = -(1 - xi[..., 0]) * (1 + xi[..., 1]) * (1 + xi[..., 0] - xi[..., 1])
-        N_5 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 0])
-        N_6 = 2 * (1 + xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 1])
-        N_7 = 2 * (1 - xi[..., 0]) * (1 + xi[..., 1]) * (1 + xi[..., 0])
-        N_8 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 + xi[..., 1])
+        xi_1, xi_2 = xi.unbind(-1)
+        N_1 = -(1 - xi_1) * (1 - xi_2) * (1 + xi_1 + xi_2)
+        N_2 = -(1 + xi_1) * (1 - xi_2) * (1 - xi_1 + xi_2)
+        N_3 = -(1 + xi_1) * (1 + xi_2) * (1 - xi_1 - xi_2)
+        N_4 = -(1 - xi_1) * (1 + xi_2) * (1 + xi_1 - xi_2)
+        N_5 = 2 * (1 - xi_1) * (1 - xi_2) * (1 + xi_1)
+        N_6 = 2 * (1 + xi_1) * (1 - xi_2) * (1 + xi_2)
+        N_7 = 2 * (1 - xi_1) * (1 + xi_2) * (1 + xi_1)
+        N_8 = 2 * (1 - xi_1) * (1 - xi_2) * (1 + xi_2)
         return 0.25 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
-
-    @classproperty
-    def iweights(cls) -> Tensor:
-        return torch.tensor([1.0, 1.0, 1.0, 1.0])
-
-    @classproperty
-    def ipoints(cls) -> Tensor:
-        return torch.tensor(
-            [
-                [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0)]
-                for xi_2 in [-1, 1]
-                for xi_1 in [-1, 1]
-            ]
-        )
 
 
 class Tetra1(Element):
@@ -481,10 +472,11 @@ class Tetra1(Element):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = 1.0 - xi[..., 0] - xi[..., 1] - xi[..., 2]
-        N_2 = xi[..., 0]
-        N_3 = xi[..., 1]
-        N_4 = xi[..., 2]
+        xi_1, xi_2, xi_3 = xi.unbind(-1)
+        N_1 = 1.0 - xi_1 - xi_2 - xi_3
+        N_2 = xi_1
+        N_3 = xi_2
+        N_4 = xi_3
         return torch.stack([N_1, N_2, N_3, N_4], dim=-1)
 
     @classproperty
@@ -555,18 +547,17 @@ class Tetra2(Tetra1):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = (1.0 - xi[..., 0] - xi[..., 1] - xi[..., 2]) * (
-            2 * (1.0 - xi[..., 0] - xi[..., 1] - xi[..., 2]) - 1
-        )
-        N_2 = xi[..., 0] * (2 * xi[..., 0] - 1)
-        N_3 = xi[..., 1] * (2 * xi[..., 1] - 1)
-        N_4 = xi[..., 2] * (2 * xi[..., 2] - 1)
-        N_5 = 4 * xi[..., 0] * (1 - xi[..., 0] - xi[..., 1] - xi[..., 2])
-        N_6 = 4 * xi[..., 0] * xi[..., 1]
-        N_7 = 4 * xi[..., 1] * (1 - xi[..., 0] - xi[..., 1] - xi[..., 2])
-        N_8 = 4 * xi[..., 2] * (1 - xi[..., 0] - xi[..., 1] - xi[..., 2])
-        N_9 = 4 * xi[..., 0] * xi[..., 2]
-        N_10 = 4 * xi[..., 1] * xi[..., 2]
+        xi_1, xi_2, xi_3 = xi.unbind(-1)
+        N_1 = (1.0 - xi_1 - xi_2 - xi_3) * (2 * (1.0 - xi_1 - xi_2 - xi_3) - 1)
+        N_2 = xi_1 * (2 * xi_1 - 1)
+        N_3 = xi_2 * (2 * xi_2 - 1)
+        N_4 = xi_3 * (2 * xi_3 - 1)
+        N_5 = 4 * xi_1 * (1 - xi_1 - xi_2 - xi_3)
+        N_6 = 4 * xi_1 * xi_2
+        N_7 = 4 * xi_2 * (1 - xi_1 - xi_2 - xi_3)
+        N_8 = 4 * xi_3 * (1 - xi_1 - xi_2 - xi_3)
+        N_9 = 4 * xi_1 * xi_3
+        N_10 = 4 * xi_2 * xi_3
         return torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8, N_9, N_10], dim=-1)
 
     @classproperty
@@ -669,14 +660,15 @@ class Hexa1(Element):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 - xi[..., 2])
-        N_2 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 - xi[..., 2])
-        N_3 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 - xi[..., 2])
-        N_4 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 - xi[..., 2])
-        N_5 = (1.0 - xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 + xi[..., 2])
-        N_6 = (1.0 + xi[..., 0]) * (1.0 - xi[..., 1]) * (1.0 + xi[..., 2])
-        N_7 = (1.0 + xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
-        N_8 = (1.0 - xi[..., 0]) * (1.0 + xi[..., 1]) * (1.0 + xi[..., 2])
+        xi_1, xi_2, xi_3 = xi.unbind(-1)
+        N_1 = (1.0 - xi_1) * (1.0 - xi_2) * (1.0 - xi_3)
+        N_2 = (1.0 + xi_1) * (1.0 - xi_2) * (1.0 - xi_3)
+        N_3 = (1.0 + xi_1) * (1.0 + xi_2) * (1.0 - xi_3)
+        N_4 = (1.0 - xi_1) * (1.0 + xi_2) * (1.0 - xi_3)
+        N_5 = (1.0 - xi_1) * (1.0 - xi_2) * (1.0 + xi_3)
+        N_6 = (1.0 + xi_1) * (1.0 - xi_2) * (1.0 + xi_3)
+        N_7 = (1.0 + xi_1) * (1.0 + xi_2) * (1.0 + xi_3)
+        N_8 = (1.0 - xi_1) * (1.0 + xi_2) * (1.0 + xi_3)
         return 0.125 * torch.stack([N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8], dim=-1)
 
 
@@ -698,7 +690,6 @@ class Hexa2(Hexa1):
             0 --  8 --  1
     """
 
-    iso_dim = 3
     nodes = 20
     meshio_type = "hexahedron20"
     facet_type = Quad2
@@ -766,118 +757,30 @@ class Hexa2(Hexa1):
 
     @classmethod
     def N(cls, xi: Tensor) -> Tensor:
-        N_1 = (
-            (1 - xi[..., 0])
-            * (1 - xi[..., 1])
-            * (1 - xi[..., 2])
-            * (-xi[..., 0] - xi[..., 1] - xi[..., 2] - 2)
-        )
-        N_2 = (
-            (1 + xi[..., 0])
-            * (1 - xi[..., 1])
-            * (1 - xi[..., 2])
-            * (+xi[..., 0] - xi[..., 1] - xi[..., 2] - 2)
-        )
-        N_3 = (
-            (1 + xi[..., 0])
-            * (1 + xi[..., 1])
-            * (1 - xi[..., 2])
-            * (+xi[..., 0] + xi[..., 1] - xi[..., 2] - 2)
-        )
-        N_4 = (
-            (1 - xi[..., 0])
-            * (1 + xi[..., 1])
-            * (1 - xi[..., 2])
-            * (-xi[..., 0] + xi[..., 1] - xi[..., 2] - 2)
-        )
-
-        N_5 = (
-            (1 - xi[..., 0])
-            * (1 - xi[..., 1])
-            * (1 + xi[..., 2])
-            * (-xi[..., 0] - xi[..., 1] + xi[..., 2] - 2)
-        )
-        N_6 = (
-            (1 + xi[..., 0])
-            * (1 - xi[..., 1])
-            * (1 + xi[..., 2])
-            * (+xi[..., 0] - xi[..., 1] + xi[..., 2] - 2)
-        )
-        N_7 = (
-            (1 + xi[..., 0])
-            * (1 + xi[..., 1])
-            * (1 + xi[..., 2])
-            * (+xi[..., 0] + xi[..., 1] + xi[..., 2] - 2)
-        )
-        N_8 = (
-            (1 - xi[..., 0])
-            * (1 + xi[..., 1])
-            * (1 + xi[..., 2])
-            * (-xi[..., 0] + xi[..., 1] + xi[..., 2] - 2)
-        )
-        N_9 = 2 * (1 - xi[..., 0] ** 2) * (1 - xi[..., 1]) * (1 - xi[..., 2])
-        N_10 = 2 * (1 + xi[..., 0]) * (1 - xi[..., 1] ** 2) * (1 - xi[..., 2])
-        N_11 = 2 * (1 - xi[..., 0] ** 2) * (1 + xi[..., 1]) * (1 - xi[..., 2])
-        N_12 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1] ** 2) * (1 - xi[..., 2])
-        N_13 = 2 * (1 - xi[..., 0] ** 2) * (1 - xi[..., 1]) * (1 + xi[..., 2])
-        N_14 = 2 * (1 + xi[..., 0]) * (1 - xi[..., 1] ** 2) * (1 + xi[..., 2])
-        N_15 = 2 * (1 - xi[..., 0] ** 2) * (1 + xi[..., 1]) * (1 + xi[..., 2])
-        N_16 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1] ** 2) * (1 + xi[..., 2])
-        N_17 = 2 * (1 - xi[..., 0]) * (1 - xi[..., 1]) * (1 - xi[..., 2] ** 2)
-        N_18 = 2 * (1 + xi[..., 0]) * (1 - xi[..., 1]) * (1 - xi[..., 2] ** 2)
-        N_19 = 2 * (1 + xi[..., 0]) * (1 + xi[..., 1]) * (1 - xi[..., 2] ** 2)
-        N_20 = 2 * (1 - xi[..., 0]) * (1 + xi[..., 1]) * (1 - xi[..., 2] ** 2)
-        return 0.125 * torch.stack(
-            [
-                N_1,
-                N_2,
-                N_3,
-                N_4,
-                N_5,
-                N_6,
-                N_7,
-                N_8,
-                N_9,
-                N_10,
-                N_11,
-                N_12,
-                N_13,
-                N_14,
-                N_15,
-                N_16,
-                N_17,
-                N_18,
-                N_19,
-                N_20,
-            ],
-            dim=-1,
-        )
-
-    @classproperty
-    def iweights(cls) -> Tensor:
-        return torch.tensor(
-            [
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-            ]
-        )
-
-    @classproperty
-    def ipoints(cls) -> Tensor:
-        return torch.tensor(
-            [
-                [xi_1 / sqrt(3.0), xi_2 / sqrt(3.0), xi_3 / sqrt(3.0)]
-                for xi_3 in [-1.0, 1.0]
-                for xi_2 in [-1.0, 1.0]
-                for xi_1 in [-1.0, 1.0]
-            ]
-        )
+        xi_1, xi_2, xi_3 = xi.unbind(-1)
+        N_1 = (1 - xi_1) * (1 - xi_2) * (1 - xi_3) * (-xi_1 - xi_2 - xi_3 - 2)
+        N_2 = (1 + xi_1) * (1 - xi_2) * (1 - xi_3) * (+xi_1 - xi_2 - xi_3 - 2)
+        N_3 = (1 + xi_1) * (1 + xi_2) * (1 - xi_3) * (+xi_1 + xi_2 - xi_3 - 2)
+        N_4 = (1 - xi_1) * (1 + xi_2) * (1 - xi_3) * (-xi_1 + xi_2 - xi_3 - 2)
+        N_5 = (1 - xi_1) * (1 - xi_2) * (1 + xi_3) * (-xi_1 - xi_2 + xi_3 - 2)
+        N_6 = (1 + xi_1) * (1 - xi_2) * (1 + xi_3) * (+xi_1 - xi_2 + xi_3 - 2)
+        N_7 = (1 + xi_1) * (1 + xi_2) * (1 + xi_3) * (+xi_1 + xi_2 + xi_3 - 2)
+        N_8 = (1 - xi_1) * (1 + xi_2) * (1 + xi_3) * (-xi_1 + xi_2 + xi_3 - 2)
+        N_9 = 2 * (1 - xi_1**2) * (1 - xi_2) * (1 - xi_3)
+        N_10 = 2 * (1 + xi_1) * (1 - xi_2**2) * (1 - xi_3)
+        N_11 = 2 * (1 - xi_1**2) * (1 + xi_2) * (1 - xi_3)
+        N_12 = 2 * (1 - xi_1) * (1 - xi_2**2) * (1 - xi_3)
+        N_13 = 2 * (1 - xi_1**2) * (1 - xi_2) * (1 + xi_3)
+        N_14 = 2 * (1 + xi_1) * (1 - xi_2**2) * (1 + xi_3)
+        N_15 = 2 * (1 - xi_1**2) * (1 + xi_2) * (1 + xi_3)
+        N_16 = 2 * (1 - xi_1) * (1 - xi_2**2) * (1 + xi_3)
+        N_17 = 2 * (1 - xi_1) * (1 - xi_2) * (1 - xi_3**2)
+        N_18 = 2 * (1 + xi_1) * (1 - xi_2) * (1 - xi_3**2)
+        N_19 = 2 * (1 + xi_1) * (1 + xi_2) * (1 - xi_3**2)
+        N_20 = 2 * (1 - xi_1) * (1 + xi_2) * (1 - xi_3**2)
+        corners = [N_1, N_2, N_3, N_4, N_5, N_6, N_7, N_8]
+        edges = [N_9, N_10, N_11, N_12, N_13, N_14, N_15, N_16, N_17, N_18, N_19, N_20]
+        return 0.125 * torch.stack(corners + edges, dim=-1)
 
 
 def linear_etype(nodes: Tensor, elements: Tensor) -> type[Element]:
@@ -936,33 +839,17 @@ def linear_to_quadratic(nodes: Tensor, elements: Tensor) -> tuple[Tensor, Tensor
     """
     edges = linear_etype(nodes, elements).edges
 
-    # Vectorize edges for all elements and sort each pair with increasing node IDs
-    edge_vector = elements[:, edges].reshape(-1, 2)
-    edge_vector, _ = torch.sort(edge_vector, dim=1)
-
-    # Find unique edges and get the inverse mapping
-    if edge_vector.device.type == "cuda":
-        # Default torch implementation for CUDA
-        unique_edges, inv_indices = torch.unique(
-            edge_vector, dim=0, return_inverse=True
-        )
-    else:
-        # Numpy implementation for CPU (breaks gradient flow, but should not be needed)
-        edge_vector_np = edge_vector.numpy()
-        dt = np.dtype((np.void, edge_vector_np.dtype.itemsize * edge_vector.shape[1]))
-        b = np.ascontiguousarray(edge_vector).view(dt)
-        _, unique_indices, inv_indices_np = np.unique(
-            b, return_index=True, return_inverse=True
-        )
-        unique_edges = edge_vector[unique_indices]
-        inv_indices = torch.as_tensor(inv_indices_np)
+    # Each edge of each element as one key of its two node IDs, smaller first
+    n_nod = nodes.shape[0]
+    lo, hi = elements[:, edges].reshape(-1, 2).aminmax(dim=1)
+    unique_edges, inv_indices = torch.unique(lo * n_nod + hi, return_inverse=True)
 
     # Compute nodes
-    mid_node_coords = (nodes[unique_edges[:, 0]] + nodes[unique_edges[:, 1]]) / 2.0
-    new_nodes = torch.cat([nodes, mid_node_coords], dim=0)
+    lo, hi = unique_edges // n_nod, unique_edges % n_nod
+    new_nodes = torch.cat([nodes, (nodes[lo] + nodes[hi]) / 2.0], dim=0)
 
     # Compute elements
-    mid_node_map = inv_indices.view(elements.shape[0], -1) + nodes.shape[0]
+    mid_node_map = inv_indices.view(elements.shape[0], -1) + n_nod
     new_elements = torch.cat([elements, mid_node_map], dim=1)
 
     return new_nodes, new_elements

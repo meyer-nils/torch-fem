@@ -25,6 +25,7 @@ All models inherit their construction and solution interface from the abstract b
             - __init__
             - solve
             - integrate_field
+            - integrate_mass
 
 ## Loads
 

@@ -32,11 +32,11 @@ class Material:
     """
 
     dim: int = 3
+    n_state: int = 0
     symmetric_tangent: bool = True
     finite_strain: bool = False
 
     def __init__(self):
-        self.n_state: int = 0
         self.is_vectorized: bool = False
         self.rho: Tensor = torch.tensor(1.0)
 
@@ -112,7 +112,7 @@ class MechanicsMaterial(Material, ABC):
             de0 (Tensor): External strain increment (e.g., thermal).
                 *Shape:* `(..., d, d)`.
             cl (Tensor): Characteristic lengths for regularization.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -161,7 +161,7 @@ class HeatMaterial(Material, ABC):
             state (Tensor): Internal state variables $\\pmb{\\alpha}_n$.
                 *Shape:* `(..., <number of state variables>)`.
             cl (Tensor): Characteristic lengths for regularization.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:

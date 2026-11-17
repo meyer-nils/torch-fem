@@ -12,7 +12,6 @@ from .plot_utils import arrows, cones, dots, new_plotter, show_plotter
 
 
 class SolidGeometry(FEM):
-    element_types = (Tetra1, Hexa1, Tetra2, Hexa2)
     """The elements, integration and plotting shared by the solid models.
 
     It carries the discretization of a three-dimensional continuum, which
@@ -24,6 +23,8 @@ class SolidGeometry(FEM):
         material: Vectorized material model.
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Tetra1, Hexa1, Tetra2, Hexa2)
 
     @torch.no_grad()
     def plot(
@@ -108,18 +109,18 @@ class SolidGeometry(FEM):
         if isinstance(element_property, Tensor):
             element_property = {"element_property": element_property}
 
-        # Plot node properties
+        # Attach node properties
         if node_property:
             for key, val in node_property.items():
                 mesh.point_data[key] = val.cpu().numpy()
 
-        # Plot cell properties
+        # Attach cell properties
         if element_property:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()
 
         if show_outline:
-            pl.add_mesh(mesh.outline(), color="black")
+            pl.add_mesh(mesh.outline(), color=pl.theme.font.color)
 
         # Averaging onto the nodes makes the field continuous, so the cut runs
         # through the elements instead of around them.

@@ -13,6 +13,7 @@ https://doi.org/10.1108/eb023562
 """
 
 import warnings
+from itertools import product
 from math import sqrt
 from typing import cast
 
@@ -31,7 +32,6 @@ from .utils import stiffness2voigt, stress2voigt
 
 
 class ShellGeometry(FEM):
-    element_types = (Tria1, Quad1)
     """The elements, local frames and plotting shared by the shell models.
 
     It carries the discretization of a thin-walled structure by flat facets,
@@ -49,6 +49,8 @@ class ShellGeometry(FEM):
             [n_elem, 3].
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Tria1, Quad1)
 
     def __init__(
         self,
@@ -182,8 +184,9 @@ class ShellGeometry(FEM):
         """Plot the shell mesh with PyVista, optionally with results.
 
         Args:
-            u: Nodal displacements added to the positions, e.g. to plot the
-                deformed configuration. Defaults to 0.0 (undeformed).
+            u: Nodal displacements whose translations are added to the
+                positions, e.g. the `u` of `solve(...)` to plot the deformed
+                configuration. Defaults to 0.0 (undeformed).
             node_property: Nodal field, optionally keyed by its color bar
                 title, e.g. `{"u": u[:, :3]}`.
             element_property: Element field, keyed like `node_property`.
@@ -211,16 +214,19 @@ class ShellGeometry(FEM):
             **kwargs: Forwarded to `pyvista.Plotter.add_mesh`.
         """
         pl = new_plotter(plotter)
+        if isinstance(u, Tensor):
+            u = u[:, :3]
 
         # VTK element list
+        conn = self.elements.cpu().numpy()
         elements = []
-        for element in self.elements.cpu().numpy():
+        for element in conn:
             elements += [len(element), *element]
 
         # Deformed node positions
         pos = (self.nodes + u).cpu().numpy()
 
-        # Create unstructured mesh
+        # Create surface mesh
         mesh = pyvista.PolyData(pos.tolist(), elements)
 
         # A bare field is titled by its argument, a named one by its key
@@ -229,12 +235,12 @@ class ShellGeometry(FEM):
         if isinstance(element_property, Tensor):
             element_property = {"element_property": element_property}
 
-        # Plot node properties
+        # Attach node properties
         if node_property:
             for key, val in node_property.items():
                 mesh.point_data[key] = val.cpu().numpy()
 
-        # Plot cell properties
+        # Attach cell properties
         if element_property:
             for key, val in element_property.items():
                 mesh.cell_data[key] = val.cpu().numpy()
@@ -245,37 +251,31 @@ class ShellGeometry(FEM):
 
         # Plot as solid elements spanning the thickness
         kwargs.setdefault("show_edges", True)
-        base_meshes = []
+        base = mesh
         if thickness:
             # Averaged onto the nodes, so the extrusion stays continuous
             nodal = np.zeros((len(self.nodes), 2))
             count = np.zeros((len(self.nodes), 1))
-            for element, surface in zip(
-                self.elements.cpu().numpy(), surfaces.cpu().numpy()
-            ):
-                nodal[element] += surface
-                count[element] += 1
+            np.add.at(nodal, conn, surfaces.cpu().numpy()[:, None])
+            np.add.at(count, conn, 1)
             nodal /= count
 
             # Triangle windings are flipped, as VTK winds the base of a wedge
             # away from its top face.
             normals = np.asarray(mesh.point_normals)
             tria = self.etype is Tria1
-            conn = self.elements.cpu().numpy()[:, :: -1 if tria else 1]
+            cells = conn[:, :: -1 if tria else 1]
             ctype = pyvista.CellType.WEDGE if tria else pyvista.CellType.HEXAHEDRON
             solid = pyvista.UnstructuredGrid(
-                {ctype: np.hstack([conn, conn + self.n_nod])},
+                {ctype: np.hstack([cells, cells + self.n_nod])},
                 np.vstack([pos + nodal[:, :1] * normals, pos + nodal[:, 1:] * normals]),
             )
             solid.cell_data.update(mesh.cell_data)
             for key, val in mesh.point_data.items():
                 solid.point_data[key] = np.concatenate([val, val])
 
-            pl.add_mesh(solid, **kwargs)
-            base_meshes.append(solid)
-        else:
-            pl.add_mesh(mesh, **kwargs)
-            base_meshes.append(mesh)
+            base = solid
+        pl.add_mesh(base, **kwargs)
 
         # Plot orientations, lifted onto the top surface of a thick shell so
         # that they do not disappear inside it
@@ -316,20 +316,11 @@ class ShellGeometry(FEM):
                 )
 
         # Mirror meshes across specified planes
-        sx_values = [1.0, -1.0] if mirror[0] else [1.0]
-        sy_values = [1.0, -1.0] if mirror[1] else [1.0]
-        sz_values = [1.0, -1.0] if mirror[2] else [1.0]
-        for sx in sx_values:
-            for sy in sy_values:
-                for sz in sz_values:
-                    if sx == 1.0 and sy == 1.0 and sz == 1.0:
-                        continue
-                    for msh in base_meshes:
-                        mirrored = msh.copy()
-                        mirrored.points[:, 0] *= sx
-                        mirrored.points[:, 1] *= sy
-                        mirrored.points[:, 2] *= sz
-                        pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
+        for signs in product(*([1.0, -1.0] if m else [1.0] for m in mirror)):
+            if signs != (1.0, 1.0, 1.0):
+                mirrored = base.copy()
+                mirrored.points *= signs
+                pl.add_mesh(mirrored, **{"opacity": 0.5, **kwargs})
 
         if show_undeformed:
             undefo = pyvista.PolyData(self.nodes.cpu().numpy(), elements)
@@ -380,9 +371,9 @@ class Shell(ShellGeometry, Mechanics):
     a tuning parameter on a coarse doubly-curved mesh, and a folded or branched
     shell, whose nodes carry no unique normal, is not supported.
 
-    `solve` reports stress in the local material frame of each element, and
-    leaves the gradient at the identity, as the formulation never forms one. Its
-    default aggregation averages the through-thickness stations, where a bending
+    `solve` reports stress in the local material frame of each element, and as
+    gradient the identity plus the in-plane displacement gradient in that frame.
+    Its default aggregation averages the through-thickness stations, where a bending
     stress cancels: pass `aggregate_integration_points=False` to read one.
 
     Attributes:
@@ -411,13 +402,13 @@ class Shell(ShellGeometry, Mechanics):
         nodes: Tensor,
         elements: Tensor,
         material: Material | Laminate,
-        thickness: Tensor | float = 1.0,
+        thickness: Tensor | float | None = None,
         offset: Tensor | float = 0.0,
         transverse_nu: float = 0.5,
         transverse_kappa: float = 5.0 / 6.0,
         transverse_G: list[float] | list[Tensor] | None = None,
         drill_penalty: float = 1e-3,
-        n_simpson: int = 3,
+        n_simpson: int | None = None,
         orientation: Tensor | None = None,
     ):
         """Initialize the shell FEM problem.
@@ -428,11 +419,10 @@ class Shell(ShellGeometry, Mechanics):
                 [n_elem, 3] or [n_elem, 4].
             material: Either a single plane-stress `Material` (homogeneous
                 shell) or a `Laminate` describing a layered stacking sequence.
-                When a `Laminate` is passed, `thickness` and `n_simpson` are
-                taken from the laminate and the corresponding arguments here are
-                ignored.
-            thickness: Shell thickness. A float is expanded to all elements, a
-                tensor assigns one thickness per element.
+                A `Laminate` carries its own thicknesses and `n_simpson`, so
+                neither may be passed with one.
+            thickness: Shell thickness, 1.0 if omitted. A float is expanded to
+                all elements, a tensor assigns one thickness per element.
             offset: Reference surface position within the section, as a
                 fraction of thickness from the mid-plane along the element
                 normal. `+0.5` puts it on the top face.
@@ -447,7 +437,7 @@ class Shell(ShellGeometry, Mechanics):
                 in-plane rotation of the membrane field, as a fraction of the shear
                 stiffness of the section.
             n_simpson: Number of Simpson integration points through the
-                thickness. Must be an odd integer.
+                thickness, 3 if omitted. Must be an odd integer.
             orientation: Global reference direction from which material/ply
                 angles are measured. It is projected onto each element's surface
                 to define the element's local material 0°-axis. Accepts
@@ -461,8 +451,11 @@ class Shell(ShellGeometry, Mechanics):
         # A plain material is a section of one layer, which checks its kind
         if not isinstance(material, Laminate):
             layer = cast(MechanicsMaterial, material)
-            thickness = self._per_element(thickness)
+            thickness = self._per_element(1.0 if thickness is None else thickness)
+            n_simpson = 3 if n_simpson is None else n_simpson
             material = Laminate([layer], [thickness], [0.0], n_simpson)
+        elif thickness is not None or n_simpson is not None:
+            raise ValueError("Set thickness and n_simpson on the Laminate instead.")
         if material.finite_strain:
             raise NotImplementedError(
                 f"Geometric nonlinearity is not implemented for {type(self).__name__}."
@@ -523,10 +516,10 @@ class Shell(ShellGeometry, Mechanics):
         """Aggregate strain-displacement matrices
 
         Args:
-            B (torch tensor): Derivative of element shape functions (shape: [N x 2 x 3])
+            B (torch tensor): Derivative of shape functions (shape: [N x 2 x nodes])
 
         Returns:
-            torch tensor: Strain-displacement matrices shaped [N x 3 x 18]
+            torch tensor: Strain-displacement matrices shaped [N x 3 x 6*nodes]
         """
         N = self.n_elem
         z = torch.zeros(N, self.etype.nodes)
@@ -539,10 +532,10 @@ class Shell(ShellGeometry, Mechanics):
         """Aggregate curvature-displacement matrices
 
         Args:
-            B (torch tensor): Derivative of element shape functions (shape: [N x 2 x 3])
+            B (torch tensor): Derivative of shape functions (shape: [N x 2 x nodes])
 
         Returns:
-            torch tensor: Curvature-displacement matrices shaped [N x 3 x 18]
+            torch tensor: Curvature-displacement matrices shaped [N x 3 x 6*nodes]
         """
         N = self.n_elem
         z = torch.zeros(N, self.etype.nodes)
@@ -710,7 +703,7 @@ class Shell(ShellGeometry, Mechanics):
         """Perform numerical integrations for element stiffness matrix.
 
         Args:
-            grad_prev: Deformation gradient at previous step [n_int, n_elem, *n_flux]
+            grad_prev: In-plane gradient at previous step [n_int, n_elem, *n_flux]
             flux_prev: Stress at previous step [n_int, n_elem, *n_flux]
             state_prev: Material state at previous step [n_int, n_elem, n_state]
             compute_stiffness: If True, assemble and return element stiffness.
@@ -727,10 +720,17 @@ class Shell(ShellGeometry, Mechanics):
         # Compute updated configuration
         u_trial = u_prev + du.view((-1, self.n_dof_per_node))
 
-        # Reshape displacement increment and rotation increment
+        # Compute gradient operators and the local frames `t` and `T`
+        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
+
+        # Displacement and rotation increments in local element coordinates
         du = du.view(-1, self.n_dof_per_node)[self.elements]
-        d_u = du[..., :3]
-        d_w = du[..., 3:]
+        du_local = torch.einsum("...ij,...kj->...ki", self.t, du[..., :3])
+        dw_local = torch.einsum("...ij,...kj->...ki", self.t, du[..., 3:])
+
+        # Updated configuration in the local degrees of freedom of each element
+        disp = u_trial[self.elements, :].reshape(self.n_elem, -1)
+        loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
 
         # Initialize nodal force and stiffness
         N_nod = self.etype.nodes
@@ -739,16 +739,9 @@ class Shell(ShellGeometry, Mechanics):
         need_k = compute_stiffness and (self.K.numel() == 0 or self.n_state != 0)
         k = torch.zeros(self.n_elem, n_dof, n_dof) if need_k else None
 
-        # Compute gradient operators
-        _, B, detJ = self.eval_shape_functions(self.etype.ipoints)
-
         # Through-thickness integration stations of the section
-        section = self.section
-        materials, z_stations, w_stations = (
-            section.materials_per_station,
-            section.z,
-            section.w,
-        )
+        materials = self.section.materials_per_station
+        z_stations, w_stations = self.section.z, self.section.w
 
         # Transverse shear operators and stiffnesses at the integration points
         Ds = self._Ds(detJ)
@@ -760,9 +753,10 @@ class Shell(ShellGeometry, Mechanics):
         shear = self.As.diagonal(dim1=-2, dim2=-1).mean(-1)
 
         for i, wi in enumerate(self.etype.iweights):
-            # Transform displacement increment to local element coordinates
-            du_local = torch.einsum("...ij,...kj->...ki", self.t, d_u)
-            dw_local = torch.einsum("...ij,...kj->...ki", self.t, d_w)
+            # Gradient of the displacement increment and curvature increment
+            dudxi = B[i] @ du_local
+            dwdxi = B[i] @ dw_local
+            dkappa = torch.stack([dwdxi[..., 1], -dwdxi[..., 0]], dim=-2)
 
             # Initialize local force contributions
             f_loc = torch.zeros(self.n_elem, *self.n_flux)
@@ -782,25 +776,12 @@ class Shell(ShellGeometry, Mechanics):
                 z = z_stations[j][:, None, None]
                 wz = w_stations[j][:, None, None]
 
-                # Compute gradient of displacement increment and rotation increment
-                dudxi = B[i] @ du_local
-                dwdxi = B[i] @ dw_local
-
-                # Compute curvature
-                dkappa = torch.stack(
-                    [
-                        torch.stack([dwdxi[..., 0, 1], -dwdxi[..., 0, 0]], dim=-1),
-                        torch.stack([dwdxi[..., 1, 1], -dwdxi[..., 1, 0]], dim=-1),
-                    ],
-                    dim=-1,
-                )
-
                 # Compute in-plane displacement gradient increment
                 H_inc = dudxi[..., 0:2] + z * dkappa
                 grad_new[ip] = grad_prev[ip] + H_inc
 
                 # Evaluate material response
-                flux_new[ip], state_new[ip], ddsdde = material.step(
+                flux, state_new[ip], ddsdde = material.step(
                     H_inc,
                     grad_prev[ip],
                     flux_prev[ip],
@@ -810,9 +791,11 @@ class Shell(ShellGeometry, Mechanics):
                     iter,
                 )
 
+                flux_new[ip] = flux
+
                 # Thickness integration of membrane forces and bending moments.
-                f_loc += wz * flux_new[ip].clone()
-                m_loc += wz * z * flux_new[ip].clone()
+                f_loc += wz * flux
+                m_loc += wz * z * flux
 
                 # Compute ABD matrix contributions
                 C = stiffness2voigt(ddsdde)
@@ -847,11 +830,9 @@ class Shell(ShellGeometry, Mechanics):
                 kt = km + kb + kc + ks + kd
 
                 # Total element stiffness in global coordinates
-                k[:, :, :] += self.T.transpose(1, 2) @ kt @ self.T
+                k += self.T.transpose(1, 2) @ kt @ self.T
 
             # Total force contribution
-            disp = u_trial[self.elements, :].reshape(self.n_elem, -1)
-            loc_disp = torch.einsum("...ij,...j->...i", self.T, disp)
             n_loc = stress2voigt(f_loc)
             m_loc_voigt = stress2voigt(m_loc)
             f_membrane = wi * torch.einsum("...,...ji,...j->...i", detJ[i], Dm, n_loc)
@@ -860,9 +841,7 @@ class Shell(ShellGeometry, Mechanics):
             )
             f_shear_drill = torch.einsum("...ij,...j->...i", ks + kd, loc_disp)
             f_loc_total = f_membrane + f_bending + f_shear_drill
-            f[:, :] += torch.einsum(
-                "...ij,...j->...i", self.T.transpose(1, 2), f_loc_total
-            )
+            f += torch.einsum("...ij,...j->...i", self.T.transpose(1, 2), f_loc_total)
 
         return k, f, grad_new, flux_new, state_new
 

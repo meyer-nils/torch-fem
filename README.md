@@ -62,10 +62,7 @@ cantilever.plot(node_markers=True, node_labels=True)
 ```
 This creates a minimal planar FEM model:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_dark.png">
-  <img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_light.png">
-</picture>
+<img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example.png">
 
 ```python
 # Solve for displacements u, internal forces f, stresses σ, deformation gradients F, and material states α
@@ -76,10 +73,7 @@ cantilever.plot(u, node_property=torch.norm(u, dim=1))
 ```
 This solves the model and plots the result:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_dark.png">
-  <img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved_light.png">
-</picture>
+<img alt="minimal" src="https://meyer-nils.github.io/torch-fem/images/minimal_example/minimal_example_solved.png">
 
 To compute gradients through the FEM model, we mark the variables that require gradients. The backward pass of `solve()` is an adjoint solve via the implicit function theorem rather than a differentiation through solver iterations, as explained in the [differentiability guide](https://meyer-nils.github.io/torch-fem/differentiability/).
 ```python 
@@ -105,28 +99,28 @@ The subdirectories `examples/basic` and `examples/optimization` contain Jupyter 
 <table>
     <tbody>
         <tr>
-            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity_light.png" alt="Planar plate with a hole plasticity example"></a></td>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/planar/plasticity.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/plate_hole_plasticity_light.png" alt="Planar plate with a hole plasticity example"></picture></a></td>
         </tr>
         <tr>
             <td colspan="2" align="center"><b>Plasticity in a plate with hole:</b> Isotropic linear hardening model for plane-stress or plane-strain.</td>
         </tr>
         <tr>
-            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><img src="https://meyer-nils.github.io/torch-fem/images/cantilever_finite_strain.png" alt="Finite-strain cantilever example"></a></td>
+            <td colspan="2"><a href="https://meyer-nils.github.io/torch-fem/examples/basic/solid/finite_strain.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/cantilever_finite_strain_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/cantilever_finite_strain_light.png" alt="Finite-strain cantilever example"></picture></a></td>
         </tr>
         <tr>
             <td colspan="2" align="center"><b>Finite strain cantilever:</b> Hyperelastic model in Total Lagrangian Formulation.</td>
         </tr>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/bracket.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/bracket.png" alt="3D jet engine bracket topology optimization result"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/topology_thermal.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/topology_thermal.png" alt="3D heat sink topology optimization example"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/bracket.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/bracket_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/bracket_light.png" alt="3D jet engine bracket topology optimization result"></picture></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/solid/topology_thermal.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/topology_thermal_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/solid/topology_thermal_light.png" alt="3D heat sink topology optimization example"></picture></a></td>
         </tr>
         <tr>
             <td align="center"><b>Topology optimization of a jet engine bracket:</b> The optimized part is cut out of the design space at an iso-value of the density.</td>
             <td align="center"><b>Topology optimization of a 3D heat sink:</b> Conductive material is distributed in a cube with a homogeneous heat source to minimize thermal compliance.</td>
         </tr>
         <tr>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/property_fields.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/property_fields.png" alt="Property field recovery example"></a></td>
-            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/shell/pressure_vessel.html"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/shell/pressure_vessel.png" alt="Pressure vessel free size optimization example"></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/planar/property_fields.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/property_fields_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/planar/property_fields_light.png" alt="Property field recovery example"></picture></a></td>
+            <td style="width: 50%;"><a href="https://meyer-nils.github.io/torch-fem/examples/optimization/shell/pressure_vessel.html"><picture><source media="(prefers-color-scheme: dark)" srcset="https://meyer-nils.github.io/torch-fem/images/examples/optimization/shell/pressure_vessel_dark.png"><img src="https://meyer-nils.github.io/torch-fem/images/examples/optimization/shell/pressure_vessel_light.png" alt="Pressure vessel free size optimization example"></picture></a></td>
         </tr>
         <tr>
             <td align="center"><b>Recovery of a property field:</b> A direct optimization and a neural field recover a graded elastic modulus from noisy observations of the displacement.</td>
@@ -151,18 +145,23 @@ As an example, a linear elastic cube of hexahedral elements with $N$ nodes along
 |  80 |  1536000 |    0.058s |    1.417s |    1.216s |  15008.0MB |
 
 ## Alternatives
-*torch-fem* focuses on solid mechanics and thermal problems. It provides sensitivities through PyTorch autograd, which makes it easy to drop into optimization loops and ML pipelines. It is the natural choice if you are working in the PyTorch ecosystem. Depending on your needs, one of these Python FEM tools may serve you better:
+*torch-fem* focuses on solid mechanics and thermal problems. It provides sensitivities through PyTorch autograd, which makes it easy to drop into optimization loops and ML pipelines. It is the natural choice if you are working in the PyTorch ecosystem. Depending on your needs, one of these FEM libraries written in Python may serve you better:
 
-| Library | Stars | Focus | Differentiable | Consider it over torch-fem when… |
-|---|:---:|---|:---:|---|
-| [FEniCSx (DOLFINx)](https://github.com/FEniCS/dolfinx) | ![stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square) | General PDEs, UFL weak forms, MPI | via [dolfin-adjoint](https://github.com/dolfin-adjoint/pyadjoint) | you need arbitrary weak forms or massively parallel distributed runs |
-| [SfePy](https://github.com/sfepy/sfepy) | ![stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square) | General multiphysics, pure Python | — | you need a broad range of PDE applications on CPU |
-| [JAX-FEM](https://github.com/deepmodeling/jax-fem) | ![stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square) | Differentiable FEM, JAX / GPU | Yes | your stack is built on JAX rather than PyTorch |
-| [Firedrake](https://github.com/firedrakeproject/firedrake) | ![stars](https://img.shields.io/github/stars/firedrakeproject/firedrake?style=flat-square) | General PDEs, UFL weak forms | via [pyadjoint](https://github.com/dolfin-adjoint/pyadjoint) | you want a UFL form language with automated adjoints for multiphysics |
-| [scikit-fem](https://github.com/kinnala/scikit-fem) | ![stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square) | Lightweight assembly, NumPy/SciPy | — | you want minimal dependencies and full control over custom forms |
-| [FElupe](https://github.com/adtzlr/felupe) | ![stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square) | Finite-strain solid mechanics | partially via [tensortrax](https://github.com/adtzlr/tensortrax) | you work with hyperelastic / finite-strain solids |
-| [Nutils](https://github.com/evalf/nutils) | ![stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) | High-order / immersed methods | — | you research advanced or immersed discretizations including IGA |
-| [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) | ![stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square) | Biomechanics, PyTorch | Yes | you work on soft-tissue / inverse biomechanics |
+| Library | Stars | Built on | Differentiable solve | Choose it for |
+|---|:---:|---|---|---|
+| [Warp](https://github.com/NVIDIA/warp) | ![stars](https://img.shields.io/github/stars/NVIDIA/warp?style=flat-square) | CUDA | ✓ | GPU simulation kernels with a FEM toolkit |
+| [FEniCSx](https://github.com/FEniCS/dolfinx) | ![stars](https://img.shields.io/github/stars/FEniCS/dolfinx?style=flat-square) | C++ core | via [dolfinx-adjoint](https://github.com/scientificcomputing/dolfinx-adjoint) | arbitrary weak forms at scale |
+| [SfePy](https://github.com/sfepy/sfepy) | ![stars](https://img.shields.io/github/stars/sfepy/sfepy?style=flat-square) | NumPy / C | — | broad multiphysics |
+| [Pynite](https://github.com/JWock82/Pynite) | ![stars](https://img.shields.io/github/stars/JWock82/Pynite?style=flat-square) | NumPy | — | frame and plate analysis for structural engineering |
+| [JAX-FEM](https://github.com/deepmodeling/jax-fem) | ![stars](https://img.shields.io/github/stars/deepmodeling/jax-fem?style=flat-square) | JAX | ✓ | differentiable FEM in JAX |
+| [Firedrake](https://github.com/firedrakeproject/firedrake) | ![stars](https://img.shields.io/github/stars/firedrakeproject/firedrake?style=flat-square) | PETSc | via [pyadjoint](https://github.com/dolfin-adjoint/pyadjoint) | weak forms with automated adjoints |
+| [scikit-fem](https://github.com/kinnala/scikit-fem) | ![stars](https://img.shields.io/github/stars/kinnala/scikit-fem?style=flat-square) | NumPy | — | lightweight custom assembly |
+| [FEALPy](https://github.com/weihuayi/fealpy) | ![stars](https://img.shields.io/github/stars/weihuayi/fealpy?style=flat-square) | NumPy | — | high-order and non-standard elements |
+| [TensorMesh](https://github.com/camlab-ethz/TensorMesh) | ![stars](https://img.shields.io/github/stars/camlab-ethz/TensorMesh?style=flat-square) | PyTorch | ✓ | custom weak forms in PyTorch |
+| [FElupe](https://github.com/adtzlr/felupe) | ![stars](https://img.shields.io/github/stars/adtzlr/felupe?style=flat-square) | NumPy | — | finite-strain hyperelasticity |
+| [Nutils](https://github.com/evalf/nutils) | ![stars](https://img.shields.io/github/stars/evalf/nutils?style=flat-square) | NumPy | — | high-order, immersed and isogeometric methods |
+| [JAX-SSO](https://github.com/GaoyuanWu/JaxSSO) | ![stars](https://img.shields.io/github/stars/GaoyuanWu/JaxSSO?style=flat-square) | JAX | ✓ | beam and shell optimization in JAX |
+| [PyTorch-FEA](https://github.com/liangbright/pytorch_fea) | ![stars](https://img.shields.io/github/stars/liangbright/pytorch_fea?style=flat-square) | PyTorch | — | soft-tissue biomechanics |
 
 Not sure which to pick? The [mosaic](https://github.com/pasteurlabs/mosaic) differentiable-physics benchmark suite compares several of these solvers on gradient accuracy and forward/adjoint performance under a common interface.
 

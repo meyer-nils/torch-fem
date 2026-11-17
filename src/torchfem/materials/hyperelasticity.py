@@ -75,9 +75,6 @@ class Hyperelastic3D(MechanicsMaterial):
         # Store material parameters
         self.params = torch.as_tensor(params)
 
-        # There are no internal variables
-        self.n_state = 0
-
         # Density
         self.rho = torch.as_tensor(rho)
 
@@ -108,7 +105,7 @@ class Hyperelastic3D(MechanicsMaterial):
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 *Shape:* `(..., 3, 3)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -185,6 +182,7 @@ class HyperelasticPlaneStress(Hyperelastic3D):
     """
 
     dim = 2
+    n_state = 1
 
     def __init__(
         self,
@@ -197,9 +195,6 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         super().__init__(psi, params, rho)
         self.tolerance = tolerance
         self.max_iter = max_iter
-
-        # State variable for out-of-plane stretch
-        self.n_state = 1
 
     def cauchy(self, P: Tensor, F: Tensor, state: Tensor) -> Tensor:
         """As the base, with the out-of-plane stretch in the volume change."""
@@ -229,7 +224,7 @@ class HyperelasticPlaneStress(Hyperelastic3D):
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:
@@ -281,7 +276,6 @@ class HyperelasticPlaneStress(Hyperelastic3D):
         )
         ddsdde_new = ddsdde[..., 0:2, 0:2, 0:2, 0:2] - tangent_correction
 
-        # Update stress
         return P_new, state_new, ddsdde_new
 
 
@@ -348,7 +342,7 @@ class HyperelasticPlaneStrain(Hyperelastic3D):
             de0 (Tensor): External deformation gradient increment (e.g., thermal).
                 *Shape:* `(..., 2, 2)`.
             cl (Tensor): Characteristic lengths.
-                *Shape:* `(..., 1)`.
+                *Shape:* `(...)`.
             iter (int): Current iteration number.
 
         Returns:

@@ -12,14 +12,13 @@ from torch import Tensor
 from .base import FEM, Heat, Mechanics
 from .elements import Bar1, Bar2
 from .materials import Material
-from .plot_utils import LABEL_OFFSET, arrows, arrows2d, cones, dots, dots2d, markers2d
+from .plot_utils import arrows, arrows2d, cones, dots, dots2d, labels2d, markers2d
 
 # isort: split
 from .plot_utils import new_plotter, show_plotter
 
 
 class TrussGeometry(FEM):
-    element_types = (Bar1, Bar2)
     """The elements, integration and plotting shared by the truss models.
 
     It carries the discretization of a pin-jointed frame of bars, which `Truss`
@@ -32,6 +31,8 @@ class TrussGeometry(FEM):
         areas: Cross-sectional areas with shape [n_elem]. Defaults to ones.
         constraints: Boolean mask of constrained DOFs with shape [n_nod, n_dof].
     """
+
+    element_types = (Bar1, Bar2)
 
     def __init__(self, nodes: Tensor, elements: Tensor, material: Material):
         """Initialize a truss FEM problem.
@@ -57,14 +58,12 @@ class TrussGeometry(FEM):
         l0 = torch.linalg.norm(dx, dim=-1)
         self.t = dx / l0[:, None]
 
-        # Compute Jacobian and its determinant
-        J = 0.5 * l0[:, None, None]
+        # The Jacobian of a bar is half its length
         detJ = (0.5 * l0).expand(len(xi), -1)
         if torch.any(detJ <= 0.0):
             raise ValueError("Negative Jacobian. Check element numbering.")
 
-        b = self.etype.B(xi)
-        B = torch.einsum("...jkl,...lm->...jkm", torch.linalg.inv(J), b)
+        B = self.etype.B(xi)[:, None] / detJ[..., None, None]
         return self.etype.N(xi), B, detJ
 
     def plot(self, u: float | Tensor = 0.0, **kwargs):
@@ -94,7 +93,7 @@ class TrussGeometry(FEM):
         show_thickness: bool = False,
         thickness_threshold: float = 0.0,
         bcs: bool = True,
-        default_color: str = "black",
+        default_color: str | None = None,
         cmap: str | Colormap = "viridis",
         title: str | None = None,
         axes: bool = False,
@@ -120,7 +119,8 @@ class TrussGeometry(FEM):
                 scale as arrows with a dot at the tip instead of a marker. In
                 the deformed configuration, only the dot is drawn, marking the
                 position the node was pulled to.
-            default_color: Bar, node, and label color.
+            default_color: Bar and node color, the foreground of the style if
+                omitted. Labels are gray.
             cmap: Matplotlib colormap or its name.
             title: Plot title.
             axes: If True, shows the coordinate axes.
@@ -128,7 +128,7 @@ class TrussGeometry(FEM):
             vmax: Upper color limit.
             ax: Existing matplotlib axes to plot into.
         """
-        # Set figure size
+        # Create a figure unless axes are given
         if ax is None:
             _, ax = plt.subplots()
 
@@ -143,6 +143,8 @@ class TrussGeometry(FEM):
         # A bare field is titled by its argument, a named one by its key
         if isinstance(element_property, Tensor):
             element_property = {"element_property": element_property}
+
+        default_color = default_color or plt.rcParams["text.color"]
 
         # Line color from the first field (if present)
         if element_property:
@@ -160,13 +162,13 @@ class TrussGeometry(FEM):
 
         # Nodes
         pos = self.nodes + u
-        ax.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o", zorder=10)
+        # Above the dots of the boundary conditions, so every node looks alike
+        ax.scatter(pos[:, 0], pos[:, 1], color=default_color, marker="o", zorder=13)
         if node_labels:
-            for i, (x, y) in enumerate(pos.tolist()):
-                ax.annotate(str(i), (x, y), color=default_color, **LABEL_OFFSET)
+            labels2d(ax, pos)
 
         # Bounding box
-        size = torch.linalg.norm(pos.max() - pos.min())
+        size = torch.linalg.norm(pos.max(dim=0).values - pos.min(dim=0).values)
 
         # Bars
         for j, element in enumerate(self.elements):
@@ -191,13 +193,10 @@ class TrussGeometry(FEM):
             markers2d(ax, pos, fixed)
 
         # Adjustments (limits include the arrow tips)
-        extent = torch.cat(tips)
-        nmin = extent.min(dim=0).values
-        nmax = extent.max(dim=0).values
-        ax.set(
-            xlim=(float(nmin[0]) - 0.5, float(nmax[0]) + 0.5),
-            ylim=(float(nmin[1]) - 0.5, float(nmax[1]) + 0.5),
-        )
+        lo, hi = torch.cat(tips).aminmax(dim=0)
+        margin = 0.1 * float(size)
+        ax.set_xlim(float(lo[0]) - margin, float(hi[0]) + margin)
+        ax.set_ylim(float(lo[1]) - margin, float(hi[1]) + margin)
 
         if title:
             ax.set_title(title)
