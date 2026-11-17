@@ -118,6 +118,24 @@ def _rows(crow: Tensor) -> Tensor:
     )
 
 
+def border(K: Tensor, col: Tensor, row: Tensor) -> Tensor:
+    """The CSR matrix `[[K, col], [rowᵀ, 0]]`, `K` bordered by one row and column."""
+    n = K.shape[0]
+    with torch.device(K.device):
+        end = torch.full((n + 1,), n)
+        idx = torch.cat(
+            [
+                torch.stack([_rows(K.crow_indices()).long(), K.col_indices().long()]),
+                torch.stack([torch.arange(n), end[:n]]),
+                torch.stack([end, torch.arange(n + 1)]),
+            ],
+            1,
+        )
+        val = torch.cat([K.values(), col, row, torch.zeros(1)])
+        A = torch.sparse_coo_tensor(idx, val, (n + 1, n + 1))
+    return A.coalesce().to_sparse_csr()
+
+
 def _to_scipy(A: Tensor) -> Any:
     """Return `A` as a SciPy matrix compressed by row."""
     return scipy_csr_matrix(
