@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `Mechanics.solve_harmonic(...)` computes steady-state harmonic response and frequency response functions via differentiable modal superposition, supporting modal damping ratios and Rayleigh damping.
 - `IsotropicDamagePlaneStrain`, `IsotropicDamagePlaneStress` and `IsotropicDamage1D` take `eq_strain="mises"`, evaluated on the full strain tensor that their kinematics imply.
 
 ### Changed
