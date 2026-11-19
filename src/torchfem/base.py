@@ -1218,6 +1218,95 @@ class Mechanics(FEM, ABC):
         modes = phis.T.reshape(n_modes, self.n_nod, self.n_dof_per_node)
         return omega_sq, modes
 
+    def solve_harmonic(
+        self,
+        omega: Tensor,
+        n_modes: int = 10,
+        damping: float | Tensor = 0.02,
+        rayleigh: tuple[float, float] | None = None,
+        forces: Tensor | None = None,
+        modes: tuple[Tensor, Tensor] | None = None,
+    ) -> Tensor:
+        """Compute the steady-state harmonic response via modal superposition.
+
+        Evaluates the complex displacement response $\\mathbf{U}(\\Omega)$ under
+        harmonic excitation $\\mathbf{F}_0 e^{i \\Omega t}$ across excitation
+        angular frequencies:
+
+        $$\\left(-\\Omega^2 \\mathbf{M} + i \\Omega \\mathbf{C} + \\mathbf{K}\\right)
+        \\mathbf{U}(\\Omega) = \\mathbf{F}_0$$
+
+        The modal response decouples into single-degree-of-freedom oscillators:
+
+        $$q_j(\\Omega) = \\frac{\\boldsymbol{\\phi}_j^T \\mathbf{F}_0}
+        {\\omega_j^2 - \\Omega^2 + 2 i \\zeta_j \\omega_j \\Omega}$$
+
+        $$\\mathbf{U}(\\Omega) = \\sum_{j=1}^{m} \\boldsymbol{\\phi}_j q_j(\\Omega)$$
+
+        Args:
+            omega: Excitation angular frequencies [rad/s] with shape `[n_freq]`
+                or scalar tensor.
+            n_modes: Number of modes to use in modal superposition if `modes`
+                is omitted.
+            damping: Modal damping ratio $\\zeta$ (scalar or shape `[n_modes]`).
+                Defaults to 0.02 (2% damping).
+            rayleigh: Optional Rayleigh damping parameters `(alpha, beta)` where
+                $\\mathbf{C} = \\alpha \\mathbf{M} + \\beta \\mathbf{K}$, yielding
+                $\\zeta_j = \\alpha / (2 \\omega_j) + \\beta \\omega_j / 2$.
+                Overrides `damping` when provided.
+            forces: External force amplitudes with shape `[n_nod, n_dof_per_node]`.
+                Defaults to `self.forces`.
+            modes: Pre-computed eigenpairs `(omega_sq, mode_shapes)` from `solve_modes`.
+
+        Returns:
+            Complex displacement tensor with shape
+            `[n_freq, n_nod, n_dof_per_node]` (or `[n_nod, n_dof_per_node]`
+            for scalar `omega`).
+        """
+        if (omega < 0.0).any():
+            raise ValueError("Excitation frequencies must be non-negative.")
+
+        # Compute or unpack modes
+        if modes is None:
+            omega_sq, mode_shapes = self.solve_modes(n_modes)
+        else:
+            omega_sq, mode_shapes = modes
+            n_modes = len(omega_sq)
+
+        omega_n = torch.sqrt(torch.clamp(omega_sq, min=0.0))
+
+        # Damping ratios
+        if rayleigh is not None:
+            alpha, beta = rayleigh
+            zeta = 0.5 * (alpha / torch.clamp(omega_n, min=1e-12) + beta * omega_n)
+        elif isinstance(damping, Tensor):
+            zeta = damping
+        else:
+            zeta = torch.full_like(omega_n, float(damping))
+
+        # Force vector and modal forces
+        f_val = self.forces if forces is None else forces
+        if f_val.shape != (self.n_nod, self.n_dof_per_node):
+            raise ValueError("Forces must have shape [n_nod, n_dof_per_node].")
+        f_vec = f_val.ravel()
+
+        phis = mode_shapes.reshape(n_modes, -1).T  # [n_dofs, n_modes]
+        p = phis.T @ f_vec  # [n_modes]
+
+        # Reshape omega for broadcasting: [n_freq, n_modes]
+        squeeze_freq = omega.ndim == 0
+        w = omega.reshape(-1)
+
+        denom = (omega_sq[None, :] - w[:, None] ** 2) + 2j * (zeta * omega_n)[
+            None, :
+        ] * w[:, None]
+        q = p[None, :] / denom  # [n_freq, n_modes]
+
+        # Reconstruct physical displacements: [n_freq, n_dofs]
+        U = torch.complex(q.real @ phis.T, q.imag @ phis.T)
+        out = U.reshape(len(w), self.n_nod, self.n_dof_per_node)
+        return out[0] if squeeze_freq else out
+
 
 class Heat(FEM, ABC):
     """Base class for steady and transient heat conduction formulations."""
