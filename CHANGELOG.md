@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Added
-- `Mechanics.solve_harmonic(...)` computes steady-state harmonic response and frequency response functions via differentiable modal superposition, supporting modal damping ratios and Rayleigh damping.
+- `Mechanics.solve_harmonic(...)` computes steady-state harmonic response via direct dynamic stiffness solve $(\mathbf{K} - \Omega^2 \mathbf{M} + i \Omega \mathbf{C}) \mathbf{U} = \mathbf{F}$, supporting viscous Rayleigh damping, structural loss factor damping, and exact adjoint sensitivities without modal truncation.
 - `IsotropicDamagePlaneStrain`, `IsotropicDamagePlaneStress` and `IsotropicDamage1D` take `eq_strain="mises"`, evaluated on the full strain tensor that their kinematics imply.
 
 ### Changed

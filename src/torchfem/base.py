@@ -16,6 +16,7 @@ from .sparse import (
     Solve,
     check_declared,
     differentiable_modal_eigsolve,
+    differentiable_sparse_solve,
     newton_solve,
     resolve_method,
 )
@@ -1221,42 +1222,60 @@ class Mechanics(FEM, ABC):
     def solve_harmonic(
         self,
         omega: Tensor,
-        n_modes: int = 10,
-        damping: float | Tensor = 0.02,
+        damping: float | Tensor = 0.0,
         rayleigh: tuple[float, float] | None = None,
         forces: Tensor | None = None,
-        modes: tuple[Tensor, Tensor] | None = None,
+        method: str | None = None,
+        preconditioner: str | None = None,
+        stol: float = 1e-10,
     ) -> Tensor:
-        """Compute the steady-state harmonic response via modal superposition.
+        r"""Compute the steady-state harmonic response via direct dynamic solve.
 
-        Evaluates the complex displacement response $\\mathbf{U}(\\Omega)$ under
-        harmonic excitation $\\mathbf{F}_0 e^{i \\Omega t}$ across excitation
-        angular frequencies:
+        Solves the frequency-domain dynamic stiffness equation for the complex
+        displacement response $\mathbf{U}(\Omega)$ under harmonic excitation
+        $\mathbf{F}_0 e^{i \Omega t}$:
 
-        $$\\left(-\\Omega^2 \\mathbf{M} + i \\Omega \\mathbf{C} + \\mathbf{K}\\right)
-        \\mathbf{U}(\\Omega) = \\mathbf{F}_0$$
+        $$\left(\mathbf{K} - \Omega^2 \mathbf{M} + i \Omega \mathbf{C}\right)
+        \mathbf{U}(\Omega) = \mathbf{F}_0$$
 
-        The modal response decouples into single-degree-of-freedom oscillators:
+        The complex system $\mathbf{Z} \mathbf{U} = \mathbf{F}_0$ is transformed into
+        a real-equivalent $2 \times 2$ block system:
 
-        $$q_j(\\Omega) = \\frac{\\boldsymbol{\\phi}_j^T \\mathbf{F}_0}
-        {\\omega_j^2 - \\Omega^2 + 2 i \\zeta_j \\omega_j \\Omega}$$
+        $$\begin{bmatrix}
+        \mathbf{Z}_R & -\mathbf{Z}_I \\
+        \mathbf{Z}_I & \mathbf{Z}_R
+        \end{bmatrix}
+        \begin{bmatrix}
+        \mathbf{U}_R \\
+        \mathbf{U}_I
+        \end{bmatrix}
+        =
+        \begin{bmatrix}
+        \mathbf{F}_0 \\
+        \mathbf{0}
+        \end{bmatrix}$$
 
-        $$\\mathbf{U}(\\Omega) = \\sum_{j=1}^{m} \\boldsymbol{\\phi}_j q_j(\\Omega)$$
+        where $\mathbf{Z}_R = \mathbf{K} - \Omega^2 \mathbf{M}$ and
+        $\mathbf{Z}_I = \Omega \mathbf{C} + \eta \mathbf{K}$
+        (with structural loss $\eta$).
+        Exact sensitivities with respect to material stiffness $E$, density $\rho$,
+        and geometry/thickness are evaluated via the adjoint sparse solver operator
+        without modal truncation.
 
         Args:
             omega: Excitation angular frequencies [rad/s] with shape `[n_freq]`
                 or scalar tensor.
-            n_modes: Number of modes to use in modal superposition if `modes`
-                is omitted.
-            damping: Modal damping ratio $\\zeta$ (scalar or shape `[n_modes]`).
-                Defaults to 0.02 (2% damping).
+            damping: Structural / hysteretic loss factor $\eta$ scaling the stiffness
+                matrix ($\mathbf{Z}_I = \eta \mathbf{K}$). Defaults to 0.0.
             rayleigh: Optional Rayleigh damping parameters `(alpha, beta)` where
-                $\\mathbf{C} = \\alpha \\mathbf{M} + \\beta \\mathbf{K}$, yielding
-                $\\zeta_j = \\alpha / (2 \\omega_j) + \\beta \\omega_j / 2$.
-                Overrides `damping` when provided.
+                $\mathbf{C} = \alpha \mathbf{M} + \beta \mathbf{K}$, yielding
+                $\mathbf{Z}_I = \Omega (\alpha \mathbf{M} + \beta \mathbf{K})$.
             forces: External force amplitudes with shape `[n_nod, n_dof_per_node]`.
                 Defaults to `self.forces`.
-            modes: Pre-computed eigenpairs `(omega_sq, mode_shapes)` from `solve_modes`.
+            method: Sparse linear solver method (e.g. ``"direct"``, ``"cg"``,
+                ``"bicgstab"``). Defaults to automatic selection.
+            preconditioner: Preconditioner for iterative methods.
+            stol: Convergence tolerance for the linear solver. Defaults to 1e-10.
 
         Returns:
             Complex displacement tensor with shape
@@ -1266,45 +1285,86 @@ class Mechanics(FEM, ABC):
         if (omega < 0.0).any():
             raise ValueError("Excitation frequencies must be non-negative.")
 
-        # Compute or unpack modes
-        if modes is None:
-            omega_sq, mode_shapes = self.solve_modes(n_modes)
-        else:
-            omega_sq, mode_shapes = modes
-            n_modes = len(omega_sq)
+        con = torch.nonzero(self.constraints.ravel(), as_tuple=False).ravel()
+        k_e = self.k0()
+        m_e = self.integrate_mass()
 
-        omega_n = torch.sqrt(torch.clamp(omega_sq, min=0.0))
+        # Pre-assemble unconstrained CSR value vectors once
+        val_k = torch.zeros(self.col.numel(), device=k_e.device, dtype=k_e.dtype)
+        val_k.index_add_(0, self.k_map, k_e.ravel())
 
-        # Damping ratios
+        val_m = torch.zeros(self.col.numel(), device=m_e.device, dtype=m_e.dtype)
+        val_m.index_add_(0, self.k_map, m_e.ravel())
+
+        # Constrained degree-of-freedom mask and diagonal indices
+        constrained = torch.zeros(self.n_dofs, dtype=torch.bool, device=k_e.device)
+        constrained[con] = True
+        row = torch.repeat_interleave(constrained, self.crow.diff())
+        mask = row | constrained[self.col]
+        diag_con = self.diag_map[con]
+
+        # Viscous Rayleigh damping contribution: C = alpha * M + beta * K
+        val_c = None
         if rayleigh is not None:
             alpha, beta = rayleigh
-            zeta = 0.5 * (alpha / torch.clamp(omega_n, min=1e-12) + beta * omega_n)
-        elif isinstance(damping, Tensor):
-            zeta = damping
-        else:
-            zeta = torch.full_like(omega_n, float(damping))
+            val_c = alpha * val_m + beta * val_k
 
-        # Force vector and modal forces
+        # Right-hand side force vector
         f_val = self.forces if forces is None else forces
         if f_val.shape != (self.n_nod, self.n_dof_per_node):
             raise ValueError("Forces must have shape [n_nod, n_dof_per_node].")
-        f_vec = f_val.ravel()
+        f_vec = f_val.ravel().clone()
+        f_vec[con] = 0.0
+        b_block = torch.cat([f_vec, torch.zeros_like(f_vec)])
 
-        phis = mode_shapes.reshape(n_modes, -1).T  # [n_dofs, n_modes]
-        p = phis.T @ f_vec  # [n_modes]
+        # Block COO indices (static across frequencies)
+        N = self.n_dofs
+        row_idx = torch.repeat_interleave(
+            torch.arange(N, device=k_e.device), self.crow.diff()
+        )
+        rows = torch.cat([row_idx, row_idx, row_idx + N, row_idx + N])
+        cols = torch.cat([self.col, self.col + N, self.col, self.col + N])
+        indices = torch.stack([rows, cols], dim=0)
 
-        # Reshape omega for broadcasting: [n_freq, n_modes]
         squeeze_freq = omega.ndim == 0
         w = omega.reshape(-1)
+        results = []
 
-        denom = (omega_sq[None, :] - w[:, None] ** 2) + 2j * (zeta * omega_n)[
-            None, :
-        ] * w[:, None]
-        q = p[None, :] / denom  # [n_freq, n_modes]
+        for Om in w:
+            # Real dynamic stiffness: K - Omega^2 * M
+            val_R = (val_k - (Om**2) * val_m).clone()
+            val_R[mask] = 0.0
+            val_R[diag_con] = 1.0
 
-        # Reconstruct physical displacements: [n_freq, n_dofs]
-        U = torch.complex(q.real @ phis.T, q.imag @ phis.T)
-        out = U.reshape(len(w), self.n_nod, self.n_dof_per_node)
+            # Imaginary impedance: Omega * C + eta * K
+            if val_c is not None:
+                val_I = (Om * val_c).clone()
+            else:
+                val_I = torch.zeros_like(val_k)
+
+            if isinstance(damping, Tensor) or damping != 0.0:
+                val_I = val_I + damping * val_k
+
+            val_I[mask] = 0.0
+            val_I[diag_con] = 0.0
+
+            vals = torch.cat([val_R, -val_I, val_I, val_R])
+            with torch.sparse.check_sparse_tensor_invariants(False):
+                A_block = torch.sparse_coo_tensor(indices, vals, size=(2 * N, 2 * N))
+
+            u_block = differentiable_sparse_solve(
+                A_block,
+                b_block,
+                stol=stol,
+                method=method,
+                preconditioner=preconditioner,
+            )
+            u_R = u_block[:N]
+            u_I = u_block[N:]
+            u_complex = torch.complex(u_R, u_I).reshape(self.n_nod, self.n_dof_per_node)
+            results.append(u_complex)
+
+        out = torch.stack(results, dim=0)
         return out[0] if squeeze_freq else out
 
 
