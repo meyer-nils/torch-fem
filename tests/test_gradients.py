@@ -82,7 +82,7 @@ def test_gradients_incremental_force_matches_single_step():
 
 def test_gradients_incremental_nonlinear_matches_analytical():
     # Uniaxial Neo-Hookean stretch of a unit cube: the deformation is
-    # homogeneous, so the reaction force sensitivities w.r.t. the LamÃ©
+    # homogeneous, so the reaction force sensitivities w.r.t. the Lamé
     # parameters follow from the analytical uniaxial response.
     E = 1000.0
     nu = 0.3
