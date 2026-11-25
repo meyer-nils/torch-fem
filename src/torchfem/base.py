@@ -17,6 +17,7 @@ from .sparse import (
     border,
     check_declared,
     differentiable_modal_eigsolve,
+    differentiable_sparse_solve,
     newton_solve,
     resolve_method,
     sparse_solve,
@@ -1233,7 +1234,7 @@ class Mechanics(FEM, ABC):
         tangent `K⁻¹f` in the direction of the previous step. As in Abaqus Riks,
         Δs follows from the first predictor for the given first load increment.
         The bordered tangent is not symmetric, so the linear solves are direct.
-        Gradients are those of the path for the step sizes and predictor
+        Gradients are those of the path for the cutbacks and predictor
         directions taken.
 
         Args:
@@ -1288,12 +1289,12 @@ class Mechanics(FEM, ABC):
         zero = torch.zeros(self.n_dofs)
         de0 = torch.zeros_like(self._external_gradient)
 
-        def constraint(du: Tensor, ds: float) -> tuple[Tensor, Tensor]:
+        def constraint(du: Tensor, ds: Tensor) -> tuple[Tensor, Tensor]:
             # Cylindrical constraint `du·du = Δs²` and its gradient in du
             return (du @ du - ds**2) / (2 * ds), du / ds
 
         def residual(
-            ds: float, z: Tensor, i: int, prev: tuple, tangent: bool = True
+            ds: Tensor, z: Tensor, i: int, prev: tuple, tangent: bool = True
         ) -> tuple[Tensor, Tensor | None]:
             # The total λ is unknown, so the last step's λ only starts Newton
             du, lam = z[:-1], z[-1]
@@ -1327,6 +1328,7 @@ class Mechanics(FEM, ABC):
 
         self.K = torch.empty(0)
         ds = ds_max = 0.0
+        ds_first = torch.zeros(())
         du_prev = None
         for n in range(1, max_steps + 1):
             report.begin(n, float(lam.detach()))
@@ -1339,7 +1341,14 @@ class Mechanics(FEM, ABC):
                 self.K.detach(), f_hat.detach(), None, stol, device, "direct"
             )[0]
             if n == 1:
-                ds = ds_max = load_increment * float(t.norm())
+                # Δs carries the gradient of the first tangent into every step
+                ds_first = (
+                    load_increment
+                    * differentiable_sparse_solve(
+                        self.K, f_hat, None, stol, device, "direct"
+                    ).norm()
+                )
+                ds = ds_max = float(ds_first)
             sign = 1.0 if du_prev is None or t @ du_prev >= 0.0 else -1.0
             t = torch.cat([t, torch.ones(1)]) / t.norm()
             z0 = torch.cat([torch.zeros(self.n_dofs), lam.detach()[None]])
@@ -1348,7 +1357,7 @@ class Mechanics(FEM, ABC):
             for cutbacks in range(max_cutbacks + 1):
                 try:
                     z = newton_solve(
-                        partial(residual, ds),
+                        partial(residual, ds_first * (ds / ds_max)),
                         z0 + sign * ds * t,
                         torch.empty(0),
                         max_iter,
