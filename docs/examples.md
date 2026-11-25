@@ -66,6 +66,10 @@ All examples are Jupyter notebooks from the [examples directory](https://github.
 
     [![Snap-through of a cylindrical roof](images/examples/basic/planar/snap_through.png)](examples/basic/planar/snap_through.html)
 
+-   **Snap-back of the Lee frame**
+
+    [![Snap-back of the Lee frame](images/examples/basic/planar/lee_frame.png)](examples/basic/planar/lee_frame.html)
+
 -   **Third medium contact**
 
     [![Third medium contact](images/examples/basic/planar/third_medium_contact.png)](examples/basic/planar/third_medium_contact.html)
