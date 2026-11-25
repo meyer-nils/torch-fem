@@ -1332,7 +1332,9 @@ class Mechanics(FEM, ABC):
             if self.K.numel() == 0:
                 prev = (u_cur, grad_cur, flux_cur, state_cur)
                 self._residual(zero, zero, de0, None, None, con, zero, 0, prev)
-            t = sparse_solve(self.K.detach(), f_hat.detach(), None, stol, device)[0]
+            t = sparse_solve(
+                self.K.detach(), f_hat.detach(), None, stol, device, "direct"
+            )[0]
             sign = 1.0 if du_prev is None or t @ du_prev >= 0.0 else -1.0
             t = torch.cat([t, torch.ones(1)]) / t.norm()
             z0 = torch.cat([torch.zeros(self.n_dofs), lam.detach()[None]])
