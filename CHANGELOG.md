@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Added
-- `solve_arc_length(...)` traces the equilibrium path of a mechanics model under a load factor scaling `forces`, following it through limit points and snap-backs.
+- `solve_arc_length(...)` traces the equilibrium path of a mechanics model under a load factor scaling `forces`, following it through limit points and snap-backs. As in Abaqus Riks, the step length follows from the load factor increment of the first step.
 - `IsotropicDamagePlaneStrain`, `IsotropicDamagePlaneStress` and `IsotropicDamage1D` take `eq_strain="mises"`, evaluated on the full strain tensor that their kinematics imply.
 
 ### Changed

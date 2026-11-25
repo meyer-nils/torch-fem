@@ -1209,7 +1209,7 @@ class Mechanics(FEM, ABC):
 
     def solve_arc_length(
         self,
-        arc_length: float,
+        load_increment: float,
         max_steps: int,
         max_load: float | None = None,
         max_displacement: float | None = None,
@@ -1230,12 +1230,15 @@ class Mechanics(FEM, ABC):
         Each step solves for the displacement increment and the total load factor
         `[du; λ]` under the cylindrical constraint `du·du = Δs²`, so the path is
         followed through limit points and snap-backs. The predictor follows the
-        tangent `K⁻¹f` in the direction of the previous step. The bordered tangent
-        is not symmetric, so the linear solves are direct. Gradients are those of
-        the path for the step sizes and predictor directions taken.
+        tangent `K⁻¹f` in the direction of the previous step. As in Abaqus Riks,
+        Δs follows from the first predictor for the given first load increment.
+        The bordered tangent is not symmetric, so the linear solves are direct.
+        Gradients are those of the path for the step sizes and predictor
+        directions taken.
 
         Args:
-            arc_length: Step length Δs, which is also the largest one.
+            load_increment: Load factor increment of the first step, which sets
+                the step length Δs, also the largest one.
             max_steps: Number of steps after which the path ends.
             max_load: Load factor magnitude at which the path ends early.
             max_displacement: Largest displacement component magnitude at which
@@ -1247,7 +1250,7 @@ class Mechanics(FEM, ABC):
             cutback_factor: Factor applied to Δs after a Newton solve failed to
                 converge.
             growth_factor: Factor applied to Δs after a Newton solve converged,
-                capped at `arc_length`.
+                capped at the first Δs.
             max_cutbacks: Number of successive cutbacks accepted within a step
                 before the solve is given up.
             verbose: If True, reports the solver configuration and a table of
@@ -1304,7 +1307,7 @@ class Mechanics(FEM, ABC):
         newton = (
             f"rtol {rtol:.0e} | atol {atol:.0e} | <={max_iter} it"
             + (" | finite strain" if self.finite_strain else "")
-            + f" | arc length {arc_length:g}"
+            + f" | load increment {load_increment:g}"
         )
         dev = device or self.nodes.device.type
         model = f"{type(self).__name__} | {self.n_elem:,} elem | {self.n_dofs:,} dof"
@@ -1323,7 +1326,7 @@ class Mechanics(FEM, ABC):
         steps = [(u_cur, f_cur, flux_cur, grad_cur, state_cur, lam)]
 
         self.K = torch.empty(0)
-        ds = arc_length
+        ds = ds_max = 0.0
         du_prev = None
         for n in range(1, max_steps + 1):
             report.begin(n, float(lam.detach()))
@@ -1335,6 +1338,8 @@ class Mechanics(FEM, ABC):
             t = sparse_solve(
                 self.K.detach(), f_hat.detach(), None, stol, device, "direct"
             )[0]
+            if n == 1:
+                ds = ds_max = load_increment * float(t.norm())
             sign = 1.0 if du_prev is None or t @ du_prev >= 0.0 else -1.0
             t = torch.cat([t, torch.ones(1)]) / t.norm()
             z0 = torch.cat([torch.zeros(self.n_dofs), lam.detach()[None]])
@@ -1390,9 +1395,9 @@ class Mechanics(FEM, ABC):
             if n == 1 and track and len(con) < self.n_dofs:
                 check_declared((u_cur, f_cur, lam), differentiable_parameters)
 
-            if ds < arc_length:
+            if ds < ds_max:
                 report.growth()
-                ds = min(growth_factor * ds, arc_length)
+                ds = min(growth_factor * ds, ds_max)
 
             # The row reports the load factor the step reached
             report.value = float(lam.detach())

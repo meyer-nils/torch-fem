@@ -373,7 +373,7 @@ def test_arc_length_gradients_match_finite_differences_through_the_snap_back():
     thickness = torch.full((frame.n_elem,), 3.0, requires_grad=True)
     frame = _build_lee_frame(thickness)
     u, _, _, _, _, lam = frame.solve_arc_length(
-        60.0, 16, differentiable_parameters=thickness
+        0.9, 16, differentiable_parameters=thickness
     )
     gradient = torch.autograd.grad(lam[-1], thickness)[0]
 
@@ -382,10 +382,14 @@ def test_arc_length_gradients_match_finite_differences_through_the_snap_back():
     assert torch.isclose(lam.max(), torch.tensor(1.855), rtol=1e-2)
     assert ((lam.diff() < 0.0) & (v.diff() < 0.0)).any()
 
-    # Thickening only the column changes the path, not just its load scale
+    # Thickening only the column changes the path, not just its load scale. Gradients
+    # hold Δs fixed, so the reference does too: the first step has length Δs.
+    ds = float(u[1].detach().norm())
+
     def loss(value: float) -> float:
-        field = torch.where(column, value, 3.0)
-        return float(_build_lee_frame(field).solve_arc_length(60.0, 16)[-1][-1])
+        frame = _build_lee_frame(torch.where(column, value, 3.0))
+        increment = ds / float(frame.solve_arc_length(1.0, 1)[0][1].norm())
+        return float(frame.solve_arc_length(increment, 16)[-1][-1])
 
     reference = _central_difference(loss, 3.0, 1e-5)
     assert torch.isclose(gradient[column].sum(), torch.tensor(reference), rtol=1e-5)
