@@ -387,5 +387,5 @@ def test_arc_length_gradients_match_finite_differences_through_the_snap_back():
         field = torch.where(column, value, 3.0)
         return float(_build_lee_frame(field).solve_arc_length(0.9, 16)[-1][-1])
 
-    reference = _central_difference(loss, 3.0, 1e-5)
+    reference = _central_difference(loss, 3.0, 1e-3)
     assert torch.isclose(gradient[column].sum(), torch.tensor(reference), rtol=1e-4)
