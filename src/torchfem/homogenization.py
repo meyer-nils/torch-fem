@@ -191,12 +191,19 @@ def symm(A4: Tensor) -> Tensor:
         https://doi.org/10.5281/zenodo.7305587
 
     Args:
-        A4 (Tensor): Input tensor (shape Nx3x3x3x3)
+        A4 (Tensor): Input tensor (shape ...x3x3x3x3)
 
     Returns:
         Tensor: Symmetrized output tensor
     """
-    B4 = torch.stack([torch.permute(A4, (0, *p)) for p in permutations([1, 2, 3, 4])])
+    offset = A4.ndim - 4
+    batch = tuple(range(offset))
+    B4 = torch.stack(
+        [
+            torch.permute(A4, (*batch, *(offset + i for i in p)))
+            for p in permutations(range(4))
+        ]
+    )
     return B4.sum(dim=0) / 24
 
 
