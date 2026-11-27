@@ -32,6 +32,19 @@ class TestSymm:
         assert torch.allclose(result, result.permute(0, 2, 1, 3, 4), atol=1e-10)
         assert torch.allclose(result, result.permute(0, 3, 4, 1, 2), atol=1e-10)
 
+    def test_unbatched_and_multibatched(self):
+        A4 = torch.randn(3, 3, 3, 3)
+        single = symm(A4)
+        assert single.shape == (3, 3, 3, 3)
+        assert torch.allclose(single, symm(A4.unsqueeze(0))[0], atol=1e-12)
+
+        A4_nd = torch.randn(2, 3, 3, 3, 3, 3)
+        multi = symm(A4_nd)
+        assert multi.shape == (2, 3, 3, 3, 3, 3)
+        assert torch.allclose(
+            multi.reshape(6, 3, 3, 3, 3), symm(A4_nd.reshape(6, 3, 3, 3, 3)), atol=1e-12
+        )
+
 
 class TestIBOFClosure:
     @pytest.mark.parametrize("A2", [ISOTROPIC, ALIGNED], ids=["isotropic", "aligned"])
@@ -42,9 +55,16 @@ class TestIBOFClosure:
         assert A4.shape == (1, 3, 3, 3, 3)
         assert torch.allclose(torch.einsum("nijkk->nij", A4), batched, atol=1e-10)
 
+    def test_unbatched(self):
+        A4 = IBOF_closure(ISOTROPIC)
+        assert A4.shape == (3, 3, 3, 3)
+        assert torch.allclose(torch.einsum("ijkk->ij", A4), ISOTROPIC, atol=1e-10)
+
     def test_batched(self):
         A2 = ISOTROPIC.expand(4, 3, 3)
         assert IBOF_closure(A2).shape == (4, 3, 3, 3, 3)
+        A2_nd = ISOTROPIC.expand(2, 3, 3, 3)
+        assert IBOF_closure(A2_nd).shape == (2, 3, 3, 3, 3, 3)
 
 
 class TestComputeOrientationAverage:
